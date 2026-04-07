@@ -221,13 +221,17 @@ export const AssessmentService = {
 
     if (item.metadata.correctIndex !== undefined) {
       score = value === item.metadata.correctIndex ? 1 : 0;
+    } else if (item.metadata.options && Array.isArray(item.metadata.options) && typeof value === 'number') {
+      const option = item.metadata.options[value];
+      score = option && option.isCorrect ? 1 : 0;
     } else {
       try {
         const prompt = item.metadata.prompt || "Please respond to the task.";
+        const itemSkill = String(item.skill).toUpperCase();
         
-        if (item.skill === "WRITING") {
+        if (itemSkill === "WRITING") {
           aiResult = await GeminiScoringService.scoreWriting(value, prompt);
-        } else if (item.skill === "SPEAKING") {
+        } else if (itemSkill === "SPEAKING") {
           // Check if value is multimodal (audio + mimeType)
           if (typeof value === "object" && value.audio && value.mimeType) {
             aiResult = await GeminiScoringService.scoreSpeaking(value.audio, value.mimeType, prompt);

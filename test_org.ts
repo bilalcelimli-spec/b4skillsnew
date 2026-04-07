@@ -1,0 +1,1 @@
+import { prisma } from './src/lib/prisma'; async function check() { try { await prisma.license.create({data: { organizationId: 'default-org', type: 'TRIAL', credits: 999, expiresAt: new Date() }}) } catch (e) { console.error(e) } } check();

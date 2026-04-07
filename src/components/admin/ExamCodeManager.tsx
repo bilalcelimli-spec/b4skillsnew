@@ -7,7 +7,7 @@ import { Activity, Copy, Check, Info } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 export const ExamCodeManager: React.FC = () => {
-  const [productLine, setProductLine] = useState("general");
+  const [productLine, setProductLine] = useState("General");
   const [count, setCount] = useState(1);
   const [loading, setLoading] = useState(false);
   const [generatedCodes, setGeneratedCodes] = useState<{ code: string }[]>([]);
@@ -78,10 +78,14 @@ export const ExamCodeManager: React.FC = () => {
                 onChange={(e) => setProductLine(e.target.value)}
                 className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
               >
-                <option value="general">General English</option>
-                <option value="young_learners">Young Learners</option>
-                <option value="business">Business English</option>
-                <option value="aviation">Aviation English</option>
+                <option value="General">General English</option>
+                <option value="Primary (7-10)">Primary (7-10)</option>
+                <option value="Junior Suite (11-14)">Junior Suite (11-14)</option>
+                <option value="15-Min Diagnostic">15-Min Diagnostic</option>
+                <option value="Academia">Academia</option>
+                <option value="Corporate">Corporate</option>
+                <option value="Language Schools">Language Schools</option>
+                <option value="Specialized / Integrated Skills">Specialized / Integrated Skills</option>
               </select>
             </div>
 

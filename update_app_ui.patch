@@ -1,0 +1,27 @@
+--- src/App.tsx
++++ src/App.tsx
+@@ -321,6 +321,7 @@
+                 )}
+ 
+-                <Card className="bg-indigo-600 text-white border-none shadow-indigo-200 shadow-xl rounded-[40px] overflow-hidden relative" style={{ backgroundColor: branding?.primaryColor }}>
++                {(!userProfile?.allowedProductLine || userProfile.allowedProductLine === "General" || userProfile?.allowedProductLine === "general") && (
++                  <Card className="bg-indigo-600 text-white border-none shadow-indigo-200 shadow-xl rounded-[40px] overflow-hidden relative" style={{ backgroundColor: branding?.primaryColor }}>
+                   <CardContent className="p-10 flex flex-col sm:flex-row items-center gap-10">
+                     <div className="flex-1 text-center sm:text-left">
+-                      <h2 className="text-3xl font-black mb-3 uppercase tracking-tighter">General English Proficiency Test</h2>
++                      <h2 className="text-3xl font-black mb-3 uppercase tracking-tighter">{userProfile?.allowedProductLine === "general" ? "General Assessment" : "General English Proficiency Test"}</h2>
+                       <p className="text-indigo-100 mb-8 leading-relaxed font-bold opacity-80">
+                         Our most popular adaptive assessment. Measures Reading, Listening, and Grammar across all CEFR levels.
+@@ -344,4 +345,5 @@
+                   </CardContent>
+                 </Card>
++                )}
+ 
+                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+@@ -355,5 +357,5 @@
+                     "Language Schools",
+                     "Specialized / Integrated Skills"
+-                  ].map(pl => (
++                  ].filter(pl => !userProfile?.allowedProductLine || userProfile.allowedProductLine === pl).map(pl => (
+                     <Card key={pl} className="border-slate-200 shadow-sm rounded-2xl hover:border-indigo-400 hover:shadow-indigo-100 transition-all cursor-pointer group" onClick={() => startNewTest(pl)}>
+                       <CardContent className="p-4 flex flex-col items-center justify-center gap-2 text-center">

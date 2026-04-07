@@ -29,7 +29,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   const content = (item as any).content ?? item.metadata ?? {};
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
 
-  
+  const itemSkill = String(item.skill).toUpperCase();
   
   const renderPassage = (passage: string | undefined) => {
     let elements = [];
@@ -81,7 +81,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     return <>{elements}</>;
   };
 
-  switch (item.skill) {
+  switch (itemSkill) {
     case "READING":
     case "GRAMMAR":
     case "VOCABULARY":

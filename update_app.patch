@@ -1,0 +1,12 @@
+--- src/App.tsx
++++ src/App.tsx
+@@ -126,9 +126,8 @@
+   if (showCodeEntry) {
+     return <CodeEntryPage onBack={() => { setShowCodeEntry(false); setShowLanding(true); }} onSuccess={(productLine, orgId, email) => {
+-      setActiveSession({ orgId, sessionId: "new", productLine });
+       setUser({ uid: "cand_" + Date.now(), email } as any);
+-      setUserProfile({ role: "candidate", organizationId: orgId });
++      setUserProfile({ role: "candidate", organizationId: orgId, allowedProductLine: productLine });
+       setShowCodeEntry(false);
+     }} />;
+   }
