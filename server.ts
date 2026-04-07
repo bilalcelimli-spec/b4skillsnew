@@ -734,6 +734,18 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  app.post("/api/ai/edit-item", async (req, res) => {
+    const { currentItemContent, instruction } = req.body;
+    try {
+      const { ItemGeneratorService } = await import("./src/lib/assessment-engine/item-generator.js");
+      const updatedContent = await ItemGeneratorService.editItem(currentItemContent, instruction);
+      res.json(updatedContent);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Failed to edit AI item" });
+    }
+  });
+
   app.get("/api/sessions/:id/insights", async (req, res) => {
     const { id } = req.params;
     try {

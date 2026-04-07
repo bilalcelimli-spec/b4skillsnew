@@ -71,5 +71,30 @@ export const ItemGeneratorService = {
       console.error("Item Generation Error:", error);
       throw error;
     }
+  },
+
+  async editItem(currentItem: any, instruction: string): Promise<any> {
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: `You are an expert English language assessment developer.
+I will provide you with an existing assessment item (JSON) and a specific instruction on how to edit it.
+
+Current Item Content:
+${JSON.stringify(currentItem, null, 2)}
+
+Instruction from Reviewer:
+${instruction}
+
+Please return the updated item content object in JSON format containing ONLY the updated content field (including options, passage, prompt, correctIndex, etc). The output MUST be a valid JSON object representing the new content.`,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+      return JSON.parse(response.text);
+    } catch (error) {
+      console.error("Item Editing Error:", error);
+      throw error;
+    }
   }
 };

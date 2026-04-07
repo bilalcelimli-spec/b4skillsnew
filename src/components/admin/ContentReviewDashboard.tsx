@@ -3,7 +3,7 @@ import { Item } from "../../lib/assessment-engine/types";
 import { Card, CardContent, CardHeader } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { ItemRenderer } from "../ItemRenderer";
-import { CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, Filter } from "lucide-react";
+import { CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, Filter, Sparkles, Send } from "lucide-react";
 
 export const ContentReviewDashboard = () => {
   const [items, setItems] = useState<Item[]>([]);
@@ -12,6 +12,10 @@ export const ContentReviewDashboard = () => {
   const [filter, setFilter] = useState("all"); // 'all', 'flagged', 'ok'
   const [updating, setUpdating] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
+  
+  // AI Edit States
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [isAiEditing, setIsAiEditing] = useState(false);
 
   useEffect(() => {
     fetchItems();
@@ -72,6 +76,51 @@ export const ContentReviewDashboard = () => {
       console.error(err);
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handleAiEdit = async () => {
+    if (!currentItem || !aiPrompt.trim()) return;
+    setIsAiEditing(true);
+
+    try {
+      // Step 1: Call AI to edit content
+      const aiRes = await fetch("/api/ai/edit-item", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentItemContent: currentContent,
+          instruction: aiPrompt
+        })
+      });
+      
+      const newContent = await aiRes.json();
+      if (!aiRes.ok) throw new Error(newContent.error);
+
+      // Preserve status fields if they exist
+      const preservedContent = {
+        ...newContent,
+        reviewStatus: "ok",
+        reviewFeedback: "Fixed via AI: " + aiPrompt
+      };
+
+      // Step 2: Save to DB
+      const saveRes = await fetch(`/api/items/${currentItem.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: preservedContent })
+      });
+      
+      if (saveRes.ok) {
+        setItems(prev => prev.map(it => it.id === currentItem.id ? { ...it, content: preservedContent } : it));
+        setAiPrompt("");
+        setFeedbackText("");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to edit item via AI.");
+    } finally {
+      setIsAiEditing(false);
     }
   };
 
@@ -184,6 +233,40 @@ export const ContentReviewDashboard = () => {
                   </Button>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-indigo-100 shadow-sm rounded-2xl overflow-hidden text-sm bg-indigo-50/30">
+            <CardHeader className="bg-indigo-50 border-b border-indigo-100 p-4 flex items-center gap-2 text-indigo-700 font-black uppercase tracking-widest">
+              <Sparkles size={14} /> AI Assistant
+            </CardHeader>
+            <CardContent className="p-4 space-y-3">
+              <p className="text-[10px] uppercase font-bold text-slate-500 tracking-widest leading-relaxed">
+                Describe the corrections you want the AI to make (e.g. "make the prompt clearer", "regenerate audio", "change option B").
+              </p>
+              <textarea 
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder="Message Gemini..."
+                className="w-full text-xs p-3 rounded-xl border border-indigo-200 focus:ring-2 focus:ring-indigo-500 min-h-[80px]"
+                disabled={isAiEditing}
+              />
+              <Button 
+                onClick={handleAiEdit} 
+                disabled={isAiEditing || !aiPrompt.trim()}
+                className="w-full bg-indigo-600 text-white hover:bg-indigo-700 border-none font-bold"
+              >
+                {isAiEditing ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></span>
+                    Fixing...
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-2">
+                    <Send size={14} /> Apply AI Fix
+                  </div>
+                )}
+              </Button>
             </CardContent>
           </Card>
         </div>
