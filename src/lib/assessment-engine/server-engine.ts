@@ -13,8 +13,8 @@ import { BillingService } from "../enterprise/billing-service";
  */
 
 const DEFAULT_CONFIG: EngineConfig = {
-  minItems: 5,
-  maxItems: 20,
+  minItems: 3,
+  maxItems: 15,
   semThreshold: 0.3,
   startingTheta: 0.0,
   startingSem: 1.0,

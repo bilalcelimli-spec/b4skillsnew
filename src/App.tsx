@@ -341,7 +341,8 @@ export default function App() {
                     "15-Min Diagnostic",
                     "Academia",
                     "Corporate",
-                    "Language Schools"
+                    "Language Schools",
+                    "Specialized / Integrated Skills"
                   ].map(pl => (
                     <Card key={pl} className="border-slate-200 shadow-sm rounded-2xl hover:border-indigo-400 hover:shadow-indigo-100 transition-all cursor-pointer group" onClick={() => startNewTest(pl)}>
                       <CardContent className="p-4 flex flex-col items-center justify-center gap-2 text-center">
