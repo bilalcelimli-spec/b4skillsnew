@@ -20,9 +20,10 @@ export const ExamCodeManager: React.FC = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-user-email": "bilalcelimli@gmail.com",
         },
         body: JSON.stringify({
-          organizationId: "admin_org", // Default admin organization
+          organizationId: "default-org", // Use valid organization
           productLine,
           count,
         }),
@@ -33,7 +34,9 @@ export const ExamCodeManager: React.FC = () => {
       }
 
       const data = await res.json();
-      setGeneratedCodes(data.codes);
+      // Server returns an array of strings, let's map them to objects
+      const formattedCodes = data.codes.map((code: string) => ({ code }));
+      setGeneratedCodes(formattedCodes);
     } catch (err) {
       console.error(err);
       alert("Failed to generate codes");
