@@ -1,0 +1,61 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user identity and role information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["candidate", "admin", "rater"] },
+        "organizationId": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Session": {
+      "title": "Test Session",
+      "description": "Represents an active or completed assessment session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "organizationId": { "type": "string" },
+        "status": { "type": "string", "enum": ["in-progress", "completed", "scoring"] },
+        "currentStage": { "type": "integer" },
+        "abilityEstimate": { "type": "number" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "candidateId", "status"]
+    },
+    "Response": {
+      "title": "Item Response",
+      "description": "A candidate's response to a specific test item.",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "itemId": { "type": "string" },
+        "value": { "type": "string" },
+        "score": { "type": "number" },
+        "ResponseArtifact": { "type": "string", "description": "URL to audio recording or large text response." },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sessionId", "itemId"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "Global user profiles."
+    },
+    "/organizations/{orgId}/sessions/{sessionId}": {
+      "schema": "Session",
+      "description": "Test sessions scoped by organization."
+    },
+    "/organizations/{orgId}/sessions/{sessionId}/responses/{responseId}": {
+      "schema": "Response",
+      "description": "Individual item responses."
+    }
+  }
+}

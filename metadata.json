@@ -1,0 +1,5 @@
+{
+  "name": "LinguAdapt - Adaptive English Assessment Platform",
+  "description": "A production-grade, CEFR-aligned adaptive English proficiency testing platform featuring AI-assisted scoring, multi-tenant B2B support, and robust proctoring.",
+  "requestFramePermissions": ["camera", "microphone"]
+}

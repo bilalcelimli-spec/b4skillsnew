@@ -1,0 +1,1104 @@
+import "dotenv/config";
+import express from "express";
+import { createServer as createViteServer } from "vite";
+import path from "path";
+import { fileURLToPath } from "url";
+import cors from "cors";
+import crypto from "crypto";
+import { prisma } from "./src/lib/prisma.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  app.use(cors());
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  
+  // --- OFFLINE MOCK MIDDLEWARE ---
+  // If no database is available, we intercept admin routes and serve mock data
+  app.use("/api", (req, res, next) => {
+    if (!process.env.DATABASE_URL) {
+      const url = req.url;
+      const method = req.method;
+
+      // ── Health ──────────────────────────────────────────────────────────────
+      if (url === "/health") return next();
+
+      // ── Psychometrics config ─────────────────────────────────────────────────
+      if (url.includes("/config/system")) {
+        if (method === "GET") return res.json({ minItems: 10, maxItems: 30, semThreshold: 0.25, startingTheta: 0.0, pretestRatio: 0.1, cefrThresholds: { A1: -2.0, A2: -1.0, B1: 0.0, B2: 1.0, C1: 2.0, C2: 3.0 } });
+        if (method === "PUT") return res.json(req.body);
+      }
+
+      // ── Item Bank ────────────────────────────────────────────────────────────
+      if (url === "/items" && method === "GET") {
+        return res.json([
+          { id: "mock-item-1", skill: "READING", type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "The quick brown fox jumped over the lazy dog. What did the fox jump over?", options: ["A fence", "A wall", "The lazy dog", "A stream"], correctIndex: 2 }, difficulty: 1.0, status: "ACTIVE", assets: [] },
+          { id: "mock-item-2", skill: "READING", type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "She ___ to the store yesterday.", text: "Fill in the blank with the correct verb form.", options: ["go", "goes", "went", "gone"], correctIndex: 2 }, difficulty: 2.0, status: "ACTIVE", assets: [] },
+          { id: "mock-item-3", skill: "SPEAKING", type: "AUDIO_RESPONSE", cefrLevel: "B2", content: { prompt: "Describe your favorite hobby in detail.", text: "You have 60 seconds to respond." }, difficulty: 3.0, status: "ACTIVE", assets: [] },
+          { id: "mock-item-4", skill: "WRITING", type: "OPEN_RESPONSE", cefrLevel: "C1", content: { prompt: "Write an email to a colleague proposing a new project idea.", text: "Minimum 80 words required." }, difficulty: 4.0, status: "ACTIVE", assets: [] },
+          { id: "mock-item-5", skill: "READING", type: "MULTIPLE_CHOICE", cefrLevel: "A1", content: { prompt: "What color is the sky on a clear day?", options: ["Green", "Blue", "Red", "Yellow"], correctIndex: 1 }, difficulty: 0.5, status: "ACTIVE", assets: [] },
+          { id: "mock-item-6", skill: "WRITING", type: "OPEN_RESPONSE", cefrLevel: "B1", content: { prompt: "Describe your hometown in a few sentences.", text: "Use at least 50 words." }, difficulty: 2.5, status: "DRAFT", assets: [] },
+        ]);
+      }
+      if (url.startsWith("/items") && (method === "PUT" || method === "POST")) return res.json({ ...req.body, id: req.body.id || "new-item-" + Date.now() });
+      if (url.startsWith("/items") && method === "DELETE") return res.json({ success: true });
+
+      // ── Cohort / analytics ────────────────────────────────────────────────────
+      if (url.includes("/analytics/cohort")) {
+        return res.json({
+          totalCandidates: 450,
+          completedSessions: 312,
+          averageAbility: 0.85,
+          cefrDistribution: { A1: 12, A2: 25, B1: 80, B2: 110, C1: 60, C2: 25 },
+          skillPerformance: { Reading: 72, Listening: 68, Writing: 59, Speaking: 61, Grammar: 74, Vocabulary: 70 },
+          timeSeriesData: [
+            { date: "Sep", avgScore: 58 }, { date: "Oct", avgScore: 62 }, { date: "Nov", avgScore: 65 },
+            { date: "Dec", avgScore: 69 }, { date: "Jan", avgScore: 72 }, { date: "Feb", avgScore: 74 },
+            { date: "Mar", avgScore: 77 }, { date: "Apr", avgScore: 80 }
+          ],
+          settings: { webhookUrl: "", apiKey: "" }
+        });
+      }
+
+      // ── Org analytics (AdvancedAnalytics component format) ────────────────────
+      if (url.includes("/organizations/") && url.includes("/analytics")) {
+        return res.json({
+          sessionsCount: 312,
+          avgRating: 4.3,
+          feedbacksCount: 289,
+          cefrDistribution: [
+            { name: "A1", value: 12 }, { name: "A2", value: 25 }, { name: "B1", value: 80 },
+            { name: "B2", value: 110 }, { name: "C1", value: 60 }, { name: "C2", value: 25 }
+          ],
+          monthlyTrend: [
+            { month: "Nov", count: 42 }, { month: "Dec", count: 55 }, { month: "Jan", count: 63 },
+            { month: "Feb", count: 70 }, { month: "Mar", count: 89 }, { month: "Apr", count: 97 }
+          ],
+          skillBreakdown: [
+            { skill: "Reading", avg: 72 }, { skill: "Listening", avg: 68 }, { skill: "Writing", avg: 59 },
+            { skill: "Speaking", avg: 61 }, { skill: "Grammar", avg: 74 }, { skill: "Vocabulary", avg: 70 }
+          ]
+        });
+      }
+
+      // ── Audit logs ───────────────────────────────────────────────────────────
+      if (url.includes("/organizations/") && url.includes("/audit-logs")) {
+        return res.json([
+          { id: "log-1", action: "CANDIDATE_IMPORT", timestamp: new Date(Date.now() - 3600000).toISOString(), userId: "admin1", details: "50 candidates imported via CSV" },
+          { id: "log-2", action: "SETTINGS_UPDATED", timestamp: new Date(Date.now() - 7200000).toISOString(), userId: "admin1", details: "CEFR thresholds updated" },
+          { id: "log-3", action: "ITEM_DELETED", timestamp: new Date(Date.now() - 86400000).toISOString(), userId: "admin1", details: "Item mock-item-old removed from bank" },
+        ]);
+      }
+
+      // ── Billing ───────────────────────────────────────────────────────────────
+      if (url.includes("/organizations/") && url.includes("/billing/topup") && method === "POST") {
+        return res.json({ success: true });
+      }
+      if (url.includes("/organizations/") && url.includes("/billing")) {
+        return res.json({ creditsRemaining: 4876, licenseType: "Enterprise", expiryDate: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(), transactions: [
+          { id: "txn-1", amount: 1000, date: new Date(Date.now() - 2592000000).toISOString(), type: "TOP_UP" },
+          { id: "txn-2", amount: -124, date: new Date(Date.now() - 86400000).toISOString(), type: "USAGE" },
+        ]});
+      }
+
+      // ── Webhooks & API Keys ───────────────────────────────────────────────────
+      if (url.includes("/organizations/") && url.includes("/webhooks")) {
+        if (method === "GET") return res.json([{ id: "wh-1", url: "https://example.com/webhook", events: ["session.completed", "proctoring.alert"], active: true, createdAt: new Date().toISOString() }]);
+        if (method === "POST") return res.json({ id: "wh-" + Date.now(), ...req.body, active: true, createdAt: new Date().toISOString() });
+        if (method === "DELETE") return res.json({ success: true });
+      }
+      if (url.includes("/organizations/") && url.includes("/api-keys")) {
+        if (method === "GET") return res.json([{ id: "ak-1", name: "Production Key", key: "b4s_prod_xxxxxx", createdAt: new Date(Date.now() - 604800000).toISOString() }]);
+        if (method === "POST") return res.json({ id: "ak-" + Date.now(), name: req.body.name, key: "b4s_" + Math.random().toString(36).substr(2, 16), createdAt: new Date().toISOString() });
+        if (method === "DELETE") return res.json({ success: true });
+      }
+
+      // ── Proctoring alerts ─────────────────────────────────────────────────────
+      if (url.includes("/organizations/") && url.includes("/proctoring-alerts")) {
+        return res.json([
+          { id: "alert-1", type: "TAB_SWITCH", severity: 2, sessionId: "demo-sess-2", candidateName: "Ben Carter", timestamp: new Date(Date.now() - 600000).toISOString(), count: 3 },
+          { id: "alert-2", type: "MULTIPLE_FACES", severity: 5, sessionId: "demo-sess-4", candidateName: "David Kim", timestamp: new Date(Date.now() - 1800000).toISOString(), count: 1 },
+        ]);
+      }
+
+      // ── Branding ─────────────────────────────────────────────────────────────
+      if (url.includes("/branding")) {
+        if (method === "GET") return res.json({ primaryColor: "#9b276c", secondaryColor: "#0f172a", name: "b4skills", logoUrl: "", welcomeMessage: "Welcome to b4skills Assessment Platform" });
+        if (method === "PUT" || method === "POST") return res.json({ ...req.body, id: "branding-1" });
+      }
+
+      // ── Branding (general /api/branding/:orgId) ───────────────────────────────
+      if (url.startsWith("/api/branding/") || url.startsWith("/branding/")) {
+        return res.json({ primaryColor: "#9b276c", secondaryColor: "#0f172a", name: "b4skills", logoUrl: "", welcomeMessage: "Welcome to b4skills Assessment Platform" });
+      }
+
+      // ── Rating tasks ──────────────────────────────────────────────────────────
+      if (url.includes("/rating/tasks") && method === "GET") {
+        return res.json([
+          { id: "task-1", status: "PENDING", type: "WRITING", content: "The impact of AI on the modern workplace is undeniable. Companies are adopting machine learning tools at an unprecedented rate...", aiResult: { cefrLevel: "B2", score: 0.72, feedback: "Well-structured argument with good vocabulary." }, sessionId: "demo-sess-1", createdAt: new Date().toISOString() },
+          { id: "task-2", status: "PENDING", type: "SPEAKING", content: "Audio response recorded.", aiResult: { cefrLevel: "B1", score: 0.55, feedback: "Clear pronunciation but limited vocabulary range." }, sessionId: "demo-sess-3", createdAt: new Date().toISOString() },
+        ]);
+      }
+      if (url.includes("/rating/tasks/") && url.includes("/claim")) return res.json({ success: true });
+      if (url.includes("/rating/tasks/") && url.includes("/submit")) return res.json({ success: true });
+
+      // ── Calibration ───────────────────────────────────────────────────────────
+      if (url.includes("/calibration/study")) {
+        return res.json({ items: [{ id: "mock-item-1", irtA: 1.2, irtB: -0.5, irtC: 0.2 }], rmse: 0.12, bias: 0.003, sampleSize: 450 });
+      }
+      if (url.includes("/calibration/apply")) return res.json({ success: true, updatedCount: 1 });
+
+      // ── Ecosystem / Onboarding ────────────────────────────────────────────────
+      if (url.includes("/ecosystem/config")) return res.json({ settings: { webhookUrl: req.body?.webhookUrl || "", apiKey: "b4s_demo_key_xxxx" } });
+      if (url.includes("/onboarding/bulk")) {
+        const candidates = req.body?.candidates || [];
+        return res.json(candidates.map((c: any) => ({ email: c.email, status: "SUCCESS", candidateId: "new-" + Date.now() })));
+      }
+
+      // ── Bulk candidate import ─────────────────────────────────────────────────
+      if (url.includes("/candidates/bulk-import")) {
+        const candidates = req.body?.candidates || [];
+        return res.json(candidates.map((c: any) => ({ email: c.email, status: "CREATED" })));
+      }
+
+      // ── Candidate history ────────────────────────────────────────────────────
+      if (url.includes("/candidates/")) {
+        return res.json([
+          { id: "hist-1", cefrLevel: "B2", theta: 1.2, completedAt: new Date(Date.now() - 86400000).toISOString(), status: "COMPLETED" },
+          { id: "hist-2", cefrLevel: "B1", theta: 0.4, completedAt: new Date(Date.now() - 7 * 86400000).toISOString(), status: "COMPLETED" },
+        ]);
+      }
+    }
+    next();
+  });
+
+  // --- RBAC MIDDLEWARE ---
+  const checkRole = (roles: string[]) => {
+    return async (req: any, res: any, next: any) => {
+      const userEmail = req.headers["x-user-email"]; // In a real app, this would be from a verified JWT
+      if (!userEmail) return res.status(401).json({ error: "Unauthorized" });
+
+      
+      if (!process.env.DATABASE_URL) {
+        req.user = { role: "SUPER_ADMIN", organizationId: "b4skills-demo" };
+        return next();
+      }
+      const user = await prisma.user.findUnique({
+        where: { email: userEmail as string },
+        select: { role: true, organizationId: true }
+      });
+
+      if (!user || !roles.includes(user.role)) {
+        return res.status(403).json({ error: "Forbidden: Insufficient permissions" });
+      }
+
+      req.user = user;
+      next();
+    };
+  };
+
+  // API Routes
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  
+// --- MOCK MODE FOR UI DEMO WITHOUT DB ---
+let mockSessions: Record<string, any> = {};
+let mockSessionIdCounter = 0;
+function isDBError(err: any) { return err && (err.message || "").includes("DATABASE_URL"); }
+
+// --- ASSESSMENT SESSION API ---
+  const { AssessmentService } = await import("./src/lib/assessment-engine/server-engine.js");
+
+  app.post("/api/sessions/launch", async (req, res) => {
+    try {
+      const { candidateId, organizationId, productLine } = req.body;
+      let session;
+      try {
+        session = await AssessmentService.launchSession(
+          candidateId || "demo-user", 
+          organizationId || "demo-org",
+          productLine
+        );
+      } catch (err) {
+        if (isDBError(err) || err.name === "PrismaClientInitializationError") {
+          const { studioItems } = await import("./src/data/studioItems.js");
+          const sId = "demo-session-" + Date.now();
+          const filteredItems = productLine && productLine !== "General" ? studioItems.filter((i: any) => i.productLine === productLine) : studioItems;
+          const mappedItems = filteredItems.map((it: any) => ({
+            id: it.id,
+            skill: it.skill,
+            type: it.type,
+            metadata: {
+              prompt: it.prompt,
+              options: it.options?.map(o => o.text),
+              correctOption: it.options?.find(o => o.isCorrect)?.text,
+              rubric: it.rubric,
+              minWords: 30, maxTime: 60
+            },
+            irtA: it.discrimination,
+            irtB: it.difficulty,
+            irtC: it.guessing,
+            active: true
+          }));
+          mockSessions[sId] = { progress: 0, productLine, items: mappedItems.length ? mappedItems : [{ id: "fallback1", skill: "READING", type: "MULTIPLE_CHOICE", metadata: { prompt: "Default fallback item", options: ["A", "B", "C"], correctOption: "A" }, irtA:1, irtB:0, irtC:0 }] };
+          return res.json({ sessionId: sId, candidateId, organizationId, productLine, status: "STARTED", theta: 0, sem: 1, history: [] });
+        }
+        throw err;
+      }
+      res.json(session);
+    } catch (error) {
+      console.error("LAUNCH ERROR", error);
+      res.status(500).json({ error: "Failed to launch session", details: String(error) });
+    }
+  });
+
+  app.get("/api/sessions/:id/next", async (req, res) => {
+    try {
+      const { id } = req.params;
+      let next;
+      try {
+        next = await AssessmentService.getNextItem(id);
+      } catch(err) {
+        if (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-")) {
+          const sDate = mockSessions[id];
+          if (!sDate) return res.json({ stop: true, finalTheta: 0 });
+          if (sDate.progress >= sDate.items.length) {
+            return res.json({ stop: true, finalTheta: 1.5 });
+          }
+          return res.json({ item: sDate.items[sDate.progress], stop: false });
+        }
+        throw err;
+      }
+      res.json(next);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch next item" });
+    }
+  });
+
+  app.post("/api/sessions/:id/respond", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { itemId, value } = req.body;
+      let result;
+      try {
+        result = await AssessmentService.submitResponse(id, itemId, value);
+      } catch(err) {
+        if (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-")) {
+          if (mockSessions[id]) mockSessions[id].progress++;
+          const p = mockSessions[id]?.progress || 0;
+          return res.json({ success: true, progress: p, theta: 0.5 + p * 0.2 });
+        }
+        throw err;
+      }
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to submit response" });
+    }
+  });
+
+  app.get("/api/sessions/:id/status", async (req, res) => {
+    try {
+      const { id } = req.params;
+      let status;
+      try {
+        status = await AssessmentService.getSessionStatus(id);
+      } catch(err) {
+        if (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-")) {
+          const sData = mockSessions[id];
+          const pr = sData ? sData.progress : 0;
+          const max = sData ? sData.items.length : 20;
+          return res.json({ progress: pr, maxItems: max, isComplete: pr >= max, currentTheta: 0.5 + (pr * 0.2), cefrLevel: "B1" });
+        }
+        throw err;
+      }
+      res.json(status);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch session status" });
+    }
+  });
+
+  // --- ITEM BANK API ---
+  app.get("/api/items", async (req, res) => {
+    try {
+      const items = await AssessmentService.getAllItems();
+      res.json(items);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch items" });
+    }
+  });
+
+  app.post("/api/items", async (req, res) => {
+    try {
+      const item = await AssessmentService.createItem(req.body);
+      res.json(item);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create item" });
+    }
+  });
+
+  app.put("/api/items/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const item = await AssessmentService.updateItem(id, req.body);
+      res.json(item);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update item" });
+    }
+  });
+
+  app.delete("/api/items/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await AssessmentService.deleteItem(id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete item" });
+    }
+  });
+
+  app.post("/api/items/:id/assets", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const asset = await AssessmentService.addItemAsset(id, req.body);
+      res.json(asset);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to add asset" });
+    }
+  });
+
+  app.delete("/api/assets/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await AssessmentService.deleteAsset(id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete asset" });
+    }
+  });
+
+  // --- RATING QUEUE API ---
+  const { RatingQueueService } = await import("./src/lib/scoring/rating-queue.js");
+
+  app.get("/api/rating/tasks", async (req, res) => {
+    try {
+      const { status } = req.query;
+      const tasks = await RatingQueueService.getTasks(status as any);
+      res.json(tasks);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch rating tasks" });
+    }
+  });
+
+  app.post("/api/rating/tasks/:id/claim", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { raterId } = req.body;
+      const task = await RatingQueueService.claimTask(id, raterId);
+      res.json(task);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to claim task" });
+    }
+  });
+
+  app.post("/api/rating/tasks/:id/submit", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { score, feedback } = req.body;
+      const task = await RatingQueueService.submitRating(id, score, feedback);
+      res.json(task);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to submit rating" });
+    }
+  });
+
+  // --- BRANDING & ANALYTICS API ---
+  const { BrandingService } = await import("./src/lib/tenant/branding-service.js");
+  const { AnalyticsService } = await import("./src/lib/analytics/analytics-service.js");
+
+  app.get("/api/branding/:orgId", async (req, res) => {
+    try {
+      const { orgId } = req.params;
+      const branding = await BrandingService.getBranding(orgId);
+      res.json(branding);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch branding" });
+    }
+  });
+
+  // --- REPORTING API ---
+  const { ReportingService } = await import("./src/lib/reporting/reporting-service.js");
+
+  app.get("/api/analytics/cohort", async (req, res) => {
+    try {
+      const { organizationId } = req.query;
+      if (!organizationId) return res.status(400).json({ error: "Organization ID required" });
+      const analytics = await ReportingService.getCohortAnalytics(organizationId as string);
+      res.json(analytics);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch analytics" });
+    }
+  });
+
+  // --- ONBOARDING API ---
+  const { BulkOnboardingService } = await import("./src/lib/onboarding/bulk-onboarding-service.js");
+
+  app.post("/api/onboarding/bulk", async (req, res) => {
+    try {
+      const { candidates } = req.body;
+      if (!Array.isArray(candidates)) return res.status(400).json({ error: "Invalid candidates list" });
+      const results = await BulkOnboardingService.onboardingCandidates(candidates);
+      res.json(results);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to process bulk onboarding" });
+    }
+  });
+
+  // --- CALIBRATION API ---
+  app.post("/api/calibration/study", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    try {
+      const { CalibrationService } = await import("./src/lib/assessment-engine/calibration-service.js");
+      const results = await CalibrationService.conductStudy();
+      res.json(results);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to conduct calibration study" });
+    }
+  });
+
+  app.post("/api/calibration/apply", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    try {
+      const { CalibrationService } = await import("./src/lib/assessment-engine/calibration-service.js");
+      const results = await CalibrationService.applyCalibration();
+      res.json({ success: true, cutScores: results });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to apply calibration" });
+    }
+  });
+
+  app.post("/api/calibration/pretest", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    try {
+      const { CalibrationService } = await import("./src/lib/assessment-engine/calibration-service.js");
+      const results = await CalibrationService.calibratePretestItems();
+      res.json(results);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to calibrate pretest items" });
+    }
+  });
+
+  app.post("/api/calibration/promote", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    try {
+      const { CalibrationService } = await import("./src/lib/assessment-engine/calibration-service.js");
+      const { minResponses } = req.body;
+      const results = await CalibrationService.promotePretestItems(minResponses);
+      res.json(results);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to promote pretest items" });
+    }
+  });
+
+  // --- SYSTEM CONFIG API ---
+  app.get("/api/config/system", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    try {
+      const config = await AssessmentService.getSystemConfig();
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch system config" });
+    }
+  });
+
+  app.put("/api/config/system", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    try {
+      const config = await AssessmentService.updateSystemConfig(req.body);
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update system config" });
+    }
+  });
+  const { ProctoringService } = await import("./src/lib/proctoring/proctoring-service.js");
+
+  app.post("/api/proctoring/event", async (req, res) => {
+    try {
+      const { sessionId, type, severity, metadata } = req.body;
+      const event = await ProctoringService.logEvent(sessionId, { sessionId, type, severity, metadata });
+      res.json(event);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to log proctoring event" });
+    }
+  });
+
+  app.get("/api/proctoring/report/:sessionId", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const report = await ProctoringService.getTrustReport(sessionId);
+      res.json(report);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch trust report" });
+    }
+  });
+
+  // --- PHASE 6: COMMERCIALIZATION & ECOSYSTEM ---
+  app.post("/api/payments/checkout", async (req, res) => {
+    const { userId, organizationId, credits } = req.body;
+    try {
+      const { PaymentService } = await import("./src/lib/payments/payment-service.js");
+      const url = await PaymentService.createCheckoutSession(userId, organizationId, credits);
+      res.json({ url });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  });
+
+  app.post("/api/payments/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+    try {
+      const { PaymentService } = await import("./src/lib/payments/payment-service.js");
+      const event = JSON.parse(req.body.toString());
+      await PaymentService.handleWebhook(event);
+      res.json({ received: true });
+    } catch (err) {
+      res.status(400).send(`Webhook Error: ${(err as Error).message}`);
+    }
+  });
+
+  app.put("/api/ecosystem/config", async (req, res) => {
+    const { organizationId, webhookUrl, generateApiKey } = req.body;
+    try {
+      const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+      if (!org) return res.status(404).json({ error: "Organization not found" });
+
+      const settings = (org.settings as any) || {};
+      if (webhookUrl !== undefined) settings.webhookUrl = webhookUrl;
+      if (generateApiKey) settings.apiKey = `sk_live_${Math.random().toString(36).substring(2, 15)}`;
+
+      await prisma.organization.update({
+        where: { id: organizationId },
+        data: { settings },
+      });
+
+      res.json({ settings });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update ecosystem config" });
+    }
+  });
+
+  app.post("/api/proctoring/audit", async (req, res) => {
+    const { sessionId } = req.body;
+    try {
+      const { AnomalyDetectionService } = await import("./src/lib/proctoring/anomaly-detection-service.js");
+      const trustScore = await AnomalyDetectionService.auditSession(sessionId);
+      res.json({ trustScore });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to audit session" });
+    }
+  });
+
+  app.post("/api/sessions/:id/complete", async (req, res) => {
+    const { id } = req.params;
+    try {
+      await prisma.session.update({
+        where: { id },
+        data: { status: "COMPLETED", completedAt: new Date() },
+      });
+      
+      const { WebhookService } = await import("./src/lib/ecosystem/webhook-service.js");
+      await WebhookService.dispatchTestCompleted(id);
+      
+      res.json({ status: "ok" });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to complete session" });
+    }
+  });
+
+  // --- PHASE 7: ADVANCED AI & MULTIMODAL ---
+  app.post("/api/ai/score/speaking-multimodal", async (req, res) => {
+    const { audioBase64, mimeType, prompt } = req.body;
+    try {
+      const { GeminiScoringService } = await import("./src/lib/scoring/gemini-scoring-service.js");
+      const result = await GeminiScoringService.scoreSpeaking(audioBase64, mimeType, prompt || "Please respond to the task.");
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to perform multimodal scoring" });
+    }
+  });
+
+  app.get("/api/sessions/:id/responses", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const responses = await prisma.response.findMany({
+        where: { sessionId: id },
+        include: { item: true },
+        orderBy: { order: "asc" }
+      });
+      res.json(responses);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch session responses" });
+    }
+  });
+
+  app.post("/api/ai/generate-item", async (req, res) => {
+    const { skill, level, type } = req.body;
+    try {
+      const { ItemGeneratorService } = await import("./src/lib/assessment-engine/item-generator.js");
+      const item = await ItemGeneratorService.generateItem(skill, level, type);
+      res.json(item);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to generate AI item" });
+    }
+  });
+
+  app.get("/api/sessions/:id/insights", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const session = await prisma.session.findUnique({
+        where: { id },
+        include: { scoreReport: true }
+      }) as any;
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      
+      // Calculate real-time insights based on current theta
+      const { getEngine } = await import("./src/lib/assessment-engine/server-engine.js");
+      const engine = await getEngine();
+      const cefrLevel = engine.mapToCefr(session.currentTheta || 0);
+      
+      res.json({
+        cefrLevel,
+        theta: session.currentTheta,
+        progress: session.responsesCount || 0,
+        skills: {
+          reading: Math.random() * 100,
+          listening: Math.random() * 100,
+          writing: Math.random() * 100,
+          speaking: Math.random() * 100
+        }
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch session insights" });
+    }
+  });
+
+  // --- PHASE 8: ENTERPRISE & GLOBAL ---
+  app.patch("/api/organizations/:id/branding", async (req, res) => {
+    const { id } = req.params;
+    const branding = req.body;
+    const adminId = req.headers["x-admin-id"] as string; // Mock admin ID for now
+
+    try {
+      const org = await (prisma.organization as any).update({
+        where: { id },
+        data: { branding }
+      });
+
+      // Phase 9: Log Action
+      if (adminId) {
+        const { EnterpriseService } = await import("./src/lib/enterprise/enterprise-service.js");
+        await EnterpriseService.logAction({
+          organizationId: id,
+          userId: adminId,
+          action: "BRANDING_UPDATE",
+          entityType: "Organization",
+          entityId: id,
+          details: branding
+        });
+      }
+
+      res.json(org);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update branding" });
+    }
+  });
+
+  app.post("/api/organizations/:id/candidates/bulk-import", async (req, res) => {
+    const { id } = req.params;
+    const { candidates } = req.body;
+    const adminId = req.headers["x-admin-id"] as string;
+    
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const cand of candidates) {
+      try {
+        // Check if user exists
+        let user = await prisma.user.findUnique({ where: { email: cand.email } });
+        if (!user) {
+          user = await prisma.user.create({
+            data: {
+              email: cand.email,
+              name: cand.name,
+              organizationId: id,
+              role: "CANDIDATE"
+            }
+          });
+          success++;
+        } else {
+          failed++;
+          errors.push(`User ${cand.email} already exists`);
+        }
+      } catch (err) {
+        failed++;
+        errors.push(`Failed to create ${cand.email}: ${err instanceof Error ? err.message : "Unknown error"}`);
+      }
+    }
+
+    // Phase 9: Log Action
+    if (adminId) {
+      const { EnterpriseService } = await import("./src/lib/enterprise/enterprise-service.js");
+      await EnterpriseService.logAction({
+        organizationId: id,
+        userId: adminId,
+        action: "CANDIDATE_BULK_IMPORT",
+        entityType: "Organization",
+        entityId: id,
+        details: { success, failed, candidateCount: candidates.length }
+      });
+    }
+
+    res.json({ success, failed, errors });
+  });
+
+  // --- PHASE 9: ECOSYSTEM & COMPLIANCE ---
+  app.get("/api/organizations/:id/audit-logs", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const logs = await (prisma as any).auditLog.findMany({
+        where: { organizationId: id },
+        include: { user: { select: { name: true, email: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 100
+      });
+      res.json(logs);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch audit logs" });
+    }
+  });
+
+  app.get("/api/organizations/:id/webhooks", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const webhooks = await (prisma as any).webhook.findMany({
+        where: { organizationId: id }
+      });
+      res.json(webhooks);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch webhooks" });
+    }
+  });
+
+  app.post("/api/organizations/:id/webhooks", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    const { id } = req.params;
+    const { url, events } = req.body;
+    const secret = crypto.randomBytes(32).toString("hex");
+
+    try {
+      const webhook = await (prisma as any).webhook.create({
+        data: {
+          organizationId: id,
+          url,
+          events,
+          secret
+        }
+      });
+      res.json(webhook);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to create webhook" });
+    }
+  });
+
+  app.get("/api/organizations/:id/api-keys", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const keys = await (prisma as any).apiKey.findMany({
+        where: { organizationId: id },
+        select: { id: true, name: true, createdAt: true, lastUsed: true, isActive: true }
+      });
+      res.json(keys);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch API keys" });
+    }
+  });
+
+  app.post("/api/organizations/:id/api-keys", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    const { id } = req.params;
+    const { name } = req.body;
+    try {
+      const { EnterpriseService } = await import("./src/lib/enterprise/enterprise-service.js");
+      const key = await EnterpriseService.generateApiKey(id, name);
+      res.json({ key });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to generate API key" });
+    }
+  });
+
+  app.get("/api/organizations/:id/analytics", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const sessionsCount = await prisma.session.count({ where: { organizationId: id } });
+      const feedbacksCount = await (prisma as any).feedback.count({ where: { organizationId: id } });
+      const feedbacks = await (prisma as any).feedback.findMany({ where: { organizationId: id }, select: { rating: true } });
+      const avgRating = feedbacks.length > 0 ? feedbacks.reduce((acc: any, f: any) => acc + f.rating, 0) / feedbacks.length : 0;
+
+      // CEFR Distribution
+      const sessions = await prisma.session.findMany({
+        where: { organizationId: id, status: "COMPLETED" },
+        select: { theta: true }
+      });
+
+      const { getEngine } = await import("./src/lib/assessment-engine/server-engine.js");
+      const engine = await getEngine();
+      
+      const distribution: Record<string, number> = { "A1": 0, "A2": 0, "B1": 0, "B2": 0, "C1": 0, "C2": 0 };
+      sessions.forEach(s => {
+        const cefr = engine.mapToCefr(s.theta);
+        distribution[cefr] = (distribution[cefr] || 0) + 1;
+      });
+
+      const cefrData = Object.entries(distribution).map(([name, value]) => ({ name, value }));
+
+      // Skill Breakdown (Mocked from responses for now, in real app we'd aggregate score reports)
+      const skillBreakdown = [
+        { subject: 'Reading', A: 120, B: 110, fullMark: 150 },
+        { subject: 'Listening', A: 98, B: 130, fullMark: 150 },
+        { subject: 'Writing', A: 86, B: 130, fullMark: 150 },
+        { subject: 'Speaking', A: 99, B: 100, fullMark: 150 },
+      ];
+
+      res.json({
+        sessionsCount,
+        feedbacksCount,
+        avgRating,
+        cefrDistribution: cefrData,
+        skillBreakdown
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch analytics" });
+    }
+  });
+
+  app.get("/api/organizations/:id/billing", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const { BillingService } = await import("./src/lib/enterprise/billing-service.js");
+      const summary = await BillingService.getBillingSummary(id);
+      res.json(summary);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch billing summary" });
+    }
+  });
+
+  app.post("/api/organizations/:id/billing/topup", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    const { id } = req.params;
+    const { amount } = req.body;
+    try {
+      const { BillingService } = await import("./src/lib/enterprise/billing-service.js");
+      await BillingService.addCredits(id, amount);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to top up credits" });
+    }
+  });
+
+  app.get("/api/organizations/:id/proctoring-alerts", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const alerts = await (prisma as any).proctoringEvent.findMany({
+        where: { session: { organizationId: id }, severity: { gte: 2 } }, // MEDIUM or HIGH
+        include: { 
+          session: { 
+            include: { 
+              candidate: { select: { name: true, email: true } } 
+            } 
+          } 
+        },
+        orderBy: { timestamp: "desc" },
+        take: 50
+      });
+      res.json(alerts);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch proctoring alerts" });
+    }
+  });
+
+  app.get("/api/organizations/:id/sso-config", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const org = await (prisma.organization as any).findUnique({
+        where: { id },
+        select: { ssoConfig: true }
+      });
+      res.json(org?.ssoConfig || {});
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch SSO config" });
+    }
+  });
+
+  // --- PHASE 10: POLISHING & ANALYTICS ---
+  app.post("/api/sessions/:id/feedback", async (req, res) => {
+    const { id } = req.params;
+    const { rating, comment, category, organizationId } = req.body;
+    try {
+      const feedback = await (prisma as any).feedback.create({
+        data: {
+          sessionId: id,
+          organizationId,
+          rating,
+          comment,
+          category
+        }
+      });
+      res.json(feedback);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to submit feedback" });
+    }
+  });
+
+  app.get("/api/organizations/:id/analytics", async (req, res) => {
+    const { id } = req.params;
+    try {
+      // 1. Score Distribution
+      const sessions = await prisma.session.findMany({
+        where: { organizationId: id, status: "COMPLETED" },
+        select: { theta: true, completedAt: true }
+      });
+
+      // 2. Feedback Stats
+      const feedbacks = await (prisma as any).feedback.findMany({
+        where: { organizationId: id }
+      });
+
+      const avgRating = feedbacks.length > 0 
+        ? feedbacks.reduce((acc: number, f: any) => acc + f.rating, 0) / feedbacks.length 
+        : 0;
+
+      res.json({
+        sessionsCount: sessions.length,
+        avgRating,
+        feedbacksCount: feedbacks.length,
+        scoreDistribution: sessions.map(s => s.theta),
+        recentActivity: sessions.slice(-10)
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch analytics" });
+    }
+  });
+
+  app.get("/api/candidates/:id/history", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const sessions = await prisma.session.findMany({
+        where: { candidateId: id },
+        include: { scoreReport: true },
+        orderBy: { createdAt: "desc" }
+      });
+      res.json(sessions);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch candidate history" });
+    }
+  });
+
+  // --- CERTIFICATION API ---
+  const { CertificateService } = await import("./src/lib/certification/certificate-service.js");
+
+  app.post("/api/certificates/generate", async (req, res) => {
+    try {
+      const { sessionData, candidateProfile, branding } = req.body;
+      const cert = await CertificateService.generateCertificate(sessionData, candidateProfile, branding);
+      res.json(cert);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to generate certificate" });
+    }
+  });
+
+  app.get("/api/certificates/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const cert = await CertificateService.verifyCertificate(id);
+      if (!cert) return res.status(404).json({ error: "Certificate not found" });
+      res.json(cert);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to verify certificate" });
+    }
+  });
+
+  // Mock AI Scoring Endpoint (Simulation)
+  app.post("/api/score/ai", async (req, res) => {
+    try {
+      const { type, content } = req.body;
+
+      if (!type || !content) {
+        return res.status(400).json({ error: "Missing type or content" });
+      }
+
+      // Simulate AI processing delay (2-3 seconds)
+      const delay = 2000 + Math.floor(Math.random() * 1000);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Basic heuristic for mock scoring
+      const length = typeof content === 'string' ? content.length : 100;
+      let baseScore = 2;
+      if (length > 200) baseScore = 3;
+      if (length > 500) baseScore = 4;
+      
+      // Add some randomness
+      const score = Math.min(4, Math.max(1, baseScore + (Math.random() > 0.7 ? 1 : (Math.random() < 0.3 ? -1 : 0))));
+      
+      const feedbacks = {
+        SPEAKING: [
+          "Pronunciation is clear, but intonation could be more natural.",
+          "Good fluency and coherence. Try to use more complex grammatical structures.",
+          "Good use of vocabulary, but some pauses were noticeable.",
+          "Excellent delivery and range of expression."
+        ],
+        WRITING: [
+          "The response is relevant but lacks sufficient detail.",
+          "Good organization and paragraphing. Watch for minor spelling errors.",
+          "Strong argument with good supporting evidence. Lexical range is impressive.",
+          "Exceptional writing style with sophisticated vocabulary and perfect grammar."
+        ]
+      };
+
+      const typeKey = type.toUpperCase() as keyof typeof feedbacks;
+      const feedbackList = feedbacks[typeKey] || feedbacks.WRITING;
+      const feedback = feedbackList[score - 1] || feedbackList[0];
+
+      res.json({
+        score,
+        feedback: `[AI Analysis] ${feedback}`,
+        confidence: 0.85 + (Math.random() * 0.1),
+        metadata: {
+          processedAt: new Date().toISOString(),
+          wordCount: typeof content === 'string' ? content.split(/\s+/).length : null
+        }
+      });
+    } catch (error) {
+      console.error("AI Scoring Error:", error);
+      res.status(500).json({ error: "Internal AI processing error" });
+    }
+  });
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`LinguAdapt Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();

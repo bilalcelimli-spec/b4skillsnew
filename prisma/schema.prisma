@@ -1,0 +1,399 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- CORE IDENTITY & TENANCY ---
+
+model Organization {
+  id            String    @id @default(cuid())
+  name          String
+  slug          String    @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Branding & Config
+  branding      Json?     // { logoUrl, primaryColor, customCss, faviconUrl, portalName }
+  settings      Json?     // { allowedDomains, sessionTimeout, securityLevel, apiKey, webhookUrl }
+  ssoConfig     Json?     // { provider: 'SAML' | 'OIDC', entryPoint, issuer, cert, clientId, clientSecret, enabled }
+  
+  // Relations
+  users         User[]
+  items         Item[]    // Tenant-specific items (optional)
+  sessions      Session[]
+  cohorts       Cohort[]
+  licenses      License[]
+  transactions  PaymentTransaction[]
+  auditLogs     AuditLog[]
+  webhooks      Webhook[]
+  apiKeys       ApiKey[]
+  feedbacks     Feedback[]
+}
+
+model Feedback {
+  id             String       @id @default(cuid())
+  createdAt      DateTime     @default(now())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  sessionId      String       @unique
+  session        Session      @relation(fields: [sessionId], references: [id])
+  rating         Int          // 1-5
+  comment        String?
+  category       String?      // e.g., "UI", "CONTENT", "TECHNICAL"
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  createdAt      DateTime     @default(now())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  
+  action         String       // e.g., "BRANDING_UPDATE", "CANDIDATE_IMPORT"
+  entityType     String       // e.g., "Organization", "Candidate"
+  entityId       String
+  
+  previousData   Json?
+  newData        Json?
+  details        Json?        // Contextual data about the change
+  ipAddress      String?
+
+  @@index([organizationId])
+  @@index([userId])
+}
+
+model Webhook {
+  id             String       @id @default(cuid())
+  createdAt      DateTime     @default(now())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  url            String
+  secret         String       // For signature verification
+  events         String[]     // e.g., ["session.completed", "proctoring.alert"]
+  isActive       Boolean      @default(true)
+}
+
+model ApiKey {
+  id             String       @id @default(cuid())
+  createdAt      DateTime     @default(now())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  key            String       @unique // Hashed key
+  lastUsed       DateTime?
+  isActive       Boolean      @default(true)
+}
+
+model PaymentTransaction {
+  id              String    @id @default(cuid())
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id])
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id])
+  
+  amount          Int       // In cents
+  currency        String    @default("USD")
+  status          String    // PENDING, COMPLETED, FAILED
+  stripeSessionId String?   @unique
+  creditsAdded    Int       @default(0)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String?
+  role            UserRole  @default(CANDIDATE)
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id])
+  
+  // Auth
+  emailVerified   DateTime?
+  image           String?
+  
+  // Relations
+  sessions        Session[]
+  raterTasks      RatingTask[] @relation("RaterTasks")
+  candidateProfile CandidateProfile?
+  auditLogs       AuditLog[]
+  transactions    PaymentTransaction[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([organizationId])
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ASSESSMENT_DIRECTOR
+  CONTENT_ADMIN
+  INST_ADMIN
+  TEACHER
+  RATER
+  PROCTOR
+  CANDIDATE
+}
+
+model CandidateProfile {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id])
+  nativeLanguage String?
+  dateOfBirth   DateTime?
+  metadata      Json?     // { educationLevel, targetScore, etc }
+}
+
+// --- ITEM BANK ---
+
+model Item {
+  id              String    @id @default(cuid())
+  organizationId  String?   // Null means global/system item
+  organization    Organization? @relation(fields: [organizationId], references: [id])
+  
+  type            ItemType
+  skill           SkillType
+  cefrLevel       CefrLevel
+  
+  // Psychometric Parameters (IRT 3PL Model)
+  difficulty      Float     @default(0.0) // b-parameter
+  discrimination  Float     @default(1.0) // a-parameter
+  guessing        Float     @default(0.0) // c-parameter
+  
+  // Content
+  content         Json      // { prompt, options, correctAnswer, rubric, etc }
+  assets          Asset[]
+  
+  // Metadata
+  tags            String[]
+  status          ItemStatus @default(DRAFT)
+  isPretest       Boolean    @default(false)
+  version         Int        @default(1)
+  
+  // Stats
+  exposureCount   Int       @default(0)
+  pVal            Float?    // Classical test theory difficulty
+  
+  responses       Response[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([organizationId])
+  @@index([skill, cefrLevel])
+}
+
+enum ItemType {
+  MULTIPLE_CHOICE
+  FILL_IN_BLANKS
+  DRAG_DROP
+  SPEAKING_PROMPT
+  WRITING_PROMPT
+  INTEGRATED_TASK
+}
+
+enum SkillType {
+  READING
+  LISTENING
+  WRITING
+  SPEAKING
+  GRAMMAR
+  VOCABULARY
+}
+
+enum CefrLevel {
+  PRE_A1
+  A1
+  A2
+  B1
+  B2
+  C1
+  C2
+}
+
+enum ItemStatus {
+  DRAFT
+  REVIEW
+  ACTIVE
+  PRETEST
+  RETIRED
+}
+
+model Asset {
+  id        String   @id @default(cuid())
+  itemId    String
+  item      Item     @relation(fields: [itemId], references: [id])
+  type      String   // IMAGE, AUDIO, VIDEO
+  url       String
+  metadata  Json?
+}
+
+// --- SESSION & RESPONSES ---
+
+model Session {
+  id              String    @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  candidateId     String
+  candidate       User      @relation(fields: [candidateId], references: [id])
+  
+  status          SessionStatus @default(SCHEDULED)
+  
+  // Adaptive State
+  theta           Float     @default(0.0) // Current ability estimate
+  sem             Float     @default(1.0) // Standard Error of Measurement
+  currentTheta    Float?    // For real-time insights
+  
+  // Progress
+  currentStage    Int       @default(1)
+  responsesCount  Int       @default(0)
+  cefrLevel       CefrLevel?
+  metadata        Json?     // { browserInfo, ipAddress, deviceFingerprint }
+  
+  responses       Response[]
+  proctoringEvents ProctoringEvent[]
+  scoreReport     ScoreReport?
+  feedback        Feedback?
+  
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([organizationId, candidateId])
+  @@index([status])
+}
+
+enum SessionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  PAUSED
+  SCORING
+  COMPLETED
+  FLAGGED
+  EXPIRED
+}
+
+model Response {
+  id              String    @id @default(cuid())
+  sessionId       String
+  session         Session   @relation(fields: [sessionId], references: [id])
+  itemId          String
+  item            Item      @relation(fields: [itemId], references: [id])
+  
+  value           String?   // The actual answer (serialized JSON or string)
+  artifactUrl     String?   // S3 URL for audio/writing
+  
+  // Scoring
+  isCorrect       Boolean?
+  score           Float?    // 0.0 to 1.0
+  isPretest       Boolean   @default(false)
+  aiScore         Float?
+  humanScore      Float?
+  
+  // Metadata
+  latencyMs       Int       @default(0)
+  order           Int       // Sequence in the test
+  metadata        Json?     // { confidence, flags, aiFeedback, proctoringEvents, calibrationData, etc }
+  
+  ratingTask      RatingTask?
+  
+  createdAt       DateTime  @default(now())
+
+  @@index([sessionId])
+}
+
+model RatingTask {
+  id              String    @id @default(cuid())
+  responseId      String    @unique
+  response        Response  @relation(fields: [responseId], references: [id])
+  
+  status          RatingStatus @default(PENDING)
+  raterId         String?
+  rater           User?     @relation("RaterTasks", fields: [raterId], references: [id])
+  
+  score           Float?
+  feedback        String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([status])
+}
+
+enum RatingStatus {
+  PENDING
+  CLAIMED
+  COMPLETED
+  FLAGGED
+}
+
+// --- SCORING & ANALYTICS ---
+
+model ScoreReport {
+  id              String    @id @default(cuid())
+  sessionId       String    @unique
+  session         Session   @relation(fields: [sessionId], references: [id])
+  
+  overallCefr     CefrLevel
+  overallScore    Int       // Scaled score (e.g., 0-100)
+  
+  // Skill breakdowns
+  readingScore    Int?
+  listeningScore  Int?
+  writingScore    Int?
+  speakingScore   Int?
+  
+  isVerified      Boolean   @default(false)
+  certificateUrl  String?
+  
+  createdAt       DateTime  @default(now())
+}
+
+model ProctoringEvent {
+  id              String    @id @default(cuid())
+  sessionId       String
+  session         Session   @relation(fields: [sessionId], references: [id])
+  type            String    // TAB_SWITCH, FACE_LOST, NOISE_DETECTED, etc.
+  severity        Int       // 1 (Low) to 5 (Critical)
+  timestamp       DateTime  @default(now())
+  metadata        Json?
+}
+
+// --- SYSTEM ---
+
+model SystemConfig {
+  id        String   @id @default("global")
+  config    Json     // { cefrThresholds: { A1: -2.5, ... }, adaptiveSettings: { ... } }
+  updatedAt DateTime @updatedAt
+}
+
+model Cohort {
+  id              String    @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  name            String
+  description     String?
+  
+  createdAt       DateTime  @default(now())
+}
+
+model License {
+  id              String    @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  type            String    // ENTERPRISE, TRIAL, etc.
+  credits         Int       @default(0)
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+}
