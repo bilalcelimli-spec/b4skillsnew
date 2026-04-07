@@ -38,6 +38,7 @@ import { BillingDashboard } from "./admin/BillingDashboard";
 
 import { SessionReview } from "./admin/SessionReview";
 import { CalibrationStudy } from "./admin/CalibrationStudy";
+import { ContentReviewDashboard } from "./admin/ContentReviewDashboard";
 import { ExamCodeManager } from "./admin/ExamCodeManager";
 
 interface SessionData {
@@ -168,6 +169,15 @@ export const AdminDashboard: React.FC = () => {
             }}
             icon={<Users size={14} />}
             label="Candidates"
+          />
+          <TabButton
+            active={activeTab === "content-qa"}
+            onClick={() => {
+              setActiveTab("content-qa");
+              setSelectedSessionId(null);
+            }}
+            icon={<CheckCircle2 size={14} />}
+            label="Content QA"
           />
           <TabButton
             active={activeTab === "branding"}
@@ -522,6 +532,17 @@ export const AdminDashboard: React.FC = () => {
             exit={{ opacity: 0, x: -20 }}
           >
             <BulkCandidateImport orgId="default-org" />
+          </motion.div>
+        )}
+
+        {activeTab === "content-qa" && (
+          <motion.div
+            key="content-qa"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ContentReviewDashboard />
           </motion.div>
         )}
 
