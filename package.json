@@ -9,9 +9,9 @@
   },
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
+    "build:client": "vite build",
     "build:server": "esbuild server.ts --platform=node --format=esm --outfile=dist/server.js --bundle --packages=external",
-    "build:all": "npm run build && npm run build:server",
+    "build": "npm run build:client && npm run build:server && npx prisma generate",
     "start": "NODE_ENV=production node dist/server.js",
     "preview": "vite preview",
     "clean": "rm -rf dist",
