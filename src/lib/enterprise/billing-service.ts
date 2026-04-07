@@ -9,7 +9,13 @@ export const BillingService = {
    * Check if an organization has enough credits to launch a session
    */
   async hasSufficientCredits(organizationId: string): Promise<boolean> {
+    
+    const orgCount = await (prisma as any).organization.count({ where: { id: organizationId }});
+    if (orgCount === 0) {
+      await (prisma as any).organization.create({ data: { id: organizationId, name: organizationId, slug: organizationId }});
+    }
     let license = await (prisma as any).license.findFirst({
+
       where: { organizationId, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: "desc" }
     });

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
-import { 
+import { Key,
   Users, 
   Search, 
   Filter, 
@@ -17,7 +17,7 @@ import {
 import { motion } from "motion/react";
 import { cn } from "@/src/lib/utils";
 
-export const CandidateManagement: React.FC<{ orgId: string }> = ({ orgId }) => {
+export const CandidateManagement: React.FC<{ orgId: string, onGenerateCodes?: () => void }> = ({ orgId, onGenerateCodes }) => {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -64,8 +64,8 @@ export const CandidateManagement: React.FC<{ orgId: string }> = ({ orgId }) => {
           <Button variant="outline" size="sm" className="rounded-xl h-10 px-4 text-[10px] font-black uppercase tracking-widest">
             <Filter size={14} className="mr-2" /> Filter
           </Button>
-          <Button variant="primary" size="sm" className="rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest">
-            <UserPlus size={14} className="mr-2" /> Add Candidate
+          <Button variant="primary" size="sm" className="rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest" onClick={onGenerateCodes}>
+            <Key size={14} className="mr-2" /> Generate Exam Codes
           </Button>
         </div>
       </div>

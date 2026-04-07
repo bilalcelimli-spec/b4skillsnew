@@ -499,7 +499,7 @@ export const AdminDashboard: React.FC = () => {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
           >
-            <CandidateManagement orgId="default-org" />
+            <CandidateManagement orgId="default-org" onGenerateCodes={() => setActiveTab("codes")} />
           </motion.div>
         )}
 
