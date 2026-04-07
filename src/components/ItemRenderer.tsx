@@ -228,17 +228,22 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     case "WRITING":
       return (
         <div className="space-y-8">
+          {renderPassage(content.passage)}
+          
           <div className="p-8 bg-indigo-50 border border-indigo-100 rounded-3xl">
             <div className="flex items-center gap-2 mb-4 text-indigo-600 font-black uppercase tracking-widest text-[10px]">
               <FileText size={14} />
               Writing Task
             </div>
-            <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">{content.prompt}</h3>
+            <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">{content.question || content.prompt}</h3>
+            {content.question && content.prompt !== content.question && (
+              <p className="text-sm font-medium text-slate-600 mb-4">{content.prompt}</p>
+            )}
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Minimum requirement: {content.minWords || 50} words</div>
           </div>
 
           <WritingEditor 
-            prompt={content.prompt}
+            prompt={content.question || content.prompt}
             minWords={content.minWords || 50}
             onWritingComplete={onResponse}
             isUploading={isUploading}
