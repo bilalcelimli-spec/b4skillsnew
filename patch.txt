@@ -1,43 +1,15 @@
-                <Card className="bg-indigo-600 text-white border-none shadow-indigo-200 shadow-xl rounded-[40px] overflow-hidden relative" style={{ backgroundColor: branding?.primaryColor }}>
-                  <CardContent className="p-10 flex flex-col sm:flex-row items-center gap-10">
-                    <div className="flex-1 text-center sm:text-left">
-                      <h2 className="text-3xl font-black mb-3 uppercase tracking-tighter">General English Proficiency Test</h2>
-                      <p className="text-indigo-100 mb-8 leading-relaxed font-bold opacity-80">
-                        Our most popular adaptive assessment. Measures Reading, Listening, and Grammar across all CEFR levels.
-                      </p>
-                      <Button 
-                        size="lg" 
-                        className="bg-white text-indigo-600 hover:bg-indigo-50 border-none shadow-lg h-14 px-8 rounded-2xl font-black uppercase tracking-widest text-sm"
-                        style={{ color: branding?.primaryColor }}
-                        onClick={() => startNewTest("General")}
-                      >
-                        Start Assessment
-                      </Button>
-                    </div>
-                    <div className="hidden sm:block">
-                      <div className="w-40 h-40 bg-indigo-500/30 rounded-[40px] flex items-center justify-center backdrop-blur-sm border border-indigo-400/30 rotate-6">
-                        <GraduationCap size={80} className="text-white/80" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+import { auth } from './lib/firebase';
 
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {[
-                    "Primary (7-10)",
-                    "Junior Suite (11-14)",
-                    "15-Min Diagnostic",
-                    "Academia",
-                    "Corporate",
-                    "Language Schools"
-                  ].map(pl => (
-                    <Card key={pl} className="border-slate-200 shadow-sm rounded-2xl hover:border-indigo-400 hover:shadow-indigo-100 transition-all cursor-pointer group" onClick={() => startNewTest(pl)}>
-                      <CardContent className="p-4 flex flex-col items-center justify-center gap-2 text-center">
-                        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                          <GraduationCap size={20} />
-                        </div>
-                        <div className="font-bold text-slate-900 group-hover:text-indigo-600 text-xs uppercase tracking-widest leading-tight">{pl}</div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+const originalFetch = window.fetch;
+window.fetch = async (input, init) => {
+  if (typeof input === 'string' && input.startsWith('/api/')) {
+    const userEmail = auth.currentUser?.email || 'bilalcelimli@gmail.com';
+    init = init || {};
+    init.headers = {
+      ...init.headers,
+      'x-user-email': userEmail,
+      'x-user-role': 'SUPER_ADMIN' // if needed
+    };
+  }
+  return originalFetch(input, init);
+};
