@@ -93,7 +93,9 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
               {content.prompt}
             </legend>
             <div className="grid grid-cols-1 gap-3" role="radiogroup" aria-labelledby="item-prompt">
-              {content.options?.map((option: string, index: number) => (
+              {content.options?.map((option: any, index: number) => {
+                const optionText = typeof option === "string" ? option : option.text;
+                return (
                 <button
                   key={index}
                   role="radio"
@@ -107,7 +109,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                       : "border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/50",
                     "disabled:opacity-50 disabled:cursor-not-allowed"
                   )}
-                  aria-label={`Option ${String.fromCharCode(65 + index)}: ${option}`}
+                  aria-label={`Option ${String.fromCharCode(65 + index)}: ${optionText}`}
                 >
                   <div className="flex items-center gap-4">
                     <div className={cn(
@@ -118,10 +120,10 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                     )}>
                       {String.fromCharCode(65 + index)}
                     </div>
-                    <span className="font-bold text-slate-700 uppercase tracking-tight text-sm">{option}</span>
+                    <span className="font-bold text-slate-700 uppercase tracking-tight text-sm">{optionText}</span>
                   </div>
                 </button>
-              ))}
+              )})}
             </div>
             <div className="pt-4">
               <button
@@ -153,7 +155,9 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           <div className="space-y-4">
             <h3 className="text-xl font-bold text-slate-900">{content.prompt}</h3>
             <div className="grid grid-cols-1 gap-3">
-              {content.options?.map((option: string, index: number) => (
+              {content.options?.map((option: any, index: number) => {
+                const optionText = typeof option === "string" ? option : option.text;
+                return (
                 <button
                   key={index}
                   disabled={disabled}
@@ -164,10 +168,10 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                     <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm">
                       {String.fromCharCode(65 + index)}
                     </div>
-                    <span className="font-medium text-slate-700">{option}</span>
+                    <span className="font-medium text-slate-700">{optionText}</span>
                   </div>
                 </button>
-              ))}
+              )})}
             </div>
           </div>
         </div>
