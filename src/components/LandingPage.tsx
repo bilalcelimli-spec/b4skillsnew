@@ -13,7 +13,7 @@ const Highlight = ({ children, className }: { children: React.ReactNode, classNa
   </span>
 );
 
-export const LandingPage: React.FC<{ onStart: () => void }> = ({ onStart }) => {
+export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => void }> = ({ onStart, onCodeEntry }) => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [pendingFeature, setPendingFeature] = useState<string | null>(null);
@@ -144,7 +144,10 @@ export const LandingPage: React.FC<{ onStart: () => void }> = ({ onStart }) => {
             <a href="#technology" className="hover:text-slate-900 transition-colors h-16 flex items-center">Technology & Pedagogy</a>
             <a href="#research" className="hover:text-slate-900 transition-colors h-16 flex items-center">Research</a>
             <div className="flex items-center gap-6 h-16">
-              <button onClick={onStart} className="text-slate-900 font-bold border-b-2 border-[#9b276c] hover:bg-[#9b276c] hover:border-transparent px-2 py-1 transition-all">
+              <button onClick={onCodeEntry} className="text-slate-600 hover:text-slate-900 font-bold transition-colors">
+                Enter Exam Code
+              </button>
+              <button onClick={onStart} className="text-slate-900 font-bold border-b-2 border-[#9b276c] hover:bg-[#9b276c] hover:text-white px-2 py-1 transition-all rounded">
                 Test Taker Login
               </button>
               <Button onClick={onStart} className="bg-slate-900 hover:bg-slate-800 text-white rounded-full px-6">
@@ -165,6 +168,7 @@ export const LandingPage: React.FC<{ onStart: () => void }> = ({ onStart }) => {
             <a href="#solutions" onClick={() => setMobileMenuOpen(false)}>Solutions</a>
             <a href="#technology" onClick={() => setMobileMenuOpen(false)}>Technology & Pedagogy</a>
             <a href="#research" onClick={() => setMobileMenuOpen(false)}>Research</a>
+            <button onClick={onCodeEntry} className="text-left font-bold text-slate-800">Enter Exam Code</button>
             <button onClick={onStart} className="text-left font-bold text-indigo-600">Test Taker Login</button>
             <Button onClick={onStart} className="bg-slate-900 text-white w-full rounded-full">Get Started</Button>
           </div>

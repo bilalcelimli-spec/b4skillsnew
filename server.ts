@@ -461,6 +461,86 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // --- EXAM CODES API ---
+  app.post("/api/codes/generate", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
+    try {
+      const { organizationId, productLine, count = 1, prefix = "E", expiresAt } = req.body;
+      const codes = [];
+      const generated = new Date();
+      for(let i = 0; i < count; i++) {
+        // Generate a random string 8 chars
+        const ran = Math.random().toString(36).substring(2, 6).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+        codes.push(`${prefix}-${ran}`);
+      }
+      
+      const created = await prisma.examCode.createMany({
+        data: codes.map(c => ({
+          code: c,
+          organizationId: organizationId || "b4skills-demo", // Default fallback
+          productLine: productLine || "General",
+          createdAt: generated,
+          expiresAt: expiresAt ? new Date(expiresAt) : null,
+        }))
+      });
+      res.json({ message: `Generated ${created.count} codes`, codes });
+    } catch(err) {
+      res.status(500).json({ error: "Fail to generate codes", details: String(err) });
+    }
+  });
+
+  app.post("/api/codes/validate", async (req, res) => {
+    try {
+      const { code } = req.body;
+      const examCode = await prisma.examCode.findUnique({ where: { code } });
+      if(!examCode) return res.status(404).json({ error: "Code not found" });
+      if(examCode.isUsed) return res.status(400).json({ error: "Code is already used" });
+      if(examCode.expiresAt && examCode.expiresAt < new Date()) return res.status(400).json({ error: "Code has expired" });
+      
+      res.json({ valid: true, examCode });
+    } catch(err) {
+      res.status(500).json({ error: "Validate failed", details: String(err) });
+    }
+  });
+
+  app.post("/api/codes/redeem", async (req, res) => {
+    try {
+      const { code, candidateId, email, name, surname, school, className } = req.body;
+      // 1. Verify code
+      const examCode = await prisma.examCode.findUnique({ where: { code } });
+      if(!examCode) return res.status(404).json({ error: "Code not found" });
+      if(examCode.isUsed) return res.status(400).json({ error: "Code already used" });
+
+      // 2. Mark code used
+      await prisma.examCode.update({
+        where: { id: examCode.id },
+        data: { isUsed: true, usedByEmail: email, usedAt: new Date() }
+      });
+
+      // 3. Upsert user info in DB
+      await prisma.organization.upsert({
+        where: { id: examCode.organizationId },
+        update: {},
+        create: { id: examCode.organizationId, name: examCode.organizationId, slug: examCode.organizationId.toLowerCase() + "-" + Date.now() }
+      });
+      
+      await prisma.user.upsert({
+        where: { id: candidateId },
+        update: { email: email, name: `${name} ${surname}`, organizationId: examCode.organizationId },
+        create: { id: candidateId, email: email, name: `${name} ${surname}`, organizationId: examCode.organizationId, role: "CANDIDATE" }
+      });
+
+      await prisma.candidateProfile.upsert({
+        where: { userId: candidateId },
+        update: { metadata: { school, className } },
+        create: { userId: candidateId, metadata: { school, className } }
+      });
+
+      res.json({ success: true, organizationId: examCode.organizationId, productLine: examCode.productLine });
+    } catch(err) {
+      res.status(500).json({ error: "Redeem failed", details: String(err) });
+    }
+  });
+
   // --- CALIBRATION API ---
   app.post("/api/calibration/study", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
     try {

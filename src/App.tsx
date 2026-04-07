@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { auth, db } from "./lib/firebase";
 import { AuthPage } from "./components/AuthPage";
+import { CodeEntryPage } from "./components/CodeEntryPage";
 import { onAuthStateChanged, User, signOut } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { Button } from "./components/ui/Button";
@@ -23,6 +24,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showLanding, setShowLanding] = useState(true);
+  const [showCodeEntry, setShowCodeEntry] = useState(false);
   const [activeSession, setActiveSession] = useState<{ orgId: string; sessionId: string; productLine?: string } | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"dashboard" | "admin" | "rating" | "institutional" | "results" | "items" | "profile" | "settings" | "psychometrics">("dashboard");
@@ -121,8 +123,17 @@ export default function App() {
     );
   }
 
+  if (showCodeEntry) {
+    return <CodeEntryPage onBack={() => { setShowCodeEntry(false); setShowLanding(true); }} onSuccess={(productLine, orgId, email) => {
+      setActiveSession({ orgId, sessionId: "new", productLine });
+      setUser({ uid: "cand_" + Date.now(), email } as any);
+      setUserProfile({ role: "candidate", organizationId: orgId });
+      setShowCodeEntry(false);
+    }} />;
+  }
+
   if (!user && showLanding) {
-    return <LandingPage onStart={() => setShowLanding(false)} />;
+    return <LandingPage onStart={() => setShowLanding(false)} onCodeEntry={() => { setShowLanding(false); setShowCodeEntry(true); }} />;
   }
 
   if (!user) {
