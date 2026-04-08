@@ -103,9 +103,9 @@ async function startServer() {
         return res.json({ success: true });
       }
       if (url.includes("/organizations/") && url.includes("/billing")) {
-        return res.json({ creditsRemaining: 4876, licenseType: "Enterprise", expiryDate: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(), transactions: [
-          { id: "txn-1", amount: 1000, date: new Date(Date.now() - 2592000000).toISOString(), type: "TOP_UP" },
-          { id: "txn-2", amount: -124, date: new Date(Date.now() - 86400000).toISOString(), type: "USAGE" },
+        return res.json({ creditsRemaining: 4876, licenseType: "Enterprise", expiryDate: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(), recentTransactions: [
+          { id: "txn-1", amount: 100000, creditsAdded: 1000, createdAt: new Date(Date.now() - 2592000000).toISOString(), status: "COMPLETED" },
+          { id: "txn-2", amount: 0, creditsAdded: -124, createdAt: new Date(Date.now() - 86400000).toISOString(), status: "COMPLETED" },
         ]});
       }
 
@@ -170,11 +170,49 @@ async function startServer() {
       }
 
       // ── Candidate history ────────────────────────────────────────────────────
+      if (url.includes("/candidates/") && method === "DELETE") return res.json({ success: true });
       if (url.includes("/candidates/")) {
         return res.json([
           { id: "hist-1", cefrLevel: "B2", theta: 1.2, completedAt: new Date(Date.now() - 86400000).toISOString(), status: "COMPLETED" },
           { id: "hist-2", cefrLevel: "B1", theta: 0.4, completedAt: new Date(Date.now() - 7 * 86400000).toISOString(), status: "COMPLETED" },
         ]);
+      }
+
+      // ── Org candidates list ────────────────────────────────────────────────────
+      if (url.includes("/organizations/") && url.includes("/candidates")) {
+        if (method === "GET") return res.json([
+          { id: "c-1", name: "Alice Johnson", email: "alice@example.com", role: "CANDIDATE", sessions: [{ status: "COMPLETED", completedAt: new Date(Date.now() - 86400000).toISOString(), theta: 1.2 }] },
+          { id: "c-2", name: "Ben Carter", email: "ben@example.com", role: "CANDIDATE", sessions: [{ status: "IN_PROGRESS", completedAt: null, theta: 0.3 }] },
+          { id: "c-3", name: "Clara Ricci", email: "clara@example.com", role: "CANDIDATE", sessions: [] },
+        ]);
+        if (method === "POST") return res.json({ id: "c-" + Date.now(), ...req.body, status: "CREATED" });
+      }
+
+      // ── Org sessions list ─────────────────────────────────────────────────────
+      if (url.includes("/organizations/") && url.includes("/sessions")) {
+        if (method === "GET") return res.json([
+          { id: "demo-sess-1", candidateId: "c-1", status: "COMPLETED", createdAt: new Date(Date.now() - 86400000).toISOString(), theta: 1.2, candidate: { name: "Alice Johnson", email: "alice@example.com" }, scoreReport: { overallCefr: "B2", overallScore: 70 } },
+          { id: "demo-sess-2", candidateId: "c-2", status: "IN_PROGRESS", createdAt: new Date(Date.now() - 3600000).toISOString(), theta: 0.3, candidate: { name: "Ben Carter", email: "ben@example.com" }, scoreReport: null },
+        ]);
+      }
+
+      // ── Delete webhook ─────────────────────────────────────────────────────────
+      if (url.includes("/organizations/") && url.includes("/webhooks/") && method === "DELETE") return res.json({ success: true });
+
+      // ── Delete/revoke api-key ──────────────────────────────────────────────────
+      if (url.includes("/organizations/") && url.includes("/api-keys/") && method === "DELETE") return res.json({ success: true });
+
+      // ── Org settings update ───────────────────────────────────────────────────
+      if (url.includes("/organizations/") && url.includes("/settings") && (method === "PATCH" || method === "PUT")) {
+        return res.json({ settings: req.body });
+      }
+
+      // ── SSO config update ─────────────────────────────────────────────────────
+      if (url.includes("/organizations/") && url.includes("/sso-config") && method === "PUT") {
+        return res.json(req.body);
+      }
+      if (url.includes("/organizations/") && url.includes("/sso-config") && method === "GET") {
+        return res.json({ provider: "", entryPoint: "", issuer: "", enabled: false });
       }
     }
     next();
@@ -1063,36 +1101,6 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.get("/api/organizations/:id/analytics", async (req, res) => {
-    const { id } = req.params;
-    try {
-      // 1. Score Distribution
-      const sessions = await prisma.session.findMany({
-        where: { organizationId: id, status: "COMPLETED" },
-        select: { theta: true, completedAt: true }
-      });
-
-      // 2. Feedback Stats
-      const feedbacks = await (prisma as any).feedback.findMany({
-        where: { organizationId: id }
-      });
-
-      const avgRating = feedbacks.length > 0 
-        ? feedbacks.reduce((acc: number, f: any) => acc + f.rating, 0) / feedbacks.length 
-        : 0;
-
-      res.json({
-        sessionsCount: sessions.length,
-        avgRating,
-        feedbacksCount: feedbacks.length,
-        scoreDistribution: sessions.map(s => s.theta),
-        recentActivity: sessions.slice(-10)
-      });
-    } catch (err) {
-      res.status(500).json({ error: "Failed to fetch analytics" });
-    }
-  });
-
   app.get("/api/candidates/:id/history", async (req, res) => {
     const { id } = req.params;
     try {
@@ -1184,6 +1192,122 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     } catch (error) {
       console.error("AI Scoring Error:", error);
       res.status(500).json({ error: "Internal AI processing error" });
+    }
+  });
+
+  // --- MISSING ROUTES: DELETE webhook, DELETE api-key, GET candidates, PUT org settings, PUT sso-config, GET sessions ---
+
+  app.delete("/api/organizations/:id/webhooks/:webhookId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    const { id, webhookId } = req.params;
+    try {
+      await (prisma as any).webhook.deleteMany({ where: { id: webhookId, organizationId: id } });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to delete webhook" });
+    }
+  });
+
+  app.delete("/api/organizations/:id/api-keys/:keyId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    const { id, keyId } = req.params;
+    try {
+      await (prisma as any).apiKey.update({ where: { id: keyId }, data: { isActive: false } });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to revoke API key" });
+    }
+  });
+
+  app.get("/api/organizations/:id/candidates", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
+    const { id } = req.params;
+    const { search } = req.query;
+    try {
+      const where: any = { organizationId: id, role: "CANDIDATE" };
+      if (search) {
+        where.OR = [
+          { name: { contains: search as string, mode: "insensitive" } },
+          { email: { contains: search as string, mode: "insensitive" } }
+        ];
+      }
+      const candidates = await prisma.user.findMany({
+        where,
+        include: {
+          sessions: {
+            select: { status: true, completedAt: true, theta: true },
+            orderBy: { createdAt: "desc" },
+            take: 1
+          }
+        },
+        orderBy: { createdAt: "desc" },
+        take: 100
+      });
+      res.json(candidates);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch candidates" });
+    }
+  });
+
+  app.patch("/api/organizations/:id/settings", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const org = await prisma.organization.findUnique({ where: { id } });
+      if (!org) return res.status(404).json({ error: "Organization not found" });
+
+      const existingSettings = (org.settings as any) || {};
+      const updatedSettings = { ...existingSettings, ...req.body };
+
+      const updated = await prisma.organization.update({
+        where: { id },
+        data: { settings: updatedSettings }
+      });
+      res.json({ settings: updated.settings });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update settings" });
+    }
+  });
+
+  app.put("/api/organizations/:id/sso-config", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const updated = await (prisma.organization as any).update({
+        where: { id },
+        data: { ssoConfig: req.body }
+      });
+      res.json(updated.ssoConfig || {});
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update SSO config" });
+    }
+  });
+
+  app.get("/api/organizations/:id/sessions", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "PROCTOR"]), async (req, res) => {
+    const { id } = req.params;
+    const { status, limit = "50" } = req.query;
+    try {
+      const where: any = { organizationId: id };
+      if (status) where.status = status;
+      const sessions = await prisma.session.findMany({
+        where,
+        include: {
+          candidate: { select: { id: true, name: true, email: true } },
+          scoreReport: { select: { overallCefr: true, overallScore: true } }
+        },
+        orderBy: { createdAt: "desc" },
+        take: parseInt(limit as string)
+      });
+      res.json(sessions);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch sessions" });
+    }
+  });
+
+  app.delete("/api/candidates/:id", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
+    const { id } = req.params;
+    try {
+      await prisma.user.update({ where: { id }, data: { role: "CANDIDATE" } });
+      // Soft-delete: mark as inactive by clearing organization
+      await prisma.user.update({ where: { id }, data: { organizationId: undefined } });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to remove candidate" });
     }
   });
 

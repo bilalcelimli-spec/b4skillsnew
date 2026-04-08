@@ -23,6 +23,7 @@ import {
   CreditCard,
   Calculator,
   Key,
+  Loader2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
@@ -55,7 +56,8 @@ interface SessionData {
   candidateEmail?: string;
 }
 
-export const AdminDashboard: React.FC = () => {
+export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId }) => {
+  const ORG_ID = propOrgId || "b4skills-demo";
   const [activeTab, setActiveTab] = useState<
     | "overview"
     | "candidates"
@@ -68,7 +70,7 @@ export const AdminDashboard: React.FC = () => {
     | "settings"
     | "proctoring"
     | "billing"
-    | "calibration"
+    | "calibration" | "content-qa"
   >("overview");
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -509,7 +511,7 @@ export const AdminDashboard: React.FC = () => {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
           >
-            <CandidateManagement orgId="default-org" onGenerateCodes={() => setActiveTab("codes")} />
+            <CandidateManagement orgId={ORG_ID} onGenerateCodes={() => setActiveTab("codes")} />
           </motion.div>
         )}
 
@@ -520,7 +522,7 @@ export const AdminDashboard: React.FC = () => {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
           >
-            <BrandingSettings orgId="default-org" />
+            <BrandingSettings orgId={ORG_ID} />
           </motion.div>
         )}
 
@@ -531,7 +533,7 @@ export const AdminDashboard: React.FC = () => {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
           >
-            <BulkCandidateImport orgId="default-org" />
+            <BulkCandidateImport orgId={ORG_ID} />
           </motion.div>
         )}
 
@@ -564,7 +566,7 @@ export const AdminDashboard: React.FC = () => {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
           >
-            <IntegrationsSettings orgId="default-org" />
+            <IntegrationsSettings orgId={ORG_ID} />
           </motion.div>
         )}
 
@@ -575,7 +577,7 @@ export const AdminDashboard: React.FC = () => {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
           >
-            <AuditLogView orgId="default-org" />
+            <AuditLogView orgId={ORG_ID} />
           </motion.div>
         )}
 
@@ -586,7 +588,7 @@ export const AdminDashboard: React.FC = () => {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
           >
-            <ProctoringReview orgId="default-org" />
+            <ProctoringReview orgId={ORG_ID} />
           </motion.div>
         )}
 
@@ -597,7 +599,7 @@ export const AdminDashboard: React.FC = () => {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
           >
-            <BillingDashboard orgId="default-org" />
+            <BillingDashboard orgId={ORG_ID} />
           </motion.div>
         )}
 
@@ -608,7 +610,7 @@ export const AdminDashboard: React.FC = () => {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
           >
-            <AdvancedAnalytics orgId="default-org" />
+            <AdvancedAnalytics orgId={ORG_ID} />
           </motion.div>
         )}
 
@@ -630,7 +632,7 @@ export const AdminDashboard: React.FC = () => {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
           >
-            <GlobalSettings orgId="default-org" />
+            <GlobalSettings orgId={ORG_ID} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -777,6 +779,3 @@ function DistributionBar({
   );
 }
 
-function Loader2({ className, size }: { className?: string; size?: number }) {
-  return <Activity className={cn("animate-spin", className)} size={size} />;
-}

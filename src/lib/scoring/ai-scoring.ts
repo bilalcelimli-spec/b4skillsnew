@@ -66,7 +66,7 @@ export const AIScoringService = {
   async scoreWriting(content: string): Promise<ScoringResult> {
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.5-flash",
         contents: WRITING_RUBRIC_PROMPT.replace("{{CONTENT}}", content),
         config: {
           responseMimeType: "application/json",
@@ -117,7 +117,7 @@ export const AIScoringService = {
   async scoreSpeakingMultimodal(audioBase64: string, mimeType: string): Promise<ScoringResult> {
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.5-flash",
         contents: [
           { text: SPEAKING_MULTIMODAL_PROMPT },
           {
@@ -166,7 +166,7 @@ export const AIScoringService = {
     
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.5-flash",
         contents: `Evaluate this English speaking transcript: "${textToEvaluate}". Provide CEFR scoring.`,
         config: {
           responseMimeType: "application/json",

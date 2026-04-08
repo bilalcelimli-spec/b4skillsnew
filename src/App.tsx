@@ -249,7 +249,7 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 p-8 overflow-y-auto">
         {activeTab === "admin" && isAdmin ? (
-          <AdminDashboard />
+          <AdminDashboard orgId={userProfile?.organizationId} />
         ) : activeTab === "items" && isAdmin ? (
           <AssessmentStudio />
         ) : activeTab === "psychometrics" && isAdmin ? (

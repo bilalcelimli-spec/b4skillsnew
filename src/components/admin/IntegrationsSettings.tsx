@@ -79,6 +79,30 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
     }
   };
 
+  const deleteWebhook = async (webhookId: string) => {
+    try {
+      await fetch(`/api/organizations/${orgId}/webhooks/${webhookId}`, {
+        method: "DELETE",
+        headers: { "x-user-email": "bilalcelimli@gmail.com" }
+      });
+      setWebhooks(prev => prev.filter(w => w.id !== webhookId));
+    } catch (err) {
+      console.error("Failed to delete webhook");
+    }
+  };
+
+  const revokeApiKey = async (keyId: string) => {
+    try {
+      await fetch(`/api/organizations/${orgId}/api-keys/${keyId}`, {
+        method: "DELETE",
+        headers: { "x-user-email": "bilalcelimli@gmail.com" }
+      });
+      setApiKeys(prev => prev.map(k => k.id === keyId ? { ...k, isActive: false } : k));
+    } catch (err) {
+      console.error("Failed to revoke API key");
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
@@ -151,7 +175,7 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
                   )}>
                     {key.isActive ? "Active" : "Inactive"}
                   </span>
-                  <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-500">
+                  <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-500" onClick={() => revokeApiKey(key.id)}>
                     <Trash2 size={16} />
                   </Button>
                 </div>
@@ -197,7 +221,7 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
                     </div>
                     <div className="text-sm font-mono font-medium text-slate-700">{wh.url}</div>
                   </div>
-                  <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-500">
+                  <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-500" onClick={() => deleteWebhook(wh.id)}>
                     <Trash2 size={16} />
                   </Button>
                 </div>

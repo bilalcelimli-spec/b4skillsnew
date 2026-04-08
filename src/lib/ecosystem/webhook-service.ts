@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import crypto from "crypto";
 
 /**
  * Webhook Service
@@ -47,14 +48,20 @@ export const WebhookService = {
       },
     };
 
+    const payloadString = JSON.stringify(payload);
+    const webhookSecret = (settings.webhookSecret as string) || "";
+    const signature = webhookSecret
+      ? crypto.createHmac("sha256", webhookSecret).update(payloadString).digest("hex")
+      : "";
+
     try {
       const res = await fetch(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-b4skills-Signature": "TODO_HMAC_SIGNATURE", // For security
+          "X-b4skills-Signature": signature,
         },
-        body: JSON.stringify(payload),
+        body: payloadString,
       });
 
       if (!res.ok) {

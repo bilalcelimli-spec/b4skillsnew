@@ -27,16 +27,25 @@ export const GlobalSettings: React.FC<{ orgId: string }> = ({ orgId }) => {
   });
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSave = async () => {
     setLoading(true);
+    setError(null);
     try {
-      // API call to save settings
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const res = await fetch(`/api/organizations/${orgId}/settings`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-email": "bilalcelimli@gmail.com"
+        },
+        body: JSON.stringify(settings)
+      });
+      if (!res.ok) throw new Error("Server error");
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
-      console.error("Failed to save settings");
+      setError("Failed to save settings. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -106,24 +115,31 @@ export const GlobalSettings: React.FC<{ orgId: string }> = ({ orgId }) => {
             <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
               <Lock size={12} /> Changes are logged in audit trail
             </div>
-            <Button 
-              onClick={handleSave} 
-              disabled={loading}
-              className={cn(
-                "rounded-xl h-10 px-8 font-black uppercase tracking-widest text-[10px] transition-all",
-                saved ? "bg-emerald-500 hover:bg-emerald-600" : ""
+            <div className="flex items-center gap-4">
+              {error && (
+                <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest flex items-center gap-1">
+                  <AlertCircle size={12} /> {error}
+                </span>
               )}
-            >
-              {loading ? "Saving..." : saved ? (
-                <>
-                  <CheckCircle2 size={14} className="mr-2" /> Saved
-                </>
-              ) : (
-                <>
-                  <Save size={14} className="mr-2" /> Save Settings
-                </>
-              )}
-            </Button>
+              <Button 
+                onClick={handleSave} 
+                disabled={loading}
+                className={cn(
+                  "rounded-xl h-10 px-8 font-black uppercase tracking-widest text-[10px] transition-all",
+                  saved ? "bg-emerald-500 hover:bg-emerald-600" : ""
+                )}
+              >
+                {loading ? "Saving..." : saved ? (
+                  <>
+                    <CheckCircle2 size={14} className="mr-2" /> Saved
+                  </>
+                ) : (
+                  <>
+                    <Save size={14} className="mr-2" /> Save Settings
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

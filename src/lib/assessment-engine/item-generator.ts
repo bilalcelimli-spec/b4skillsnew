@@ -28,7 +28,7 @@ export const ItemGeneratorService = {
   async generateItem(skill: SkillType, level: CefrLevel, type: ItemType): Promise<Partial<Item>> {
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.5-flash",
         contents: ITEM_GEN_PROMPT
           .replace("{{SKILL}}", skill)
           .replace("{{LEVEL}}", level)

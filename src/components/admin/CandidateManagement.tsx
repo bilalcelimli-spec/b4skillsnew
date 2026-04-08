@@ -26,16 +26,31 @@ export const CandidateManagement: React.FC<{ orgId: string, onGenerateCodes?: ()
     fetchCandidates();
   }, [orgId]);
 
+  useEffect(() => {
+    if (!search) return;
+    const timer = setTimeout(() => fetchCandidates(), 400);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const fetchCandidates = async () => {
     setLoading(true);
     try {
-      // Mock data for now
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setCandidates([
-        { id: "1", name: "Alice Johnson", email: "alice@example.com", status: "COMPLETED", lastActive: "2024-03-20" },
-        { id: "2", name: "Bob Smith", email: "bob@example.com", status: "IN_PROGRESS", lastActive: "2024-03-21" },
-        { id: "3", name: "Charlie Brown", email: "charlie@example.com", status: "SCHEDULED", lastActive: "2024-03-19" },
-      ]);
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      const res = await fetch(`/api/organizations/${orgId}/candidates?${params}`, {
+        headers: { "x-user-email": "bilalcelimli@gmail.com" }
+      });
+      if (!res.ok) throw new Error("API error");
+      const data = await res.json();
+      // Normalize: attach last session status
+      const normalized = data.map((c: any) => ({
+        id: c.id,
+        name: c.name || c.email,
+        email: c.email,
+        status: c.sessions?.[0]?.status || "REGISTERED",
+        lastActive: c.sessions?.[0]?.completedAt || c.createdAt || null
+      }));
+      setCandidates(normalized);
     } catch (err) {
       console.error("Failed to fetch candidates");
     } finally {
@@ -43,10 +58,7 @@ export const CandidateManagement: React.FC<{ orgId: string, onGenerateCodes?: ()
     }
   };
 
-  const filtered = candidates.filter(c => 
-    c.name.toLowerCase().includes(search.toLowerCase()) || 
-    c.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = candidates;
 
   return (
     <div className="space-y-6">

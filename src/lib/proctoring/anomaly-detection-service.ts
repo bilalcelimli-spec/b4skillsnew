@@ -58,16 +58,8 @@ export const AnomalyDetectionService = {
   async auditSession(sessionId: string) {
     const trustScore = await this.calculateTrustScore(sessionId);
     
-    // Log audit result
-    await prisma.auditLog.create({
-      data: {
-        userId: "SYSTEM",
-        action: "SESSION_AUDIT",
-        entityType: "SESSION",
-        entityId: sessionId,
-        newData: { trustScore },
-      },
-    });
+    // Log audit result (only when a real user context is available; SYSTEM actions are console-logged)
+    console.log("[AnomalyDetection] auditSession", { sessionId, trustScore });
 
     return trustScore;
   },

@@ -28,8 +28,8 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
 }) => {
   const content = (item as any).content ?? item.metadata ?? {};
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
-
-  const itemSkill = String(item.skill).toUpperCase();
+    const [textValue, setTextValue] = useState<string>("");
+    const itemSkill = String(item.skill).toUpperCase();
   
   const renderPassage = (passage: string | undefined) => {
     let elements = [];
@@ -85,6 +85,54 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     case "READING":
     case "GRAMMAR":
     case "VOCABULARY":
+      if ((item as any).type === "FILL_IN_BLANKS") {
+        return (
+          <div className="space-y-6" role="form" aria-labelledby="item-prompt">
+            {renderPassage(content.passage)}
+            <fieldset className="space-y-4">
+              <legend id="item-prompt" className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">
+                {content.prompt}
+              </legend>
+              {content.question && (
+                <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-medium text-slate-800 mb-4">
+                  {content.question}
+                </div>
+              )}
+              <div>
+                <input
+                  type="text"
+                  value={textValue}
+                  onChange={(e) => setTextValue(e.target.value)}
+                  disabled={disabled}
+                  placeholder="Type your answer here..."
+                  className="w-full text-lg p-4 rounded-2xl border-2 border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all disabled:opacity-50"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && textValue.trim() && !disabled) {
+                      onResponse(textValue.trim());
+                      setTextValue("");
+                    }
+                  }}
+                />
+              </div>
+              <div className="pt-4">
+                <button
+                  disabled={!textValue.trim() || disabled}
+                  onClick={() => { if (textValue.trim()) { onResponse(textValue.trim()); setTextValue(""); } }}
+                  className={cn(
+                    "w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all",
+                    textValue.trim() && !disabled
+                      ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100"
+                      : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                  )}
+                >
+                  Confirm Answer
+                </button>
+              </div>
+            </fieldset>
+          </div>
+        );
+      }
+
       return (
         <div className="space-y-6" role="form" aria-labelledby="item-prompt">
           {renderPassage(content.passage)}
