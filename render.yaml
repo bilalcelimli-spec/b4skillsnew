@@ -7,7 +7,7 @@ services:
     env: node
     region: oregon
     plan: starter
-    buildCommand: npm ci && npm run build:all && npx prisma generate
+    buildCommand: npm ci && npm run build:all && npx prisma migrate deploy
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true
