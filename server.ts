@@ -163,7 +163,24 @@ async function startServer() {
         return res.json(candidates.map((c: any) => ({ email: c.email, status: "SUCCESS", candidateId: "new-" + Date.now() })));
       }
 
-      // ── Bulk candidate import ─────────────────────────────────────────────────
+      // ── Exam code generation ────────────────────────────────────────────────────
+      if (url === "/codes/generate" && method === "POST") {
+        const { productLine: pl = "General", count: cnt = 1, prefix = "E" } = req.body || {};
+        const codes: { code: string }[] = [];
+        for (let i = 0; i < Math.min(Number(cnt), 500); i++) {
+          const ran = Math.random().toString(36).substring(2, 6).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+          codes.push({ code: `${prefix}-${ran}` });
+        }
+        return res.json({ message: `Generated ${codes.length} codes`, codes: codes.map(c => c.code) });
+      }
+      if (url === "/codes/validate" && method === "POST") {
+        return res.json({ valid: true, examCode: { code: req.body?.code, productLine: "General", organizationId: "b4skills-demo" } });
+      }
+      if (url === "/codes/redeem" && method === "POST") {
+        return res.json({ success: true, organizationId: "b4skills-demo", productLine: "General" });
+      }
+
+      // ── Bulk candidate import ─────────────────────────────────────────────────────
       if (url.includes("/candidates/bulk-import")) {
         const candidates = req.body?.candidates || [];
         return res.json(candidates.map((c: any) => ({ email: c.email, status: "CREATED" })));

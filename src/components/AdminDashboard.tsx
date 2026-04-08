@@ -555,7 +555,7 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
           >
-            <ExamCodeManager />
+            <ExamCodeManager orgId={ORG_ID} />
           </motion.div>
         )}
 

@@ -6,7 +6,7 @@ import { Input } from "../ui/Input";
 import { Activity, Copy, Check, Info } from "lucide-react";
 import { cn } from "../../lib/utils";
 
-export const ExamCodeManager: React.FC = () => {
+export const ExamCodeManager: React.FC<{ orgId?: string }> = ({ orgId }) => {
   const [productLine, setProductLine] = useState("General");
   const [count, setCount] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -23,7 +23,7 @@ export const ExamCodeManager: React.FC = () => {
           "x-user-email": "bilalcelimli@gmail.com",
         },
         body: JSON.stringify({
-          organizationId: "default-org", // Use valid organization
+          organizationId: orgId || "b4skills-demo",
           productLine,
           count,
         }),
