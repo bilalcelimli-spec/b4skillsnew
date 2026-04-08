@@ -467,6 +467,20 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.post("/api/codes/generate", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
     try {
       const { organizationId, productLine, count = 1, prefix = "E", expiresAt } = req.body;
+      const targetOrg = organizationId || "b4skills-demo";
+
+      // Ensure the organization exists to prevent foreign key errors
+      const org = await prisma.organization.findUnique({ where: { id: targetOrg } });
+      if (!org) {
+        await prisma.organization.create({
+          data: {
+            id: targetOrg,
+            name: targetOrg,
+            slug: targetOrg + "-" + Date.now()
+          }
+        });
+      }
+
       const codes = [];
       const generated = new Date();
       for(let i = 0; i < count; i++) {
@@ -478,7 +492,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const created = await prisma.examCode.createMany({
         data: codes.map(c => ({
           code: c,
-          organizationId: organizationId || "b4skills-demo", // Default fallback
+          organizationId: targetOrg,
           productLine: productLine || "General",
           createdAt: generated,
           expiresAt: expiresAt ? new Date(expiresAt) : null,

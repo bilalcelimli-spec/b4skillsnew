@@ -30,16 +30,17 @@ export const ExamCodeManager: React.FC = () => {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to generate code");
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.error || "Failed to generate code");
       }
 
       const data = await res.json();
       // Server returns an array of strings, let's map them to objects
       const formattedCodes = data.codes.map((code: string) => ({ code }));
       setGeneratedCodes(formattedCodes);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Failed to generate codes");
+      alert(`Failed to generate codes: ${err.message}`);
     } finally {
       setLoading(false);
     }
