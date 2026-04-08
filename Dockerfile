@@ -42,6 +42,7 @@ RUN addgroup --system --gid 1001 appgroup && \
 
 # Install production-only deps
 COPY package.json package-lock.json ./
+COPY prisma ./prisma
 RUN npm ci --omit=dev --ignore-scripts && npx prisma generate
 
 # Copy compiled outputs
