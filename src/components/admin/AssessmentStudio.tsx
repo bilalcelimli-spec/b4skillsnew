@@ -28,10 +28,10 @@ export const AssessmentStudio: React.FC = () => {
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Enterprise Content & Psychometric Engine</p>
         </div>
         <div className="flex gap-3">
-          <button className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold uppercase tracking-widest rounded-lg transition-colors flex items-center gap-2">
+          <button onClick={() => setActiveTab('analytics')} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold uppercase tracking-widest rounded-lg transition-colors flex items-center gap-2">
             <Activity size={14} /> Global Logs
           </button>
-          <button className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold uppercase tracking-widest rounded-lg shadow-sm transition-all flex items-center gap-2">
+          <button onClick={() => { setSelectedItemId(null); setActiveTab('editor'); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold uppercase tracking-widest rounded-lg shadow-sm transition-all flex items-center gap-2">
             <Plus size={14} /> New Content
           </button>
         </div>
@@ -58,12 +58,12 @@ export const AssessmentStudio: React.FC = () => {
         <main className="flex-1 bg-slate-50 overflow-y-auto relative">
           <AnimatePresence mode="wait">
             {activeTab === 'dashboard' && <DashboardView key="dashboard" onNavigate={setActiveTab} />}
-            {activeTab === 'product-lines' && <ProductLinesView key="product-lines" />}
-            {activeTab === 'blueprints' && <BlueprintBuilderView key="blueprints" />}
+            {activeTab === 'product-lines' && <ProductLinesView key="product-lines" onNavigate={setActiveTab} />}
+            {activeTab === 'blueprints' && <BlueprintBuilderView key="blueprints" onNavigate={setActiveTab} />}
             {activeTab === 'item-bank' && <ItemBankView key="item-bank" onEdit={(id) => { setSelectedItemId(id); setActiveTab('editor'); }} />}
-            {activeTab === 'editor' && <TaskEditorView key="editor" itemId={selectedItemId} />}
-            {activeTab === 'workflow' && <ReviewWorkflowView key="workflow" />}
-            {activeTab === 'analytics' && <AnalyticsView key="analytics" />}
+            {activeTab === 'editor' && <TaskEditorView key="editor" itemId={selectedItemId} onNavigate={setActiveTab} />}
+            {activeTab === 'workflow' && <ReviewWorkflowView key="workflow" onEdit={(id) => { setSelectedItemId(id); setActiveTab('editor'); }} />}
+            {activeTab === 'analytics' && <AnalyticsView key="analytics" onEdit={(id) => { setSelectedItemId(id); setActiveTab('editor'); }} />}
           </AnimatePresence>
         </main>
       </div>
@@ -139,7 +139,7 @@ const ProductCard = ({ title, count, health, icon, onNavigate }: any) => (
 
 
 // ─── PRODUCT LINES VIEW ──────────────────────────────────────────────────────
-const ProductLinesView: React.FC = () => {
+const ProductLinesView: React.FC<{ onNavigate: (tab: Tab) => void }> = ({ onNavigate }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 max-w-6xl mx-auto space-y-8">
       <div className="mb-8">
@@ -152,23 +152,26 @@ const ProductLinesView: React.FC = () => {
           title="Primary Module (7-10)" icon={<Baby/>} color="bg-pink-50 text-pink-600"
           desc="Low-stakes, visual-heavy, max reading 30 words. Strict Age & Safeguarding gates enforced."
           tags={["Adaptive Constrained", "No Complex Text", "Audio-First"]}
+          onNavigate={onNavigate}
         />
         <LineConfigCard 
           title="Corporate Solutions" icon={<Briefcase/>} color="bg-emerald-50 text-emerald-600"
           desc="High-volume screening. Role-based blueprinting (Sales, Tech, BPO). Generates Can-Do HR statements."
           tags={["ATS Integrated", "Strict Proctored", "Business Domain"]}
+          onNavigate={onNavigate}
         />
         <LineConfigCard 
           title="15-Minute Diagnostic" icon={<Zap/>} color="bg-amber-50 text-amber-600"
           desc="Lead-gen universal tool. Pure CAT starting at B1. High IRT discrimination items only."
           tags={["High 'a' Parameter", "Fast Convergence", "Max 20 Items"]}
+          onNavigate={onNavigate}
         />
       </div>
     </motion.div>
   );
 };
 
-const LineConfigCard = ({ title, icon, desc, color, tags }: any) => (
+const LineConfigCard = ({ title, icon, desc, color, tags, onNavigate }: any) => (
   <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row gap-6 items-start">
     <div className={`p-4 rounded-2xl ${color} shrink-0`}>{icon}</div>
     <div className="flex-1">
@@ -181,15 +184,16 @@ const LineConfigCard = ({ title, icon, desc, color, tags }: any) => (
       </div>
     </div>
     <div className="shrink-0 flex flex-col gap-2">
-      <button className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold uppercase tracking-widest text-slate-700">Edit Settings</button>
-      <button className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold uppercase tracking-widest">View Blueprints</button>
+      <button onClick={() => onNavigate('blueprints')} className="px-4 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold uppercase tracking-widest text-slate-700">Edit Settings</button>
+      <button onClick={() => onNavigate('blueprints')} className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold uppercase tracking-widest">View Blueprints</button>
     </div>
   </div>
 );
 
 
 // ─── BLUEPRINT BUILDER VIEW ──────────────────────────────────────────────────
-const BlueprintBuilderView: React.FC = () => {
+const BlueprintBuilderView: React.FC<{ onNavigate: (tab: Tab) => void }> = ({ onNavigate }) => {
+  const [saved, setSaved] = useState(false);
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full flex flex-col">
       <div className="p-6 border-b border-slate-200 bg-white flex justify-between items-center shrink-0">
@@ -199,7 +203,7 @@ const BlueprintBuilderView: React.FC = () => {
             <span>Corporate Product Line</span> <ChevronRight size={14}/> <span className="font-bold text-indigo-600">BPO Screening (V2.4)</span>
           </div>
         </div>
-        <button className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg flex items-center gap-2"><Save size={14}/> Save Blueprint Version</button>
+        <button onClick={() => { setSaved(true); setTimeout(() => setSaved(false), 2000); }} className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg flex items-center gap-2"><Save size={14}/> {saved ? '✓ Saved!' : 'Save Blueprint Version'}</button>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -333,12 +337,13 @@ const ItemBankView: React.FC<{ onEdit: (id: string) => void }> = ({ onEdit }) =>
 
 
 // ─── TASK EDITOR VIEW (Split Pane) ──────────────────────────────────────────
-const TaskEditorView: React.FC<{ itemId: string | null }> = ({ itemId }) => {
+const TaskEditorView: React.FC<{ itemId: string | null; onNavigate: (tab: Tab) => void }> = ({ itemId, onNavigate }) => {
+  const [saveStatus, setSaveStatus] = useState<'idle'|'saving'|'saved'|'submitted'>('idle');
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full flex flex-col bg-white">
       <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 shrink-0">
         <div className="flex items-center gap-4">
-          <button className="text-slate-400 hover:text-slate-900"><ChevronRight className="rotate-180" size={20}/></button>
+          <button onClick={() => onNavigate('item-bank')} className="text-slate-400 hover:text-slate-900"><ChevronRight className="rotate-180" size={20}/></button>
           <div>
             <h2 className="text-lg font-black text-slate-900 uppercase tracking-tighter">Editing: {itemId || 'New Item'}</h2>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Academia Module</p>
@@ -346,8 +351,12 @@ const TaskEditorView: React.FC<{ itemId: string | null }> = ({ itemId }) => {
         </div>
         <div className="flex gap-2">
           <span className="px-3 py-1.5 bg-amber-100 text-amber-800 text-[10px] font-black uppercase tracking-widest rounded flex items-center gap-1"><GitMerge size={12}/> V2 Draft</span>
-          <button className="px-4 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-lg uppercase tracking-widest">Save Draft</button>
-          <button className="px-4 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg uppercase tracking-widest">Submit for Review</button>
+          <button onClick={() => { setSaveStatus('saving'); setTimeout(() => setSaveStatus('saved'), 800); }} className="px-4 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-lg uppercase tracking-widest">
+            {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? '✓ Saved' : 'Save Draft'}
+          </button>
+          <button onClick={() => setSaveStatus('submitted')} className="px-4 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg uppercase tracking-widest">
+            {saveStatus === 'submitted' ? '✓ In Review' : 'Submit for Review'}
+          </button>
         </div>
       </div>
 
@@ -420,7 +429,7 @@ const DistractorInput = ({ text, isCorrect, rationale }: any) => (
 
 
 // ─── REVIEW WORKFLOW (KANBAN) ────────────────────────────────────────────────
-const ReviewWorkflowView: React.FC = () => {
+const ReviewWorkflowView: React.FC<{ onEdit: (id: string) => void }> = ({ onEdit }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full flex flex-col p-8">
       <div className="mb-6">
@@ -429,16 +438,16 @@ const ReviewWorkflowView: React.FC = () => {
       </div>
       
       <div className="flex-1 flex gap-4 overflow-x-auto pb-4">
-        <KanbanCol title="Linguistic Review" count={24} color="border-t-blue-500" items={['ITM-312', 'ITM-901', 'ITM-882']} />
-        <KanbanCol title="Sense & Bias / Age" count={12} color="border-t-amber-500" items={['ITM-404']} />
-        <KanbanCol title="Psychometric Ready" count={8} color="border-t-purple-500" items={['ITM-221', 'ITM-819']} />
+        <KanbanCol title="Linguistic Review" count={24} color="border-t-blue-500" items={['ITM-312', 'ITM-901', 'ITM-882']} onEdit={onEdit} />
+        <KanbanCol title="Sense & Bias / Age" count={12} color="border-t-amber-500" items={['ITM-404']} onEdit={onEdit} />
+        <KanbanCol title="Psychometric Ready" count={8} color="border-t-purple-500" items={['ITM-221', 'ITM-819']} onEdit={onEdit} />
         <KanbanCol title="Published / Live" count={45901} color="border-t-emerald-500" items={['ITM-001', 'ITM-002', '...']} isMuted />
       </div>
     </motion.div>
   );
 };
 
-const KanbanCol = ({ title, count, color, items, isMuted }: any) => (
+const KanbanCol = ({ title, count, color, items, isMuted, onEdit }: any) => (
   <div className={`w-80 shrink-0 bg-slate-100 rounded-2xl flex flex-col border-t-[6px] ${color} overflow-hidden shadow-sm`}>
     <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
       <h4 className="font-black text-slate-800 text-sm tracking-tight">{title}</h4>
@@ -446,7 +455,11 @@ const KanbanCol = ({ title, count, color, items, isMuted }: any) => (
     </div>
     <div className="p-3 flex-1 overflow-y-auto space-y-3">
       {items.map((i: string) => (
-        <div key={i} className={`p-4 rounded-xl shadow-sm border border-slate-200 bg-white ${isMuted ? 'opacity-50' : ''}`}>
+        <div
+          key={i}
+          onClick={() => !isMuted && onEdit && onEdit(i)}
+          className={`p-4 rounded-xl shadow-sm border border-slate-200 bg-white transition-colors ${isMuted ? 'opacity-50' : 'cursor-pointer hover:border-indigo-300 hover:bg-indigo-50'}`}
+        >
           <div className="text-xs font-black text-slate-900">{i}</div>
           <div className="text-[10px] uppercase font-bold tracking-widest text-slate-400 mt-1">B1 • Reading</div>
         </div>
@@ -457,7 +470,7 @@ const KanbanCol = ({ title, count, color, items, isMuted }: any) => (
 
 
 // ─── ANALYTICS VIEW ─────────────────────────────────────────────────────────
-const AnalyticsView: React.FC = () => {
+const AnalyticsView: React.FC<{ onEdit: (id: string) => void }> = ({ onEdit }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 max-w-5xl mx-auto flex flex-col items-center text-center mt-20">
       <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-6">
@@ -470,21 +483,20 @@ const AnalyticsView: React.FC = () => {
       
       <div className="w-full bg-white border border-red-200 rounded-2xl p-6 shadow-sm text-left">
         <h3 className="text-red-700 font-bold mb-4 flex items-center gap-2"><ShieldAlert size={16}/> Filtered Urgent Flagged Assets (2)</h3>
-        {/* Mock flagged items */}
         <div className="space-y-4">
           <div className="p-4 border border-slate-200 rounded-xl flex justify-between items-center">
             <div>
               <div className="font-bold text-slate-900">ITM-8442 (Corporate B2 Listen)</div>
               <div className="text-xs text-red-600 font-bold mt-1">Issue: Biserial = 0.04 (Underperforming). Distractor D selected more than Key.</div>
             </div>
-            <button className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase tracking-widest">Revise</button>
+            <button onClick={() => onEdit('ITM-8442')} className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase tracking-widest">Revise</button>
           </div>
           <div className="p-4 border border-slate-200 rounded-xl flex justify-between items-center">
             <div>
               <div className="font-bold text-slate-900">ITM-7110 (Primary A1 Read)</div>
               <div className="text-xs text-amber-600 font-bold mt-1">Issue: Facility (p) = 0.10. Too difficult for intended A1 pool.</div>
             </div>
-            <button className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase tracking-widest">Revise</button>
+            <button onClick={() => onEdit('ITM-7110')} className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase tracking-widest">Revise</button>
           </div>
         </div>
       </div>

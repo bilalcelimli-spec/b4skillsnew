@@ -37,38 +37,62 @@ export default function App() {
       setUser(currentUser);
       if (currentUser) {
         setShowLanding(false);
-        // Sync user profile
-        const userRef = doc(db, "users", currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        let profile: any;
-        if (!userSnap.exists()) {
+        try {
+          // Sync user profile via Firestore
+          const userRef = doc(db, "users", currentUser.uid);
+          const userSnap = await getDoc(userRef);
+          let profile: any;
+          if (!userSnap.exists()) {
+            let role = "candidate";
+            if (currentUser.email === "bilalcelimli@gmail.com") role = "admin";
+            if (currentUser.email?.includes("rater")) role = "rater";
+            if (currentUser.email?.includes("orgadmin")) role = "org_admin";
+
+            profile = {
+              uid: currentUser.uid,
+              email: currentUser.email,
+              displayName: currentUser.displayName,
+              role,
+              organizationId: currentUser.email?.includes("oxford") ? "oxford-academy" : "b4skills-demo",
+              createdAt: new Date().toISOString()
+            };
+            await setDoc(userRef, profile);
+            setUserProfile(profile);
+          } else {
+            profile = userSnap.data();
+            setUserProfile(profile);
+          }
+
+          // Fetch Branding
+          if (profile?.organizationId) {
+            try {
+              const res = await fetch(`/api/branding/${profile.organizationId}`);
+              const b = await res.json();
+              setBranding(b);
+            } catch (err) {}
+          }
+        } catch (err) {
+          // Firestore unavailable (wrong DB ID, network, or rules) — derive profile locally
+          console.warn("Firestore unavailable, using local fallback profile:", err);
           let role = "candidate";
           if (currentUser.email === "bilalcelimli@gmail.com") role = "admin";
           if (currentUser.email?.includes("rater")) role = "rater";
           if (currentUser.email?.includes("orgadmin")) role = "org_admin";
-
-          profile = {
+          const fallback = {
             uid: currentUser.uid,
             email: currentUser.email,
-            displayName: currentUser.displayName,
+            displayName: currentUser.displayName || currentUser.email?.split("@")[0],
             role,
             organizationId: currentUser.email?.includes("oxford") ? "oxford-academy" : "b4skills-demo",
             createdAt: new Date().toISOString()
           };
-          await setDoc(userRef, profile);
-          setUserProfile(profile);
-        } else {
-          profile = userSnap.data();
-          setUserProfile(profile);
-        }
-
-        // Fetch Branding
-        if (profile?.organizationId) {
+          setUserProfile(fallback);
+          // Still try branding
           try {
-            const res = await fetch(`/api/branding/${profile.organizationId}`);
+            const res = await fetch(`/api/branding/${fallback.organizationId}`);
             const b = await res.json();
             setBranding(b);
-          } catch (err) {}
+          } catch {}
         }
       }
       setLoading(false);
