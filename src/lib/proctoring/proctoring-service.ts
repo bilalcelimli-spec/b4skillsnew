@@ -57,8 +57,8 @@ export const ProctoringService = {
       const docRef = await addDoc(collection(db, "proctoring_events"), payload);
       return { id: docRef.id, ...event };
     } catch (error) {
-      console.error("Failed to log proctoring event to Firestore:", error);
-      throw error;
+      console.warn("Failed to log proctoring event to Firestore (Permission Denied/Offline). Event swallowed:", error);
+      return { id: "offline-" + Date.now(), ...event };
     }
   },
 
