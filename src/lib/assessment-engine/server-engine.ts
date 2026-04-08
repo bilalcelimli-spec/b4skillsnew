@@ -151,10 +151,17 @@ export const AssessmentService = {
       id: { notIn: Array.from(state.usedItemIds) }
     };
     
-    // Filter by product line if session was launched with a specific one
+    // Filter by product line / skill if session was launched with a specific one
+    const SKILL_TYPES = ["READING", "LISTENING", "WRITING", "SPEAKING", "GRAMMAR", "VOCABULARY"];
     const pLine = (session.metadata as any)?.productLine;
     if (pLine && pLine !== "General") {
-      whereClause.tags = { has: pLine };
+      if (SKILL_TYPES.includes(pLine)) {
+        // productLine maps directly to a SkillType — filter by skill
+        whereClause.skill = pLine;
+      } else {
+        // productLine is a custom tag (e.g. a course code)
+        whereClause.tags = { has: pLine };
+      }
     }
 
     const dbItems = await prisma.item.findMany({
