@@ -12,7 +12,7 @@ async function main() {
       typeStr = "SPEAKING_PROMPT";
     } else if (item.skill === "Writing") {
       typeStr = "WRITING_PROMPT";
-    } else if (item.skill === "Integrated") {
+    } else if ((item.skill as string) === "Integrated") {
       typeStr = "INTEGRATED_TASK";
     } else {
       typeStr = "FILL_IN_BLANKS"; // Fallback
