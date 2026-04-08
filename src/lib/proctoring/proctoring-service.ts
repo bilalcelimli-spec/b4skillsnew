@@ -45,11 +45,16 @@ export const ProctoringService = {
    */
   async logEvent(sessionId: string, event: Omit<ProctoringEvent, "id" | "timestamp">) {
     try {
-      const docRef = await addDoc(collection(db, "proctoring_events"), {
+      const payload: any = {
         ...event,
         sessionId,
         timestamp: serverTimestamp()
-      });
+      };
+      if (payload.metadata === undefined) {
+        delete payload.metadata;
+      }
+      
+      const docRef = await addDoc(collection(db, "proctoring_events"), payload);
       return { id: docRef.id, ...event };
     } catch (error) {
       console.error("Failed to log proctoring event to Firestore:", error);

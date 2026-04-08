@@ -17,7 +17,7 @@ let dbAvailable = false;
 
 async function startServer() {
   const app = express();
-  const PORT = parseInt(process.env.PORT || "3000", 10);
+  const PORT = parseInt(process.env.PORT || "3001", 10);
 
   // Probe DB connectivity — fall back to mock/demo mode if unreachable
   if (process.env.DATABASE_URL) {
@@ -608,6 +608,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       });
       res.json({ message: `Generated ${created.count} codes`, codes });
     } catch(err) {
+      console.error("Exam Code Generation Error:", err);
       res.status(500).json({ error: "Fail to generate codes", details: String(err) });
     }
   });
