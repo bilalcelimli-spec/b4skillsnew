@@ -12,9 +12,24 @@ import { BillingService } from "./src/lib/enterprise/billing-service.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Set to true once a live DB connection is confirmed at startup
+let dbAvailable = false;
+
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10);
+
+  // Probe DB connectivity — fall back to mock/demo mode if unreachable
+  if (process.env.DATABASE_URL) {
+    try {
+      await (prisma as any).$queryRaw`SELECT 1`;
+      dbAvailable = true;
+      console.log("✅ Database connected");
+    } catch {
+      dbAvailable = false;
+      console.warn("⚠️  Database not reachable — running in mock/demo mode");
+    }
+  }
 
   app.use(cors());
   app.use(express.json({ limit: "50mb" }));
@@ -24,7 +39,7 @@ async function startServer() {
   // --- OFFLINE MOCK MIDDLEWARE ---
   // If no database is available, we intercept admin routes and serve mock data
   app.use("/api", (req, res, next) => {
-    if (!process.env.DATABASE_URL) {
+    if (!dbAvailable) {
       const url = req.url;
       const method = req.method;
 
@@ -231,6 +246,44 @@ async function startServer() {
       if (url.includes("/organizations/") && url.includes("/sso-config") && method === "GET") {
         return res.json({ provider: "", entryPoint: "", issuer: "", enabled: false });
       }
+
+      // ── Session responses (SessionReview component) ───────────────────────────
+      if (url.match(/^\/sessions\/[^/]+\/responses$/) && method === "GET") {
+        return res.json([
+          { id: "resp-1", order: 1, score: 0.82, response: "Supply chain disruptions drive localized inflation.", metadata: { cefrLevel: "B2", confidence: 0.9 }, item: { id: "mock-item-1", skill: "READING", content: { prompt: "What is the author's primary argument regarding supply chains?" } } },
+          { id: "resp-2", order: 2, score: 0.55, response: "Audio response provided.", metadata: { cefrLevel: "B1", confidence: 0.72 }, item: { id: "mock-item-3", skill: "SPEAKING", content: { prompt: "Describe your favorite hobby in detail." } } },
+        ]);
+      }
+
+      // ── Session status / insights / next item ────────────────────────────────
+      if (url.match(/^\/sessions\/[^/]+\/status$/) && method === "GET") {
+        return res.json({ status: "IN_PROGRESS", itemsAnswered: 5, theta: 0.4 });
+      }
+      if (url.match(/^\/sessions\/[^/]+\/insights$/) && method === "GET") {
+        return res.json({ strengths: ["Reading comprehension", "Vocabulary"], weaknesses: ["Speaking fluency"], recommendations: ["Practice daily conversation"] });
+      }
+      if (url.match(/^\/sessions\/[^/]+\/respond$/) && method === "POST") {
+        return res.json({ success: true });
+      }
+      if (url.match(/^\/sessions\/[^/]+\/next$/) && method === "GET") {
+        return res.json({ done: false, item: { id: "mock-item-1", skill: "READING", type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "The quick brown fox...", options: ["A", "B", "C", "D"], correctIndex: 2 }, difficulty: 1.0, assets: [] } });
+      }
+      if (url.match(/^\/sessions\/[^/]+\/complete$/) && method === "POST") {
+        return res.json({ success: true, cefrLevel: "B2", theta: 1.2 });
+      }
+      if (url.match(/^\/sessions\/[^/]+\/feedback$/) && method === "POST") {
+        return res.json({ success: true });
+      }
+
+      // ── Session launch ────────────────────────────────────────────────────────
+      if (url === "/sessions/launch" && method === "POST") {
+        return res.json({ sessionId: "demo-sess-" + Date.now(), status: "IN_PROGRESS" });
+      }
+
+      // ── AI scoring (speaking multimodal) ─────────────────────────────────────
+      if (url.includes("/ai/score") || url.includes("/score/ai")) {
+        return res.json({ cefrLevel: "B2", score: 0.72, feedback: "Good performance.", breakdown: { grammar: 0.7, vocabulary: 0.75, fluency: 0.7 } });
+      }
     }
     next();
   });
@@ -241,7 +294,7 @@ async function startServer() {
       const userEmail = req.headers["x-user-email"]; // In a real app, this would be from a verified JWT
       if (!userEmail) return res.status(401).json({ error: "Unauthorized" });
 
-      if (userEmail === "bilalcelimli@gmail.com" || !process.env.DATABASE_URL) {
+      if (userEmail === "bilalcelimli@gmail.com" || !dbAvailable) {
         req.user = { role: "SUPER_ADMIN", organizationId: "default-org" };
         return next();
       }
