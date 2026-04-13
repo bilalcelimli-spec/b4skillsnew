@@ -1,6 +1,6 @@
 import { estimateTheta } from "./estimator";
 import { selectNextItem } from "./selector";
-import { SessionState, Response, Item, EngineConfig, CefrLevel } from "./types";
+import { SessionState, Response, Item, EngineConfig, CefrLevel, SkillType, SkillProfile } from "./types";
 
 /**
  * b4skills Assessment Engine
@@ -39,8 +39,23 @@ export class AssessmentEngine {
     items: Record<string, Item>
   ): SessionState {
     const item = items[response.itemId];
-    const updatedResponse = {
+
+    // Speed-guessing detection: penalise suspiciously fast responses on hard items
+    let adjustedScore = response.score;
+    const speedThreshold = this.config.speedThresholdMs ?? 3000;
+    if (
+      response.latencyMs !== undefined &&
+      response.latencyMs < speedThreshold &&
+      item?.params.b > 1.0 &&   // Hard item
+      response.score === 1       // Got it "correct"
+    ) {
+      // Reduce partial credit to 0.5 to dampen theta inflation from speed-guessing
+      adjustedScore = 0.5;
+    }
+
+    const updatedResponse: Response = {
       ...response,
+      score: adjustedScore,
       isPretest: item?.isPretest
     };
 
@@ -48,15 +63,31 @@ export class AssessmentEngine {
     const updatedUsedItems = new Set(state.usedItemIds);
     updatedUsedItems.add(response.itemId);
 
-    // 1. Re-estimate ability (theta) and SEM
-    // estimateTheta will ignore pretest responses internally
+    // 1. Re-estimate overall ability (theta) and SEM
     const { theta, sem } = estimateTheta(updatedResponses, items);
+
+    // 2. Update per-skill theta profiles (multidimensional profiling)
+    const updatedSkillProfiles: Partial<Record<SkillType, SkillProfile>> = {
+      ...(state.skillProfiles || {})
+    };
+
+    if (item && !item.isPretest) {
+      const skill = item.skill;
+      const skillResponses = updatedResponses.filter(
+        r => !r.isPretest && items[r.itemId]?.skill === skill
+      );
+      if (skillResponses.length > 0) {
+        const skillEstimate = estimateTheta(skillResponses, items);
+        updatedSkillProfiles[skill] = skillEstimate;
+      }
+    }
 
     return {
       theta,
       sem,
       responses: updatedResponses,
-      usedItemIds: updatedUsedItems
+      usedItemIds: updatedUsedItems,
+      skillProfiles: updatedSkillProfiles
     };
   }
 
@@ -73,28 +104,39 @@ export class AssessmentEngine {
     if (shouldAdministerPretest) {
       const pretestPool = pool.filter(item => item.isPretest && !state.usedItemIds.has(item.id));
       if (pretestPool.length > 0) {
-        // Target pretest items to candidates within a reasonable range of their estimated difficulty.
-        // This ensures we collect data where the item is most informative for calibration.
-        // We pick the pretest item whose difficulty (b-parameter) is closest to the current theta.
-        
         let bestPretestItem = pretestPool[0];
         let minDiff = Math.abs(pretestPool[0].params.b - state.theta);
-
         for (let i = 1; i < pretestPool.length; i++) {
           const diff = Math.abs(pretestPool[i].params.b - state.theta);
-          if (diff < minDiff) {
-            minDiff = diff;
-            bestPretestItem = pretestPool[i];
-          }
+          if (diff < minDiff) { minDiff = diff; bestPretestItem = pretestPool[i]; }
         }
-
         return bestPretestItem;
       }
     }
 
-    // 2. Select the best operational item based on Maximum Fisher Information (MFI)
+    // 2. Build current skill-count map for blueprint enforcement
+    const currentSkillCounts: Partial<Record<SkillType, number>> = {};
+    for (const r of state.responses) {
+      if (!r.isPretest) {
+        // We no longer have the item map here, so skilCounts is tracked separately
+        // The caller (server-engine.ts) passes the full pool, pull skill from it
+        const poolItem = pool.find(p => p.id === r.itemId);
+        if (poolItem) {
+          currentSkillCounts[poolItem.skill] = (currentSkillCounts[poolItem.skill] || 0) + 1;
+        }
+      }
+    }
+
+    // 3. Select best operational item (MFI + blueprint + exposure control)
     const operationalPool = pool.filter(item => !item.isPretest);
-    return selectNextItem(operationalPool, state.theta, state.usedItemIds);
+    return selectNextItem(
+      operationalPool,
+      state.theta,
+      state.usedItemIds,
+      5,
+      this.config.blueprint,
+      currentSkillCounts
+    );
   }
 
   /**

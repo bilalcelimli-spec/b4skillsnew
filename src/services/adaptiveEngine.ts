@@ -9,20 +9,23 @@ export class AdaptiveEngine {
   static selectNextItem(
     currentTheta: number,
     usedItemIds: Set<string>,
+    externalBank?: TestItem[],
     targetType?: string
   ): TestItem {
+    const bank = externalBank || mockItems;
+    
     // Filter out used items and optionally by type
-    const availableItems = mockItems.filter(item => 
+    const availableItems = bank.filter(item => 
       !usedItemIds.has(item.id) && (!targetType || item.type === targetType)
     );
 
     if (availableItems.length === 0) {
-      // Fallback if bank is empty (in real app, we'd have thousands)
+      // Fallback if bank is empty
+      if (bank.length > 0) return bank[0];
       return mockItems[0];
     }
 
     // Select item closest to current ability (theta)
-    // In real IRT, this would be based on Item Information Function
     return availableItems.reduce((prev, curr) => {
       return Math.abs(curr.difficulty - currentTheta) < Math.abs(prev.difficulty - currentTheta)
         ? curr

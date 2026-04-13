@@ -50,11 +50,26 @@ export interface Response {
   latencyMs?: number;
 }
 
+/** Per-skill theta/SEM pair for multidimensional profiling. */
+export interface SkillProfile {
+  theta: number;
+  sem: number;
+}
+
 export interface SessionState {
-  theta: number; // Ability estimate
-  sem: number;   // Standard Error of Measurement
+  theta: number; // Overall composite ability estimate
+  sem: number;   // Overall Standard Error of Measurement
   responses: Response[];
   usedItemIds: Set<string>;
+  /** Multidimensional per-skill ability profiles */
+  skillProfiles?: Partial<Record<SkillType, SkillProfile>>;
+}
+
+/** Defines the required content distribution for a test (content blueprint). */
+export interface BlueprintConstraint {
+  skill: SkillType;
+  minCount: number;  // Minimum items required for this skill
+  maxCount: number;  // Ceiling items allowed for this skill
 }
 
 export interface EngineConfig {
@@ -65,4 +80,8 @@ export interface EngineConfig {
   startingSem: number;
   pretestRatio?: number; // Ratio of items that should be pretest (e.g., 0.1 for 10%)
   cefrThresholds?: Partial<Record<CefrLevel, number>>;
+  /** Content blueprint constraints. If defined, enforced during item selection. */
+  blueprint?: BlueprintConstraint[];
+  /** Speed penalty: if response < speedThresholdMs it may indicate automated guessing. */
+  speedThresholdMs?: number;
 }

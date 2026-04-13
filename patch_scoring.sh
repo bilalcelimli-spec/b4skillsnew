@@ -1,0 +1,2 @@
+sed -i '' 's/Evaluate the following speaking response to the prompt:.*/Evaluate the candidate speaking response against Cambridge CAEL\/DET strict rubrics to the prompt: /' src/lib/scoring/gemini-scoring-service.ts
+sed -i '' 's/Evaluate the following writing response to the prompt:.*/Evaluate the candidate writing response against Cambridge CAEL\/DET strict rubrics to the prompt: /' src/lib/scoring/gemini-scoring-service.ts

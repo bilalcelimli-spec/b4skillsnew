@@ -296,4 +296,55 @@ export class CalibrationService {
       results
     };
   }
+
+  /**
+   * Online Item Calibration (fires after each real response once an item
+   * has ≥ CALIBRATION_THRESHOLD real answers).
+   * Uses a simplified EM/IRC heuristic: nudge the b-parameter toward the
+   * theta value where P(theta) ≈ observed p-value.
+   *
+   * Safe to call on every response submission (idempotent if not enough data).
+   */
+  static async recalibrateItem(itemId: string): Promise<void> {
+    const CALIBRATION_THRESHOLD = 30;
+    const DAMPING = 0.3; // conservative step size per iteration
+
+    const item = await prisma.item.findUnique({
+      where: { id: itemId },
+      include: {
+        responses: {
+          select: {
+            score: true,
+            session: { select: { theta: true } }
+          }
+        }
+      }
+    } as any);
+
+    if (!item) return;
+    const responses = (item as any).responses as { score: number; session: { theta: number } }[];
+    if (responses.length < CALIBRATION_THRESHOLD) return;
+
+    const pObserved = responses.reduce((sum, r) => sum + r.score, 0) / responses.length;
+    const meanTheta  = responses.reduce((sum, r) => sum + r.session.theta, 0) / responses.length;
+
+    const params: IrtParameters = {
+      a: (item as any).discrimination,
+      b: (item as any).difficulty,
+      c: (item as any).guessing
+    };
+
+    const pExpected = probability(meanTheta, params);
+    // Nudge b toward the theta value that matches the observed proportion correct
+    const bAdjustment = (pExpected - pObserved) * DAMPING;
+    const newDifficulty = Math.max(-4, Math.min(4, (item as any).difficulty + bAdjustment));
+
+    await prisma.item.update({
+      where: { id: itemId },
+      data: {
+        difficulty: newDifficulty,
+        exposureCount: { increment: 1 }
+      }
+    });
+  }
 }

@@ -3,7 +3,10 @@ import React, { useState, useEffect } from "react";
 import { AuthPage } from "./components/AuthPage";
 import { CodeEntryPage } from "./components/CodeEntryPage";
 type User = { uid: string; email: string; displayName?: string; role?: string };
-const signOut = async () => { localStorage.removeItem("token"); window.location.reload(); };
+const signOut = async () => {
+  await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+  window.location.reload();
+};
 
 import { Button } from "./components/ui/Button";
 import { Card, CardContent, CardHeader } from "./components/ui/Card";
@@ -34,46 +37,46 @@ export default function App() {
   const [certificate, setCertificate] = useState<any>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
+    const fetchUser = async (retryRefresh = true) => {
       setLoading(true);
-      fetch("/api/auth/me", {
-        headers: { Authorization: "Bearer " + token }
-      }).then(res => {
-        if (!res.ok) throw new Error("Invalid token");
-        return res.json();
-      })
-      .then(async data => {
-        if(data.user) {
-           setUser(data.user);
-           setUserProfile(data.user);
-           setShowLanding(false);
-           
-           if(data.user.role === "RATER" || data.user.role === "rater") setActiveTab("rating");
-           else if(data.user.role === "ADMIN" || data.user.role === "admin") setActiveTab("admin");
-           else if(data.user.role === "ORG_ADMIN" || data.user.role === "org_admin") setActiveTab("institutional");
-           
-           // Fetch Branding if org is attached
-           if (data.user.organizationId) {
-             try {
-               const res = await fetch(`/api/branding/${data.user.organizationId}`);
-               if (res.ok) {
-                 const b = await res.json();
-                 setBranding(b);
-               }
-             } catch (err) {}
-           }
+      try {
+        let res = await fetch("/api/auth/me", { credentials: "include" });
+        if (!res.ok && retryRefresh) {
+          const refreshRes = await fetch("/api/auth/refresh", { method: "POST", credentials: "include" });
+          if (refreshRes.ok) {
+            res = await fetch("/api/auth/me", { credentials: "include" });
+          }
         }
-      }).catch(err => {
+        if (!res.ok) throw new Error("Unauthorized");
+        const data = await res.json();
+        if (data.user) {
+          setUser(data.user);
+          setUserProfile(data.user);
+          setShowLanding(false);
+          
+          if (data.user.role === "RATER" || data.user.role === "rater") setActiveTab("rating");
+          else if (data.user.role === "ADMIN" || data.user.role === "admin") setActiveTab("admin");
+          else if (data.user.role === "ORG_ADMIN" || data.user.role === "org_admin") setActiveTab("institutional");
+          
+          if (data.user.organizationId) {
+            try {
+              const res = await fetch(`/api/branding/${data.user.organizationId}`);
+              if (res.ok) {
+                const b = await res.json();
+                setBranding(b);
+              }
+            } catch (err) {}
+          }
+        }
+      } catch (err) {
         console.error(err);
-        localStorage.removeItem("token");
         setUser(null);
         setShowLanding(true);
-      })
-      .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUser();
   }, []);
 
   const startNewTest = async (productLine?: string) => {

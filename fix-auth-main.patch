@@ -1,0 +1,23 @@
+--- src/main.tsx
++++ src/main.tsx
+@@ -4,15 +4,17 @@
+ import { ErrorBoundary } from './components/ErrorBoundary';
+ import './index.css';
+-import { auth } from './lib/firebase';
+ 
+ // Global API Fetch Interceptor
+ const originalFetch = window.fetch;
+ window.fetch = async (input, init) => {
+   if (typeof input === 'string' && input.startsWith('/api/')) {
+-    const userEmail = auth.currentUser?.email || 'bilalcelimli@gmail.com';
++    const token = localStorage.getItem('token');
++    const userEmail = token ? JSON.parse(atob(token.split('.')[1])).email : 'bilalcelimli@gmail.com';
+     init = init || {};
+     init.headers = {
+       ...init.headers,
+       'x-user-email': userEmail,
++      ...(token && { 'Authorization': `Bearer ${token}` })
+     };
+   }
+   return originalFetch(input, init);
+ };

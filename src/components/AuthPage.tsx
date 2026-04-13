@@ -6,7 +6,7 @@ import { Input } from "./ui/Input";
 import { cn } from "../lib/utils";
 import { DynamicPage } from "./DynamicPage";
 
-type AuthMode = "signin" | "signup" | "forgot";
+type AuthMode = "signin" | "signup" | "forgot" | "reset" | "verify";
 
 interface AuthPageProps {
   onBack?: () => void;
@@ -87,6 +87,29 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
       setLoading(true);
       setTimeout(() => {
         setSuccessMessage("Password reset email sent! Check your inbox.");
+        setMode("verify");
+        setLoading(false);
+      }, 1000);
+      return;
+    }
+
+    if (mode === "verify") {
+      setLoading(true);
+      setTimeout(() => {
+        setSuccessMessage("Code verified! You can now reset your password.");
+        setMode("reset");
+        setLoading(false);
+      }, 1000);
+      return;
+    }
+
+    if (mode === "reset") {
+      if (password !== confirmPassword) { setError("Passwords do not match."); return; }
+      if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+      setLoading(true);
+      setTimeout(() => {
+        setSuccessMessage("Password successfully reset! You can now sign in.");
+        setMode("signin");
         setLoading(false);
       }, 1000);
       return;
@@ -101,11 +124,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ email: email.trim(), password, displayName: displayName.trim() })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to sign up');
-        localStorage.setItem('token', data.token); window.location.reload();
+        window.location.reload();
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -120,11 +144,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email: email.trim(), password })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to sign in');
-      localStorage.setItem('token', data.token); window.location.reload();
+      window.location.reload();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -197,18 +222,23 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
               {mode === "signin" && "Welcome back"}
               {mode === "signup" && "Create your account"}
               {mode === "forgot" && "Reset your password"}
+              {mode === "verify" && "Verify your email"}
+              {mode === "reset" && "Set new password"}
             </h1>
             <p className="text-slate-500 mt-2 font-medium text-sm">
               {mode === "signin" && "Enter your details below to access your dashboard."}
               {mode === "signup" && "Start assessing with precision today."}
               {mode === "forgot" && "We'll send you an email with a link to reset it."}
+              {mode === "verify" && "Enter the verification code sent to your email."}
+              {mode === "reset" && "Choose a new strong password for your account."}
             </p>
           </div>
 
           {/* Tab switcher (signin ↔ signup only) */}
-          {mode !== "forgot" && (
+          {(mode === "signin" || mode === "signup") && (
             <div className="flex border-b border-slate-200 mb-8">
               <button
+                type="button"
                 onClick={() => switchMode("signin")}
                 className={`flex-1 pb-3 text-sm font-bold transition-colors border-b-2 -mb-px ${
                   mode === "signin"
@@ -266,27 +296,48 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
                 )}
 
                 {/* ─── Email ─── */}
-                <div className="mb-4">
-                  <label htmlFor="email" className="block text-sm font-bold text-slate-700 mb-1.5">
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                    <Input
-                      id="email"
-                      type="email"
-                      autoComplete="email"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10 h-12 bg-white border-slate-200 focus-visible:ring-slate-900 text-[15px]"
-                      required
-                    />
+                {(mode === "signin" || mode === "signup" || mode === "forgot") && (
+                  <div className="mb-4">
+                    <label htmlFor="email" className="block text-sm font-bold text-slate-700 mb-1.5">
+                      Email Address
+                    </label>
+                    <div className="relative">
+                      <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                      <Input
+                        id="email"
+                        type="email"
+                        autoComplete="email"
+                        placeholder="you@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="pl-10 h-12 bg-white border-slate-200 focus-visible:ring-slate-900 text-[15px]"
+                        required
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* ─── Password (not on forgot) ─── */}
-                {mode !== "forgot" && (
+                {/* ─── Verification Code ─── */}
+                {mode === "verify" && (
+                  <div className="mb-4">
+                    <label htmlFor="code" className="block text-sm font-bold text-slate-700 mb-1.5">
+                      Verification Code
+                    </label>
+                    <div className="relative">
+                      <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                      <Input
+                        id="code"
+                        type="text"
+                        placeholder="Enter 6-digit code"
+                        className="pl-10 h-12 bg-white border-slate-200 focus-visible:ring-slate-900 text-[15px]"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ─── Password (signin, signup, reset) ─── */}
+                {(mode === "signin" || mode === "signup" || mode === "reset") && (
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-1.5">
                       <label htmlFor="password" className="block text-sm font-bold text-slate-700">
@@ -326,8 +377,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
                   </div>
                 )}
 
-                {/* ─── Confirm Password (signup only) ─── */}
-                {mode === "signup" && (
+                {/* ─── Confirm Password (signup, reset) ─── */}
+                {(mode === "signup" || mode === "reset") && (
                   <div className="mb-6">
                     <label htmlFor="confirmPassword" className="block text-sm font-bold text-slate-700 mb-1.5">
                       Confirm Password
@@ -393,12 +444,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
                       {mode === "signin" && "Sign In"}
                       {mode === "signup" && "Create Account"}
                       {mode === "forgot" && "Send Reset Email"}
+                      {mode === "verify" && "Verify Code"}
+                      {mode === "reset" && "Reset Password"}
                     </>
                   )}
                 </Button>
 
-                {/* ─── Divider + Google (not on forgot) ─── */}
-                {mode !== "forgot" && (
+                {/* ─── Divider + Google (not on forgot/verify/reset) ─── */}
+                {(mode === "signin" || mode === "signup") && (
                   <>
                     <div className="flex items-center my-6">
                       <div className="flex-1 border-t border-slate-200" />

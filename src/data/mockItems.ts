@@ -1,4 +1,4 @@
-export type ItemType = 'READING' | 'LISTENING' | 'GRAMMAR' | 'VOCABULARY' | 'SPEAKING' | 'WRITING';
+export type ItemType = 'READING' | 'LISTENING' | 'GRAMMAR' | 'VOCABULARY' | 'SPEAKING' | 'WRITING' | 'IMAGE_DESCRIPTION' | 'FILL_IN_BLANKS' | 'INTEGRATED_TASK';
 
 export interface TestItem {
   id: string;
@@ -7,16 +7,30 @@ export interface TestItem {
   content: {
     prompt: string;
     passage?: string;
-    options?: string[]; // Optional for Speaking/Writing
+    options?: (string | { text?: string; imageUrl?: string; isCorrect?: boolean })[]; // MC options or image options
     correctIndex?: number; // Optional for Speaking/Writing
+    correctAnswer?: string; // For FILL_IN_BLANKS
     audioUrl?: string;
+    imageUrl?: string; // For Multimodal items
     minWords?: number; // For Writing
     maxTime?: number; // For Speaking (seconds)
+    type?: string; // Sub-type: CLOZE, READ_ALOUD, ESSAY, etc.
   };
 }
 
 export const mockItems: TestItem[] = [
-  // ... existing items ...
+  // --- Multimodal Image Description ---
+  {
+    id: "m_img1",
+    type: "IMAGE_DESCRIPTION",
+    difficulty: 3,
+    content: {
+      prompt: "Describe this image in detail. Speak for at least 30 seconds about what the people are doing and the setting.",
+      imageUrl: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=80",
+      maxTime: 60
+    }
+  },
+  ,
   {
     id: "r1",
     type: "READING",

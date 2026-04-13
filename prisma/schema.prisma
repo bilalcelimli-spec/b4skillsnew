@@ -137,6 +137,10 @@ model User {
   password        String?
   emailVerified   DateTime?
   image           String?
+  refreshToken         String?
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+  verifyEmailToken     String?
   
   // Relations
   sessions        Session[]

@@ -8,23 +8,8 @@ import './index.css';
 const originalFetch = window.fetch;
 window.fetch = async (input, init) => {
   if (typeof input === 'string' && input.startsWith('/api/')) {
-    let userEmail = 'bilalcelimli@gmail.com';
-    const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        userEmail = payload.email || userEmail;
-      } catch (e) {
-        // ignore invalid token parsing
-      }
-    }
-    
     init = init || {};
-    init.headers = {
-      ...init.headers,
-      'x-user-email': userEmail,
-      ...(token && { 'Authorization': `Bearer ${token}` })
-    };
+    init.credentials = 'include';
   }
   return originalFetch(input, init);
 };
