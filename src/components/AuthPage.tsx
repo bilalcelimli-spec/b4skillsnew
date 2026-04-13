@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { AuthError } from "firebase/auth";
 import { motion, AnimatePresence } from "motion/react";
 import { Mail, Lock, User, Eye, EyeOff, ArrowLeft, Loader2, BrainCircuit } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
-import { signInWithGoogle, signUpWithEmail, signInWithEmail, resetPassword, getAuthErrorMessage } from "../lib/firebase";
 import { cn } from "../lib/utils";
 import { DynamicPage } from "./DynamicPage";
 
@@ -72,16 +70,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
   const handleGoogleSignIn = async () => {
     clearState();
     setGoogleLoading(true);
-    try {
-      await signInWithGoogle();
-      // onAuthStateChanged in App.tsx handles the rest
-    } catch (err) {
-      setError(getAuthErrorMessage(err as AuthError));
-    } finally {
+    // Dummy delay
+    setTimeout(() => {
+      setError("Google Sign-In is temporarily disabled.");
       setGoogleLoading(false);
-    }
+    }, 1000);
   };
 
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearState();
@@ -89,14 +85,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
     if (mode === "forgot") {
       if (!email.trim()) { setError("Please enter your email address."); return; }
       setLoading(true);
-      try {
-        await resetPassword(email.trim());
+      setTimeout(() => {
         setSuccessMessage("Password reset email sent! Check your inbox.");
-      } catch (err) {
-        setError(getAuthErrorMessage(err as AuthError));
-      } finally {
         setLoading(false);
-      }
+      }, 1000);
       return;
     }
 
@@ -106,9 +98,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
       if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
       setLoading(true);
       try {
-        await signUpWithEmail(email.trim(), password, displayName.trim());
-      } catch (err) {
-        setError(getAuthErrorMessage(err as AuthError));
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim(), password, displayName: displayName.trim() })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to sign up');
+        localStorage.setItem('token', data.token); window.location.reload();
+      } catch (err: any) {
+        setError(err.message);
       } finally {
         setLoading(false);
       }
@@ -118,9 +117,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
     // signin
     setLoading(true);
     try {
-      await signInWithEmail(email.trim(), password);
-    } catch (err) {
-      setError(getAuthErrorMessage(err as AuthError));
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to sign in');
+      localStorage.setItem('token', data.token); window.location.reload();
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }

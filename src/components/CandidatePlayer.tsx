@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { db, auth, storage } from "@/src/lib/firebase";
-import { collection, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from "firebase/storage";
-import { TestItem } from "@/src/data/mockItems";
+import { TestItem, ItemType } from "@/src/data/mockItems";
 import { AdaptiveEngine, AbilityEstimate } from "@/src/services/adaptiveEngine";
 import { Button } from "./ui/Button";
 import { Card, CardContent, CardHeader, CardFooter } from "./ui/Card";
@@ -12,6 +9,8 @@ import { WritingEditor } from "./WritingEditor";
 import { CheckCircle2, Clock, AlertCircle, ChevronRight, Mic, FileText, BrainCircuit, Volume2 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { cn } from "../lib/utils";
+import { useProctoring } from "@/src/hooks/useProctoring";
+import { DeviceCheck } from "./DeviceCheck";
 
 interface CandidatePlayerProps {
   organizationId: string;
@@ -20,9 +19,13 @@ interface CandidatePlayerProps {
 }
 
 export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId, sessionId, onComplete }) => {
+  const [deviceChecked, setDeviceChecked] = useState<boolean>(false);
+  const { violations, showWarning, warningMessage, dismissWarning } = useProctoring(deviceChecked);
   const [currentEstimate, setCurrentEstimate] = useState<AbilityEstimate>({ theta: 2.5, standardError: 1.0 });
   const [usedItemIds, setUsedItemIds] = useState<Set<string>>(new Set());
   const [currentItem, setCurrentItem] = useState<TestItem | null>(null);
+  const [bankItems, setBankItems] = useState<TestItem[]>([]);
+  const [loadingBank, setLoadingBank] = useState(false);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [questionCount, setQuestionCount] = useState(0);
@@ -30,12 +33,67 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
   const [aiFeedback, setAiFeedback] = useState<{ score: number; feedback: string } | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'analyzing' | 'success' | 'error'>('idle');
+  const [fillAnswer, setFillAnswer] = useState<string>('');
+  const [itemStartTime, setItemStartTime] = useState<number>(Date.now());
 
   const MAX_QUESTIONS = 10;
 
+  // Load items from database once device is checked
   useEffect(() => {
-    loadNextItem();
-  }, []);
+    if (deviceChecked) {
+      setLoadingBank(true);
+      fetch('/api/items')
+        .then(res => res.json())
+        .then((itemsFetch: any[]) => {
+          // Normalize backend items to CandidatePlayer TestItem types if needed
+          const mapped: TestItem[] = itemsFetch.map(item => {
+            let type: ItemType;
+            if (item.type === 'FILL_IN_BLANKS') {
+              type = 'FILL_IN_BLANKS';
+            } else if (item.type === 'INTEGRATED_TASK') {
+              type = 'INTEGRATED_TASK';
+            } else if (item.type === 'SPEAKING_PROMPT' && item.content.type === 'IMAGE_DESCRIPTION') {
+              type = 'IMAGE_DESCRIPTION';
+            } else if (item.type === 'SPEAKING_PROMPT' || item.content.type === 'SPEAKING' || item.content.type === 'INTEGRATED_READ_SPEAK' || item.content.type === 'CONVERSATIONAL_REPLY' || item.content.type === 'DATA_INTERPRETATION' || item.content.type === 'READ_ALOUD') {
+              type = 'SPEAKING';
+            } else if (item.type === 'WRITING_PROMPT' || item.content.type === 'WRITING' || item.content.type === 'EMAIL' || item.content.type === 'PROPOSAL' || item.content.type === 'ESSAY' || item.content.type === 'DICTATION_PRACTICE') {
+              type = 'WRITING';
+            } else if (item.type === 'MULTIPLE_CHOICE' && item.skill === 'LISTENING') {
+              type = 'LISTENING';
+            } else if (item.type === 'MULTIPLE_CHOICE' && item.skill === 'GRAMMAR') {
+              type = 'GRAMMAR';
+            } else if (item.type === 'MULTIPLE_CHOICE' && item.skill === 'VOCABULARY') {
+              type = 'VOCABULARY';
+            } else if (item.type === 'MULTIPLE_CHOICE') {
+              type = 'READING';
+            } else {
+              type = (item.skill || 'READING') as ItemType;
+            }
+            return {
+              id: item.id,
+              type,
+              difficulty: item.difficulty || 3,
+              content: {
+                ...item.content,
+                correctIndex: typeof item.content.correctIndex === 'number' ? item.content.correctIndex : undefined
+              }
+            };
+          });
+          setBankItems(mapped);
+          setLoadingBank(false);
+        })
+        .catch(err => {
+          console.error("Failed to load test items", err);
+          setLoadingBank(false);
+        });
+    }
+  }, [deviceChecked]);
+
+  useEffect(() => {
+    if (deviceChecked && !loadingBank && bankItems.length > 0 && !currentItem && questionCount === 0) {
+      loadNextItem();
+    }
+  }, [deviceChecked, loadingBank, bankItems]);
 
   const loadNextItem = () => {
     if (questionCount >= MAX_QUESTIONS) {
@@ -48,12 +106,14 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
     if (questionCount === 4) targetType = 'SPEAKING';
     if (questionCount === 7) targetType = 'WRITING';
 
-    const nextItem = AdaptiveEngine.selectNextItem(currentEstimate.theta, usedItemIds, targetType);
+    const nextItem = AdaptiveEngine.selectNextItem(currentEstimate.theta, usedItemIds, bankItems.length > 0 ? bankItems : undefined, targetType);
     setCurrentItem(nextItem);
     setSelectedOption(null);
     setAiFeedback(null);
     setUploadStatus('idle');
     setUploadProgress(0);
+    setFillAnswer('');
+    setItemStartTime(Date.now());
     setQuestionCount(prev => prev + 1);
   };
 
@@ -61,10 +121,26 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
     if (selectedOption === null || !currentItem || isSubmitting) return;
 
     setIsSubmitting(true);
+    const latencyMs = Date.now() - itemStartTime;
     const isCorrect = selectedOption === currentItem.content.correctIndex;
     
     const newEstimate = AdaptiveEngine.updateEstimate(currentEstimate, currentItem, isCorrect);
-    await saveResponse(currentItem, isCorrect, newEstimate);
+    await saveResponse(currentItem, isCorrect, newEstimate, undefined, undefined, latencyMs);
+    setIsSubmitting(false);
+    loadNextItem();
+  };
+
+  const handleFillInBlanksSubmit = async () => {
+    if (!fillAnswer.trim() || !currentItem || isSubmitting) return;
+
+    setIsSubmitting(true);
+    const latencyMs = Date.now() - itemStartTime;
+    const correctAnswer = (currentItem.content.correctAnswer || '').toLowerCase().trim();
+    const userAnswer = fillAnswer.toLowerCase().trim();
+    const isCorrect = userAnswer === correctAnswer;
+    
+    const newEstimate = AdaptiveEngine.updateEstimate(currentEstimate, currentItem, isCorrect);
+    await saveResponse(currentItem, isCorrect, newEstimate, undefined, undefined, latencyMs);
     setIsSubmitting(false);
     loadNextItem();
   };
@@ -72,6 +148,7 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
   const handleSpeakingSubmit = async (blob: Blob) => {
     if (!currentItem || isSubmitting) return;
     setIsSubmitting(true);
+    const latencyMs = Date.now() - itemStartTime;
     setUploadProgress(0);
     setUploadStatus('uploading');
 
@@ -111,7 +188,7 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
 
       // 3. Update Estimate and Save
       const newEstimate = AdaptiveEngine.updateEstimate(currentEstimate, currentItem, aiData.score);
-      await saveResponse(currentItem, aiData.score, newEstimate, audioUrl, aiData.feedback);
+      await saveResponse(currentItem, aiData.score, newEstimate, audioUrl, aiData.feedback, latencyMs);
       
       // Delay for UX to show AI analysis
       setTimeout(() => {
@@ -127,6 +204,7 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
   const handleWritingSubmit = async (text: string) => {
     if (!currentItem || isSubmitting) return;
     setIsSubmitting(true);
+    const latencyMs = Date.now() - itemStartTime;
     setUploadProgress(0);
     setUploadStatus('uploading');
 
@@ -168,7 +246,7 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
 
       // 3. Update Estimate and Save
       const newEstimate = AdaptiveEngine.updateEstimate(currentEstimate, currentItem, aiData.score);
-      await saveResponse(currentItem, aiData.score, newEstimate, artifactUrl, aiData.feedback);
+      await saveResponse(currentItem, aiData.score, newEstimate, artifactUrl, aiData.feedback, latencyMs);
 
       // Delay for UX
       setTimeout(() => {
@@ -182,25 +260,25 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
     }
   };
 
-  const saveResponse = async (item: TestItem, scoreOrCorrect: boolean | number, newEstimate: AbilityEstimate, responseArtifact?: string, feedback?: string) => {
+  const saveResponse = async (item: TestItem, scoreOrCorrect: boolean | number, newEstimate: AbilityEstimate, responseArtifact?: string, feedback?: string, latencyMs?: number) => {
     try {
-      const responseRef = collection(db, "organizations", organizationId, "sessions", sessionId, "responses");
-      await addDoc(responseRef, {
+      const responseRef = "dummy";
+      await fetch('/api/responses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         itemId: item.id,
         type: item.type,
         score: typeof scoreOrCorrect === 'boolean' ? (scoreOrCorrect ? 1 : 0) : scoreOrCorrect,
         ResponseArtifact: responseArtifact || null,
         feedback: feedback || null,
         thetaAfter: newEstimate.theta,
-        timestamp: serverTimestamp()
-      });
+        latencyMs: latencyMs || 0,
+        timestamp: new Date().toISOString()
+      }) });
 
-      const sessionRef = doc(db, "organizations", organizationId, "sessions", sessionId);
-      await updateDoc(sessionRef, {
+      await fetch('/api/sessions/' + sessionId, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         currentStage: questionCount,
         abilityEstimate: newEstimate.theta,
-        lastUpdated: serverTimestamp()
-      });
+        lastUpdated: new Date().toISOString()
+      }) });
 
       setCurrentEstimate(newEstimate);
       setUsedItemIds(prev => new Set([...prev, item.id]));
@@ -218,11 +296,10 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
     });
     
     try {
-      const sessionRef = doc(db, "organizations", organizationId, "sessions", sessionId);
-      await updateDoc(sessionRef, {
+      await fetch('/api/sessions/' + sessionId, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         status: "completed",
-        completedAt: serverTimestamp()
-      });
+        completedAt: new Date().toISOString()
+      }) });
       onComplete(currentEstimate.theta);
     } catch (error) {
       console.error("Error finalizing session:", error);
@@ -302,15 +379,65 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
     );
   }
 
+  if (!deviceChecked) {
+    return <DeviceCheck onComplete={() => setDeviceChecked(true)} />;
+  }
+
+  if (!currentItem) {
+    return (
+      <div className="max-w-4xl mx-auto py-32 px-4 flex flex-col items-center text-center">
+        <BrainCircuit className="text-indigo-400 mb-6 animate-pulse" size={64} />
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">Analyzing your level...</h2>
+        <p className="text-slate-500">Our adaptive engine is selecting the best question for you.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <div className="h-2 w-48 bg-slate-200 rounded-full overflow-hidden">
-            <motion.div 
-              className="h-full bg-indigo-600"
-              initial={{ width: 0 }}
-              animate={{ width: `${(questionCount / MAX_QUESTIONS) * 100}%` }}
+    <>
+      {/* Proctoring Warning Overlay */}
+      <AnimatePresence>
+        {showWarning && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 border-2 border-red-500"
+            >
+              <div className="flex flex-col items-center text-center">
+                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4">
+                  <AlertCircle size={32} strokeWidth={2.5} />
+                </div>
+                <h3 className="text-2xl font-bold text-slate-900 mb-2">Proctoring Warning</h3>
+                <p className="text-slate-600 mb-6">{warningMessage}</p>
+                <div className="flex justify-center w-full">
+                  <Button 
+                    onClick={dismissWarning}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-2.5 rounded-lg"
+                  >
+                    I Understand
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="max-w-4xl mx-auto py-8 px-4">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <div className="h-2 w-48 bg-slate-200 rounded-full overflow-hidden">
+              <motion.div 
+                className="h-full bg-indigo-600"
+                initial={{ width: 0 }}
+                animate={{ width: `${(questionCount / MAX_QUESTIONS) * 100}%` }}
             />
           </div>
           <span className="text-sm font-medium text-slate-500">Task {questionCount} of {MAX_QUESTIONS}</span>
@@ -350,13 +477,15 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
                     currentItem.type === 'SPEAKING' ? "bg-red-100 text-red-700" : 
                     currentItem.type === 'WRITING' ? "bg-amber-100 text-amber-700" :
                     currentItem.type === 'LISTENING' ? "bg-blue-100 text-blue-700" :
+                    currentItem.type === 'FILL_IN_BLANKS' ? "bg-teal-100 text-teal-700" :
+                    currentItem.type === 'INTEGRATED_TASK' ? "bg-pink-100 text-pink-700" :
                     currentItem.type === 'VOCABULARY' ? "bg-purple-100 text-purple-700" :
                     "bg-indigo-100 text-indigo-700"
                   )}>
                     {currentItem.type === 'SPEAKING' && <Mic size={12} />}
                     {currentItem.type === 'WRITING' && <FileText size={12} />}
-                    {currentItem.type === 'LISTENING' && <Volume2 size={12} />}
-                    {currentItem.type}
+                    {(currentItem.type === 'LISTENING' || currentItem.type === 'INTEGRATED_TASK') && <Volume2 size={12} />}
+                    {currentItem.type === 'FILL_IN_BLANKS' ? 'FILL IN THE BLANK' : currentItem.type === 'INTEGRATED_TASK' ? 'INTEGRATED' : currentItem.type}
                   </span>
                   <span className="text-slate-400 text-xs">•</span>
                   <span className="text-slate-500 text-xs font-medium">Difficulty: {currentItem.difficulty}</span>
@@ -381,17 +510,37 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
                     />
                   </div>
                 )}
+                {currentItem.content.imageUrl && currentItem.type !== 'IMAGE_DESCRIPTION' && currentItem.type !== 'INTEGRATED_TASK' && (
+                  <div className="mt-4 relative w-full overflow-hidden rounded-xl bg-slate-100 shadow-inner">
+                    <img 
+                      src={currentItem.content.imageUrl} 
+                      alt="Question context" 
+                      className="w-full max-h-60 object-cover object-center" 
+                    />
+                  </div>
+                )}
               </CardHeader>
 
               <CardContent className="py-6">
-                {currentItem.type === 'SPEAKING' ? (
-                  <SpeakingRecorder 
-                    maxTime={currentItem.content.maxTime || 60} 
-                    onRecordingComplete={handleSpeakingSubmit}
-                    isUploading={isSubmitting}
-                    uploadProgress={uploadProgress}
-                    uploadStatus={uploadStatus}
-                  />
+                {(currentItem.type === 'SPEAKING' || currentItem.type === 'IMAGE_DESCRIPTION') ? (
+                  <div className="flex flex-col gap-6">
+                    {currentItem.type === 'IMAGE_DESCRIPTION' && currentItem.content.imageUrl && (
+                      <div className="relative w-full overflow-hidden rounded-xl bg-slate-100 shadow-inner">
+                        <img 
+                          src={currentItem.content.imageUrl} 
+                          alt="Describe this" 
+                          className="w-full max-h-80 object-cover object-center" 
+                        />
+                      </div>
+                    )}
+                    <SpeakingRecorder 
+                      maxTime={currentItem.content.maxTime || 60} 
+                      onRecordingComplete={handleSpeakingSubmit}
+                      isUploading={isSubmitting}
+                      uploadProgress={uploadProgress}
+                      uploadStatus={uploadStatus}
+                    />
+                  </div>
                 ) : currentItem.type === 'WRITING' ? (
                   <WritingEditor 
                     prompt={currentItem.content.prompt}
@@ -401,43 +550,109 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
                     uploadProgress={uploadProgress}
                     uploadStatus={uploadStatus}
                   />
+                ) : currentItem.type === 'FILL_IN_BLANKS' ? (
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={fillAnswer}
+                        onChange={(e) => setFillAnswer(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleFillInBlanksSubmit()}
+                        placeholder="Type your answer here..."
+                        className="w-full px-4 py-3 text-lg border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all bg-white"
+                        autoFocus
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                  </div>
+                ) : currentItem.type === 'INTEGRATED_TASK' && currentItem.content.options ? (
+                  <div className="space-y-4">
+                    {/* Image-based options for integrated tasks */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {currentItem.content.options.map((option: any, index: number) => {
+                        const imgUrl = typeof option === 'object' ? option.imageUrl : null;
+                        const label = typeof option === 'object' ? (option.text || `Option ${index + 1}`) : option;
+                        return (
+                          <button
+                          key={index}
+                            onClick={() => setSelectedOption(index)}
+                            className={cn(
+                              "rounded-xl border-2 overflow-hidden transition-all",
+                              selectedOption === index 
+                                ? "border-indigo-600 ring-2 ring-indigo-200 shadow-lg" 
+                                : "border-slate-100 hover:border-slate-300"
+                            )}
+                          >
+                            {imgUrl && (
+                              <div className="aspect-square bg-slate-50">
+                                <img src={imgUrl} alt={label} className="w-full h-full object-cover" />
+                              </div>
+                            )}
+                            <div className="p-3 text-center">
+                              <span className={cn(
+                                "text-sm font-medium",
+                                selectedOption === index ? "text-indigo-700" : "text-slate-600"
+                              )}>
+                                {label}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ) : (
                   <div className="space-y-3">
-                    {currentItem.content.options?.map((option, index) => (
-                      <button
-                        key={index}
-                        onClick={() => setSelectedOption(index)}
-                        className={cn(
-                          "w-full text-left p-4 rounded-xl border-2 transition-all flex items-center justify-between group",
-                          selectedOption === index 
-                            ? "border-indigo-600 bg-indigo-50/50 text-indigo-900" 
-                            : "border-slate-100 hover:border-slate-300 bg-white text-slate-700"
-                        )}
-                      >
-                        <span className="font-medium">{option}</span>
-                        <div className={cn(
-                          "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors",
-                          selectedOption === index ? "border-indigo-600 bg-indigo-600" : "border-slate-200 group-hover:border-slate-300"
-                        )}>
-                          {selectedOption === index && <div className="w-2 h-2 bg-white rounded-full" />}
-                        </div>
-                      </button>
-                    ))}
+                    {currentItem.content.options?.map((option: any, index: number) => {
+                      const label = typeof option === 'object' ? (option.text || option) : option;
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => setSelectedOption(index)}
+                          className={cn(
+                            "w-full text-left p-4 rounded-xl border-2 transition-all flex items-center justify-between group",
+                            selectedOption === index 
+                              ? "border-indigo-600 bg-indigo-50/50 text-indigo-900" 
+                              : "border-slate-100 hover:border-slate-300 bg-white text-slate-700"
+                          )}
+                        >
+                          <span className="font-medium">{label}</span>
+                          <div className={cn(
+                            "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors",
+                            selectedOption === index ? "border-indigo-600 bg-indigo-600" : "border-slate-200 group-hover:border-slate-300"
+                          )}>
+                            {selectedOption === index && <div className="w-2 h-2 bg-white rounded-full" />}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
 
-              {currentItem.type !== 'SPEAKING' && currentItem.type !== 'WRITING' && (
+              {currentItem.type !== 'SPEAKING' && currentItem.type !== 'WRITING' && currentItem.type !== 'IMAGE_DESCRIPTION' && (
                 <CardFooter className="flex justify-end">
-                  <Button 
-                    size="lg" 
-                    disabled={selectedOption === null || isSubmitting}
-                    onClick={handleObjectiveSubmit}
-                    className="min-w-[140px]"
-                  >
-                    {isSubmitting ? "Saving..." : questionCount === MAX_QUESTIONS ? "Finish Test" : "Next Question"}
-                    {!isSubmitting && <ChevronRight className="ml-2" size={18} />}
-                  </Button>
+                  {currentItem.type === 'FILL_IN_BLANKS' ? (
+                    <Button 
+                      size="lg" 
+                      disabled={!fillAnswer.trim() || isSubmitting}
+                      onClick={handleFillInBlanksSubmit}
+                      className="min-w-[140px]"
+                    >
+                      {isSubmitting ? "Saving..." : questionCount === MAX_QUESTIONS ? "Finish Test" : "Submit Answer"}
+                      {!isSubmitting && <ChevronRight className="ml-2" size={18} />}
+                    </Button>
+                  ) : (
+                    <Button 
+                      size="lg" 
+                      disabled={selectedOption === null || isSubmitting}
+                      onClick={handleObjectiveSubmit}
+                      className="min-w-[140px]"
+                    >
+                      {isSubmitting ? "Saving..." : questionCount === MAX_QUESTIONS ? "Finish Test" : "Next Question"}
+                      {!isSubmitting && <ChevronRight className="ml-2" size={18} />}
+                    </Button>
+                  )}
                 </CardFooter>
               )}
             </Card>
@@ -449,8 +664,10 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
         <AlertCircle className="text-amber-600 shrink-0" size={20} />
         <p className="text-sm text-amber-800">
           <strong>Proctoring Active:</strong> Your camera and focus are being monitored. Do not switch tabs or leave the browser window.
+          {violations > 0 && <span className="ml-2 font-bold text-red-600">Violations recorded: {violations}</span>}
         </p>
       </div>
     </div>
+    </>
   );
 };

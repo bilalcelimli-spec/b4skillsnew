@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { auth, db } from "./lib/firebase";
+
 import { AuthPage } from "./components/AuthPage";
 import { CodeEntryPage } from "./components/CodeEntryPage";
-import { onAuthStateChanged, User, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
+type User = { uid: string; email: string; displayName?: string; role?: string };
+const signOut = async () => { localStorage.removeItem("token"); window.location.reload(); };
+
 import { Button } from "./components/ui/Button";
 import { Card, CardContent, CardHeader } from "./components/ui/Card";
 import { AdminDashboard } from "./components/AdminDashboard";
@@ -33,71 +34,46 @@ export default function App() {
   const [certificate, setCertificate] = useState<any>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        setShowLanding(false);
-        try {
-          // Sync user profile via Firestore
-          const userRef = doc(db, "users", currentUser.uid);
-          const userSnap = await getDoc(userRef);
-          let profile: any;
-          if (!userSnap.exists()) {
-            let role = "candidate";
-            if (currentUser.email === "bilalcelimli@gmail.com") role = "admin";
-            if (currentUser.email?.includes("rater")) role = "rater";
-            if (currentUser.email?.includes("orgadmin")) role = "org_admin";
-
-            profile = {
-              uid: currentUser.uid,
-              email: currentUser.email,
-              displayName: currentUser.displayName,
-              role,
-              organizationId: currentUser.email?.includes("oxford") ? "oxford-academy" : "b4skills-demo",
-              createdAt: new Date().toISOString()
-            };
-            await setDoc(userRef, profile);
-            setUserProfile(profile);
-          } else {
-            profile = userSnap.data();
-            setUserProfile(profile);
-          }
-
-          // Fetch Branding
-          if (profile?.organizationId) {
-            try {
-              const res = await fetch(`/api/branding/${profile.organizationId}`);
-              const b = await res.json();
-              setBranding(b);
-            } catch (err) {}
-          }
-        } catch (err) {
-          // Firestore unavailable (wrong DB ID, network, or rules) — derive profile locally
-          console.warn("Firestore unavailable, using local fallback profile:", err);
-          let role = "candidate";
-          if (currentUser.email === "bilalcelimli@gmail.com") role = "admin";
-          if (currentUser.email?.includes("rater")) role = "rater";
-          if (currentUser.email?.includes("orgadmin")) role = "org_admin";
-          const fallback = {
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName || currentUser.email?.split("@")[0],
-            role,
-            organizationId: currentUser.email?.includes("oxford") ? "oxford-academy" : "b4skills-demo",
-            createdAt: new Date().toISOString()
-          };
-          setUserProfile(fallback);
-          // Still try branding
-          try {
-            const res = await fetch(`/api/branding/${fallback.organizationId}`);
-            const b = await res.json();
-            setBranding(b);
-          } catch {}
+    const token = localStorage.getItem("token");
+    if (token) {
+      setLoading(true);
+      fetch("/api/auth/me", {
+        headers: { Authorization: "Bearer " + token }
+      }).then(res => {
+        if (!res.ok) throw new Error("Invalid token");
+        return res.json();
+      })
+      .then(async data => {
+        if(data.user) {
+           setUser(data.user);
+           setUserProfile(data.user);
+           setShowLanding(false);
+           
+           if(data.user.role === "RATER" || data.user.role === "rater") setActiveTab("rating");
+           else if(data.user.role === "ADMIN" || data.user.role === "admin") setActiveTab("admin");
+           else if(data.user.role === "ORG_ADMIN" || data.user.role === "org_admin") setActiveTab("institutional");
+           
+           // Fetch Branding if org is attached
+           if (data.user.organizationId) {
+             try {
+               const res = await fetch(`/api/branding/${data.user.organizationId}`);
+               if (res.ok) {
+                 const b = await res.json();
+                 setBranding(b);
+               }
+             } catch (err) {}
+           }
         }
-      }
+      }).catch(err => {
+        console.error(err);
+        localStorage.removeItem("token");
+        setUser(null);
+        setShowLanding(true);
+      })
+      .finally(() => setLoading(false));
+    } else {
       setLoading(false);
-    });
-    return unsubscribe;
+    }
   }, []);
 
   const startNewTest = async (productLine?: string) => {
@@ -262,7 +238,7 @@ export default function App() {
             </div>
           </div>
           <button 
-            onClick={() => signOut(auth)}
+            onClick={() => signOut()}
             className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest w-full"
           >
             <LogOut size={18} /> Sign Out
@@ -285,7 +261,7 @@ export default function App() {
         ) : activeTab === "results" && certificate ? (
           <CertificateView certificate={certificate} branding={branding} />
         ) : activeTab === "profile" ? (
-          <CandidateProfile user={userProfile} onLogout={() => signOut(auth)} />
+          <CandidateProfile user={userProfile} onLogout={() => signOut()} />
         ) : (
           <>
             <header className="flex items-center justify-between mb-12">

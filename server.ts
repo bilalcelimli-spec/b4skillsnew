@@ -5,6 +5,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import cors from "cors";
 import crypto from "crypto";
+import * as bcrypt from "bcrypt";
+import * as jwt from "jsonwebtoken";
 import { prisma } from "./src/lib/prisma.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
 
@@ -35,6 +37,65 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+  // --- AUTH ROUTES ---
+      const JWT_SECRET = process.env.JWT_SECRET || "super-secret-default-key";
+
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, password, displayName } = req.body;
+      if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+      let user = await prisma.user.findUnique({ where: { email } });
+      if (user) return res.status(400).json({ error: 'User already exists' });
+      
+      const hashedPassword = await bcrypt.hash(password, 10);
+      user = await prisma.user.create({
+        data: {
+          email,
+          name: displayName,
+          password: hashedPassword,
+          role: "CANDIDATE"
+        }
+      });
+      const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+      return res.json({ token, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user || !user.password) return res.status(401).json({ error: 'Invalid credentials' });
+      
+      const isValid = await bcrypt.compare(password, user.password);
+      if (!isValid) return res.status(401).json({ error: 'Invalid credentials' });
+      
+      const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+      return res.json({ token, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/auth/me", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) return res.status(401).json({ error: 'Missing token' });
+      
+      const token = authHeader.split(" ")[1];
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      
+      const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      
+      return res.json({ user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
+    } catch (err: any) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+  });
   
   // --- OFFLINE MOCK MIDDLEWARE ---
   // If no database is available, we intercept admin routes and serve mock data
@@ -396,10 +457,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.post("/api/sessions/:id/respond", async (req, res) => {
     try {
       const { id } = req.params;
-      const { itemId, value } = req.body;
+      const { itemId, value, latencyMs } = req.body;
       let result;
       try {
-        result = await AssessmentService.submitResponse(id, itemId, value);
+        result = await AssessmentService.submitResponse(id, itemId, value, latencyMs);
       } catch(err) {
         if (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-")) {
           if (mockSessions[id]) mockSessions[id].progress++;

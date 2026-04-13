@@ -3,17 +3,27 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './index.css';
-import { auth } from './lib/firebase';
 
 // Global API Fetch Interceptor
 const originalFetch = window.fetch;
 window.fetch = async (input, init) => {
   if (typeof input === 'string' && input.startsWith('/api/')) {
-    const userEmail = auth.currentUser?.email || 'bilalcelimli@gmail.com';
+    let userEmail = 'bilalcelimli@gmail.com';
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        userEmail = payload.email || userEmail;
+      } catch (e) {
+        // ignore invalid token parsing
+      }
+    }
+    
     init = init || {};
     init.headers = {
       ...init.headers,
-      'x-user-email': userEmail
+      'x-user-email': userEmail,
+      ...(token && { 'Authorization': `Bearer ${token}` })
     };
   }
   return originalFetch(input, init);

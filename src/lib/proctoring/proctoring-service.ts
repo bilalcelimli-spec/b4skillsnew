@@ -1,13 +1,6 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
-import firebaseConfig from '../../../firebase-applet-config.json';
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-
 /**
  * b4skills Proctoring & Fraud Detection Service
- * Tracks session telemetry and calculates candidate trust scores using Firestore.
+ * Tracks session telemetry and calculates candidate trust scores via REST.
  */
 
 export enum ProctoringEventType {
@@ -33,77 +26,37 @@ export interface ProctoringEvent {
 
 export interface SessionTrustReport {
   sessionId: string;
-  trustScore: number; // 0.0 to 1.0
+  trustScore: number;
   events: ProctoringEvent[];
   status: "CLEAN" | "FLAGGED" | "FAILED";
   summary: string;
 }
 
 export const ProctoringService = {
-  /**
-   * Log a proctoring event to Firestore
-   */
   async logEvent(sessionId: string, event: Omit<ProctoringEvent, "id" | "timestamp">) {
     try {
-      const payload: any = {
-        ...event,
-        sessionId,
-        timestamp: serverTimestamp()
-      };
-      if (payload.metadata === undefined) {
-        delete payload.metadata;
-      }
-      
-      const docRef = await addDoc(collection(db, "proctoring_events"), payload);
-      return { id: docRef.id, ...event };
+      const res = await fetch('/api/proctoring/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...event, sessionId })
+      });
+      if (!res.ok) throw new Error('API error logEvent');
+      const data = await res.json();
+      return data;
     } catch (error) {
-      console.warn("Failed to log proctoring event to Firestore (Permission Denied/Offline). Event swallowed:", error);
+      console.warn("Failed to log proctoring event to API. Event swallowed:", error);
       return { id: "offline-" + Date.now(), ...event };
     }
   },
 
-  /**
-   * Generate a trust report for a session from Firestore events
-   */
   async getTrustReport(sessionId: string): Promise<SessionTrustReport> {
     try {
-      const q = query(collection(db, "proctoring_events"), where("sessionId", "==", sessionId));
-      const querySnapshot = await getDocs(q);
-      
-      const events: ProctoringEvent[] = [];
-      querySnapshot.forEach((doc) => {
-        events.push({ id: doc.id, ...doc.data() } as ProctoringEvent);
-      });
-      
-      // Calculate trust score based on event severity
-      let penalty = 0;
-      events.forEach(e => {
-        if (e.severity === "HIGH") penalty += 0.3;
-        if (e.severity === "MEDIUM") penalty += 0.1;
-        if (e.severity === "LOW") penalty += 0.02;
-      });
-
-      const trustScore = Math.max(0, 1 - penalty);
-      let status: SessionTrustReport["status"] = "CLEAN";
-      let summary = "No significant proctoring issues detected.";
-
-      if (trustScore < 0.5) {
-        status = "FAILED";
-        summary = "Critical proctoring violations detected. Session integrity compromised.";
-      } else if (trustScore < 0.85) {
-        status = "FLAGGED";
-        summary = "Multiple minor violations detected. Manual review recommended.";
-      }
-
-      return {
-        sessionId,
-        trustScore,
-        events,
-        status,
-        summary
-      };
+      const res = await fetch(`/api/proctoring/report?sessionId=${sessionId}`);
+      if (!res.ok) throw new Error('API error getTrustReport');
+      const report = await res.json();
+      return report;
     } catch (error) {
-      console.error("Failed to fetch trust report from Firestore:", error);
+      console.error("Failed to fetch trust report from API:", error);
       throw error;
     }
   }
