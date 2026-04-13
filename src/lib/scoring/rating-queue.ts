@@ -1,5 +1,3 @@
-import { AIScoringService, ScoringResult } from "./ai-scoring";
-
 import { prisma } from "../prisma";
 import { RatingStatus } from "@prisma/client";
 
@@ -31,6 +29,21 @@ export const RatingQueueService = {
     });
 
     if (!response) throw new Error("Response not found for enqueuing");
+
+    if (params.aiResult) {
+      await prisma.response.update({
+        where: { id: response.id },
+        data: {
+          metadata: {
+            ...((response.metadata as any) || {}),
+            reviewQueue: {
+              enqueuedAt: new Date().toISOString(),
+              aiResult: params.aiResult
+            }
+          }
+        }
+      });
+    }
 
     const task = await prisma.ratingTask.create({
       data: {

@@ -1,8 +1,9 @@
 import { AssessmentEngine } from "./engine";
-import { SessionState, Item, Response, EngineConfig, SkillType } from "./types";
+import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint } from "./types";
 import { prisma } from "../prisma";
-import { GeminiScoringService } from "../scoring/gemini-scoring-service";
+import { ScoringOrchestrator } from "../scoring/scoring-orchestrator";
 import { RatingQueueService } from "../scoring/rating-queue";
+import { CalibrationService } from "./calibration-service";
 import { SessionStatus, ItemType, CefrLevel } from "@prisma/client";
 
 import { BillingService } from "../enterprise/billing-service";
@@ -12,13 +13,25 @@ import { BillingService } from "../enterprise/billing-service";
  * Manages the lifecycle of test sessions and interacts with the database.
  */
 
+/** Default content blueprint: min/max items per skill in a 15-item test. */
+const DEFAULT_BLUEPRINT: BlueprintConstraint[] = [
+  { skill: SkillType.READING,    minCount: 2, maxCount: 4 },
+  { skill: SkillType.GRAMMAR,    minCount: 2, maxCount: 4 },
+  { skill: SkillType.VOCABULARY, minCount: 2, maxCount: 3 },
+  { skill: SkillType.LISTENING,  minCount: 1, maxCount: 3 },
+  { skill: SkillType.WRITING,    minCount: 1, maxCount: 2 },
+  { skill: SkillType.SPEAKING,   minCount: 1, maxCount: 2 },
+];
+
 const DEFAULT_CONFIG: EngineConfig = {
   minItems: 3,
   maxItems: 15,
   semThreshold: 0.3,
   startingTheta: 0.0,
   startingSem: 1.0,
-  pretestRatio: 0.1, // 10% of items are pretest
+  pretestRatio: 0.1,
+  speedThresholdMs: 2500,      // Responses faster than 2.5s on hard items → guessing flag
+  blueprint: DEFAULT_BLUEPRINT,
   cefrThresholds: {
     A1: -2.5,
     A2: -1.5,
@@ -45,10 +58,12 @@ export async function getEngine(): Promise<AssessmentEngine> {
       const cefrThresholds = config.cefrThresholds || DEFAULT_CONFIG.cefrThresholds;
       const pretestRatio = config.pretestRatio ?? DEFAULT_CONFIG.pretestRatio;
       
+      const blueprint: BlueprintConstraint[] = config.blueprint || DEFAULT_BLUEPRINT;
       engineInstance = new AssessmentEngine({ 
         ...DEFAULT_CONFIG, 
         cefrThresholds,
-        pretestRatio
+        pretestRatio,
+        blueprint
       });
       lastConfigUpdate = now;
     } catch (error) {
@@ -188,13 +203,21 @@ export const AssessmentService = {
       return { stop: true, reason: "NO_ITEMS_LEFT", finalTheta: session.theta };
     }
 
-    return { stop: false, item: nextItem };
+    // ── ANSWER SECURITY ──────────────────────────────────────────────────────
+    // Strip sensitive answer/rubric fields before sending to client.
+    // Scoring always happens server-side; the client never receives the key.
+    const safeContent = { ...(nextItem.metadata || {}) };
+    delete safeContent.correctAnswer;
+    delete safeContent.correctOptionIndex;
+    delete safeContent.rubric;
+
+    return { stop: false, item: { ...nextItem, metadata: safeContent } };
   },
 
   /**
    * Submit a response
    */
-  async submitResponse(sessionId: string, itemId: string, value: any) {
+  async submitResponse(sessionId: string, itemId: string, value: any, clientLatencyMs?: number) {
     const engine = await getEngine();
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
@@ -225,31 +248,36 @@ export const AssessmentService = {
     // Calculate score
     let score = 0;
     let aiResult = null;
+    let scoringDecision = null;
 
-    if (item.metadata.correctIndex !== undefined) {
-      score = value === item.metadata.correctIndex ? 1 : 0;
-    } else if (item.metadata.options && Array.isArray(item.metadata.options) && typeof value === 'number') {
-      const option = item.metadata.options[value];
+    if (item.metadata?.correctIndex !== undefined) {
+      score = value === item.metadata?.correctIndex ? 1 : 0;
+    } else if (item.metadata?.correctAnswer !== undefined && typeof value === 'string') {
+      // FILL_IN_BLANKS: compare text answers case-insensitively
+      score = value.trim().toLowerCase() === String(item.metadata.correctAnswer).trim().toLowerCase() ? 1 : 0;
+    } else if (item.metadata?.options && Array.isArray(item.metadata?.options) && typeof value === 'number') {
+      const option = item.metadata?.options[value];
       score = option && option.isCorrect ? 1 : 0;
     } else {
       try {
-        const prompt = item.metadata.prompt || "Please respond to the task.";
+        const prompt = item.metadata?.prompt || "Please respond to the task.";
         const itemSkill = String(item.skill).toUpperCase();
         
         if (itemSkill === "WRITING") {
-          aiResult = await GeminiScoringService.scoreWriting(value, prompt);
+          scoringDecision = await ScoringOrchestrator.scoreWriting(String(value), prompt);
         } else if (itemSkill === "SPEAKING") {
           // Check if value is multimodal (audio + mimeType)
           if (typeof value === "object" && value.audio && value.mimeType) {
-            aiResult = await GeminiScoringService.scoreSpeaking(value.audio, value.mimeType, prompt);
+            scoringDecision = await ScoringOrchestrator.scoreSpeaking(value.audio, value.mimeType, prompt);
           } else {
             // Fallback for text-only or simulated speaking
-            aiResult = await GeminiScoringService.scoreWriting(value, prompt);
+            scoringDecision = await ScoringOrchestrator.scoreSpeakingFromText(String(value), prompt);
           }
         }
         
-        if (aiResult) {
-          score = aiResult.score;
+        if (scoringDecision) {
+          aiResult = scoringDecision.aiResult;
+          score = scoringDecision.score;
         }
       } catch (error) {
         console.error("AI Scoring failed, enqueuing for human review...");
@@ -274,7 +302,7 @@ export const AssessmentService = {
       itemId,
       score,
       isPretest: item.isPretest,
-      latencyMs: 0 
+      latencyMs: typeof clientLatencyMs === 'number' && clientLatencyMs > 0 ? clientLatencyMs : 0 
     };
 
       // Fetch previously used items to calculate new theta correctly
@@ -304,18 +332,25 @@ export const AssessmentService = {
                   itemId,
                   value: typeof value === 'string' ? value : JSON.stringify(value),
           score,
-          isCorrect: score === 1,
+          isCorrect: score >= 0.5,
           isPretest: item.isPretest || false,
           aiScore: aiResult?.score,
+          latencyMs: typeof clientLatencyMs === 'number' && clientLatencyMs > 0 ? clientLatencyMs : 0,
           order: session.responses.length + 1,
-          metadata: aiResult ? { 
+          metadata: aiResult ? {
             aiFeedback: aiResult.feedback, 
             confidence: aiResult.confidence,
             speakingFeatures: aiResult.speakingFeatures,
             cefrLevel: aiResult.cefrLevel,
             rubricScores: aiResult.rubricScores,
             corrections: aiResult.corrections,
-            transcript: aiResult.transcript
+            transcript: aiResult.transcript,
+            scoreSource: scoringDecision?.scoreSource,
+            reviewReasons: scoringDecision?.reviewReasons,
+            agreementDelta: scoringDecision?.agreementDelta,
+            model: scoringDecision?.model,
+            modelVersion: scoringDecision?.modelVersion,
+            scoringPasses: scoringDecision?.scoringPasses
           } : undefined
         } as any
       }),
@@ -329,13 +364,19 @@ export const AssessmentService = {
     ]);
 
     // Enqueue for human review if needed
-    if (aiResult && aiResult.confidence < 0.7) {
+    if (scoringDecision?.requiresHumanReview) {
       await RatingQueueService.enqueue({
         sessionId,
         itemId,
         type: item.skill as any,
         content: value,
-        aiResult
+        aiResult: {
+          ...aiResult,
+          reviewReasons: scoringDecision.reviewReasons,
+          agreementDelta: scoringDecision.agreementDelta,
+          scoreSource: scoringDecision.scoreSource,
+          scoringPasses: scoringDecision.scoringPasses
+        }
       });
     } else if (!aiResult && (item.skill === "WRITING" || item.skill === "SPEAKING")) {
       // Enqueue if AI failed completely
@@ -353,13 +394,22 @@ export const AssessmentService = {
       await this.finalizeSession(sessionId, newState.theta);
     }
 
+    // Online item calibration — fire-and-forget, won't block the response
+    CalibrationService.recalibrateItem(itemId).catch(() => {});
+
+    // Persist per-skill theta profiles back to session metadata
+    const profileUpdate = newState.skillProfiles
+      ? { skillProfiles: newState.skillProfiles }
+      : {};
+
     return { 
       success: true, 
       theta: newState.theta, 
       sem: newState.sem,
-      isCorrect: score === 1,
+      isCorrect: score >= 0.5,
       aiResult,
-      isCompleted: stopCheck.stop
+      isCompleted: stopCheck.stop,
+      skillProfiles: newState.skillProfiles
     };
   },
 
