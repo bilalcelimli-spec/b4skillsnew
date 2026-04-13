@@ -510,7 +510,10 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
                     />
                   </div>
                 )}
-                {currentItem.content.imageUrl && currentItem.type !== 'IMAGE_DESCRIPTION' && currentItem.type !== 'INTEGRATED_TASK' && (
+                {currentItem.content.imageUrl &&
+                  currentItem.type !== 'IMAGE_DESCRIPTION' &&
+                  currentItem.type !== 'INTEGRATED_TASK' &&
+                  !(currentItem.type === 'FILL_IN_BLANKS' && currentItem.skill === 'LISTENING') && (
                   <div className="mt-4 relative w-full overflow-hidden rounded-xl bg-slate-100 shadow-inner">
                     <img 
                       src={currentItem.content.imageUrl} 

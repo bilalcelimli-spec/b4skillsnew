@@ -34,7 +34,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   const renderPassage = (passage: string | undefined) => {
     let elements = [];
     
-    if (content?.imageUrl) {
+    if (content?.imageUrl && !(itemSkill === 'LISTENING' && String(item.type).toUpperCase() === 'FILL_IN_BLANKS')) {
       elements.push(
         <div key="image" className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col justify-center items-center mb-6">
           <img src={content.imageUrl} alt="Question Visual" className="max-w-full max-h-64 rounded-xl shadow-md" />
