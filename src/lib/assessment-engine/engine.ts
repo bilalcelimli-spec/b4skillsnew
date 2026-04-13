@@ -1,6 +1,7 @@
 import { estimateTheta } from "./estimator";
 import { selectNextItem } from "./selector";
 import { SessionState, Response, Item, EngineConfig, CefrLevel, SkillType, SkillProfile } from "./types";
+import { thetaToCefr, CEFR_THETA_THRESHOLDS } from "../cefr/cefr-framework.js";
 
 /**
  * b4skills Assessment Engine
@@ -165,27 +166,28 @@ export class AssessmentEngine {
   }
 
   /**
-   * Map the final ability estimate (theta) to a CEFR level
-   * This mapping uses thresholds from the engine configuration,
-   * which can be derived from a calibration study.
+   * Map the final ability estimate (theta) to a CEFR level.
+   * Delegates to the canonical CEFR framework (src/lib/cefr/cefr-framework.ts).
+   * Config thresholds take precedence when provided (allows org-level calibration).
    */
   public mapToCefr(theta: number): CefrLevel {
-    const thresholds = this.config.cefrThresholds || {};
-    
-    // Default thresholds if not provided in config
-    const a1 = thresholds.A1 ?? -2.5;
-    const a2 = thresholds.A2 ?? -1.5;
-    const b1 = thresholds.B1 ?? -0.5;
-    const b2 = thresholds.B2 ?? 0.5;
-    const c1 = thresholds.C1 ?? 1.5;
-    const c2 = thresholds.C2 ?? 2.5;
-
-    if (theta < a1) return "PRE_A1";
-    if (theta < a2) return "A1";
-    if (theta < b1) return "A2";
-    if (theta < b2) return "B1";
-    if (theta < c1) return "B2";
-    if (theta < c2) return "C1";
-    return "C2";
+    const thresholds = this.config.cefrThresholds;
+    // If calibrated thresholds supplied by org, honour them; else use framework defaults
+    if (thresholds && Object.keys(thresholds).length > 0) {
+      const a1 = thresholds.A1 ?? CEFR_THETA_THRESHOLDS.PRE_A1;
+      const a2 = thresholds.A2 ?? CEFR_THETA_THRESHOLDS.A1;
+      const b1 = thresholds.B1 ?? CEFR_THETA_THRESHOLDS.A2;
+      const b2 = thresholds.B2 ?? CEFR_THETA_THRESHOLDS.B1;
+      const c1 = thresholds.C1 ?? CEFR_THETA_THRESHOLDS.B2;
+      const c2 = thresholds.C2 ?? CEFR_THETA_THRESHOLDS.C1;
+      if (theta < a1) return "PRE_A1";
+      if (theta < a2) return "A1";
+      if (theta < b1) return "A2";
+      if (theta < b2) return "B1";
+      if (theta < c1) return "B2";
+      if (theta < c2) return "C1";
+      return "C2";
+    }
+    return thetaToCefr(theta);
   }
 }

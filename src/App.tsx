@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { thetaToCefr, CEFR_META } from "./lib/cefr/cefr-framework";
+import { CefrLevelCard } from "./components/CefrLevelCard";
 
 import { AuthPage } from "./components/AuthPage";
 import { CodeEntryPage } from "./components/CodeEntryPage";
@@ -88,15 +90,7 @@ export default function App() {
   };
 
   const handleTestComplete = async (finalTheta: number, sessionId: string) => {
-    const getCefr = (t: number) => {
-      if (t < -1.5) return "A1";
-      if (t < -0.5) return "A2";
-      if (t < 0.5) return "B1";
-      if (t < 1.5) return "B2";
-      if (t < 2.5) return "C1";
-      return "C2";
-    };
-    const cefr = getCefr(finalTheta);
+    const cefr = thetaToCefr(finalTheta);
     setTestCompleted({ theta: finalTheta, cefr, sessionId });
     setActiveSession(null);
     setActiveTab("results");
@@ -293,6 +287,7 @@ export default function App() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2 space-y-8">
                 {testCompleted && (
+                  <>
                   <Card className="bg-emerald-600 text-white border-none shadow-emerald-200 shadow-xl rounded-[32px]">
                     <CardContent className="p-8 flex items-center justify-between">
                       <div>
@@ -323,6 +318,8 @@ export default function App() {
                       </Button>
                     </CardContent>
                   </Card>
+                  <CefrLevelCard level={testCompleted.cefr as any} theta={testCompleted.theta} className="mt-0" />
+                  </>
                 )}
 
                 {(!userProfile?.allowedProductLine || userProfile.allowedProductLine === "General" || userProfile.allowedProductLine === "general") && (

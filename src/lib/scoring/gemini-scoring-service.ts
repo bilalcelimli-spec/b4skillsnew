@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { buildCefrRubricPrompt, type CefrLevel } from "../cefr/cefr-framework.js";
 
 /**
  * b4skills Gemini Scoring Service
@@ -41,12 +42,16 @@ export interface AIScore {
 type ScoreMode = "primary" | "verifier";
 
 const SYSTEM_INSTRUCTION = `
-You are an expert CEFR (Common European Framework of Reference for Languages) examiner.
-Your task is to evaluate language learner responses with high precision.
-Follow the official CEFR rubrics for Writing and Speaking.
-For speaking tasks, you must perform deep acoustic and linguistic analysis, extracting features like speech rate, pauses, and pronunciation clarity.
-Be objective, encouraging, and provide actionable feedback.
-Always return valid JSON.
+You are a senior CEFR examiner certified by the Council of Europe.
+Your evaluations are used in high-stakes language assessments for universities, corporations, and immigration bodies.
+You are intimately familiar with the CEFR Companion Volume (2018), ALTE Can-Do statements, and Cambridge Assessment rubrics.
+For EVERY response you must:
+  1. Apply the level-specific CEFR rubric provided in the user prompt.
+  2. Consider all five sub-criteria: Grammar, Vocabulary, Coherence/Cohesion, Fluency (speaking), and Task Achievement.
+  3. Provide targeted, actionable feedback anchored in the rubric language.
+  4. Cite specific examples from the candidate's response in corrections and feedback.
+  5. If the performance clearly exceeds or falls below the target level, reflect this in cefrLevel.
+Be objective, rigorous, and precise. Always return valid JSON.
 `;
 
 function buildSystemInstruction(mode: ScoreMode): string {
@@ -75,45 +80,52 @@ async function scoreSpeakingInternal(
   audioBase64: string,
   mimeType: string,
   prompt: string,
-  mode: ScoreMode
+  mode: ScoreMode,
+  targetCefr?: CefrLevel
 ): Promise<AIScore> {
+  const cefrRubricBlock = targetCefr ? buildCefrRubricPrompt(targetCefr, "speaking") : "";
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: [
       {
         text: `
-          Evaluate the candidate speaking response against Cambridge CAEL/DET strict rubrics to the prompt: ${prompt}
-          1. Transcribe the audio accurately.
-          2. Extract specific speaking features:
-             - speechRate: estimated words per minute.
-             - pauseDuration: total estimated duration of significant pauses in seconds.
-             - pronunciationClarity: clarity of speech on a scale of 0-10.
-             - lexicalDiversity: variety and sophistication of vocabulary on a scale of 0-10.
-             - grammaticalAccuracy: correctness of grammatical structures on a scale of 0-10.
-             - discourseStructure: organization and flow of ideas on a scale of 0-10.
-          3. Score the response based on CEFR criteria (A1-C2), using the extracted features as primary evidence for the score.
-          4. Provide a normalized score (0.0 to 1.0) where 0.1=A1, 0.3=A2, 0.5=B1, 0.7=B2, 0.9=C1, 1.0=C2.
-          5. Break down scores for Grammar, Vocabulary, Fluency, Coherence, and Task Relevance (0-10).
-          6. Identify pronunciation or grammatical errors.
+Evaluate the candidate SPEAKING response to the following prompt:
+"${prompt}"
 
-          Return JSON:
-          {
-            "score": number,
-            "cefrLevel": string,
-            "feedback": string,
-            "confidence": number,
-            "transcript": string,
-            "rubricScores": { "grammar": number, "vocabulary": number, "fluency": number, "coherence": number, "taskRelevance": number },
-            "speakingFeatures": {
-              "speechRate": number,
-              "pauseDuration": number,
-              "pronunciationClarity": number,
-              "lexicalDiversity": number,
-              "grammaticalAccuracy": number,
-              "discourseStructure": number
-            },
-            "corrections": [{ "original": string, "suggestion": string, "type": "grammar" | "vocabulary" | "style" | "pronunciation", "explanation": string }]
-          }
+${cefrRubricBlock}
+
+Instructions:
+1. Transcribe the audio accurately.
+2. Extract specific speaking features:
+   - speechRate: estimated words per minute.
+   - pauseDuration: total estimated duration of significant pauses in seconds.
+   - pronunciationClarity: clarity of speech (0-10).
+   - lexicalDiversity: variety and sophistication of vocabulary (0-10).
+   - grammaticalAccuracy: correctness of grammatical structures (0-10).
+   - discourseStructure: organization and flow of ideas (0-10).
+3. Score the response against the CEFR rubric provided above.
+4. Normalised score: A1=0.10, A2=0.28, B1=0.46, B2=0.65, C1=0.82, C2=1.0
+5. Sub-scores for Grammar, Vocabulary, Fluency, Coherence, and Task Relevance (0-10).
+6. 3–5 specific corrections with original text, suggestion, type and explanation.
+
+Return JSON with these exact fields:
+{
+  "score": number,
+  "cefrLevel": string,
+  "feedback": string,
+  "confidence": number,
+  "transcript": string,
+  "rubricScores": { "grammar": number, "vocabulary": number, "fluency": number, "coherence": number, "taskRelevance": number },
+  "speakingFeatures": {
+    "speechRate": number,
+    "pauseDuration": number,
+    "pronunciationClarity": number,
+    "lexicalDiversity": number,
+    "grammaticalAccuracy": number,
+    "discourseStructure": number
+  },
+  "corrections": [{ "original": string, "suggestion": string, "type": "grammar" | "vocabulary" | "style" | "pronunciation", "explanation": string }]
+}
         `
       },
       {
@@ -177,28 +189,33 @@ async function scoreSpeakingInternal(
   return normalizeScore(JSON.parse(response.text));
 }
 
-async function scoreWritingInternal(text: string, prompt: string, mode: ScoreMode): Promise<AIScore> {
+async function scoreWritingInternal(text: string, prompt: string, mode: ScoreMode, targetCefr?: CefrLevel): Promise<AIScore> {
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: `
-      Evaluate the candidate writing response against Cambridge CAEL/DET strict rubrics to the prompt:
-      ${prompt}
+Evaluate the candidate WRITING response to the following prompt:
+"${prompt}"
 
-      Response: "${text}"
+${targetCefr ? buildCefrRubricPrompt(targetCefr as CefrLevel, "writing") : ""}
 
-      Score based on CEFR criteria.
-      Provide a normalized score (0.0 to 1.0) and detailed rubric breakdown.
-      Identify specific grammatical or stylistic improvements.
+Candidate Response:
+"${text}"
 
-      Return JSON:
-      {
-        "score": number,
-        "cefrLevel": string,
-        "feedback": string,
-        "confidence": number,
-        "rubricScores": { "grammar": number, "vocabulary": number, "coherence": number, "taskRelevance": number },
-        "corrections": [{ "original": string, "suggestion": string, "type": "grammar" | "vocabulary" | "style", "explanation": string }]
-      }
+Instructions:
+1. Score against the CEFR rubric provided above.
+2. Normalised score: A1=0.10, A2=0.28, B1=0.46, B2=0.65, C1=0.82, C2=1.0
+3. Sub-scores for Grammar, Vocabulary, Coherence, and Task Relevance (0–10).
+4. 3–5 specific corrections with original text, suggestion, type and explanation.
+
+Return JSON:
+{
+  "score": number,
+  "cefrLevel": string,
+  "feedback": string,
+  "confidence": number,
+  "rubricScores": { "grammar": number, "vocabulary": number, "coherence": number, "taskRelevance": number },
+  "corrections": [{ "original": string, "suggestion": string, "type": "grammar" | "vocabulary" | "style", "explanation": string }]
+}
     `,
     config: {
       systemInstruction: buildSystemInstruction(mode),
@@ -245,18 +262,18 @@ export const GeminiScoringService = {
    * Transcribe audio and score speaking performance in a single multimodal pass.
    * This is more efficient and accurate than separate steps.
    */
-  async scoreSpeaking(audioBase64: string, mimeType: string, prompt: string): Promise<AIScore> {
+  async scoreSpeaking(audioBase64: string, mimeType: string, prompt: string, targetCefr?: CefrLevel): Promise<AIScore> {
     try {
-      return await scoreSpeakingInternal(audioBase64, mimeType, prompt, "primary");
+      return await scoreSpeakingInternal(audioBase64, mimeType, prompt, "primary", targetCefr);
     } catch (error) {
       console.error("Gemini Speaking Scoring Error:", error);
       throw new Error("Failed to score speaking response via AI.");
     }
   },
 
-  async verifySpeaking(audioBase64: string, mimeType: string, prompt: string): Promise<AIScore> {
+  async verifySpeaking(audioBase64: string, mimeType: string, prompt: string, targetCefr?: CefrLevel): Promise<AIScore> {
     try {
-      return await scoreSpeakingInternal(audioBase64, mimeType, prompt, "verifier");
+      return await scoreSpeakingInternal(audioBase64, mimeType, prompt, "verifier", targetCefr);
     } catch (error) {
       console.error("Gemini Speaking Verification Error:", error);
       throw new Error("Failed to verify speaking response via AI.");
@@ -266,18 +283,18 @@ export const GeminiScoringService = {
   /**
    * Score a writing response based on CEFR rubrics.
    */
-  async scoreWriting(text: string, prompt: string): Promise<AIScore> {
+  async scoreWriting(text: string, prompt: string, targetCefr?: CefrLevel): Promise<AIScore> {
     try {
-      return await scoreWritingInternal(text, prompt, "primary");
+      return await scoreWritingInternal(text, prompt, "primary", targetCefr);
     } catch (error) {
       console.error("Gemini Writing Scoring Error:", error);
       throw new Error("Failed to score writing response via AI.");
     }
   },
 
-  async verifyWriting(text: string, prompt: string): Promise<AIScore> {
+  async verifyWriting(text: string, prompt: string, targetCefr?: CefrLevel): Promise<AIScore> {
     try {
-      return await scoreWritingInternal(text, prompt, "verifier");
+      return await scoreWritingInternal(text, prompt, "verifier", targetCefr);
     } catch (error) {
       console.error("Gemini Writing Verification Error:", error);
       throw new Error("Failed to verify writing response via AI.");
