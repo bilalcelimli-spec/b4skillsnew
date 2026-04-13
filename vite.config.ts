@@ -16,6 +16,7 @@ export default defineConfig(({mode}) => {
           enabled: true
         },
         workbox: {
+          maximumFileSizeToCacheInBytes: 5000000, // Configure maximum file size limit for caching (now 5MB)
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/api\.linguadapt\.com\/.*/i,
