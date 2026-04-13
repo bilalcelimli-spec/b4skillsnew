@@ -5,8 +5,8 @@ import { ScoringOrchestrator } from "../scoring/scoring-orchestrator";
 import { RatingQueueService } from "../scoring/rating-queue";
 import { CalibrationService } from "./calibration-service";
 import { SessionStatus, ItemType, CefrLevel } from "@prisma/client";
-
 import { BillingService } from "../enterprise/billing-service";
+import { validateItem } from "../language-skills/item-quality-validator.js";
 
 /**
  * Server-side Assessment Service
@@ -480,25 +480,47 @@ export const AssessmentService = {
 
   async createItem(data: any) {
     const { assets, ...itemData } = data;
-    return prisma.item.create({
+    const parsedContent = typeof itemData.content === "string" ? JSON.parse(itemData.content) : itemData.content;
+    const created = await prisma.item.create({
       data: {
         ...itemData,
-        content: typeof itemData.content === "string" ? JSON.parse(itemData.content) : itemData.content
+        content: parsedContent
       },
       include: { assets: true }
     });
+    // Attach inline quality report for the caller (not persisted — use /validate endpoint to store)
+    const qualityReport = validateItem({
+      skill: created.skill,
+      cefrLevel: created.cefrLevel,
+      type: created.type,
+      discrimination: created.discrimination,
+      difficulty: created.difficulty,
+      guessing: created.guessing,
+      content: parsedContent as any,
+    });
+    return { ...created, qualityReport };
   },
 
   async updateItem(id: string, data: any) {
     const { assets, ...itemData } = data;
-    return prisma.item.update({
+    const parsedContent = itemData.content
+      ? (typeof itemData.content === "string" ? JSON.parse(itemData.content) : itemData.content)
+      : undefined;
+    const updated = await prisma.item.update({
       where: { id },
-      data: {
-        ...itemData,
-        content: itemData.content ? (typeof itemData.content === "string" ? JSON.parse(itemData.content) : itemData.content) : undefined
-      },
+      data: { ...itemData, content: parsedContent },
       include: { assets: true }
     });
+    const qualityReport = validateItem({
+      skill: updated.skill,
+      cefrLevel: updated.cefrLevel,
+      type: updated.type,
+      discrimination: updated.discrimination,
+      difficulty: updated.difficulty,
+      guessing: updated.guessing,
+      content: (parsedContent ?? updated.content) as any,
+    });
+    return { ...updated, qualityReport };
   },
 
   async deleteItem(id: string) {

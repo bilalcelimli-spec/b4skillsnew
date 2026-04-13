@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { buildCefrRubricPrompt, type CefrLevel } from "../cefr/cefr-framework.js";
+import { buildSkillAwarePromptAddendum, type MacroSkill } from "../language-skills/language-skill-framework.js";
 
 /**
  * b4skills Gemini Scoring Service
@@ -84,6 +85,7 @@ async function scoreSpeakingInternal(
   targetCefr?: CefrLevel
 ): Promise<AIScore> {
   const cefrRubricBlock = targetCefr ? buildCefrRubricPrompt(targetCefr, "speaking") : "";
+  const skillAddendum = targetCefr ? buildSkillAwarePromptAddendum("SPEAKING" as MacroSkill, targetCefr) : "";
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: [
@@ -93,6 +95,7 @@ Evaluate the candidate SPEAKING response to the following prompt:
 "${prompt}"
 
 ${cefrRubricBlock}
+${skillAddendum}
 
 Instructions:
 1. Transcribe the audio accurately.
@@ -190,6 +193,7 @@ Return JSON with these exact fields:
 }
 
 async function scoreWritingInternal(text: string, prompt: string, mode: ScoreMode, targetCefr?: CefrLevel): Promise<AIScore> {
+  const skillAddendum = targetCefr ? buildSkillAwarePromptAddendum("WRITING" as MacroSkill, targetCefr) : "";
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: `
@@ -197,6 +201,7 @@ Evaluate the candidate WRITING response to the following prompt:
 "${prompt}"
 
 ${targetCefr ? buildCefrRubricPrompt(targetCefr as CefrLevel, "writing") : ""}
+${skillAddendum}
 
 Candidate Response:
 "${text}"

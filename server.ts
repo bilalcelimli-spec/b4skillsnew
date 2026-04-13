@@ -707,6 +707,43 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // --- ITEM GENERATION (AI) ---
+  app.post("/api/items/generate", async (req, res) => {
+    try {
+      const { itemGenerator } = await import("./src/lib/language-skills/ai-item-generator.js");
+      const spec = req.body; // ItemGenerationSpec
+      if (!spec.skill || !spec.level || !spec.format) {
+        return res.status(400).json({ error: "skill, level, and format are required" });
+      }
+      const result = await itemGenerator.generate(spec);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Item generation failed", details: String(error) });
+    }
+  });
+
+  // --- ITEM QUALITY VALIDATION ---
+  app.get("/api/items/:id/validate", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { validateItem } = await import("./src/lib/language-skills/item-quality-validator.js");
+      const dbItem = await (await import("./src/lib/prisma.js")).prisma.item.findUnique({ where: { id } });
+      if (!dbItem) return res.status(404).json({ error: "Item not found" });
+      const report = validateItem({
+        skill: dbItem.skill,
+        cefrLevel: dbItem.cefrLevel,
+        type: dbItem.type,
+        discrimination: dbItem.discrimination,
+        difficulty: dbItem.difficulty,
+        guessing: dbItem.guessing,
+        content: dbItem.content as any,
+      });
+      res.json(report);
+    } catch (error) {
+      res.status(500).json({ error: "Validation failed", details: String(error) });
+    }
+  });
+
   app.put("/api/items/:id", async (req, res) => {
     try {
       const { id } = req.params;
