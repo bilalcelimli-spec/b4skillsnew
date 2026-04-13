@@ -707,18 +707,60 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  // --- ITEM GENERATION (AI) ---
+  // --- ITEM GENERATION (AI) — Single spec ---
   app.post("/api/items/generate", async (req, res) => {
     try {
       const { itemGenerator } = await import("./src/lib/language-skills/ai-item-generator.js");
-      const spec = req.body; // ItemGenerationSpec
+      const spec = req.body;
       if (!spec.skill || !spec.level || !spec.format) {
         return res.status(400).json({ error: "skill, level, and format are required" });
       }
+      spec.quantity = Math.min(Number(spec.quantity) || 1, 5); // Cap at 5 per request
       const result = await itemGenerator.generate(spec);
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: "Item generation failed", details: String(error) });
+    }
+  });
+
+  // --- ITEM GENERATION (AI) — Bulk (multiple specs) ---
+  app.post("/api/items/generate/bulk", async (req, res) => {
+    try {
+      const { itemGenerator } = await import("./src/lib/language-skills/ai-item-generator.js");
+      const { specs } = req.body;
+      if (!Array.isArray(specs) || specs.length === 0) {
+        return res.status(400).json({ error: "specs array is required" });
+      }
+      if (specs.length > 20) {
+        return res.status(400).json({ error: "Maximum 20 specs per bulk request" });
+      }
+      for (const s of specs) {
+        if (!s.skill || !s.level || !s.format) {
+          return res.status(400).json({ error: "Each spec requires skill, level, and format" });
+        }
+        s.quantity = Math.min(Number(s.quantity) || 1, 5);
+      }
+      const results = await itemGenerator.generateBulk(specs);
+      res.json({ results, totalSpecs: specs.length });
+    } catch (error) {
+      res.status(500).json({ error: "Bulk generation failed", details: String(error) });
+    }
+  });
+
+  // --- ITEM GENERATION PREVIEW (generate without persisting to bank) ---
+  app.post("/api/items/preview", async (req, res) => {
+    try {
+      const { itemGenerator } = await import("./src/lib/language-skills/ai-item-generator.js");
+      const spec = req.body;
+      if (!spec.skill || !spec.level || !spec.format) {
+        return res.status(400).json({ error: "skill, level, and format are required" });
+      }
+      spec.quantity = 1; // Preview always generates exactly 1 item
+      const result = await itemGenerator.generate(spec);
+      // Return just the first item with full pipeline data — does NOT save to DB
+      res.json({ preview: result.items[0] ?? null, generationModel: result.generationModel });
+    } catch (error) {
+      res.status(500).json({ error: "Preview generation failed", details: String(error) });
     }
   });
 

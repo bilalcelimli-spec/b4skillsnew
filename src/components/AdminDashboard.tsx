@@ -24,6 +24,7 @@ import {
   Calculator,
   Key,
   Loader2,
+  Wand2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
@@ -41,6 +42,7 @@ import { SessionReview } from "./admin/SessionReview";
 import { CalibrationStudy } from "./admin/CalibrationStudy";
 import { ContentReviewDashboard } from "./admin/ContentReviewDashboard";
 import { ExamCodeManager } from "./admin/ExamCodeManager";
+import { ItemGeneratorPanel } from "./admin/ItemGeneratorPanel";
 
 interface SessionData {
   id: string;
@@ -70,7 +72,7 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
     | "settings"
     | "proctoring"
     | "billing"
-    | "calibration" | "content-qa"
+    | "calibration" | "content-qa" | "item-generator"
   >("overview");
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -261,6 +263,15 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
             }}
             icon={<Calculator size={14} />}
             label="Calibration"
+          />
+          <TabButton
+            active={activeTab === "item-generator"}
+            onClick={() => {
+              setActiveTab("item-generator");
+              setSelectedSessionId(null);
+            }}
+            icon={<Wand2 size={14} />}
+            label="AI Generator"
           />
           <TabButton
             active={activeTab === "settings"}
@@ -545,6 +556,17 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
             exit={{ opacity: 0, x: -20 }}
           >
             <ContentReviewDashboard />
+          </motion.div>
+        )}
+
+        {activeTab === "item-generator" && (
+          <motion.div
+            key="item-generator"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ItemGeneratorPanel />
           </motion.div>
         )}
 
