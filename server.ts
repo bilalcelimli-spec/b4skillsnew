@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "./src/lib/observability/instrument.js";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -12,6 +13,7 @@ import rateLimit from "express-rate-limit";
 import nodemailer from "nodemailer";
 import { prisma } from "./src/lib/prisma.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
+import { logger, httpLogger, captureException, Sentry } from "./src/lib/observability/index.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,17 +31,34 @@ async function startServer() {
     try {
       await (prisma as any).$queryRaw`SELECT 1`;
       dbAvailable = true;
-      console.log("✅ Database connected");
-    } catch {
+      logger.info("Database connected");
+    } catch (err) {
       dbAvailable = false;
-      console.warn("⚠️  Database not reachable — running in mock/demo mode");
+      logger.warn({ err }, "Database not reachable — running in mock/demo mode");
     }
   }
 
+  app.use(httpLogger);
   app.use(cors({ origin: true, credentials: true }));
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.use(cookieParser());
+
+  // --- HEALTH CHECKS ---
+  app.get("/healthz", (_req, res) => {
+    res.json({ status: "ok", uptime: process.uptime() });
+  });
+
+  app.get("/readyz", async (_req, res) => {
+    try {
+      if (process.env.DATABASE_URL) {
+        await (prisma as any).$queryRaw`SELECT 1`;
+      }
+      res.json({ status: "ready", db: dbAvailable });
+    } catch (err: any) {
+      res.status(503).json({ status: "not_ready", error: err?.message });
+    }
+  });
 
   // --- AUTH ROUTES ---
       const JWT_SECRET = process.env.JWT_SECRET || "super-secret-default-key";
@@ -1729,9 +1748,44 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`LinguAdapt Server running on http://localhost:${PORT}`);
+  Sentry.setupExpressErrorHandler(app);
+
+  app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const reqId = (res.getHeader("x-request-id") as string) || undefined;
+    logger.error({ err, reqId, url: req.url, method: req.method }, "Unhandled request error");
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Internal server error", requestId: reqId });
+    }
   });
+
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    logger.info({ port: PORT }, `LinguAdapt Server running on http://localhost:${PORT}`);
+  });
+
+  const shutdown = (signal: string) => {
+    logger.info({ signal }, "Shutting down");
+    server.close(() => {
+      prisma.$disconnect().finally(() => process.exit(0));
+    });
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
-startServer();
+process.on("unhandledRejection", (reason) => {
+  logger.fatal({ reason }, "Unhandled promise rejection");
+  captureException(reason);
+});
+
+process.on("uncaughtException", (err) => {
+  logger.fatal({ err }, "Uncaught exception");
+  captureException(err);
+  process.exit(1);
+});
+
+startServer().catch((err) => {
+  logger.fatal({ err }, "Server failed to start");
+  captureException(err);
+  process.exit(1);
+});
