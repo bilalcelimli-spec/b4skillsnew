@@ -23,5 +23,13 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dev-dist",
+    "scripts/archive",
+    "scripts/seed",
+    "**/*.cjs"
+  ]
 }
