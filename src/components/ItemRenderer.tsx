@@ -6,6 +6,7 @@ import { Volume2, Mic, FileText, ChevronRight, BrainCircuit } from "lucide-react
 import { cn } from "../lib/utils";
 import { SpeakingRecorder } from "./SpeakingRecorder";
 import { WritingEditor } from "./WritingEditor";
+import { AudioPlayer } from "./AudioPlayer";
 
 interface ItemRendererProps {
   item: Item;
@@ -193,35 +194,123 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
 
     case "LISTENING":
       return (
-        <div className="space-y-6">
-          {renderPassage(content.passage)}
-          {content.audioUrl && (
+        <div className="space-y-6" role="form" aria-labelledby="listening-prompt">
+          {renderPassage(content.passage && !content.passage.startsWith('[Audio:') ? content.passage : undefined)}
+          
+          {/* Real Audio Player */}
+          {content.audioUrl ? (
+            <AudioPlayer
+              src={content.audioUrl}
+              maxPlays={2}
+              autoPlay={true}
+              countdownSeconds={3}
+              showWaveform={true}
+              onAllPlaysUsed={() => {}}
+            />
+          ) : content.passage?.startsWith('[Audio:') ? (
             <div className="p-8 bg-indigo-50 border border-indigo-100 rounded-2xl flex flex-col items-center gap-4">
-              <audio controls src={content.audioUrl} className="w-full max-w-md mt-4" />
+              <div className="w-16 h-16 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-200">
+                <Volume2 size={32} />
+              </div>
+              <div className="text-center">
+                <div className="font-bold text-indigo-900">Listening Task</div>
+                <div className="text-sm text-indigo-600 mt-2 italic">{content.passage.slice(7, -1).trim()}</div>
+              </div>
+            </div>
+          ) : null}
+          
+          {/* Fill-in-blanks for listening */}
+          {(item as any).type === "FILL_IN_BLANKS" ? (
+            <div className="space-y-4">
+              <h3 id="listening-prompt" className="text-xl font-bold text-slate-900">{content.prompt}</h3>
+              {content.question && (
+                <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-medium text-slate-800 mb-4">
+                  {content.question}
+                </div>
+              )}
+              <div>
+                <input
+                  type="text"
+                  value={textValue}
+                  onChange={(e) => setTextValue(e.target.value)}
+                  disabled={disabled}
+                  placeholder="Type what you heard..."
+                  className="w-full text-lg p-4 rounded-2xl border-2 border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all disabled:opacity-50"
+                  aria-label="Type your answer"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && textValue.trim() && !disabled) {
+                      onResponse(textValue.trim());
+                      setTextValue("");
+                    }
+                  }}
+                />
+              </div>
+              <button
+                disabled={!textValue.trim() || disabled}
+                onClick={() => { if (textValue.trim()) { onResponse(textValue.trim()); setTextValue(""); } }}
+                className={cn(
+                  "w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all",
+                  textValue.trim() && !disabled
+                    ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100"
+                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                )}
+              >
+                Confirm Answer
+              </button>
+            </div>
+          ) : (
+            /* Multiple choice for listening */
+            <div className="space-y-4">
+              <h3 id="listening-prompt" className="text-xl font-bold text-slate-900">{content.prompt}</h3>
+              <div className="grid grid-cols-1 gap-3" role="radiogroup" aria-labelledby="listening-prompt">
+                {content.options?.map((option: any, index: number) => {
+                  const optionText = typeof option === "string" ? option : option.text;
+                  return (
+                  <button
+                    key={index}
+                    role="radio"
+                    aria-checked={selectedOption === index ? "true" : "false"}
+                    disabled={disabled}
+                    onClick={() => setSelectedOption(index)}
+                    className={cn(
+                      "w-full text-left p-5 rounded-2xl border-2 transition-all group focus:ring-4 focus:ring-indigo-100 outline-none",
+                      selectedOption === index
+                        ? "border-indigo-500 bg-indigo-50"
+                        : "border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/50",
+                      "disabled:opacity-50 disabled:cursor-not-allowed"
+                    )}
+                    aria-label={`Option ${String.fromCharCode(65 + index)}: ${optionText}`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs transition-colors border",
+                        selectedOption === index
+                          ? "bg-indigo-600 text-white border-indigo-600"
+                          : "bg-slate-50 text-slate-400 group-hover:bg-white group-hover:text-indigo-600 border-slate-100"
+                      )}>
+                        {String.fromCharCode(65 + index)}
+                      </div>
+                      <span className="font-bold text-slate-700 uppercase tracking-tight text-sm">{optionText}</span>
+                    </div>
+                  </button>
+                )})}
+              </div>
+              <div className="pt-4">
+                <button
+                  disabled={selectedOption === null || disabled}
+                  onClick={() => { if (selectedOption !== null) { onResponse(selectedOption); setSelectedOption(null); } }}
+                  className={cn(
+                    "w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all",
+                    selectedOption !== null && !disabled
+                      ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100"
+                      : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                  )}
+                >
+                  Confirm Answer
+                </button>
+              </div>
             </div>
           )}
-          <div className="space-y-4">
-            <h3 className="text-xl font-bold text-slate-900">{content.prompt}</h3>
-            <div className="grid grid-cols-1 gap-3">
-              {content.options?.map((option: any, index: number) => {
-                const optionText = typeof option === "string" ? option : option.text;
-                return (
-                <button
-                  key={index}
-                  disabled={disabled}
-                  onClick={() => onResponse(index)}
-                  className="w-full text-left p-4 rounded-xl border-2 border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm">
-                      {String.fromCharCode(65 + index)}
-                    </div>
-                    <span className="font-medium text-slate-700">{optionText}</span>
-                  </div>
-                </button>
-              )})}
-            </div>
-          </div>
         </div>
       );
 

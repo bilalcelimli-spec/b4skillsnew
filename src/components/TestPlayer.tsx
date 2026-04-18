@@ -19,6 +19,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { CandidateFeedback } from "./CandidateFeedback";
+import { PracticeMode } from "./PracticeMode";
 import { useTranslation } from "react-i18next";
 import "../lib/i18n/config";
 
@@ -43,6 +44,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   const [itemFeedback, setItemFeedback] = useState<any>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'analyzing' | 'success' | 'error'>('idle');
+  const [showPractice, setShowPractice] = useState(true);
 
   // Launch Session
   useEffect(() => {
@@ -239,6 +241,16 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
           Try Reconnecting
         </Button>
       </div>
+    );
+  }
+
+  // Show Practice/Tutorial Mode before the real test
+  if (showPractice) {
+    return (
+      <PracticeMode
+        onComplete={() => setShowPractice(false)}
+        onSkip={() => setShowPractice(false)}
+      />
     );
   }
 
