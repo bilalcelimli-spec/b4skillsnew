@@ -1,10 +1,10 @@
 import "dotenv/config";
 import "./src/lib/observability/instrument.js";
 import express from "express";
+import compression from "compression";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import cors from "cors";
 import * as crypto from "crypto";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -14,6 +14,7 @@ import nodemailer from "nodemailer";
 import { prisma } from "./src/lib/prisma.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
 import { logger, httpLogger, captureException, Sentry } from "./src/lib/observability/index.js";
+import { buildCorsMiddleware, buildHelmetMiddleware, assertProductionSecrets } from "./src/lib/security/http-security.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,8 +24,12 @@ const __dirname = path.dirname(__filename);
 let dbAvailable = false;
 
 async function startServer() {
+  assertProductionSecrets();
+
   const app = express();
   const PORT = parseInt(process.env.PORT || "3001", 10);
+
+  app.set("trust proxy", 1);
 
   // Probe DB connectivity — fall back to mock/demo mode if unreachable
   if (process.env.DATABASE_URL) {
@@ -39,9 +44,11 @@ async function startServer() {
   }
 
   app.use(httpLogger);
-  app.use(cors({ origin: true, credentials: true }));
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(buildHelmetMiddleware());
+  app.use(compression());
+  app.use(buildCorsMiddleware());
+  app.use(express.json({ limit: "10mb" }));
+  app.use(express.urlencoded({ limit: "10mb", extended: true }));
   app.use(cookieParser());
 
   // --- HEALTH CHECKS ---
@@ -61,8 +68,11 @@ async function startServer() {
   });
 
   // --- AUTH ROUTES ---
-      const JWT_SECRET = process.env.JWT_SECRET || "super-secret-default-key";
-      const REFRESH_SECRET = process.env.REFRESH_SECRET || "super-secret-refresh-key";
+  const isProd = process.env.NODE_ENV === "production";
+  const JWT_SECRET = process.env.JWT_SECRET
+    || (isProd ? (() => { throw new Error("JWT_SECRET is required in production"); })() : "dev-only-insecure-jwt-secret-do-not-use-in-prod");
+  const REFRESH_SECRET = process.env.REFRESH_SECRET
+    || (isProd ? (() => { throw new Error("REFRESH_SECRET is required in production"); })() : "dev-only-insecure-refresh-secret-do-not-use-in-prod");
 
   const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
