@@ -1,9 +1,23 @@
 node_modules/
 build/
 dist/
+dev-dist/
 coverage/
 .DS_Store
 *.log
+
+# Env files — only allow example templates
 .env*
 !.env.example
 !.env.production.example
+
+# Database dumps — NEVER commit (contain PII, schema, potentially secrets)
+*.sql
+*.dump
+*.bak
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
