@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1 – Install all dependencies
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS deps
+FROM node:25-alpine AS deps
 WORKDIR /app
 
 RUN apk add --no-cache libc6-compat
@@ -12,7 +12,7 @@ RUN npm ci --ignore-scripts
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2 – Build: Vite frontend + esbuild server bundle
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:25-alpine AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -30,7 +30,7 @@ RUN npm run build:server
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 3 – Production image (lean, no source files)
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:25-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
