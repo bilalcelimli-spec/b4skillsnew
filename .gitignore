@@ -12,9 +12,13 @@ coverage/
 !.env.production.example
 
 # Database dumps — NEVER commit (contain PII, schema, potentially secrets)
-*.sql
+# Whitelist Prisma migrations with !prisma/migrations/
+/*.sql
+/**/dump*.sql
+/**/*_dump.sql
 *.dump
 *.bak
+!prisma/migrations/**/*.sql
 
 # Editor / OS
 .vscode/
