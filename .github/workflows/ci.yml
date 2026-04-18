@@ -37,8 +37,6 @@ jobs:
       - run: npm ci
       - name: Build Vite frontend
         run: npm run build
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       - name: Bundle Express server
         run: npm run build:server
       - name: Upload build artifacts
@@ -64,5 +62,3 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: |
-            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}

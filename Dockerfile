@@ -49,9 +49,9 @@ RUN npm ci --omit=dev --ignore-scripts && npx prisma generate
 COPY --from=builder /app/dist           ./dist
 COPY --from=builder /app/prisma         ./prisma
 
-# Health check using the /api/health endpoint
+# Health check — /healthz is a liveness probe wired in server.ts
 HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=3 \
-  CMD wget -qO- http://localhost:${PORT}/api/health || exit 1
+  CMD wget -qO- http://localhost:${PORT}/healthz || exit 1
 
 USER appuser
 EXPOSE 3000

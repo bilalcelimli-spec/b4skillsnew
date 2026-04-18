@@ -11,7 +11,7 @@ import {
   Activity
 } from "lucide-react";
 import { cn } from "@/src/lib/utils";
-import { AIScore } from "@/src/lib/scoring/gemini-scoring-service";
+import type { AIScore } from "@/src/lib/scoring/gemini-scoring-service";
 
 interface SpeakingAnalysisDetailsProps {
   score: AIScore;
