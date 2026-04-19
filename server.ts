@@ -15,6 +15,8 @@ import { prisma } from "./src/lib/prisma.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
 import { logger, httpLogger, captureException, Sentry } from "./src/lib/observability/index.js";
 import { buildCorsMiddleware, buildHelmetMiddleware, assertProductionSecrets } from "./src/lib/security/http-security.js";
+import { validate } from "./src/lib/security/validate.js";
+import * as Schemas from "./src/lib/security/schemas/index.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -113,7 +115,7 @@ async function startServer() {
     });
   };
 
-  app.post("/api/auth/register", async (req, res) => {
+  app.post("/api/auth/register", validate({ body: Schemas.Auth.RegisterBody }), async (req, res) => {
     try {
       const { email, password, displayName } = req.body;
       if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -142,7 +144,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/auth/login", loginLimiter, async (req, res) => {
+  app.post("/api/auth/login", loginLimiter, validate({ body: Schemas.Auth.LoginBody }), async (req, res) => {
     try {
       const { email, password } = req.body;
       if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -237,7 +239,7 @@ async function startServer() {
     console.log(`✉️ Preview URL: %s`, nodemailer.getTestMessageUrl(info));
   };
 
-  app.post("/api/auth/forgot-password", async (req, res) => {
+  app.post("/api/auth/forgot-password", validate({ body: Schemas.Auth.ForgotPasswordBody }), async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email required' });
     const user = await prisma.user.findUnique({ where: { email } });
@@ -257,7 +259,7 @@ async function startServer() {
     return res.json({ message: 'If email exists, reset link sent.' });
   });
 
-  app.post("/api/auth/reset-password", async (req, res) => {
+  app.post("/api/auth/reset-password", validate({ body: Schemas.Auth.ResetPasswordBody }), async (req, res) => {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) return res.status(400).json({ error: 'Missing required fields' });
     
@@ -274,7 +276,7 @@ async function startServer() {
     return res.json({ success: true, message: 'Password reset successfully' });
   });
 
-  app.post("/api/auth/verify-email", async (req, res) => {
+  app.post("/api/auth/verify-email", validate({ body: Schemas.Auth.VerifyEmailBody }), async (req, res) => {
     const { email } = req.body; // Mock endpoint to start email verification process
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || user.emailVerified) return res.json({ message: 'Process started if email needs verification' });
@@ -290,7 +292,7 @@ async function startServer() {
     return res.json({ message: 'Process started if email needs verification' });
   });
 
-  app.post("/api/auth/google", async (req, res) => {
+  app.post("/api/auth/google", validate({ body: Schemas.Auth.GoogleAuthBody }), async (req, res) => {
     // Shell implementation expecting a token usually verified via google-auth-library
     const { token } = req.body;
     if (!token) return res.status(400).json({ error: 'Missing token' });
