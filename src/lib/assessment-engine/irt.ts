@@ -26,19 +26,21 @@ export function probability(theta: number, params: IrtParameters): number {
 export function information(theta: number, params: IrtParameters): number {
   const p = probability(theta, params);
   const { a, c } = params;
-  
-  // Handle edge cases to avoid division by zero or NaN
-  // If p is 0 or 1, or c is 1, the item provides no information at this theta
-  if (p <= 0 || p >= 1 || c >= 1) return 0;
-  
+
+  // Use epsilon margins instead of hard 0/1 to avoid masking numerical instability
+  // and to correctly return 0 only when the item genuinely provides no discrimination
+  const EPS = 1e-4;
+  if (p <= EPS || p >= 1 - EPS || c >= 1 - EPS) return 0;
+
   const q = 1 - p;
   const pMinusC = p - c;
   const oneMinusC = 1 - c;
-  
-  // Fisher Information formula for 3PL model
+
+  // Fisher Information formula for 3PL model:
+  // I(θ) = a² · (P−c)² · (1−P) / [P · (1−c)²]
   const numerator = a * a * q * pMinusC * pMinusC;
   const denominator = p * oneMinusC * oneMinusC;
-  
+
   return numerator / denominator;
 }
 
@@ -73,8 +75,8 @@ export function logLikelihood(
     const p = probability(theta, resp.params);
     const u = resp.score;
     
-    // Guard against log(0)
-    const safeP = Math.max(0.0001, Math.min(0.9999, p));
+    // Guard against log(0) with consistent epsilon
+    const safeP = Math.max(1e-4, Math.min(1 - 1e-4, p));
     ll += u * Math.log(safeP) + (1 - u) * Math.log(1 - safeP);
   }
   return ll;

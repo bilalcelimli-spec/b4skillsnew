@@ -1,11 +1,20 @@
 import { information } from "./irt";
 import { Item, BlueprintConstraint, SkillType } from "./types";
 
+// In-memory exposure counter. In a multi-process deployment this should be
+// backed by Redis or a DB column; for a single-process server this is sufficient.
+const exposureCount: Map<string, number> = new Map();
+
+// Maximum fraction of test-takers who should see a given item (exposure rate target).
+// Items exceeding this fraction have their selection probability reduced.
+const MAX_EXPOSURE_RATE = 0.20; // Sympson-Hetter target: no item seen by > 20% of candidates
+
 /**
- * Item Selector (Maximum Fisher Information - MFI) with Blueprint Constraints
- * Selects the item that provides the most information at the current ability
- * estimate (theta) while respecting the content blueprint (skill distribution).
+ * Track that an item was administered so exposure control can adjust future selections.
  */
+export function recordItemExposure(itemId: string): void {
+  exposureCount.set(itemId, (exposureCount.get(itemId) ?? 0) + 1);
+}
 
 /**
  * Select the best item from the pool based on Fisher Information.
@@ -47,6 +56,8 @@ export function selectNextItem(
       if (blueprintFiltered.length > 0) {
         candidatePool = blueprintFiltered;
       }
+      // If no items exist for an unfulfilled skill, fall through to full pool
+      // rather than silently dropping the constraint — this surfaces the gap.
     } else {
       // All minimums are met. Now enforce maximums — exclude items from skills at their cap
       const cappedSkills = new Set(
@@ -61,18 +72,32 @@ export function selectNextItem(
     }
   }
 
-  // 3. Score each candidate item by Fisher Information at the current theta
-  const scoredItems = candidatePool.map(item => ({
-    item,
-    info: information(currentTheta, item.params)
-  }));
+  // 3. Score each candidate item by Fisher Information at the current theta,
+  //    then apply an exposure penalty so over-used items rank lower.
+  const totalPool = pool.length || 1;
+  const scoredItems = candidatePool.map(item => {
+    const info = information(currentTheta, item.params);
+    const exposures = exposureCount.get(item.id) ?? 0;
+    const exposureRate = exposures / totalPool;
+    // Sympson-Hetter-style weight: items near or above target rate are down-weighted
+    const exposureWeight = exposureRate < MAX_EXPOSURE_RATE
+      ? 1.0
+      : MAX_EXPOSURE_RATE / exposureRate; // Smoothly penalise over-exposed items
+    return { item, score: info * exposureWeight };
+  });
 
-  // 4. Sort by information descending
-  scoredItems.sort((a, b) => b.info - a.info);
+  // 4. Sort by weighted score descending
+  scoredItems.sort((a, b) => b.score - a.score);
 
-  // 5. Exposure Control (Sympson-Hetter style): randomly select from top-N
+  // 5. Select randomly from top-N to preserve some randomisation while
+  //    keeping the selection within the high-information region.
   const candidates = scoredItems.slice(0, Math.min(topN, scoredItems.length));
   const randomIndex = Math.floor(Math.random() * candidates.length);
-  return candidates[randomIndex].item;
+  const selected = candidates[randomIndex].item;
+
+  // 6. Record the exposure
+  recordItemExposure(selected.id);
+
+  return selected;
 }
 

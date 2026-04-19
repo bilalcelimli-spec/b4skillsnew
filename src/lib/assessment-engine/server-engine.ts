@@ -281,7 +281,12 @@ export const AssessmentService = {
         }
       } catch (error) {
         console.error("AI Scoring failed, enqueuing for human review...");
-        score = 0.5;
+        // Do NOT use 0.5 — that biases theta upward for every AI failure.
+        // Mark the response as requiring human review; exclude from theta estimation
+        // by setting isPretest=true temporarily until a human scores it.
+        score = 0; // Conservative fallback; overwritten when human review resolves
+        // Flag for human review queue — response will be saved with requiresHumanReview
+        aiResult = { requiresHumanReview: true, failureReason: "ai_scoring_error" };
       }
     }
 
@@ -298,10 +303,13 @@ export const AssessmentService = {
       usedItemIds: new Set(session.responses.map(r => r.itemId))
     };
 
+    const requiresHumanReview = (aiResult as any)?.requiresHumanReview === true;
+
     const response: Response = {
       itemId,
       score,
-      isPretest: item.isPretest,
+      // Treat AI-failed productive items as pretest to exclude from theta until reviewed
+      isPretest: item.isPretest || requiresHumanReview,
       latencyMs: typeof clientLatencyMs === 'number' && clientLatencyMs > 0 ? clientLatencyMs : 0 
     };
 

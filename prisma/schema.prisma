@@ -324,6 +324,9 @@ model Response {
   
   // Metadata
   latencyMs       Int       @default(0)
+  rtZScore        Float?    // Standardised response time z-score (van der Linden RT-IRT model)
+  rtFlag          String?   // RAPID_GUESS | SOLUTION_BEHAVIOR | NORMAL
+  adjustedScore   Float?    // Score after response-time penalty (used for theta estimation)
   order           Int       // Sequence in the test
   metadata        Json?     // { confidence, flags, aiFeedback, proctoringEvents, calibrationData, etc }
   

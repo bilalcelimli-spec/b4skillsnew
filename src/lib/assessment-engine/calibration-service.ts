@@ -105,21 +105,33 @@ export class CalibrationService {
       }
     });
 
-    // 5. Final adjustment: Blend theoretical mean difficulty with empirical candidate theta
-    // This provides a "precise" cut-score that reflects both item design and actual performance.
+    // 5. Final adjustment: sample-size-weighted blend of theoretical midpoint and
+    //    empirical midpoint. More empirical data → more weight on empirical.
+    //    This replaces the arbitrary 50/50 split with a principled estimator.
+    const EMPIRICAL_MIN_RESPONSES = 30; // Minimum responses before empirical data is trusted
     const finalCutScores: CalibratedCutScores = { ...cutScores };
-    
-    // For each level (except PRE_A1 which is the baseline), 
-    // we can adjust the cut-score if we have enough empirical data.
+
     levels.slice(1).forEach((level, index) => {
       const prevLevel = levels[index];
       const currentEmpirical = empiricalMeans[level];
       const prevEmpirical = empiricalMeans[prevLevel];
+      const currentN = (empiricalThetas[level] || []).length;
+      const prevN = (empiricalThetas[prevLevel] || []).length;
 
-      if (currentEmpirical !== undefined && prevEmpirical !== undefined) {
+      if (
+        currentEmpirical !== undefined &&
+        prevEmpirical !== undefined &&
+        currentN >= EMPIRICAL_MIN_RESPONSES &&
+        prevN >= EMPIRICAL_MIN_RESPONSES
+      ) {
         const empiricalMidpoint = (currentEmpirical + prevEmpirical) / 2;
-        // Blend 50/50
-        (finalCutScores as any)[level] = (cutScores as any)[level] * 0.5 + empiricalMidpoint * 0.5;
+        // Weight empirical data by effective sample size (harmonic mean)
+        const effectiveN = (2 * currentN * prevN) / (currentN + prevN);
+        // Sigmoid weight: saturates at 1.0 when effectiveN → ∞, near 0 with little data
+        const empiricalWeight = effectiveN / (effectiveN + 100); // 100 = half-saturation constant
+        const theoreticalWeight = 1 - empiricalWeight;
+        (finalCutScores as any)[level] =
+          (cutScores as any)[level] * theoreticalWeight + empiricalMidpoint * empiricalWeight;
       }
     });
 
@@ -187,8 +199,9 @@ export class CalibrationService {
 
     for (const item of pretestItems as any[]) {
       const responses = item.responses;
-      if (responses.length < 10) {
-        // Not enough data for calibration (minimum 10 responses)
+      if (responses.length < 100) {
+        // Minimum 100 responses for statistically stable b-parameter estimates.
+        // Fewer responses produce biased estimates, especially for extreme difficulties.
         continue;
       }
 
@@ -199,11 +212,13 @@ export class CalibrationService {
       // 3. Calculate mean ability (theta) of respondents
       const meanTheta = responses.reduce((sum, r) => sum + r.session.theta, 0) / responses.length;
 
-      // 4. Heuristic Calibration for b-parameter (difficulty)
-      // b = meanTheta - logit(pObserved) / a
-      // We use a simplified version for stability:
-      // b_new = b_old + (P_expected - P_observed)
-      
+      // 4. Calibration for b-parameter (difficulty) and a-parameter (discrimination)
+      //
+      //    b-update: b_new = b_old + DAMPING * (P_expected - P_observed)
+      //    a-update: use point-biserial correlation as a proxy for discrimination.
+      //    Point-biserial r = (M_correct - M_incorrect) / SD_all * sqrt(p*(1-p))
+      //    Then a_new = max(0.2, min(3.0, a_old + DAMPING_A * (r - P_expected_discrimination)))
+
       const params: IrtParameters = {
         a: item.discrimination,
         b: item.difficulty,
@@ -211,17 +226,34 @@ export class CalibrationService {
       };
 
       const pExpected = probability(meanTheta, params);
-      const adjustment = pExpected - pObserved;
-      
+      const bAdjustment = pExpected - pObserved;
+
       // Damping factor to prevent over-correction
-      const damping = 0.5;
-      const newDifficulty = item.difficulty + (adjustment * damping);
+      const DAMPING_B = 0.3; // Reduced from 0.5 to be more conservative
+      const newDifficulty = Math.max(-4, Math.min(4, item.difficulty + bAdjustment * DAMPING_B));
+
+      // Point-biserial discrimination estimate
+      const correctThetas = responses.filter(r => (r.score || 0) >= 0.5).map(r => r.session.theta);
+      const incorrectThetas = responses.filter(r => (r.score || 0) < 0.5).map(r => r.session.theta);
+      let newDiscrimination = item.discrimination;
+      if (correctThetas.length > 5 && incorrectThetas.length > 5) {
+        const meanCorrect = correctThetas.reduce((s, t) => s + t, 0) / correctThetas.length;
+        const meanIncorrect = incorrectThetas.reduce((s, t) => s + t, 0) / incorrectThetas.length;
+        const allThetas = responses.map(r => r.session.theta);
+        const grandMean = allThetas.reduce((s, t) => s + t, 0) / allThetas.length;
+        const variance = allThetas.reduce((s, t) => s + (t - grandMean) ** 2, 0) / allThetas.length;
+        const sd = Math.sqrt(Math.max(variance, 1e-6));
+        const ptBiserial = ((meanCorrect - meanIncorrect) / sd) * Math.sqrt(pObserved * (1 - pObserved));
+        const DAMPING_A = 0.2;
+        newDiscrimination = Math.max(0.2, Math.min(3.0, item.discrimination + DAMPING_A * (ptBiserial - item.discrimination)));
+      }
 
       // 5. Update item in database
       await prisma.item.update({
         where: { id: item.id },
         data: {
           difficulty: newDifficulty,
+          discrimination: newDiscrimination,
           pVal: pObserved,
           exposureCount: item.exposureCount + responses.length
         }

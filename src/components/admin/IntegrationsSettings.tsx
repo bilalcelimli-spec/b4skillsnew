@@ -37,8 +37,10 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
         fetch(`/api/organizations/${orgId}/webhooks`),
         fetch(`/api/organizations/${orgId}/api-keys`)
       ]);
-      setWebhooks(await whRes.json());
-      setApiKeys(await akRes.json());
+      const whData = await whRes.json();
+      const akData = await akRes.json();
+      setWebhooks(Array.isArray(whData) ? whData : []);
+      setApiKeys(Array.isArray(akData) ? akData : []);
     } catch (err) {
       console.error("Failed to fetch integrations");
     } finally {

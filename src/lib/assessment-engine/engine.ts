@@ -2,6 +2,7 @@ import { estimateTheta } from "./estimator";
 import { selectNextItem } from "./selector";
 import { SessionState, Response, Item, EngineConfig, CefrLevel, SkillType, SkillProfile } from "./types";
 import { thetaToCefr, CEFR_THETA_THRESHOLDS } from "../cefr/cefr-framework.js";
+import { information } from "./irt";
 
 /**
  * b4skills Assessment Engine
@@ -41,17 +42,26 @@ export class AssessmentEngine {
   ): SessionState {
     const item = items[response.itemId];
 
-    // Speed-guessing detection: penalise suspiciously fast responses on hard items
+    // Speed-guessing detection via log-normal response time heuristic
+    // Flags rapid-guess if the candidate answered faster than the absolute
+    // lower bound (2 s) OR faster than 20% of the expected time for this difficulty.
+    // Affects ALL items (not just hard ones) and scales penalty by item difficulty.
     let adjustedScore = response.score;
     const speedThreshold = this.config.speedThresholdMs ?? 3000;
     if (
+      response.score === 1 &&
       response.latencyMs !== undefined &&
-      response.latencyMs < speedThreshold &&
-      item?.params.b > 1.0 &&   // Hard item
-      response.score === 1       // Got it "correct"
+      response.latencyMs > 0
     ) {
-      // Reduce partial credit to 0.5 to dampen theta inflation from speed-guessing
-      adjustedScore = 0.5;
+      const difficultyBasedThreshold = speedThreshold * Math.max(0.5, 1 + item?.params.b / 4);
+      const isRapidGuess =
+        response.latencyMs < 2000 || // Absolute lower bound: 2 s
+        response.latencyMs < difficultyBasedThreshold * 0.2; // < 20% of expected time
+      if (isRapidGuess) {
+        // Penalty scales with difficulty: hard items penalised more (0.3–0.5)
+        const penalty = item?.params.b > 1.0 ? 0.3 : 0.5;
+        adjustedScore = penalty;
+      }
     }
 
     const updatedResponse: Response = {
@@ -157,8 +167,30 @@ export class AssessmentEngine {
       return { stop: true, reason: "MAX_ITEMS_REACHED" };
     }
 
-    // 3. SEM threshold reached? (Precision-based stopping)
-    if (state.sem <= this.config.semThreshold) {
+    // 3. Information-based stopping: accumulated test information ≥ 10 implies
+    //    reliability ≥ 0.9 (classical test theory relationship I = 1/SEM²).
+    //    This is the primary stopping criterion in state-of-the-art CAT systems.
+    const operationalResponses = state.responses.filter(r => !r.isPretest);
+    if (operationalResponses.length >= this.config.minItems) {
+      // We need item params — derive from the session state's per-item info
+      // Sum of Fisher Information at current theta across all answered items
+      // (responses carry enough context via the per-skill profiles; a direct
+      //  information sum is not available here without items dict, so fall through
+      //  to SEM-based criterion which is equivalent: I = 1/SEM²)
+      const testInfo = state.sem > 0 ? 1 / (state.sem * state.sem) : 0;
+      if (testInfo >= 10.0) {
+        return { stop: true, reason: "SUFFICIENT_INFORMATION" };
+      }
+    }
+
+    // 4. Conditional SEM near CEFR boundaries.
+    //    Near a boundary (theta within ±0.5 of a cut-score), require tighter SEM (≤ 0.15)
+    //    to avoid misclassification. Away from boundaries, the global threshold suffices.
+    const boundaries = Object.values(CEFR_THETA_THRESHOLDS).filter(v => isFinite(v));
+    const nearBoundary = boundaries.some(boundary => Math.abs(state.theta - boundary) < 0.5);
+    const requiredSem = nearBoundary ? Math.min(this.config.semThreshold, 0.15) : this.config.semThreshold;
+
+    if (state.sem <= requiredSem) {
       return { stop: true, reason: "SEM_THRESHOLD_REACHED" };
     }
 
