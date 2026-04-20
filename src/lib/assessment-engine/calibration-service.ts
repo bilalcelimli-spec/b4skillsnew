@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import { CefrLevel, IrtParameters } from "./types";
 import { probability } from "./irt";
+import { DifAnalysisService } from "../psychometrics/dif-analysis.js";
 
 /**
  * Calibration Service
@@ -304,20 +305,54 @@ export class CalibrationService {
 
     for (const item of pretestItems as any) {
       if (item._count.responses >= minResponses) {
-        // 2. Update item status to ACTIVE and turn off isPretest
+        // 2. Run DIF analysis before promotion to catch biased items.
+        //    Check gender and nativeLanguage; ETS Class C → RETIRED, Class B → REVIEW.
+        let difBlocked = false;
+        let difReviewOnly = false;
+        try {
+          const [genderDif, langDif] = await Promise.all([
+            DifAnalysisService.analyzeItemDif(item.id, "gender", "male", "female"),
+            DifAnalysisService.analyzeItemDif(item.id, "nativeLanguage", "english", "non-english"),
+          ]);
+          if (genderDif.classification === "C" || langDif.classification === "C") {
+            difBlocked = true;
+          } else if (genderDif.classification === "B" || langDif.classification === "B") {
+            difReviewOnly = true;
+          }
+        } catch {
+          // DIF service unavailable (e.g. not enough data) — allow promotion
+        }
+
+        if (difBlocked) {
+          await prisma.item.update({
+            where: { id: item.id },
+            data: { status: "RETIRED", updatedAt: new Date() } as any,
+          });
+          results.push({ itemId: item.id, responses: item._count.responses, action: "RETIRED_DIF_C" });
+          continue;
+        }
+
+        if (difReviewOnly) {
+          await prisma.item.update({
+            where: { id: item.id },
+            data: { status: "REVIEW", updatedAt: new Date() } as any,
+          });
+          results.push({ itemId: item.id, responses: item._count.responses, action: "REVIEW_DIF_B" });
+          promotedCount++;
+          continue;
+        }
+
+        // 3. No DIF concern — promote to ACTIVE
         await prisma.item.update({
           where: { id: item.id },
-          data: {
-            status: "ACTIVE",
-            isPretest: false,
-            updatedAt: new Date()
-          } as any
+          data: { status: "ACTIVE", isPretest: false, updatedAt: new Date() } as any,
         });
 
         results.push({
           itemId: item.id,
           responses: item._count.responses,
-          finalDifficulty: item.difficulty
+          finalDifficulty: item.difficulty,
+          action: "PROMOTED",
         });
         promotedCount++;
       }

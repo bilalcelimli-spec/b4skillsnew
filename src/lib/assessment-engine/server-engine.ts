@@ -7,6 +7,17 @@ import { CalibrationService } from "./calibration-service";
 import { SessionStatus, ItemType, CefrLevel } from "@prisma/client";
 import { BillingService } from "../enterprise/billing-service";
 import { validateItem } from "../language-skills/item-quality-validator.js";
+import { logger } from "../observability/index.js";
+import { getCanDo, thetaToCefr, CEFR_LEVELS } from "../cefr/cefr-framework.js";
+import { initExposureStore, getExposureStore } from "./exposure-store.js";
+
+/** Wraps a promise with a hard timeout to prevent indefinite hangs */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+  );
+  return Promise.race([promise, timeout]);
+}
 
 /**
  * Server-side Assessment Service
@@ -32,6 +43,9 @@ const DEFAULT_CONFIG: EngineConfig = {
   pretestRatio: 0.1,
   speedThresholdMs: 2500,      // Responses faster than 2.5s on hard items → guessing flag
   blueprint: DEFAULT_BLUEPRINT,
+  useMirt: true,
+  useShadowTest: false,        // Shadow test off by default; enable via SystemConfig
+  classificationConfidenceThreshold: 0.90,
   cefrThresholds: {
     A1: -2.5,
     A2: -1.5,
@@ -41,6 +55,9 @@ const DEFAULT_CONFIG: EngineConfig = {
     C2: 2.5
   }
 };
+
+// Pre-initialise the exposure store so Redis connection is established before first request
+initExposureStore();
 
 let engineInstance: AssessmentEngine | null = null;
 let lastConfigUpdate: number = 0;
@@ -67,7 +84,7 @@ export async function getEngine(): Promise<AssessmentEngine> {
       });
       lastConfigUpdate = now;
     } catch (error) {
-      console.error("Failed to load dynamic engine config, using defaults:", error);
+      logger.error({ err: error }, "Failed to load dynamic engine config, using defaults");
       if (!engineInstance) {
         engineInstance = new AssessmentEngine(DEFAULT_CONFIG);
       }
@@ -97,7 +114,7 @@ export const AssessmentService = {
          create: { id: candidateId, organizationId, email: `${candidateId}@b4skills.com`, name: "Candidate" }
       });
     } catch(e) {
-      console.warn("Could not upsert org/user - moving on", e);
+      logger.warn({ err: e }, "Could not upsert org/user - moving on");
     }
 
     // --- CREDIT CHECK ---
@@ -264,14 +281,26 @@ export const AssessmentService = {
         const itemSkill = String(item.skill).toUpperCase();
         
         if (itemSkill === "WRITING") {
-          scoringDecision = await ScoringOrchestrator.scoreWriting(String(value), prompt);
+          scoringDecision = await withTimeout(
+            ScoringOrchestrator.scoreWriting(String(value), prompt),
+            30_000,
+            "Writing AI scoring"
+          );
         } else if (itemSkill === "SPEAKING") {
           // Check if value is multimodal (audio + mimeType)
           if (typeof value === "object" && value.audio && value.mimeType) {
-            scoringDecision = await ScoringOrchestrator.scoreSpeaking(value.audio, value.mimeType, prompt);
+            scoringDecision = await withTimeout(
+              ScoringOrchestrator.scoreSpeaking(value.audio, value.mimeType, prompt),
+              30_000,
+              "Speaking AI scoring"
+            );
           } else {
             // Fallback for text-only or simulated speaking
-            scoringDecision = await ScoringOrchestrator.scoreSpeakingFromText(String(value), prompt);
+            scoringDecision = await withTimeout(
+              ScoringOrchestrator.scoreSpeakingFromText(String(value), prompt),
+              30_000,
+              "Speaking (text) AI scoring"
+            );
           }
         }
         
@@ -280,7 +309,7 @@ export const AssessmentService = {
           score = scoringDecision.score;
         }
       } catch (error) {
-        console.error("AI Scoring failed, enqueuing for human review...");
+        logger.error({ err: error, sessionId, itemId }, "AI scoring failed — enqueuing for human review");
         // Do NOT use 0.5 — that biases theta upward for every AI failure.
         // Mark the response as requiring human review; exclude from theta estimation
         // by setting isPretest=true temporarily until a human scores it.
@@ -330,7 +359,18 @@ export const AssessmentService = {
       });
 
       // Update session state using the engine
-      const newState = engine.processResponse(state, response, itemDict);
+      const rawState = engine.processResponse(state, response, itemDict);
+
+      // Theta bounds guard: NaN or out-of-range theta is a sign of numerical instability
+      const newTheta = rawState.theta;
+      if (!Number.isFinite(newTheta) || newTheta < -6 || newTheta > 6) {
+        logger.warn(
+          { sessionId, itemId, rawTheta: newTheta },
+          "Theta out of bounds — clamping to [-6, 6]"
+        );
+        rawState.theta = Math.max(-6, Math.min(6, Number.isFinite(newTheta) ? newTheta : 0));
+      }
+      const newState = rawState;
             
             // Persist response and update session
             const [savedResponse] = await prisma.$transaction([
@@ -422,23 +462,122 @@ export const AssessmentService = {
   },
 
   /**
-   * Finalize a session: set status to COMPLETED, calculate CEFR, and create ScoreReport.
+   * Finalize a session: set status to COMPLETED, calculate CEFR, and create a full
+   * diagnostic ScoreReport including per-skill CIs, Can-Do statements, and MIRT vector.
    */
   async finalizeSession(sessionId: string, theta: number) {
     const engine = await getEngine();
     const cefrLevel = engine.mapToCefr(theta);
-    
-    // Simple scaled score calculation: map -4 to 4 range to 0-100
+
+    // Simple scaled score: map [-4,4] → [0,100]
     const scaledScore = Math.max(0, Math.min(100, Math.round(((theta + 4) / 8) * 100)));
+
+    // Fetch full session including responses and MIRT profiles stored in metadata
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      include: { responses: { include: { item: true } } },
+    });
+
+    // ── Build per-skill diagnostic sub-reports ────────────────────────────────
+    type SkillSubReport = {
+      theta: number;
+      sem: number;
+      cefr: string;
+      scaledScore: number;
+      confidenceInterval: [number, number];
+      canDoStatements: string[];
+    };
+
+    const skillSubReports: Partial<Record<SkillType, SkillSubReport>> = {};
+    const skillScoresForDb: Record<string, number | null> = {
+      readingScore: null, listeningScore: null, writingScore: null,
+      speakingScore: null, grammarScore: null, vocabularyScore: null,
+    };
+
+    const SKILL_DB_MAP: Record<string, string> = {
+      [SkillType.READING]: "readingScore",
+      [SkillType.LISTENING]: "listeningScore",
+      [SkillType.WRITING]: "writingScore",
+      [SkillType.SPEAKING]: "speakingScore",
+      [SkillType.GRAMMAR]: "grammarScore",
+      [SkillType.VOCABULARY]: "vocabularyScore",
+    };
+
+    // Group non-pretest responses by skill and re-estimate theta per skill
+    if (session) {
+      const { estimateTheta: estimateThetaFn } = await import("./estimator.js");
+      const itemDict: Record<string, Item> = {};
+      for (const r of session.responses) {
+        if (r.item) {
+          itemDict[r.item.id] = {
+            id: r.item.id,
+            skill: r.item.skill as unknown as SkillType,
+            isPretest: r.isPretest,
+            params: { a: r.item.discrimination, b: r.item.difficulty, c: r.item.guessing },
+            metadata: r.item.content as any,
+          };
+        }
+      }
+
+      for (const skill of Object.values(SkillType)) {
+        const skillResponses = session.responses
+          .filter(r => !r.isPretest && r.item?.skill === skill && r.score !== null)
+          .map(r => ({
+            itemId: r.itemId,
+            score: r.score ?? 0,
+            isPretest: false,
+            latencyMs: r.latencyMs,
+          }));
+
+        if (skillResponses.length === 0) continue;
+
+        const { theta: sTheta, sem: sSem } = estimateThetaFn(skillResponses, itemDict);
+        const skillCefr = engine.mapToCefr(sTheta);
+        const canDos = getCanDo(skillCefr as any, skill.toLowerCase() as any);
+        const canDoStatements = canDos.flatMap(d => d.descriptors).slice(0, 4);
+        const lo = Number((sTheta - 1.96 * sSem).toFixed(3));
+        const hi = Number((sTheta + 1.96 * sSem).toFixed(3));
+        const sScaled = Math.max(0, Math.min(100, Math.round(((sTheta + 4) / 8) * 100)));
+
+        skillSubReports[skill] = {
+          theta: sTheta,
+          sem: sSem,
+          cefr: skillCefr,
+          scaledScore: sScaled,
+          confidenceInterval: [lo, hi],
+          canDoStatements,
+        };
+
+        const dbKey = SKILL_DB_MAP[skill];
+        if (dbKey) skillScoresForDb[dbKey] = sScaled;
+      }
+    }
+
+    // ── Overall CI ─────────────────────────────────────────────────────────────
+    const sessionSem = session?.sem ?? 1;
+    const overallCI: [number, number] = [
+      Number((theta - 1.96 * sessionSem).toFixed(3)),
+      Number((theta + 1.96 * sessionSem).toFixed(3)),
+    ];
+
+    const overallCanDo = getCanDo(cefrLevel as any);
+    const mirtVector = (session?.metadata as any)?.mirtAbilityVector ?? null;
+
+    const diagnosticReport = {
+      overallTheta: theta,
+      overallSem: sessionSem,
+      overallCefr: cefrLevel,
+      confidenceInterval: overallCI,
+      canDoStatements: overallCanDo.flatMap(d => d.descriptors).slice(0, 6),
+      skillProfiles: skillSubReports,
+      mirtAbilityVector: mirtVector,
+      generatedAt: new Date().toISOString(),
+    };
 
     await prisma.$transaction([
       prisma.session.update({
         where: { id: sessionId },
-        data: {
-          status: SessionStatus.COMPLETED,
-          completedAt: new Date(),
-          cefrLevel: cefrLevel as any
-        }
+        data: { status: SessionStatus.COMPLETED, completedAt: new Date(), cefrLevel: cefrLevel as any }
       }),
       prisma.scoreReport.upsert({
         where: { sessionId },
@@ -446,13 +585,17 @@ export const AssessmentService = {
           sessionId,
           overallCefr: cefrLevel as any,
           overallScore: scaledScore,
-          isVerified: true
-        },
+          ...skillScoresForDb,
+          diagnosticReport,
+          isVerified: true,
+        } as any,
         update: {
           overallCefr: cefrLevel as any,
-          overallScore: scaledScore
-        }
-      })
+          overallScore: scaledScore,
+          ...skillScoresForDb,
+          diagnosticReport,
+        } as any,
+      }),
     ]);
   },
 

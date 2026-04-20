@@ -56,13 +56,22 @@ export interface SkillProfile {
   sem: number;
 }
 
+/** Full MIRT ability vector (6-dimensional). */
+export interface MirtAbilityVector {
+  theta: Partial<Record<SkillType, number>>;
+  sem: Partial<Record<SkillType, number>>;
+  covariance: number[][];
+}
+
 export interface SessionState {
   theta: number; // Overall composite ability estimate
   sem: number;   // Overall Standard Error of Measurement
   responses: Response[];
   usedItemIds: Set<string>;
-  /** Multidimensional per-skill ability profiles */
+  /** Multidimensional per-skill ability profiles (unidimensional, per-skill EAP) */
   skillProfiles?: Partial<Record<SkillType, SkillProfile>>;
+  /** Full MIRT ability vector (when useMirt=true) */
+  mirtAbilityVector?: MirtAbilityVector;
 }
 
 /** Defines the required content distribution for a test (content blueprint). */
@@ -84,4 +93,30 @@ export interface EngineConfig {
   blueprint?: BlueprintConstraint[];
   /** Speed penalty: if response < speedThresholdMs it may indicate automated guessing. */
   speedThresholdMs?: number;
+  /**
+   * Enable Multidimensional IRT (MIRT) estimation alongside unidimensional EAP.
+   * When true, each step computes a full 6D ability vector stored in
+   * SessionState.mirtAbilityVector. Requires items to have cross-loading params.
+   */
+  useMirt?: boolean;
+  /**
+   * Enable shadow-test item selection (van der Linden 2005).
+   * Guarantees blueprint adherence at every step without greedy look-ahead failures.
+   * Requires a blueprint to be set.
+   */
+  useShadowTest?: boolean;
+  /**
+   * Posterior CEFR classification confidence threshold for stopping.
+   * Stop when P(current CEFR level | data) >= this value. Default: 0.90.
+   */
+  classificationConfidenceThreshold?: number;
+  /**
+   * Organisational prior: mean theta for this org's candidate pool.
+   * Used as EAP prior mean instead of population default (0).
+   */
+  priorMean?: number;
+  /**
+   * Organisational prior: SD of theta for this org's candidate pool. Default: 1.
+   */
+  priorSd?: number;
 }

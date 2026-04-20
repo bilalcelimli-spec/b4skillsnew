@@ -22,6 +22,8 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Log to console in development; in production Sentry picks this up via
+    // the global instrument.js integration — no manual captureException needed here.
     console.error("Uncaught error:", error, errorInfo);
   }
 
@@ -32,18 +34,8 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
-      let errorMessage = "An unexpected error occurred.";
-      let isFirestoreError = false;
-
-      try {
-        const parsed = JSON.parse(this.state.error?.message || "");
-        if (parsed.operationType) {
-          isFirestoreError = true;
-          errorMessage = `Security Rule Violation: Insufficient permissions for ${parsed.operationType} on ${parsed.path}.`;
-        }
-      } catch (e) {
-        errorMessage = this.state.error?.message || errorMessage;
-      }
+      const errorMessage =
+        this.state.error?.message || "An unexpected error occurred.";
 
       return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
@@ -55,15 +47,6 @@ export class ErrorBoundary extends Component<Props, State> {
             <p className="text-slate-500 mb-8 leading-relaxed">
               {errorMessage}
             </p>
-            
-            {isFirestoreError && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-8 text-left">
-                <div className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-1">Developer Note</div>
-                <div className="text-xs text-amber-700">
-                  This error was caught by the Firestore Error Boundary. Please check your security rules for the path mentioned above.
-                </div>
-              </div>
-            )}
 
             <div className="flex flex-col gap-3">
               <Button onClick={this.handleReset} className="w-full gap-2 bg-indigo-600">

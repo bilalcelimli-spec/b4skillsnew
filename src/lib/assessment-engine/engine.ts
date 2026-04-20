@@ -1,8 +1,24 @@
 import { estimateTheta } from "./estimator";
 import { selectNextItem } from "./selector";
-import { SessionState, Response, Item, EngineConfig, CefrLevel, SkillType, SkillProfile } from "./types";
+import { SessionState, Response, Item, EngineConfig, CefrLevel, SkillType, SkillProfile, MirtAbilityVector, BlueprintConstraint } from "./types";
 import { thetaToCefr, CEFR_THETA_THRESHOLDS } from "../cefr/cefr-framework.js";
 import { information } from "./irt";
+import {
+  estimateMirtTheta,
+  mirtSelectItem,
+  uniToMirtParams,
+  SKILL_ORDER as MIRT_SKILL_ORDER,
+} from "../psychometrics/mirt-engine.js";
+import { constructShadowTest } from "../psychometrics/shadow-test.js";
+
+/** Standard normal CDF approximation (Abramowitz & Stegun 26.2.17) */
+function normalCDF(x: number): number {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const d = 0.3989422804014327;
+  const p = d * Math.exp(-x * x / 2) *
+    t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return x > 0 ? 1 - p : p;
+}
 
 /**
  * b4skills Assessment Engine
@@ -74,10 +90,15 @@ export class AssessmentEngine {
     const updatedUsedItems = new Set(state.usedItemIds);
     updatedUsedItems.add(response.itemId);
 
-    // 1. Re-estimate overall ability (theta) and SEM
-    const { theta, sem } = estimateTheta(updatedResponses, items);
+    // 1. Re-estimate overall ability (theta) and SEM (with optional org-level prior)
+    const { theta, sem } = estimateTheta(
+      updatedResponses,
+      items,
+      this.config.priorMean ?? 0,
+      this.config.priorSd ?? 1
+    );
 
-    // 2. Update per-skill theta profiles (multidimensional profiling)
+    // 2. Update per-skill theta profiles (unidimensional per-skill EAP)
     const updatedSkillProfiles: Partial<Record<SkillType, SkillProfile>> = {
       ...(state.skillProfiles || {})
     };
@@ -88,8 +109,24 @@ export class AssessmentEngine {
         r => !r.isPretest && items[r.itemId]?.skill === skill
       );
       if (skillResponses.length > 0) {
-        const skillEstimate = estimateTheta(skillResponses, items);
+        const skillEstimate = estimateTheta(skillResponses, items,
+          this.config.priorMean ?? 0, this.config.priorSd ?? 1);
         updatedSkillProfiles[skill] = skillEstimate;
+      }
+    }
+
+    // 3. MIRT: run 6D ability estimation when enabled
+    let updatedMirtVector: MirtAbilityVector | undefined = state.mirtAbilityVector;
+    if (this.config.useMirt) {
+      const mirtResponses = updatedResponses
+        .filter(r => !r.isPretest && items[r.itemId])
+        .map(r => {
+          const it = items[r.itemId];
+          const mirtParams = uniToMirtParams(it.skill, it.params.a, it.params.b, it.params.c);
+          return { score: r.score, params: mirtParams };
+        });
+      if (mirtResponses.length > 0) {
+        updatedMirtVector = estimateMirtTheta(mirtResponses);
       }
     }
 
@@ -98,14 +135,17 @@ export class AssessmentEngine {
       sem,
       responses: updatedResponses,
       usedItemIds: updatedUsedItems,
-      skillProfiles: updatedSkillProfiles
+      skillProfiles: updatedSkillProfiles,
+      mirtAbilityVector: updatedMirtVector,
     };
   }
 
   /**
-   * Select the next item for the candidate
-   * @param state The current session state
-   * @param pool The pool of available items
+   * Select the next item for the candidate.
+   * Uses shadow-test (van der Linden 2005) when config.useShadowTest=true,
+   * MIRT-weighted selection when config.useMirt=true, else MFI + Sympson-Hetter.
+   * Blueprint is enforced adaptively: skills with SEM > 0.40 get their maxCount
+   * temporarily relaxed by +1 to spend extra measurement budget where needed.
    */
   public getNextItem(state: SessionState, pool: Item[]): Item | null {
     // 1. Exposure Control & Pretest Logic
@@ -129,8 +169,6 @@ export class AssessmentEngine {
     const currentSkillCounts: Partial<Record<SkillType, number>> = {};
     for (const r of state.responses) {
       if (!r.isPretest) {
-        // We no longer have the item map here, so skilCounts is tracked separately
-        // The caller (server-engine.ts) passes the full pool, pull skill from it
         const poolItem = pool.find(p => p.id === r.itemId);
         if (poolItem) {
           currentSkillCounts[poolItem.skill] = (currentSkillCounts[poolItem.skill] || 0) + 1;
@@ -138,63 +176,156 @@ export class AssessmentEngine {
       }
     }
 
-    // 3. Select best operational item (MFI + blueprint + exposure control)
+    // 3. Adaptive blueprint: temporarily expand maxCount for skills still imprecise
+    //    (SEM > 0.40) so measurement budget flows to where it is most needed.
+    let effectiveBlueprint = this.config.blueprint;
+    if (effectiveBlueprint && state.skillProfiles) {
+      effectiveBlueprint = effectiveBlueprint.map(constraint => {
+        const skillSem = state.skillProfiles![constraint.skill]?.sem ?? 1.0;
+        const relaxed = skillSem > 0.40 ? constraint.maxCount + 1 : constraint.maxCount;
+        return { ...constraint, maxCount: relaxed };
+      });
+    }
+
     const operationalPool = pool.filter(item => !item.isPretest);
+
+    // 4a. Shadow-test item selection (van der Linden 2005)
+    if (this.config.useShadowTest && effectiveBlueprint && effectiveBlueprint.length > 0) {
+      const { nextItem } = constructShadowTest(
+        operationalPool as any,
+        state.theta,
+        state.usedItemIds,
+        {
+          totalLength: this.config.maxItems,
+          blueprint: effectiveBlueprint,
+          maxExposureRate: 0.20,
+        }
+      );
+      return nextItem as Item | null;
+    }
+
+    // 4b. MIRT-weighted item selection
+    if (this.config.useMirt && state.mirtAbilityVector) {
+      const mirtPool = operationalPool
+        .filter(item => !state.usedItemIds.has(item.id))
+        .map(item => ({
+          id: item.id,
+          params: uniToMirtParams(item.skill, item.params.a, item.params.b, item.params.c),
+          _original: item,
+        }));
+      const selected = mirtSelectItem(
+        mirtPool,
+        state.mirtAbilityVector.theta,
+        state.mirtAbilityVector.sem,
+        state.usedItemIds
+      );
+      if (selected) {
+        return mirtPool.find(p => p.id === selected.id)?._original ?? null;
+      }
+    }
+
+    // 4c. Standard MFI + Sympson-Hetter + blueprint enforcement
     return selectNextItem(
       operationalPool,
       state.theta,
       state.usedItemIds,
       5,
-      this.config.blueprint,
+      effectiveBlueprint,
       currentSkillCounts
     );
   }
 
   /**
-   * Evaluate whether the assessment should stop
-   * @param state The current session state
+   * Evaluate whether the assessment should stop.
+   *
+   * Stopping criteria (in priority order):
+   *  1. minItems floor
+   *  2. maxItems ceiling (hard stop)
+   *  3. Test information I(θ) ≥ 12 (reliability ≥ 0.93)
+   *  4. Global SEM ≤ semThreshold  (default 0.28)
+   *  5. Conditional SEM ≤ 0.16 near CEFR boundaries (±0.5)
+   *  6. Conditional SEM ≤ 0.12 very close to boundaries (±0.25)
+   *  7. Posterior CEFR classification confidence ≥ threshold (default 0.90)
    */
   public shouldStop(state: SessionState): { stop: boolean; reason: string | null } {
     const count = state.responses.length;
 
-    // 1. Minimum items reached?
+    // 1. Minimum items floor
     if (count < this.config.minItems) {
       return { stop: false, reason: null };
     }
 
-    // 2. Maximum items reached?
+    // 2. Maximum items ceiling
     if (count >= this.config.maxItems) {
       return { stop: true, reason: "MAX_ITEMS_REACHED" };
     }
 
-    // 3. Information-based stopping: accumulated test information ≥ 10 implies
-    //    reliability ≥ 0.9 (classical test theory relationship I = 1/SEM²).
-    //    This is the primary stopping criterion in state-of-the-art CAT systems.
     const operationalResponses = state.responses.filter(r => !r.isPretest);
     if (operationalResponses.length >= this.config.minItems) {
-      // We need item params — derive from the session state's per-item info
-      // Sum of Fisher Information at current theta across all answered items
-      // (responses carry enough context via the per-skill profiles; a direct
-      //  information sum is not available here without items dict, so fall through
-      //  to SEM-based criterion which is equivalent: I = 1/SEM²)
+      // 3. Test information criterion: I(θ) = 1/SEM² ≥ 12 → reliability ≥ 0.93
       const testInfo = state.sem > 0 ? 1 / (state.sem * state.sem) : 0;
-      if (testInfo >= 10.0) {
+      if (testInfo >= 12.0) {
         return { stop: true, reason: "SUFFICIENT_INFORMATION" };
       }
     }
 
-    // 4. Conditional SEM near CEFR boundaries.
-    //    Near a boundary (theta within ±0.5 of a cut-score), require tighter SEM (≤ 0.15)
-    //    to avoid misclassification. Away from boundaries, the global threshold suffices.
-    const boundaries = Object.values(CEFR_THETA_THRESHOLDS).filter(v => isFinite(v));
-    const nearBoundary = boundaries.some(boundary => Math.abs(state.theta - boundary) < 0.5);
-    const requiredSem = nearBoundary ? Math.min(this.config.semThreshold, 0.15) : this.config.semThreshold;
-
-    if (state.sem <= requiredSem) {
+    // 4a. Global SEM threshold (default 0.28)
+    const globalSemThreshold = this.config.semThreshold ?? 0.28;
+    if (state.sem <= globalSemThreshold) {
       return { stop: true, reason: "SEM_THRESHOLD_REACHED" };
     }
 
+    // 4b & 4c. Conditional SEM tiers near CEFR classification boundaries
+    const boundaries = Object.values(CEFR_THETA_THRESHOLDS).filter(v => isFinite(v));
+    const distToNearest = Math.min(...boundaries.map(b => Math.abs(state.theta - b)));
+    if (distToNearest < 0.25 && state.sem <= 0.12) {
+      return { stop: true, reason: "SEM_BOUNDARY_TIGHT" };
+    }
+    if (distToNearest < 0.50 && state.sem <= 0.16) {
+      return { stop: true, reason: "SEM_BOUNDARY_REACHED" };
+    }
+
+    // 5. Posterior CEFR classification confidence
+    //    Compute P(θ in current CEFR band | data) using normal CDF approximation.
+    //    Stop when classification is stable with >= configurable confidence (default 0.90).
+    const confidenceThreshold = this.config.classificationConfidenceThreshold ?? 0.90;
+    if (state.sem > 0 && operationalResponses.length >= this.config.minItems) {
+      const currentLevel = this.mapToCefr(state.theta);
+      const levelMeta = this.cefrBounds(currentLevel);
+      const pLower = levelMeta.lower === -Infinity ? 0
+        : normalCDF((levelMeta.lower - state.theta) / state.sem);
+      const pUpper = levelMeta.upper === Infinity ? 1
+        : normalCDF((levelMeta.upper - state.theta) / state.sem);
+      const classificationConfidence = pUpper - pLower;
+      if (classificationConfidence >= confidenceThreshold) {
+        return { stop: true, reason: "CLASSIFICATION_CONFIDENCE_REACHED" };
+      }
+    }
+
     return { stop: false, reason: null };
+  }
+
+  /**
+   * Return the theta bounds for a CEFR level band (using configured thresholds).
+   * @internal Used by shouldStop for posterior classification confidence.
+   */
+  private cefrBounds(level: CefrLevel): { lower: number; upper: number } {
+    const t = this.config.cefrThresholds || {};
+    const a1  = t.A1  ?? -3.0;
+    const a2  = t.A2  ?? -1.75;
+    const b1  = t.B1  ?? -0.5;
+    const b2  = t.B2  ??  0.5;
+    const c1  = t.C1  ??  1.5;
+    const c2  = t.C2  ??  2.5;
+    switch (level) {
+      case "PRE_A1": return { lower: -Infinity, upper: a1 };
+      case "A1":     return { lower: a1, upper: a2 };
+      case "A2":     return { lower: a2, upper: b1 };
+      case "B1":     return { lower: b1, upper: b2 };
+      case "B2":     return { lower: b2, upper: c1 };
+      case "C1":     return { lower: c1, upper: c2 };
+      case "C2":     return { lower: c2, upper: Infinity };
+    }
   }
 
   /**

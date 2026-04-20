@@ -53,6 +53,15 @@ export const PaymentService = {
   },
 
   /**
+   * Verify and construct a Stripe webhook event from the raw request body.
+   * Throws if the signature is invalid — caller must catch and return 400.
+   */
+  constructWebhookEvent(rawBody: Buffer, signature: string | string[], webhookSecret: string): Stripe.Event {
+    const sig = Array.isArray(signature) ? signature[0] : signature;
+    return stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+  },
+
+  /**
    * Handle Stripe Webhook
    */
   async handleWebhook(event: Stripe.Event) {

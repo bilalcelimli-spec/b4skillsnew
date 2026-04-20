@@ -39,7 +39,7 @@ export interface MirtAbilityVector {
 }
 
 /** Default inter-skill correlation matrix (6x6) */
-const SKILL_ORDER: SkillType[] = [
+export const SKILL_ORDER: SkillType[] = [
   SkillType.READING, SkillType.LISTENING, SkillType.WRITING,
   SkillType.SPEAKING, SkillType.GRAMMAR, SkillType.VOCABULARY,
 ];

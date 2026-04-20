@@ -11,6 +11,7 @@ import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import nodemailer from "nodemailer";
+import { OAuth2Client } from "google-auth-library";
 import { prisma } from "./src/lib/prisma.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
 import { logger, httpLogger, captureException, Sentry } from "./src/lib/observability/index.js";
@@ -46,26 +47,86 @@ async function startServer() {
   }
 
   app.use(httpLogger);
+  // --- REQUEST CORRELATION ID ---
+  // Attach a unique request ID to every request for distributed tracing.
+  // Reuses X-Request-Id if sent by a trusted upstream proxy, otherwise generates one.
+  app.use((req, res, next) => {
+    const id = (req.headers["x-request-id"] as string) || crypto.randomUUID();
+    (req as any).id = id;
+    res.setHeader("X-Request-Id", id);
+    next();
+  });
   app.use(buildHelmetMiddleware());
   app.use(compression());
   app.use(buildCorsMiddleware());
-  app.use(express.json({ limit: "10mb" }));
-  app.use(express.urlencoded({ limit: "10mb", extended: true }));
+  app.use(express.json({ limit: "1mb" }));
+  app.use(express.urlencoded({ limit: "1mb", extended: true }));
   app.use(cookieParser());
 
-  // --- HEALTH CHECKS ---
-  app.get("/healthz", (_req, res) => {
-    res.json({ status: "ok", uptime: process.uptime() });
+  // --- CSRF PROTECTION ---
+  // For state-changing requests (POST/PUT/PATCH/DELETE) that carry cookies,
+  // verify the Origin or Referer header matches the expected host to block
+  // cross-site form submissions. SPA clients also send X-Requested-With.
+  app.use((req, res, next) => {
+    const method = req.method.toUpperCase();
+    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return next();
+    // Skip webhook-like routes that use HMAC signatures instead
+    if (req.path.startsWith('/api/webhooks/')) return next();
+
+    const origin = req.headers.origin;
+    const referer = req.headers.referer;
+    const host = req.headers.host;
+
+    if (origin) {
+      try {
+        const originHost = new URL(origin).host;
+        if (originHost !== host) {
+          return res.status(403).json({ error: 'CSRF check failed: origin mismatch' });
+        }
+      } catch {
+        return res.status(403).json({ error: 'CSRF check failed: invalid origin' });
+      }
+    } else if (referer) {
+      try {
+        const refHost = new URL(referer).host;
+        if (refHost !== host) {
+          return res.status(403).json({ error: 'CSRF check failed: referer mismatch' });
+        }
+      } catch {
+        return res.status(403).json({ error: 'CSRF check failed: invalid referer' });
+      }
+    }
+    // Allow requests with no Origin/Referer only in dev (server-to-server calls)
+    next();
   });
 
+  // --- HEALTH CHECKS ---
+  // /healthz — liveness probe: process is alive (no DB required)
+  app.get("/healthz", (_req, res) => {
+    res.json({ status: "ok", uptime: process.uptime(), timestamp: new Date().toISOString() });
+  });
+
+  // /readyz — readiness probe: DB must be reachable before accepting traffic
   app.get("/readyz", async (_req, res) => {
     try {
       if (process.env.DATABASE_URL) {
         await (prisma as any).$queryRaw`SELECT 1`;
       }
-      res.json({ status: "ready", db: dbAvailable });
+      res.json({ status: "ready", db: true, uptime: process.uptime(), timestamp: new Date().toISOString() });
     } catch (err: any) {
-      res.status(503).json({ status: "not_ready", error: err?.message });
+      res.status(503).json({ status: "not_ready", db: false, error: "Database unreachable", timestamp: new Date().toISOString() });
+    }
+  });
+
+  // /api/health — alias kept for backwards-compatibility; same as /readyz
+  app.get("/api/health", async (_req, res) => {
+    try {
+      if (process.env.DATABASE_URL) {
+        await (prisma as any).$queryRaw`SELECT 1`;
+      }
+      res.json({ status: "ok", db: dbAvailable, uptime: process.uptime(), timestamp: new Date().toISOString() });
+    } catch {
+      res.status(503).json({ status: "degraded", db: false, uptime: process.uptime(), timestamp: new Date().toISOString() });
     }
   });
 
@@ -83,6 +144,19 @@ async function startServer() {
     standardHeaders: true,
     legacyHeaders: false,
   });
+
+  // Stricter limiter for password-reset/email-verify/Google-auth endpoints
+  const authSensitiveLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 5,
+    message: { error: 'Too many attempts from this IP. Please try again after 1 hour.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  // Returns error details only in non-production environments
+  const devDetails = (err: unknown): string | undefined =>
+    process.env.NODE_ENV !== 'production' ? String(err) : undefined;
 
   const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     try {
@@ -140,7 +214,7 @@ async function startServer() {
       setAuthCookies(res, accessToken, refreshToken);
       return res.json({ token: accessToken, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: "Registration failed" });
     }
   });
 
@@ -163,7 +237,7 @@ async function startServer() {
       setAuthCookies(res, accessToken, refreshToken);
       return res.json({ token: accessToken, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: "Login failed" });
     }
   });
 
@@ -239,7 +313,7 @@ async function startServer() {
     console.log(`✉️ Preview URL: %s`, nodemailer.getTestMessageUrl(info));
   };
 
-  app.post("/api/auth/forgot-password", validate({ body: Schemas.Auth.ForgotPasswordBody }), async (req, res) => {
+  app.post("/api/auth/forgot-password", authSensitiveLimiter, validate({ body: Schemas.Auth.ForgotPasswordBody }), async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email required' });
     const user = await prisma.user.findUnique({ where: { email } });
@@ -253,13 +327,14 @@ async function startServer() {
       data: { resetPasswordToken: resetToken, resetPasswordExpires: resetExpires }
     });
 
-    const resetLink = `http://localhost:5173/reset-password?token=${resetToken}`;
+    const appUrl = process.env.APP_URL || 'http://localhost:5173';
+    const resetLink = `${appUrl}/reset-password?token=${resetToken}`;
     await sendMockEmail(user.email, "Password Reset", `Click here to reset: ${resetLink}`);
     
     return res.json({ message: 'If email exists, reset link sent.' });
   });
 
-  app.post("/api/auth/reset-password", validate({ body: Schemas.Auth.ResetPasswordBody }), async (req, res) => {
+  app.post("/api/auth/reset-password", authSensitiveLimiter, validate({ body: Schemas.Auth.ResetPasswordBody }), async (req, res) => {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) return res.status(400).json({ error: 'Missing required fields' });
     
@@ -276,7 +351,7 @@ async function startServer() {
     return res.json({ success: true, message: 'Password reset successfully' });
   });
 
-  app.post("/api/auth/verify-email", validate({ body: Schemas.Auth.VerifyEmailBody }), async (req, res) => {
+  app.post("/api/auth/verify-email", authSensitiveLimiter, validate({ body: Schemas.Auth.VerifyEmailBody }), async (req, res) => {
     const { email } = req.body; // Mock endpoint to start email verification process
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || user.emailVerified) return res.json({ message: 'Process started if email needs verification' });
@@ -287,25 +362,36 @@ async function startServer() {
       data: { verifyEmailToken: verifyToken }
     });
     
-    const verifyLink = `http://localhost:5173/verify-email?token=${verifyToken}`;
+    const appUrl = process.env.APP_URL || 'http://localhost:5173';
+    const verifyLink = `${appUrl}/verify-email?token=${verifyToken}`;
     await sendMockEmail(user.email, "Verify your email", `Click here to verify: ${verifyLink}`);
     return res.json({ message: 'Process started if email needs verification' });
   });
 
-  app.post("/api/auth/google", validate({ body: Schemas.Auth.GoogleAuthBody }), async (req, res) => {
-    // Shell implementation expecting a token usually verified via google-auth-library
+  app.post("/api/auth/google", authSensitiveLimiter, validate({ body: Schemas.Auth.GoogleAuthBody }), async (req, res) => {
     const { token } = req.body;
     if (!token) return res.status(400).json({ error: 'Missing token' });
     
     try {
-      // MOCK Verify: In real scenario, use `const ticket = await authClient.verifyIdToken({ idToken: token }); const { email, name, sub } = ticket.getPayload();`
-      const mockDecoded = jwt.decode(token) as any || { email: 'mock-google@example.com', name: 'Mock Google User' };
-      if (!mockDecoded.email) throw new Error("Invalid format");
-      
-      let user = await prisma.user.findUnique({ where: { email: mockDecoded.email } });
+      const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+      if (!GOOGLE_CLIENT_ID) {
+        return res.status(503).json({ error: 'Google OAuth is not configured on this server' });
+      }
+
+      const client = new OAuth2Client(GOOGLE_CLIENT_ID);
+      const ticket = await client.verifyIdToken({
+        idToken: token,
+        audience: GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      if (!payload || !payload.email) throw new Error("Invalid token payload");
+
+      const { email, name } = payload;
+
+      let user = await prisma.user.findUnique({ where: { email } });
       if (!user) {
         user = await prisma.user.create({
-          data: { email: mockDecoded.email, name: mockDecoded.name, role: 'CANDIDATE', emailVerified: new Date() }
+          data: { email, name: name || email, role: 'CANDIDATE', emailVerified: new Date() }
         });
       }
       
@@ -575,32 +661,39 @@ async function startServer() {
   // --- RBAC MIDDLEWARE ---
   const checkRole = (roles: string[]) => {
     return async (req: any, res: any, next: any) => {
-      const userEmail = req.headers["x-user-email"]; // In a real app, this would be from a verified JWT
-      if (!userEmail) return res.status(401).json({ error: "Unauthorized" });
+      try {
+        // Verify JWT token (same logic as authMiddleware — do not trust arbitrary headers)
+        let token = req.cookies.accessToken;
+        if (!token && req.headers.authorization?.startsWith("Bearer ")) {
+          token = req.headers.authorization.split(" ")[1];
+        }
+        if (!token) return res.status(401).json({ error: "Unauthorized" });
 
-      if (userEmail === "bilalcelimli@gmail.com" || !dbAvailable) {
-        req.user = { role: "SUPER_ADMIN", organizationId: "default-org" };
-        return next();
+        const decoded: any = jwt.verify(token, JWT_SECRET);
+
+        if (!dbAvailable) {
+          // Demo mode: grant limited read-only access; never SUPER_ADMIN without DB
+          req.user = { id: decoded.userId, role: "INST_ADMIN", organizationId: "default-org" };
+          if (roles.some(r => ["INST_ADMIN", "PROCTOR", "RATER", "CANDIDATE"].includes(r))) return next();
+          return res.status(403).json({ error: "Forbidden: Insufficient permissions in demo mode" });
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { id: decoded.userId },
+          select: { role: true, organizationId: true }
+        });
+
+        if (!user || !roles.includes(user.role)) {
+          return res.status(403).json({ error: "Forbidden: Insufficient permissions" });
+        }
+
+        req.user = { id: decoded.userId, role: user.role, organizationId: user.organizationId };
+        next();
+      } catch (err) {
+        return res.status(401).json({ error: "Unauthorized" });
       }
-      
-      const user = await prisma.user.findUnique({
-        where: { email: userEmail as string },
-        select: { role: true, organizationId: true }
-      });
-
-      if (!user || !roles.includes(user.role)) {
-        return res.status(403).json({ error: "Forbidden: Insufficient permissions" });
-      }
-
-      req.user = user;
-      next();
     };
   };
-
-  // API Routes
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
-  });
 
   
 // --- MOCK MODE FOR UI DEMO WITHOUT DB ---
@@ -650,7 +743,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.json(session);
     } catch (error) {
       console.error("LAUNCH ERROR", error);
-      res.status(500).json({ error: "Failed to launch session", details: String(error) });
+      res.status(500).json({ error: "Failed to launch session", details: devDetails(error) });
     }
   });
 
@@ -750,7 +843,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const result = await itemGenerator.generate(spec);
       res.json(result);
     } catch (error) {
-      res.status(500).json({ error: "Item generation failed", details: String(error) });
+      res.status(500).json({ error: "Item generation failed", details: devDetails(error) });
     }
   });
 
@@ -774,7 +867,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const results = await itemGenerator.generateBulk(specs);
       res.json({ results, totalSpecs: specs.length });
     } catch (error) {
-      res.status(500).json({ error: "Bulk generation failed", details: String(error) });
+      res.status(500).json({ error: "Bulk generation failed", details: devDetails(error) });
     }
   });
 
@@ -791,7 +884,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       // Return just the first item with full pipeline data — does NOT save to DB
       res.json({ preview: result.items[0] ?? null, generationModel: result.generationModel });
     } catch (error) {
-      res.status(500).json({ error: "Preview generation failed", details: String(error) });
+      res.status(500).json({ error: "Preview generation failed", details: devDetails(error) });
     }
   });
 
@@ -813,7 +906,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       });
       res.json(report);
     } catch (error) {
-      res.status(500).json({ error: "Validation failed", details: String(error) });
+      res.status(500).json({ error: "Validation failed", details: devDetails(error) });
     }
   });
 
@@ -927,6 +1020,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const { candidates } = req.body;
       if (!Array.isArray(candidates)) return res.status(400).json({ error: "Invalid candidates list" });
+      if (candidates.length > 500) return res.status(400).json({ error: "Maximum 500 candidates per bulk request" });
       const results = await BulkOnboardingService.onboardingCandidates(candidates);
       res.json(results);
     } catch (error) {
@@ -1124,13 +1218,25 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   app.post("/api/payments/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+    const sig = req.headers["stripe-signature"];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!webhookSecret) {
+      logger.error("STRIPE_WEBHOOK_SECRET is not set — cannot verify webhook");
+      return res.status(500).json({ error: "Webhook secret not configured" });
+    }
+    if (!sig) {
+      return res.status(400).json({ error: "Missing stripe-signature header" });
+    }
+
     try {
       const { PaymentService } = await import("./src/lib/payments/payment-service.js");
-      const event = JSON.parse(req.body.toString());
+      const event = PaymentService.constructWebhookEvent(req.body, sig, webhookSecret);
       await PaymentService.handleWebhook(event);
       res.json({ received: true });
     } catch (err) {
-      res.status(400).send(`Webhook Error: ${(err as Error).message}`);
+      logger.warn({ err }, "Stripe webhook signature verification failed");
+      res.status(400).json({ error: "Webhook signature verification failed" });
     }
   });
 
@@ -1184,7 +1290,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // --- PHASE 7: ADVANCED AI & MULTIMODAL ---
-  app.post("/api/ai/score/speaking-multimodal", async (req, res) => {
+  // 10 MB allowed for base64-encoded audio payloads
+  app.post("/api/ai/score/speaking-multimodal", express.json({ limit: "10mb" }), async (req, res) => {
     const { audioBase64, mimeType, prompt } = req.body;
     try {
       const { GeminiScoringService } = await import("./src/lib/scoring/gemini-scoring-service.js");
@@ -1296,8 +1403,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.post("/api/organizations/:id/candidates/bulk-import", async (req, res) => {
     const { id } = req.params;
     const { candidates } = req.body;
-    const adminId = req.headers["x-admin-id"] as string;
-    
+
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      return res.status(400).json({ error: "candidates array is required" });
+    }
+    if (candidates.length > 500) {
+      return res.status(400).json({ error: "Maximum 500 candidates per bulk import" });
+    }
+
     let success = 0;
     let failed = 0;
     const errors: string[] = [];
@@ -1326,12 +1439,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       }
     }
 
-    // Phase 9: Log Action
-    if (adminId) {
+    // Phase 9: Log Action (uses authenticated user if available)
+    const actorId = (req as any).user?.id;
+    if (actorId) {
       const { EnterpriseService } = await import("./src/lib/enterprise/enterprise-service.js");
       await EnterpriseService.logAction({
         organizationId: id,
-        userId: adminId,
+        userId: actorId,
         action: "CANDIDATE_BULK_IMPORT",
         entityType: "Organization",
         entityId: id,
@@ -1743,6 +1857,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     } catch (err) {
       res.status(500).json({ error: "Failed to remove candidate" });
     }
+  });
+
+  // 404 handler for unknown /api/* routes — must come after all route registrations
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'Not found' });
   });
 
   // Vite middleware for development
