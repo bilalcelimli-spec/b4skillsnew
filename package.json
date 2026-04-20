@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.4.0",
-    "@google/genai": "^1.29.0",
+    "@google/genai": "^1.50.1",
     "@prisma/client": "^6.1.0",
     "@sentry/node": "^10.49.0",
     "@sentry/profiling-node": "^10.49.0",
