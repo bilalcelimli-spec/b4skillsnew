@@ -1627,7 +1627,14 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
+    // SPA fallback only for document routes. If a hashed /assets/* file is missing (stale CDN HTML),
+    // do not send index.html — that breaks CSS/JS MIME types in the browser.
     app.get("*", (req, res) => {
+      const p = req.path;
+      if (p.startsWith("/assets/") || /\.(js|mjs|css|map|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|json|webmanifest)$/i.test(p)) {
+        return res.status(404).type("text/plain").send("Not found");
+      }
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
