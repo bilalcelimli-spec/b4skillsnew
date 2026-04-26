@@ -94,7 +94,7 @@ export function buildHelmetMiddleware(): RequestHandler {
 
 export function assertProductionSecrets(): void {
   if (!isProd) return;
-  const required = ["JWT_SECRET", "REFRESH_SECRET", "DATABASE_URL"];
+  const required = ["JWT_SECRET", "REFRESH_SECRET", "DATABASE_URL", "APP_URL"];
   const missing = required.filter((k) => !process.env[k]);
   if (missing.length) {
     throw new Error(
@@ -105,5 +105,13 @@ export function assertProductionSecrets(): void {
   const weak = ["super-secret-default-key", "super-secret-refresh-key", "changeme", "secret"];
   if (weak.includes(process.env.JWT_SECRET!) || weak.includes(process.env.REFRESH_SECRET!)) {
     throw new Error("JWT_SECRET or REFRESH_SECRET is set to a known weak default. Rotate now.");
+  }
+  const appUrl = process.env.APP_URL!;
+  if (!appUrl.startsWith("https://")) {
+    throw new Error("APP_URL must be an https URL in production.");
+  }
+  const corsOrigins = parseOrigins(process.env.CORS_ORIGINS);
+  if (!corsOrigins.includes(appUrl)) {
+    throw new Error("CORS_ORIGINS must include APP_URL in production.");
   }
 }
