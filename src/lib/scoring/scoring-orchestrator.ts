@@ -1,6 +1,11 @@
 import { AIScore, GeminiScoringService } from "./gemini-scoring-service";
+import {
+  assessWritingIntegrity,
+  assessSpeakingIntegrity,
+  type IntegrityReport,
+} from "./response-integrity";
 
-export type ScoreSource = "ai_auto" | "ai_flagged" | "human";
+export type ScoreSource = "ai_auto" | "ai_flagged" | "human" | "rejected_integrity";
 
 export interface ScoringPass {
   role: "primary" | "verifier";
@@ -19,6 +24,8 @@ export interface OrchestratedScore {
   model: string;
   modelVersion: string;
   scoringPasses: ScoringPass[];
+  /** Pre-scoring integrity report; populated for every response. */
+  integrity?: IntegrityReport;
 }
 
 const MODEL_NAME = "gemini-2.5-flash";
@@ -114,31 +121,124 @@ function buildFinalScore(primary: AIScore, verifier: AIScore): OrchestratedScore
   };
 }
 
+/**
+ * Build a zero-score "rejected" result for responses that fail the integrity
+ * guard with a `reject` recommendation. We do NOT spend Gemini calls on these.
+ */
+function buildRejectedScore(integrity: IntegrityReport): OrchestratedScore {
+  const reasons = integrity.issues.map(i => `INTEGRITY_${i.flag}`);
+  return {
+    score: 0,
+    requiresHumanReview: true,
+    reviewReasons: reasons,
+    agreementDelta: 0,
+    scoreSource: "rejected_integrity",
+    model: MODEL_NAME,
+    modelVersion: MODEL_NAME,
+    scoringPasses: [],
+    integrity,
+    aiResult: {
+      score: 0,
+      cefrLevel: "PRE_A1",
+      feedback:
+        "This response was flagged by the response-integrity guard before AI scoring. " +
+        "Reason(s): " + integrity.issues.map(i => i.detail).join(" | "),
+      confidence: 1, // Confident in the rejection
+      rubricScores: { grammar: 0, vocabulary: 0, coherence: 0, taskRelevance: 0 },
+      corrections: [],
+    },
+  };
+}
+
+/** Merge integrity issues into reviewReasons / scoreSource of an AI-scored result. */
+function applyIntegrityToResult(
+  result: OrchestratedScore,
+  integrity: IntegrityReport
+): OrchestratedScore {
+  if (integrity.passed) {
+    return { ...result, integrity };
+  }
+  // Force human review for any non-passing integrity report
+  const integrityReasons = integrity.issues.map(i => `INTEGRITY_${i.flag}`);
+  return {
+    ...result,
+    integrity,
+    requiresHumanReview: true,
+    reviewReasons: [...result.reviewReasons, ...integrityReasons],
+    scoreSource: result.scoreSource === "rejected_integrity" ? result.scoreSource : "ai_flagged",
+  };
+}
+
 export const ScoringOrchestrator = {
   async scoreWriting(text: string, prompt: string): Promise<OrchestratedScore> {
+    const integrity = assessWritingIntegrity({ text, prompt });
+    if (integrity.recommendation === "reject") {
+      return buildRejectedScore(integrity);
+    }
+
     const [primary, verifier] = await Promise.all([
       GeminiScoringService.scoreWriting(text, prompt),
       GeminiScoringService.verifyWriting(text, prompt)
     ]);
 
-    return buildFinalScore(primary, verifier);
+    return applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
   },
 
-  async scoreSpeaking(audioBase64: string, mimeType: string, prompt: string): Promise<OrchestratedScore> {
+  async scoreSpeaking(
+    audioBase64: string,
+    mimeType: string,
+    prompt: string,
+    audioMetadata?: { audioDurationSec?: number; silentDurationSec?: number }
+  ): Promise<OrchestratedScore> {
+    // Speaking integrity needs a transcript; we run audio-only checks first
+    // (duration / silence), then re-run the text checks once Gemini returns
+    // a transcript so the full guard is still applied.
+    const audioOnly = assessSpeakingIntegrity({
+      transcript: "",
+      prompt,
+      audioDurationSec: audioMetadata?.audioDurationSec,
+      silentDurationSec: audioMetadata?.silentDurationSec,
+      // Disable text-based checks at this stage: empty transcript would falsely
+      // trigger BELOW_MIN_LENGTH otherwise.
+      minWordCount: 0,
+    });
+    if (audioOnly.issues.some(i =>
+      i.flag === "AUDIO_TOO_SHORT" || i.flag === "AUDIO_MOSTLY_SILENT"
+    )) {
+      return buildRejectedScore(audioOnly);
+    }
+
     const [primary, verifier] = await Promise.all([
       GeminiScoringService.scoreSpeaking(audioBase64, mimeType, prompt),
       GeminiScoringService.verifySpeaking(audioBase64, mimeType, prompt)
     ]);
 
-    return buildFinalScore(primary, verifier);
+    const transcript = primary.transcript || verifier.transcript || "";
+    const integrity = assessSpeakingIntegrity({
+      transcript,
+      prompt,
+      audioDurationSec: audioMetadata?.audioDurationSec,
+      silentDurationSec: audioMetadata?.silentDurationSec,
+    });
+
+    if (integrity.recommendation === "reject") {
+      return buildRejectedScore(integrity);
+    }
+
+    return applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
   },
 
   async scoreSpeakingFromText(text: string, prompt: string): Promise<OrchestratedScore> {
+    const integrity = assessSpeakingIntegrity({ transcript: text, prompt });
+    if (integrity.recommendation === "reject") {
+      return buildRejectedScore(integrity);
+    }
+
     const [primary, verifier] = await Promise.all([
       GeminiScoringService.scoreWriting(text, prompt),
       GeminiScoringService.verifyWriting(text, prompt)
     ]);
 
-    return buildFinalScore(primary, verifier);
+    return applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
   }
 };

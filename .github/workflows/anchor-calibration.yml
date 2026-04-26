@@ -1,0 +1,36 @@
+name: Anchor Calibration
+
+# Re-scores the gold-standard anchor corpus against the live AI scoring
+# pipeline once per week and on demand. Fails the run (and pages via Sentry)
+# if the AI pipeline drifts beyond the calibrated thresholds:
+#   MAE ≤ 0.08, RMSE ≤ 0.12, Pearson r ≥ 0.85.
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  calibrate:
+    name: Run anchor calibration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      ANCHOR_CONCURRENCY: "3"
+      NODE_ENV: "production"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: Run anchor calibration
+        run: npx tsx scripts/anchor-calibration-runner.ts
