@@ -10,6 +10,13 @@ import { validateItem } from "../language-skills/item-quality-validator.js";
 import { logger } from "../observability/index.js";
 import { getCanDo, thetaToCefr, CEFR_LEVELS } from "../cefr/cefr-framework.js";
 import { initExposureStore, getExposureStore } from "./exposure-store.js";
+import type { ResponseTimeParams } from "../psychometrics/response-time-irt.js";
+import {
+  detectAberrantResponseTime,
+  estimateSpeed,
+  responseTimeAdjustedScore,
+  responseTimeParamsFromItemContent,
+} from "../psychometrics/response-time-irt.js";
 
 /** Wraps a promise with a hard timeout to prevent indefinite hangs */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -51,6 +58,24 @@ async function loadItemMapByIds(itemIds: string[]): Promise<Record<string, Item>
   return Object.fromEntries(rows.map((row) => [row.id, dbItemToEngineItem(row)]));
 }
 
+function buildRtHistoryForPersonSpeed(
+  state: SessionState,
+  itemById: Record<string, Item>
+): { timeSeconds: number; params: ResponseTimeParams }[] {
+  const out: { timeSeconds: number; params: ResponseTimeParams }[] = [];
+  for (const r of state.responses) {
+    if (r.isPretest) continue;
+    if (r.latencyMs === undefined || r.latencyMs <= 0) continue;
+    const it = itemById[r.itemId];
+    if (!it) continue;
+    out.push({
+      timeSeconds: r.latencyMs / 1000,
+      params: responseTimeParamsFromItemContent(it.metadata),
+    });
+  }
+  return out;
+}
+
 function toEngineState(session: {
   theta: number;
   sem: number;
@@ -58,6 +83,7 @@ function toEngineState(session: {
   responses: Array<{
     itemId: string;
     score: number | null;
+    adjustedScore?: number | null;
     isPretest?: boolean | null;
     latencyMs: number | null;
   }>;
@@ -66,12 +92,17 @@ function toEngineState(session: {
   return {
     theta: session.theta,
     sem: session.sem,
-    responses: session.responses.map((r) => ({
-      itemId: r.itemId,
-      score: r.score || 0,
-      isPretest: (r as { isPretest?: boolean }).isPretest,
-      latencyMs: r.latencyMs ?? undefined,
-    })),
+    responses: session.responses.map((r) => {
+      const raw = r.score ?? 0;
+      const adj = r.adjustedScore;
+      const effective = adj != null && Number.isFinite(adj) ? adj : raw;
+      return {
+        itemId: r.itemId,
+        score: effective,
+        isPretest: (r as { isPretest?: boolean }).isPretest,
+        latencyMs: r.latencyMs ?? undefined,
+      };
+    }),
     usedItemIds: new Set(session.responses.map((r) => r.itemId)),
     mstRouteKey: m.mstRouteKey as SessionState["mstRouteKey"],
     skillProfiles: m.skillProfiles as SessionState["skillProfiles"],
@@ -105,6 +136,7 @@ const DEFAULT_CONFIG: EngineConfig = {
   speedThresholdMs: 2500,      // Responses faster than 2.5s on hard items → guessing flag
   blueprint: DEFAULT_BLUEPRINT,
   useMirt: true,
+  useRtIrt: false,             // Faz4 RT-IRT; enable via SystemConfig
   useShadowTest: false,        // Shadow test off by default; enable via SystemConfig
   classificationConfidenceThreshold: 0.90,
   cefrThresholds: {
@@ -141,6 +173,7 @@ export async function getEngine(): Promise<AssessmentEngine> {
         .mst;
       const useMirt2B = (config as { useMirt2B?: boolean }).useMirt2B === true;
       const sprt = (config as { sprt?: EngineConfig["sprt"] }).sprt;
+      const useRtIrt = (config as { useRtIrt?: boolean }).useRtIrt === true;
       engineInstance = new AssessmentEngine({
         ...DEFAULT_CONFIG,
         cefrThresholds,
@@ -148,6 +181,7 @@ export async function getEngine(): Promise<AssessmentEngine> {
         blueprint,
         useMirt2B,
         useMirt: useMirt2B ? false : (config as { useMirt?: boolean }).useMirt ?? DEFAULT_CONFIG.useMirt,
+        useRtIrt,
         ...(sprt?.enabled ? { sprt } : {}),
         ...(mst?.enabled && mst.moduleSizes?.length ? { mst } : {}),
       });
@@ -368,26 +402,51 @@ export const AssessmentService = {
 
     const requiresHumanReview = (aiResult as any)?.requiresHumanReview === true;
 
+    const usedItems = await prisma.item.findMany({
+      where: { id: { in: Array.from(state.usedItemIds) } },
+    });
+
+    const itemDict: Record<string, Item> = { [item.id]: item };
+    for (const u of usedItems) {
+      itemDict[u.id] = dbItemToEngineItem(u);
+    }
+
+    const cfg = engine.getConfig();
+    let irtInputScore = score;
+    let rtZ: number | null = null;
+    let rtFlag: string | null = null;
+    if (
+      cfg.useRtIrt === true &&
+      typeof clientLatencyMs === "number" &&
+      clientLatencyMs > 0
+    ) {
+      const history = buildRtHistoryForPersonSpeed(state, itemDict);
+      const { tau } = estimateSpeed(history);
+      const rtParams = responseTimeParamsFromItemContent(item.metadata);
+      const aberrant = detectAberrantResponseTime(
+        clientLatencyMs,
+        tau,
+        rtParams,
+        itemId
+      );
+      irtInputScore = responseTimeAdjustedScore(score, aberrant);
+      rtZ = aberrant.zScore;
+      rtFlag = aberrant.flag;
+    }
+
     const response: Response = {
       itemId,
-      score,
+      score: irtInputScore,
       // Treat AI-failed productive items as pretest to exclude from theta until reviewed
       isPretest: item.isPretest || requiresHumanReview,
-      latencyMs: typeof clientLatencyMs === 'number' && clientLatencyMs > 0 ? clientLatencyMs : 0 
+      latencyMs:
+        typeof clientLatencyMs === "number" && clientLatencyMs > 0
+          ? clientLatencyMs
+          : 0,
     };
 
-      // Fetch previously used items to calculate new theta correctly
-      const usedItems = await prisma.item.findMany({
-        where: { id: { in: Array.from(state.usedItemIds) } }
-      });
-      
-      const itemDict: Record<string, Item> = { [item.id]: item };
-      for (const u of usedItems) {
-        itemDict[u.id] = dbItemToEngineItem(u);
-      }
-
-      // Update session state using the engine
-      const rawState = engine.processResponse(state, response, itemDict);
+    // Update session state using the engine
+    const rawState = engine.processResponse(state, response, itemDict);
 
       // Theta bounds guard: NaN or out-of-range theta is a sign of numerical instability
       const newTheta = rawState.theta;
@@ -408,10 +467,18 @@ export const AssessmentService = {
                   itemId,
                   value: typeof value === 'string' ? value : JSON.stringify(value),
           score,
+          adjustedScore:
+            cfg.useRtIrt &&
+            typeof clientLatencyMs === "number" &&
+            clientLatencyMs > 0
+              ? irtInputScore
+              : null,
           isCorrect: score >= 0.5,
           isPretest: item.isPretest || false,
           aiScore: aiResult?.score,
           latencyMs: typeof clientLatencyMs === 'number' && clientLatencyMs > 0 ? clientLatencyMs : 0,
+          rtZScore: rtZ,
+          rtFlag: rtFlag,
           order: session.responses.length + 1,
           metadata: aiResult ? {
             aiFeedback: aiResult.feedback, 

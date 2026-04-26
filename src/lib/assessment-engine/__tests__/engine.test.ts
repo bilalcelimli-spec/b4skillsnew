@@ -126,6 +126,29 @@ describe("AssessmentEngine.shouldStop — priority ordering", () => {
     });
   });
 
+  it("useRtIrt: skips legacy rapid-guess score penalty in processResponse", () => {
+    const engine = new AssessmentEngine(
+      baseConfig({ useRtIrt: true, minItems: 5, speedThresholdMs: 5000 })
+    );
+    const state: SessionState = {
+      theta: 0,
+      sem: 1,
+      responses: [],
+      usedItemIds: new Set(),
+    };
+    const itm: Item = {
+      id: "i1",
+      skill: SkillType.READING,
+      params: { a: 1, b: 2, c: 0 },
+    };
+    const next = engine.processResponse(
+      state,
+      { itemId: "i1", score: 1, latencyMs: 100 },
+      { i1: itm }
+    );
+    expect(next.responses[0]!.score).toBe(1);
+  });
+
   it("SPRT/GLR: without item map, SPRT does not stop (defers to other rules or continues)", () => {
     const engine = new AssessmentEngine(
       baseConfig({

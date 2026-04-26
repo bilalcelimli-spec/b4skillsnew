@@ -28,6 +28,37 @@ export interface ResponseTimeParams {
   sigma2: number;
 }
 
+/** Defaults when item content has no time calibration (≈ 30s median in log space). */
+export const DEFAULT_RESPONSE_TIME_PARAMS: ResponseTimeParams = {
+  beta: Math.log(30),
+  alpha: 1,
+  sigma2: 0.5,
+};
+
+/**
+ * Read optional RT parameters from `Item.metadata` / `Item.content` JSON.
+ * Keys: `rtTimeBeta` | `timeIntensity`, `rtTimeAlpha` | `timeDiscrimination`, `rtTimeSigma2` | `timeResidualVar`
+ */
+export function responseTimeParamsFromItemContent(
+  content: unknown
+): ResponseTimeParams {
+  const c = (content && typeof content === "object" ? content : {}) as Record<string, unknown>;
+  const b = c.rtTimeBeta ?? c.timeIntensity;
+  const a = c.rtTimeAlpha ?? c.timeDiscrimination;
+  const s = c.rtTimeSigma2 ?? c.timeResidualVar;
+  return {
+    beta: typeof b === "number" && Number.isFinite(b) ? b : DEFAULT_RESPONSE_TIME_PARAMS.beta,
+    alpha:
+      typeof a === "number" && Number.isFinite(a) && a > 0
+        ? a
+        : DEFAULT_RESPONSE_TIME_PARAMS.alpha,
+    sigma2:
+      typeof s === "number" && Number.isFinite(s) && s > 0
+        ? s
+        : DEFAULT_RESPONSE_TIME_PARAMS.sigma2,
+  };
+}
+
 export interface PersonSpeed {
   /** Speed parameter (tau): higher = faster test-taker */
   tau: number;
@@ -172,7 +203,7 @@ export function calibrateItemTimeParams(
 ): ResponseTimeParams {
   const valid = responseTimes.filter(r => r.timeSeconds > 0);
   if (valid.length < 5) {
-    return { beta: Math.log(30), alpha: 1, sigma2: 0.5 };
+    return { ...DEFAULT_RESPONSE_TIME_PARAMS };
   }
 
   const logTimes = valid.map(r => Math.log(r.timeSeconds));

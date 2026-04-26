@@ -47,6 +47,10 @@ export class AssessmentEngine {
     this.config = config;
   }
 
+  public getConfig(): Readonly<EngineConfig> {
+    return this.config;
+  }
+
   /**
    * Initialize a new session state
    */
@@ -77,8 +81,10 @@ export class AssessmentEngine {
     // lower bound (2 s) OR faster than 20% of the expected time for this difficulty.
     // Affects ALL items (not just hard ones) and scales penalty by item difficulty.
     let adjustedScore = response.score;
+    const useRtIrt = this.config.useRtIrt === true;
     const speedThreshold = this.config.speedThresholdMs ?? 3000;
     if (
+      !useRtIrt &&
       response.score === 1 &&
       response.latencyMs !== undefined &&
       response.latencyMs > 0

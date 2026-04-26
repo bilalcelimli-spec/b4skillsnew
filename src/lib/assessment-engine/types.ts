@@ -166,6 +166,12 @@ export interface EngineConfig {
     minItems?: number;
   };
   /**
+   * Faz4: van der Linden log-normal response-time IRT (τ̂ from prior latencies, aberrant
+   * RT flags, `responseTimeAdjustedScore`). When true, the legacy EAP `speedThresholdMs`
+   * penalty in `processResponse` is skipped to avoid double counting.
+   */
+  useRtIrt?: boolean;
+  /**
    * Enable shadow-test item selection (van der Linden 2005).
    * Guarantees blueprint adherence at every step without greedy look-ahead failures.
    * Requires a blueprint to be set.
