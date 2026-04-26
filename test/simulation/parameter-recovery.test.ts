@@ -79,19 +79,19 @@ interface SimulationResult {
 /**
  * Run one simulee through the engine end-to-end.
  */
-function simulateCandidate(
+async function simulateCandidate(
   engine: AssessmentEngine,
   pool: Item[],
   itemMap: Record<string, Item>,
   trueTheta: number,
   rng: () => number,
   maxItems: number
-): SimulationResult {
+): Promise<SimulationResult> {
   let state: SessionState = engine.initializeSession();
   let stopReason: string | null = null;
 
   for (let step = 0; step < maxItems; step++) {
-    const next = engine.getNextItem(state, pool);
+    const next = await engine.getNextItem(state, pool);
     if (!next) break;
 
     // Simulate dichotomous response from true-theta P
@@ -123,7 +123,7 @@ function simulateCandidate(
 }
 
 describe("End-to-end CAT simulation — parameter recovery", () => {
-  it("recovers theta with small bias and calibrated SEM over 200 simulees", () => {
+  it("recovers theta with small bias and calibrated SEM over 200 simulees", async () => {
     const rng = mulberry32(20260426);
     const N = 200;
     const { pool, itemMap } = buildBalancedBank(rng, 50);
@@ -142,7 +142,7 @@ describe("End-to-end CAT simulation — parameter recovery", () => {
     for (let i = 0; i < N; i++) {
       const trueTheta = randn(rng); // N(0,1)
       results.push(
-        simulateCandidate(engine, pool, itemMap, trueTheta, rng, config.maxItems)
+        await simulateCandidate(engine, pool, itemMap, trueTheta, rng, config.maxItems)
       );
     }
 
@@ -185,7 +185,7 @@ describe("End-to-end CAT simulation — parameter recovery", () => {
     expect(meanSem).toBeLessThan(0.50);
   }, 60_000);
 
-  it("produces reasonable CEFR classification accuracy at band centres", () => {
+  it("produces reasonable CEFR classification accuracy at band centres", async () => {
     // Sample candidates AT the centre of each CEFR band; the engine should
     // classify them into the correct band with high accuracy.
     const rng = mulberry32(7777);
@@ -211,7 +211,7 @@ describe("End-to-end CAT simulation — parameter recovery", () => {
     const trials = 30;
     for (const tc of cases) {
       for (let i = 0; i < trials; i++) {
-        const r = simulateCandidate(engine, pool, itemMap, tc.theta, rng, 30);
+        const r = await simulateCandidate(engine, pool, itemMap, tc.theta, rng, 30);
         if (engine.mapToCefr(r.estimatedTheta) === tc.expected) correct++;
       }
     }

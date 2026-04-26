@@ -1,103 +1,92 @@
 import { information } from "./irt";
 import { Item, BlueprintConstraint, SkillType } from "./types";
 import { getExposureStore } from "./exposure-store.js";
+import {
+  sympsonHetterWeight,
+  thetaToStratum,
+  DEFAULT_MIN_STRATUM_N,
+} from "./sympson-heter.js";
 
-// Maximum fraction of test-takers who should see a given item (Sympson-Hetter target).
-// Backed by the ExposureStore (Redis when REDIS_URL is set, in-memory otherwise).
+// Max share of a single item *within* a θ stratum (Sympson–Hetter style cap).
 const MAX_EXPOSURE_RATE = 0.20;
 
 /**
- * Track that an item was administered.
- * Delegates to the ExposureStore so counts survive restarts / are consistent
- * across replicas when Redis is configured.
+ * Track that an item was administered at a given ability estimate.
+ * Prefer passing `atTheta` so conditional Sympson–Hetter stats are updated.
  */
-export function recordItemExposure(itemId: string): void {
-  getExposureStore().then(store => store.recordExposure(itemId)).catch(() => {});
+export function recordItemExposure(itemId: string, atTheta?: number): void {
+  getExposureStore()
+    .then((store) => store.recordExposure(itemId, atTheta))
+    .catch(() => {});
 }
 
 /**
  * Select the best item from the pool based on Fisher Information.
  * If blueprint constraints are provided, filters the pool to items that
  * still need to be administered per the blueprint before applying MFI.
- *
- * @param pool The pool of available items
- * @param currentTheta The current ability estimate
- * @param usedItemIds IDs of items already administered
- * @param topN Number of top candidates to consider for exposure control
- * @param blueprint Optional content blueprint constraints
- * @param currentSkillCounts Optional current count of responses per skill
  */
-export function selectNextItem(
+export async function selectNextItem(
   pool: Item[],
   currentTheta: number,
   usedItemIds: Set<string>,
   topN: number = 5,
   blueprint?: BlueprintConstraint[],
   currentSkillCounts?: Partial<Record<SkillType, number>>
-): Item | null {
-  // 1. Filter out used items
-  const availableItems = pool.filter(item => !usedItemIds.has(item.id));
-  if (availableItems.length === 0) return null;
+): Promise<Item | null> {
+  const availableItems = pool.filter((item) => !usedItemIds.has(item.id));
+  if (availableItems.length === 0) {
+    return null;
+  }
+
+  const store = await getExposureStore();
+  const stratum = thetaToStratum(currentTheta);
+  const stratumN = store.getStratumTotalSync(stratum);
+  const useConditional = stratumN >= DEFAULT_MIN_STRATUM_N;
 
   let candidatePool = availableItems;
 
-  // 2. Blueprint enforcement: prefer skills that haven't met their quota yet
   if (blueprint && blueprint.length > 0 && currentSkillCounts) {
-    const unfulfilled = blueprint.filter(constraint => {
+    const unfulfilled = blueprint.filter((constraint) => {
       const count = currentSkillCounts[constraint.skill] || 0;
       return count < constraint.minCount;
     });
 
     if (unfulfilled.length > 0) {
-      const unfulfilledSkills = new Set(unfulfilled.map(c => c.skill));
-      const blueprintFiltered = availableItems.filter(item => unfulfilledSkills.has(item.skill));
-      // Only restrict to unfulfilled skills if items exist in that domain
+      const unfulfilledSkills = new Set(unfulfilled.map((c) => c.skill));
+      const blueprintFiltered = availableItems.filter((item) => unfulfilledSkills.has(item.skill));
       if (blueprintFiltered.length > 0) {
         candidatePool = blueprintFiltered;
       }
-      // If no items exist for an unfulfilled skill, fall through to full pool
-      // rather than silently dropping the constraint — this surfaces the gap.
     } else {
-      // All minimums are met. Now enforce maximums — exclude items from skills at their cap
       const cappedSkills = new Set(
         blueprint
-          .filter(c => (currentSkillCounts[c.skill] || 0) >= c.maxCount)
-          .map(c => c.skill)
+          .filter((c) => (currentSkillCounts[c.skill] || 0) >= c.maxCount)
+          .map((c) => c.skill)
       );
       if (cappedSkills.size > 0) {
-        const capped = availableItems.filter(item => !cappedSkills.has(item.skill));
-        if (capped.length > 0) candidatePool = capped;
+        const capped = availableItems.filter((item) => !cappedSkills.has(item.skill));
+        if (capped.length > 0) {
+          candidatePool = capped;
+        }
       }
     }
   }
 
-  // 3. Score each candidate item by Fisher Information at the current theta,
-  //    then apply an exposure penalty so over-used items rank lower.
-  const scoredItems = candidatePool.map(item => {
+  const scoredItems = candidatePool.map((item) => {
     const info = information(currentTheta, item.params);
-    // Use synchronous cache — store background-refreshes from Redis periodically
-    let exposureRate = 0;
-    getExposureStore().then(store => {
-      exposureRate = store.getExposureRateSync(item.id);
-    }).catch(() => {});
-    const exposureWeight = exposureRate < MAX_EXPOSURE_RATE
-      ? 1.0
-      : MAX_EXPOSURE_RATE / exposureRate;
+    const rate = useConditional
+      ? store.getConditionalExposureRateSync(item.id, stratum)
+      : store.getExposureRateSync(item.id);
+    const exposureWeight = sympsonHetterWeight(rate, MAX_EXPOSURE_RATE);
     return { item, score: info * exposureWeight };
   });
 
-  // 4. Sort by weighted score descending
   scoredItems.sort((a, b) => b.score - a.score);
 
-  // 5. Select randomly from top-N to preserve some randomisation while
-  //    keeping the selection within the high-information region.
   const candidates = scoredItems.slice(0, Math.min(topN, scoredItems.length));
   const randomIndex = Math.floor(Math.random() * candidates.length);
   const selected = candidates[randomIndex].item;
 
-  // 6. Record the exposure
-  recordItemExposure(selected.id);
-
+  await store.recordExposure(selected.id, currentTheta);
   return selected;
 }
-

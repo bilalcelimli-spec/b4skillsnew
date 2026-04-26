@@ -10,6 +10,15 @@ import {
   SKILL_ORDER as MIRT_SKILL_ORDER,
 } from "../psychometrics/mirt-engine.js";
 import { constructShadowTest } from "../psychometrics/shadow-test.js";
+import { getExposureStore } from "./exposure-store.js";
+import {
+  filterPoolByMstModule,
+  filterPoolByMstRoute,
+  getMstModulePosition,
+  mstTotalOperationalItems,
+  operationalResponseCount,
+  routeKeyFromTheta,
+} from "./mst-routing";
 
 /** Standard normal CDF approximation (Abramowitz & Stegun 26.2.17) */
 function normalCDF(x: number): number {
@@ -130,11 +139,27 @@ export class AssessmentEngine {
       }
     }
 
+    // MST: lock theta route after the first module (for 2nd+ module panel tagging)
+    let mstRouteKey = state.mstRouteKey;
+    const mstCfg = this.config.mst;
+    if (mstCfg?.enabled && mstCfg.routing && !mstRouteKey && mstCfg.moduleSizes?.length) {
+      const newOp = operationalResponseCount(updatedResponses);
+      const firstSize = mstCfg.moduleSizes[0]!;
+      if (newOp === firstSize) {
+        mstRouteKey = routeKeyFromTheta(
+          theta,
+          mstCfg.routing.lowMaxTheta,
+          mstCfg.routing.midMaxTheta
+        );
+      }
+    }
+
     return {
       theta,
       sem,
       responses: updatedResponses,
       usedItemIds: updatedUsedItems,
+      mstRouteKey,
       skillProfiles: updatedSkillProfiles,
       mirtAbilityVector: updatedMirtVector,
     };
@@ -143,13 +168,22 @@ export class AssessmentEngine {
   /**
    * Select the next item for the candidate.
    * Uses shadow-test (van der Linden 2005) when config.useShadowTest=true,
-   * MIRT-weighted selection when config.useMirt=true, else MFI + Sympson-Hetter.
+   * MIRT-weighted selection when config.useMirt=true, else MFI + exposure control.
+   * When `config.mst` is enabled, the first sum(moduleSizes) operational items
+   * are chosen from the current module (optional `Item.metadata.mstModule`).
    * Blueprint is enforced adaptively: skills with SEM > 0.40 get their maxCount
    * temporarily relaxed by +1 to spend extra measurement budget where needed.
    */
-  public getNextItem(state: SessionState, pool: Item[]): Item | null {
-    // 1. Exposure Control & Pretest Logic
-    const pretestRatio = this.config.pretestRatio || 0;
+  public async getNextItem(state: SessionState, pool: Item[]): Promise<Item | null> {
+    const mst = this.config.mst;
+    const mstOpTotal = mst?.enabled && mst.moduleSizes?.length
+      ? mstTotalOperationalItems(mst.moduleSizes)
+      : 0;
+    const opN = operationalResponseCount(state.responses);
+    const inMstStructure = Boolean(mst?.enabled && mstOpTotal > 0 && opN < mstOpTotal);
+
+    // 1. Exposure Control & Pretest Logic (disabled during MST panels so module counts stay aligned)
+    const pretestRatio = inMstStructure ? 0 : (this.config.pretestRatio || 0);
     const shouldAdministerPretest = Math.random() < pretestRatio;
 
     if (shouldAdministerPretest) {
@@ -187,7 +221,15 @@ export class AssessmentEngine {
       });
     }
 
-    const operationalPool = pool.filter(item => !item.isPretest);
+    let operationalPool = pool.filter(item => !item.isPretest);
+
+    if (inMstStructure && mst?.moduleSizes?.length) {
+      const pos = getMstModulePosition(opN, mst.moduleSizes);
+      const { filtered: modPool } = filterPoolByMstModule(operationalPool, pos.moduleIndex);
+      const routed = filterPoolByMstRoute(modPool, pos.moduleIndex, state.mstRouteKey);
+      const available = routed.filter(item => !state.usedItemIds.has(item.id));
+      operationalPool = available.length > 0 ? available : operationalPool;
+    }
 
     // 4a. Shadow-test item selection (van der Linden 2005)
     if (this.config.useShadowTest && effectiveBlueprint && effectiveBlueprint.length > 0) {
@@ -201,6 +243,10 @@ export class AssessmentEngine {
           maxExposureRate: 0.20,
         }
       );
+      if (nextItem) {
+        const store = await getExposureStore();
+        await store.recordExposure((nextItem as Item).id, state.theta);
+      }
       return nextItem as Item | null;
     }
 
@@ -220,11 +266,16 @@ export class AssessmentEngine {
         state.usedItemIds
       );
       if (selected) {
-        return mirtPool.find(p => p.id === selected.id)?._original ?? null;
+        const it = mirtPool.find(p => p.id === selected.id)?._original ?? null;
+        if (it) {
+          const store = await getExposureStore();
+          await store.recordExposure(it.id, state.theta);
+        }
+        return it;
       }
     }
 
-    // 4c. Standard MFI + Sympson-Hetter + blueprint enforcement
+    // 4c. Standard MFI + Sympson–Hetter (θ-conditional) + blueprint
     return selectNextItem(
       operationalPool,
       state.theta,
@@ -239,25 +290,42 @@ export class AssessmentEngine {
    * Evaluate whether the assessment should stop.
    *
    * Stopping criteria (in priority order):
-   *  1. minItems floor
-   *  2. maxItems ceiling (hard stop)
-   *  3. Test information I(θ) ≥ 12 (reliability ≥ 0.93)
-   *  4. Global SEM ≤ semThreshold  (default 0.28)
-   *  5. Conditional SEM ≤ 0.16 near CEFR boundaries (±0.5)
-   *  6. Conditional SEM ≤ 0.12 very close to boundaries (±0.25)
-   *  7. Posterior CEFR classification confidence ≥ threshold (default 0.90)
+   *  0. `maxItems` hard ceiling
+   *  0b. If MST enabled and structure incomplete: **no** early CAT stop
+   *  0c. If MST enabled, structure complete, and `continueWithCatAfterMst` is false: `MST_STRUCTURE_COMPLETE`
+   *  1. `minItems` floor
+   *  2. Test information I(θ) ≥ 12 (reliability ≥ 0.93)
+   *  3. Global SEM ≤ semThreshold  (default 0.28)
+   *  4. Conditional SEM near CEFR boundaries (0.16 / 0.12 tiers)
+   *  5. Posterior CEFR classification confidence ≥ threshold (default 0.90)
    */
   public shouldStop(state: SessionState): { stop: boolean; reason: string | null } {
     const count = state.responses.length;
+    const mst = this.config.mst;
+    const mstOpNeed =
+      mst?.enabled && mst.moduleSizes?.length
+        ? mstTotalOperationalItems(mst.moduleSizes)
+        : 0;
+    const mstOp = operationalResponseCount(state.responses);
+    const mstInProgress = Boolean(mst?.enabled && mstOpNeed > 0 && mstOp < mstOpNeed);
+    const continueAfter = mst?.continueWithCatAfterMst !== false;
+
+    // 0. Hard maximum item ceiling (applies to MST and CAT)
+    if (count >= this.config.maxItems) {
+      return { stop: true, reason: "MAX_ITEMS_REACHED" };
+    }
+
+    if (mstInProgress) {
+      return { stop: false, reason: null };
+    }
+
+    if (mst?.enabled && mstOp >= mstOpNeed && mstOpNeed > 0 && !continueAfter) {
+      return { stop: true, reason: "MST_STRUCTURE_COMPLETE" };
+    }
 
     // 1. Minimum items floor
     if (count < this.config.minItems) {
       return { stop: false, reason: null };
-    }
-
-    // 2. Maximum items ceiling
-    if (count >= this.config.maxItems) {
-      return { stop: true, reason: "MAX_ITEMS_REACHED" };
     }
 
     const operationalResponses = state.responses.filter(r => !r.isPretest);

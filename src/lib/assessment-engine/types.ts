@@ -68,6 +68,8 @@ export interface SessionState {
   sem: number;   // Overall Standard Error of Measurement
   responses: Response[];
   usedItemIds: Set<string>;
+  /** Theta-routed MST bucket after module 0 (persist in `Session.metadata` server-side). */
+  mstRouteKey?: MstRouteKey;
   /** Multidimensional per-skill ability profiles (unidimensional, per-skill EAP) */
   skillProfiles?: Partial<Record<SkillType, SkillProfile>>;
   /** Full MIRT ability vector (when useMirt=true) */
@@ -81,6 +83,39 @@ export interface BlueprintConstraint {
   maxCount: number;  // Ceiling items allowed for this skill
 }
 
+/**
+ * Multi-stage testing (MST) — panel routing on top of within-module adaptive selection.
+ * Example: moduleSizes [1,2,3] = three stages with one, then two, then three operational items.
+ * Items can optionally set `Item.metadata.mstModule` to 0-based module index to pin content to a stage.
+ */
+/**
+ * Theta bucket for stage-2+ panels. Items may set `metadata.mstRoute` to match.
+ * Assigned automatically after the first module completes when `routing` is set.
+ */
+export type MstRouteKey = "low" | "mid" | "high";
+
+export interface MstEngineConfig {
+  /** When true, the first sum(moduleSizes) operational responses follow the MST module structure. */
+  enabled: boolean;
+  /** Item counts per module (e.g. [1, 2, 3]). */
+  moduleSizes: number[];
+  /**
+   * After the last MST module, continue with standard CAT (MFI/blueprint) until stopping rules.
+   * If false, the session may stop with reason `MST_STRUCTURE_COMPLETE` once modules are done.
+   * @default true
+   */
+  continueWithCatAfterMst?: boolean;
+  /**
+   * Optional: after the first `moduleSizes[0]` operational items, lock a route from θ
+   * (e.g. low &lt; `lowMaxTheta`, else mid if θ &lt; `midMaxTheta`, else high).
+   * Stages 2+ filter by `Item.metadata.mstModule` and `Item.metadata.mstRoute`.
+   */
+  routing?: {
+    lowMaxTheta: number;
+    midMaxTheta: number;
+  };
+}
+
 export interface EngineConfig {
   minItems: number;
   maxItems: number;
@@ -88,6 +123,8 @@ export interface EngineConfig {
   startingTheta: number;
   startingSem: number;
   pretestRatio?: number; // Ratio of items that should be pretest (e.g., 0.1 for 10%)
+  /** Optional MST panel routing (1-2-3, etc.); when omitted, engine behaves as pure CAT. */
+  mst?: MstEngineConfig;
   cefrThresholds?: Partial<Record<CefrLevel, number>>;
   /** Content blueprint constraints. If defined, enforced during item selection. */
   blueprint?: BlueprintConstraint[];

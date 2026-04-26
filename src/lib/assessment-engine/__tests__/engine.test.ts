@@ -96,6 +96,35 @@ describe("AssessmentEngine.shouldStop — priority ordering", () => {
     const result = engine.shouldStop(state);
     expect(result.stop).toBe(false);
   });
+
+  it("defers CAT stopping until 1-2-3 MST modules are complete", () => {
+    const engine = new AssessmentEngine(
+      baseConfig({
+        minItems: 3,
+        maxItems: 30,
+        semThreshold: 0.25,
+        mst: { enabled: true, moduleSizes: [1, 2, 3], continueWithCatAfterMst: true },
+      })
+    );
+    // 5 operational responses: structure not finished (need 6)
+    const state = stateWith(5, 0, 0.1);
+    expect(engine.shouldStop(state)).toEqual({ stop: false, reason: null });
+  });
+
+  it("stops with MST_STRUCTURE_COMPLETE when panels only (no CAT after)", () => {
+    const engine = new AssessmentEngine(
+      baseConfig({
+        minItems: 1,
+        maxItems: 20,
+        mst: { enabled: true, moduleSizes: [1, 2, 3], continueWithCatAfterMst: false },
+      })
+    );
+    const state = stateWith(6, 0, 0.5);
+    expect(engine.shouldStop(state)).toEqual({
+      stop: true,
+      reason: "MST_STRUCTURE_COMPLETE",
+    });
+  });
 });
 
 describe("AssessmentEngine.mapToCefr", () => {
@@ -119,6 +148,28 @@ describe("AssessmentEngine.mapToCefr", () => {
     );
     // With B1 boundary at 0.0, theta=0.3 is now in B1 band (0.0..0.6)
     expect(e.mapToCefr(0.3)).toBe("B1");
+  });
+});
+
+describe("AssessmentEngine.processResponse — MST route lock", () => {
+  it("sets mstRouteKey after the first module completes", () => {
+    const engine = new AssessmentEngine(
+      baseConfig({
+        mst: {
+          enabled: true,
+          moduleSizes: [1, 2, 3],
+          continueWithCatAfterMst: true,
+          routing: { lowMaxTheta: -0.25, midMaxTheta: 0.25 },
+        },
+      })
+    );
+    const items: Record<string, Item> = {
+      i1: { id: "i1", skill: SkillType.READING, params: { a: 1.2, b: 0, c: 0.2 } },
+    };
+    const initial = engine.initializeSession();
+    const next = engine.processResponse(initial, { itemId: "i1", score: 1 }, items);
+    expect(next.mstRouteKey).toBeDefined();
+    expect(["low", "mid", "high"]).toContain(next.mstRouteKey!);
   });
 });
 
@@ -152,5 +203,79 @@ describe("AssessmentEngine.processResponse — full step", () => {
     const next = engine.processResponse(initial, fast, items);
     const recorded = next.responses[0].score;
     expect(recorded).toBeLessThan(1);
+  });
+});
+
+describe("AssessmentEngine.getNextItem — MST module filter", () => {
+  it("selects only items tagged for the current module", async () => {
+    const engine = new AssessmentEngine(
+      baseConfig({
+        mst: { enabled: true, moduleSizes: [1, 2, 3], continueWithCatAfterMst: true },
+        useMirt: false,
+        useShadowTest: false,
+        pretestRatio: 0,
+      })
+    );
+    const pool: Item[] = [
+      {
+        id: "m0",
+        skill: SkillType.READING,
+        params: { a: 1, b: 0, c: 0.2 },
+        metadata: { mstModule: 0 },
+      },
+      {
+        id: "m1a",
+        skill: SkillType.READING,
+        params: { a: 1, b: 0, c: 0.2 },
+        metadata: { mstModule: 1 },
+      },
+    ];
+    const state: SessionState = {
+      theta: 0,
+      sem: 1,
+      responses: [],
+      usedItemIds: new Set(),
+    };
+    const next = await engine.getNextItem(state, pool);
+    expect(next?.id).toBe("m0");
+  });
+
+  it("selects mstRoute-matching items in stage 2 when route is locked", async () => {
+    const engine = new AssessmentEngine(
+      baseConfig({
+        mst: {
+          enabled: true,
+          moduleSizes: [1, 2, 3],
+          continueWithCatAfterMst: true,
+          routing: { lowMaxTheta: -0.5, midMaxTheta: 0.5 },
+        },
+        useMirt: false,
+        useShadowTest: false,
+        pretestRatio: 0,
+      })
+    );
+    const pool: Item[] = [
+      {
+        id: "r1",
+        skill: SkillType.READING,
+        params: { a: 1, b: 0, c: 0.2 },
+        metadata: { mstModule: 1, mstRoute: "mid" },
+      },
+      {
+        id: "r2",
+        skill: SkillType.READING,
+        params: { a: 1, b: 0, c: 0.2 },
+        metadata: { mstModule: 1, mstRoute: "high" },
+      },
+    ];
+    const state: SessionState = {
+      theta: 0.1,
+      sem: 0.5,
+      responses: [{ itemId: "m0", score: 1, isPretest: false }],
+      usedItemIds: new Set(["m0"]),
+      mstRouteKey: "mid",
+    };
+    const next = await engine.getNextItem(state, pool);
+    expect(next?.id).toBe("r1");
   });
 });

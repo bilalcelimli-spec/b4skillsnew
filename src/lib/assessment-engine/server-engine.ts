@@ -19,6 +19,32 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   return Promise.race([promise, timeout]);
 }
 
+function toEngineState(session: {
+  theta: number;
+  sem: number;
+  metadata: unknown;
+  responses: Array<{
+    itemId: string;
+    score: number | null;
+    isPretest?: boolean | null;
+    latencyMs: number | null;
+  }>;
+}): SessionState {
+  const m = (session.metadata as Record<string, unknown> | null) || {};
+  return {
+    theta: session.theta,
+    sem: session.sem,
+    responses: session.responses.map((r) => ({
+      itemId: r.itemId,
+      score: r.score || 0,
+      isPretest: (r as { isPretest?: boolean }).isPretest,
+      latencyMs: r.latencyMs ?? undefined,
+    })),
+    usedItemIds: new Set(session.responses.map((r) => r.itemId)),
+    mstRouteKey: m.mstRouteKey as SessionState["mstRouteKey"],
+  };
+}
+
 /**
  * Server-side Assessment Service
  * Manages the lifecycle of test sessions and interacts with the database.
@@ -76,11 +102,14 @@ export async function getEngine(): Promise<AssessmentEngine> {
       const pretestRatio = config.pretestRatio ?? DEFAULT_CONFIG.pretestRatio;
       
       const blueprint: BlueprintConstraint[] = config.blueprint || DEFAULT_BLUEPRINT;
-      engineInstance = new AssessmentEngine({ 
-        ...DEFAULT_CONFIG, 
+      const mst = (config as { mst?: { enabled: boolean; moduleSizes: number[]; continueWithCatAfterMst?: boolean } })
+        .mst;
+      engineInstance = new AssessmentEngine({
+        ...DEFAULT_CONFIG,
         cefrThresholds,
         pretestRatio,
-        blueprint
+        blueprint,
+        ...(mst?.enabled && mst.moduleSizes?.length ? { mst } : {}),
       });
       lastConfigUpdate = now;
     } catch (error) {
@@ -137,6 +166,11 @@ export const AssessmentService = {
       }
     });
 
+    // Denominator for global Sympson–Hetter exposure rate (exposures / test starts)
+    getExposureStore()
+      .then((store) => store.recordTestStart())
+      .catch(() => {});
+
     // --- CONSUME CREDIT ---
     await BillingService.consumeCredit(organizationId);
 
@@ -157,18 +191,7 @@ export const AssessmentService = {
       throw new Error("Invalid session");
     }
 
-    // Map Prisma session to Engine SessionState
-    const state: SessionState = {
-      theta: session.theta,
-      sem: session.sem,
-      responses: session.responses.map(r => ({
-        itemId: r.itemId,
-        score: r.score || 0,
-        isPretest: (r as any).isPretest,
-        latencyMs: r.latencyMs
-      })),
-      usedItemIds: new Set(session.responses.map(r => r.itemId))
-    };
+    const state = toEngineState(session);
 
     // Check if we should stop
     const stopCheck = engine.shouldStop(state);
@@ -214,7 +237,7 @@ export const AssessmentService = {
     }));
 
     // Select next item
-    const nextItem = engine.getNextItem(state, itemPool);
+    const nextItem = await engine.getNextItem(state, itemPool);
     if (!nextItem) {
       await this.finalizeSession(sessionId, session.theta);
       return { stop: true, reason: "NO_ITEMS_LEFT", finalTheta: session.theta };
@@ -319,18 +342,7 @@ export const AssessmentService = {
       }
     }
 
-    // Map Prisma session to Engine SessionState
-    const state: SessionState = {
-      theta: session.theta,
-      sem: session.sem,
-      responses: session.responses.map(r => ({
-        itemId: r.itemId,
-        score: r.score || 0,
-        isPretest: (r as any).isPretest,
-        latencyMs: r.latencyMs
-      })),
-      usedItemIds: new Set(session.responses.map(r => r.itemId))
-    };
+    const state = toEngineState(session);
 
     const requiresHumanReview = (aiResult as any)?.requiresHumanReview === true;
 
@@ -406,7 +418,11 @@ export const AssessmentService = {
         where: { id: sessionId },
         data: {
           theta: newState.theta,
-          sem: newState.sem
+          sem: newState.sem,
+          metadata: {
+            ...((session.metadata as Record<string, unknown> | null) || {}),
+            ...(newState.mstRouteKey != null ? { mstRouteKey: newState.mstRouteKey } : {}),
+          },
         }
       })
     ]);
