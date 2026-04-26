@@ -27,7 +27,9 @@
     "db:generate": "prisma generate",
     "db:delete-all-items": "tsx scripts/delete-all-items.ts",
     "db:purge": "tsx scripts/purge-platform-data.ts",
-    "db:seed:grammar-300": "tsx scripts/seed-grammar-300-sota.ts"
+    "db:seed:grammar-300": "tsx scripts/seed-grammar-300-sota.ts",
+    "db:seed:vocab-200": "tsx scripts/seed-vocab-200-sota.ts",
+    "db:bootstrap-admin": "tsx scripts/bootstrap-admin.ts"
   },
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.4.0",

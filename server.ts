@@ -189,6 +189,21 @@ async function startServer() {
     });
   };
 
+  /** Client-safe user shape; includes organizationId for admin/tenant UI. */
+  const publicUser = (u: {
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+    organizationId: string | null;
+  }) => ({
+    uid: u.id,
+    email: u.email,
+    displayName: u.name,
+    role: u.role,
+    organizationId: u.organizationId,
+  });
+
   app.post("/api/auth/register", validate({ body: Schemas.Auth.RegisterBody }), async (req, res) => {
     try {
       const { email, password, displayName } = req.body;
@@ -212,7 +227,7 @@ async function startServer() {
         data: { refreshToken }
       });
       setAuthCookies(res, accessToken, refreshToken);
-      return res.json({ token: accessToken, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
+      return res.json({ token: accessToken, user: publicUser(user) });
     } catch (err: any) {
       return res.status(500).json({ error: "Registration failed" });
     }
@@ -235,7 +250,7 @@ async function startServer() {
         data: { refreshToken }
       });
       setAuthCookies(res, accessToken, refreshToken);
-      return res.json({ token: accessToken, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
+      return res.json({ token: accessToken, user: publicUser(user) });
     } catch (err: any) {
       return res.status(500).json({ error: "Login failed" });
     }
@@ -262,7 +277,7 @@ async function startServer() {
       const userId = (req as any).user.id;
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) return res.status(404).json({ error: 'User not found' });
-      return res.json({ user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
+      return res.json({ user: publicUser(user) });
     } catch (err: any) {
       return res.status(401).json({ error: 'Invalid token' });
     }
@@ -400,7 +415,9 @@ async function startServer() {
       await prisma.user.update({ where: { id: user.id }, data: { refreshToken } });
       
       setAuthCookies(res, accessToken, refreshToken);
-      return res.json({ token: accessToken, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
+      const fresh = await prisma.user.findUnique({ where: { id: user.id } });
+      if (!fresh) return res.status(500).json({ error: "User session error" });
+      return res.json({ token: accessToken, user: publicUser(fresh) });
     } catch(err) {
       return res.status(401).json({ error: 'Invalid Google Token' });
     }
