@@ -1,5 +1,10 @@
-# render.yaml — Render.com Infrastructure as Code
 # https://render.com/docs/infrastructure-as-code
+# Blueprint: Dashboard > New > Blueprint, bu repoyu seçin
+#
+# Şema: repoda `prisma/migrations` yoksa `migrate deploy` çalışmaz; bu yüzden build’de `db push` kullanılır
+# (ileride `prisma migrate dev` ile migration eklerseniz buildCommand’i migrate deploy’a çevirin)
+# CORS: APP_URL yoksa RENDER_EXTERNAL_URL (Render’ın verdiği) kullanılır
+# Gizliler: GEMINI, Stripe ve isteğe APP_URL / CORS_ORIGINS Dashboard’da
 
 services:
   - type: web
@@ -7,7 +12,7 @@ services:
     env: node
     region: oregon
     plan: starter
-    buildCommand: npm ci && npm run build:all && npx prisma migrate deploy
+    buildCommand: npm ci && npx prisma db push && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true
@@ -18,21 +23,24 @@ services:
         fromDatabase:
           name: linguadapt-db
           property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: REFRESH_SECRET
+        generateValue: true
       - key: GEMINI_API_KEY
-        sync: false          # set manually in Render dashboard
+        sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
       - key: APP_URL
-        fromService:
-          type: web
-          name: linguadapt-app
-          property: host
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
 
 databases:
   - name: linguadapt-db
     databaseName: linguadapt
     user: linguadapt
-    plan: starter
+    plan: free
     region: oregon

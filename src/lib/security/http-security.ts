@@ -10,9 +10,11 @@ function parseOrigins(raw: string | undefined): string[] {
 }
 
 export function buildCorsMiddleware(): RequestHandler {
+  // APP_URL: explicit; RENDER_EXTERNAL_URL: set on Render.com web services
+  const appBase = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL;
   const configured = [
     ...parseOrigins(process.env.CORS_ORIGINS),
-    process.env.APP_URL,
+    appBase,
   ].filter(Boolean) as string[];
 
   const allowlist = new Set(configured);
