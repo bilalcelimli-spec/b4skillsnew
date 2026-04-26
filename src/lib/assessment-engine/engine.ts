@@ -384,7 +384,8 @@ export class AssessmentEngine {
         state,
         sprt,
         cuts,
-        ctx?.items
+        ctx?.items,
+        { useGrmProductive: this.config.useGrmProductive === true }
       );
       if (sprtOut.stop) {
         return sprtOut;

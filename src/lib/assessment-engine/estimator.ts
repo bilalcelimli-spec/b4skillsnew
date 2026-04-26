@@ -51,8 +51,11 @@ function isGrmProductiveItem(item: Item): boolean {
   return item.skill === SkillType.WRITING || item.skill === SkillType.SPEAKING;
 }
 
-/** Faz5: joint log-likelihood (3PL + GRM) on a common θ. */
-function jointLogLikelihoodAt(
+/**
+ * Faz5/6: joint log-likelihood (3PL + GRM) on a common θ.
+ * Exported for Faz6 SPRT alignment with the same likelihood as EAP.
+ */
+export function jointLogLikelihoodAt(
   theta: number,
   responses: Response[],
   items: Record<string, Item>

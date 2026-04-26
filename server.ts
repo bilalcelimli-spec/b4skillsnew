@@ -1180,9 +1180,42 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const config = await AssessmentService.updateSystemConfig(req.body);
       res.json(config);
     } catch (error) {
+      const e = error as { statusCode?: number; name?: string; zodError?: unknown; message?: string };
+      if (e?.name === "SystemConfigValidationError" || e?.statusCode === 400) {
+        return res.status(400).json({ error: e.message, details: e.zodError });
+      }
       res.status(500).json({ error: "Failed to update system config" });
     }
   });
+
+  app.get(
+    "/api/psychometrics/dif/flagged",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req, res) => {
+      try {
+        const { DifAnalysisService } = await import("./src/lib/psychometrics/dif-analysis.js");
+        const { groupVariable, referenceGroup, focalGroup } = req.query;
+        if (!groupVariable || !referenceGroup || !focalGroup) {
+          return res.status(400).json({
+            error: "Query params groupVariable, referenceGroup, and focalGroup are required",
+          });
+        }
+        const gv = String(groupVariable);
+        if (!["gender", "nativeLanguage", "ageGroup"].includes(gv)) {
+          return res.status(400).json({ error: "groupVariable must be gender, nativeLanguage, or ageGroup" });
+        }
+        const report = await DifAnalysisService.getFlaggedItems(
+          gv as "gender" | "nativeLanguage" | "ageGroup",
+          String(referenceGroup),
+          String(focalGroup)
+        );
+        res.json({ items: report, count: report.length });
+      } catch (err) {
+        logger.error({ err }, "DIF flagged query failed");
+        res.status(500).json({ error: "DIF analysis failed" });
+      }
+    }
+  );
   const { ProctoringService } = await import("./src/lib/proctoring/proctoring-service.js");
 
   app.post("/api/proctoring/event", async (req, res) => {

@@ -10,6 +10,7 @@ import { validateItem } from "../language-skills/item-quality-validator.js";
 import { logger } from "../observability/index.js";
 import { getCanDo, thetaToCefr, CEFR_LEVELS } from "../cefr/cefr-framework.js";
 import { initExposureStore, getExposureStore } from "./exposure-store.js";
+import { parseSystemConfigPayload } from "./system-config-zod.js";
 import type { ResponseTimeParams } from "../psychometrics/response-time-irt.js";
 import {
   detectAberrantResponseTime,
@@ -628,7 +629,10 @@ export const AssessmentService = {
           .filter(r => !r.isPretest && r.item?.skill === skill && r.score !== null)
           .map(r => ({
             itemId: r.itemId,
-            score: r.score ?? 0,
+            score:
+              (r.adjustedScore != null && Number.isFinite(r.adjustedScore)
+                ? r.adjustedScore
+                : r.score) ?? 0,
             isPretest: false,
             latencyMs: r.latencyMs,
           }));
@@ -676,6 +680,28 @@ export const AssessmentService = {
 
     const stopReason = opts?.stopReason ?? (session?.metadata as { stopReason?: string } | null)?.stopReason ?? null;
 
+    const ec = engine.getConfig();
+    const opCount =
+      session?.responses?.filter((r) => !r.isPretest).length ?? 0;
+    const testInfo = sessionSem > 0 ? 1 / (sessionSem * sessionSem) : 0;
+    const psychometrics = {
+      operationalItemCount: opCount,
+      testInformation: Number(testInfo.toFixed(2)),
+      marginalReliabilityApprox:
+        sessionSem > 0
+          ? Number((1 - Math.min(1, sessionSem * sessionSem)).toFixed(3))
+          : null,
+      featureFlags: {
+        useRtIrt: ec.useRtIrt === true,
+        useGrmProductive: ec.useGrmProductive === true,
+        useMirt2B: ec.useMirt2B === true,
+        useMirt: ec.useMirt === true,
+        mstEnabled: ec.mst?.enabled === true,
+        sprtEnabled: ec.sprt?.enabled === true,
+        useShadowTest: ec.useShadowTest === true,
+      },
+    };
+
     const diagnosticReport = {
       overallTheta: theta,
       overallSem: sessionSem,
@@ -686,6 +712,7 @@ export const AssessmentService = {
       mirtAbilityVector: mirtVector,
       mirt2B,
       stopReason,
+      psychometrics,
       generatedAt: new Date().toISOString(),
     };
 
@@ -825,11 +852,12 @@ export const AssessmentService = {
     return configDoc?.config || DEFAULT_CONFIG;
   },
 
-  async updateSystemConfig(config: any) {
+  async updateSystemConfig(config: unknown) {
+    const safe = parseSystemConfigPayload(config);
     return prisma.systemConfig.upsert({
       where: { id: "global" },
-      create: { id: "global", config },
-      update: { config }
+      create: { id: "global", config: safe as Prisma.InputJsonValue },
+      update: { config: safe as Prisma.InputJsonValue },
     });
   }
 };

@@ -1,11 +1,12 @@
 /**
  * SPRT: Wald's sequential probability ratio test for simple vs simple hypotheses
- * on the θ scale, using 3PL item likelihoods.
- * The generalized likelihood ratio (GLR) for two point hypotheses H0: θ=θ0 vs H1: θ=θ1
- * is the likelihood ratio; 2*log(LR) is asymptotically χ²(1) under regularity.
+ * on the θ scale, using 3PL item likelihoods, or the same 3PL+GRM joint LL as EAP
+ * when `useGrmProductive` is set (Faz6, aligned with Faz5 GRM+3PL).
+ * The GLR for two point hypotheses H0: θ=θ0 vs H1: θ=θ1 uses log L(t1) − log L(t0).
  */
 
 import { logLikelihood } from "./irt";
+import { jointLogLikelihoodAt } from "./estimator.js";
 import type { IrtParameters, Item, Response } from "./types";
 
 export interface SprtConfig {
@@ -72,6 +73,11 @@ function responseDataForSprt(
   return out;
 }
 
+export type SprtEvaluateOptions = {
+  /** Faz6: use same 3PL+GRM joint LL as EAP/SPRT (requires full `Item` map). */
+  useGrmProductive?: boolean;
+};
+
 /**
  * @returns `null` if SPRT does not apply, else stop reason
  */
@@ -79,7 +85,8 @@ export function evaluateSprtStop(
   state: { theta: number; responses: Response[]; sem: number },
   cfg: SprtConfig,
   cefrCuts: number[],
-  items: Record<string, Item> | undefined
+  items: Record<string, Item> | undefined,
+  options?: SprtEvaluateOptions
 ): { stop: boolean; reason: string | null } {
   if (!cfg.enabled) {
     return { stop: false, reason: null };
@@ -89,15 +96,29 @@ export function evaluateSprtStop(
   if (opN < minI) {
     return { stop: false, reason: null };
   }
-  const data = responseDataForSprt(state.responses, items);
-  if (!data || data.length === 0) {
+  if (!items) {
+    return { stop: false, reason: null };
+  }
+  const op = state.responses.filter((r) => !r.isPretest);
+  if (op.length === 0) {
     return { stop: false, reason: null };
   }
   const cut = nearestThetaCut(state.theta, cefrCuts);
   const hw = cfg.halfWidth ?? DEFAULT_HW;
   const t0 = cut - hw;
   const t1 = cut + hw;
-  const logR = logLikelihood(t1, data) - logLikelihood(t0, data);
+
+  const useGrm = options?.useGrmProductive === true;
+  let logR: number;
+  if (useGrm) {
+    logR = jointLogLikelihoodAt(t1, op, items) - jointLogLikelihoodAt(t0, op, items);
+  } else {
+    const data = responseDataForSprt(state.responses, items);
+    if (!data || data.length === 0) {
+      return { stop: false, reason: null };
+    }
+    logR = logLikelihood(t1, data) - logLikelihood(t0, data);
+  }
   const a = cfg.alpha ?? DEFAULT_ALPHA;
   const b = cfg.beta ?? DEFAULT_BETA;
   const { logA, logB } = waldLogThresholds(a, b);
