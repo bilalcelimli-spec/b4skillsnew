@@ -11,7 +11,6 @@ import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import nodemailer from "nodemailer";
-import { OAuth2Client } from "google-auth-library";
 import { prisma } from "./src/lib/prisma.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
 import { logger, httpLogger, captureException, Sentry } from "./src/lib/observability/index.js";
@@ -396,46 +395,6 @@ async function startServer() {
     return res.json({ message: 'Process started if email needs verification' });
   });
 
-  app.post("/api/auth/google", authSensitiveLimiter, validate({ body: Schemas.Auth.GoogleAuthBody }), async (req, res) => {
-    const { token } = req.body;
-    if (!token) return res.status(400).json({ error: 'Missing token' });
-    
-    try {
-      const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-      if (!GOOGLE_CLIENT_ID) {
-        return res.status(503).json({ error: 'Google OAuth is not configured on this server' });
-      }
-
-      const client = new OAuth2Client(GOOGLE_CLIENT_ID);
-      const ticket = await client.verifyIdToken({
-        idToken: token,
-        audience: GOOGLE_CLIENT_ID,
-      });
-      const payload = ticket.getPayload();
-      if (!payload || !payload.email) throw new Error("Invalid token payload");
-
-      const { email, name } = payload;
-
-      let user = await prisma.user.findUnique({ where: { email } });
-      if (!user) {
-        user = await prisma.user.create({
-          data: { email, name: name || email, role: 'CANDIDATE', emailVerified: new Date() }
-        });
-      }
-      
-      const accessToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '15m' });
-      const refreshToken = jwt.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: '7d' });
-      await prisma.user.update({ where: { id: user.id }, data: { refreshToken } });
-      
-      setAuthCookies(res, accessToken, refreshToken);
-      const fresh = await prisma.user.findUnique({ where: { id: user.id } });
-      if (!fresh) return res.status(500).json({ error: "User session error" });
-      return res.json({ token: accessToken, user: publicUser(fresh) });
-    } catch(err) {
-      return res.status(401).json({ error: 'Invalid Google Token' });
-    }
-  });
-  
   // When the database is unavailable, API routes return 503 (no offline mock data).
   app.use("/api", (req, res, next) => {
     if (!dbAvailable) {

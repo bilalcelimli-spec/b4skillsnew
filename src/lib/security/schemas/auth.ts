@@ -24,7 +24,3 @@ export const ResetPasswordBody = z.object({
 export const VerifyEmailBody = z.object({
   token: NonEmptyString.max(512),
 }).strict();
-
-export const GoogleAuthBody = z.object({
-  idToken: NonEmptyString.max(4096),
-}).strict();

@@ -20,16 +20,6 @@ const Highlight = ({ children, className }: { children: React.ReactNode, classNa
   </span>
 );
 
-// Google "G" svg icon
-const GoogleIcon = () => (
-  <svg viewBox="0 0 48 48" className="w-5 h-5" aria-hidden="true">
-    <path fill="#4285F4" d="M47.5 24.6c0-1.6-.1-3.1-.4-4.6H24v8.7h13.2c-.6 3-2.3 5.5-4.9 7.2v6h7.9c4.6-4.2 7.3-10.5 7.3-17.3z" />
-    <path fill="#34A853" d="M24 48c6.5 0 12-2.2 16-5.8l-7.9-6c-2.2 1.5-5 2.3-8.1 2.3-6.2 0-11.5-4.2-13.4-9.9H2.5v6.2C6.5 42.6 14.7 48 24 48z" />
-    <path fill="#FBBC05" d="M10.6 28.6c-.5-1.5-.8-3-.8-4.6s.3-3.1.8-4.6v-6.2H2.5C.9 16.6 0 20.2 0 24s.9 7.4 2.5 10.8l8.1-6.2z" />
-    <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.5l6.8-6.8C35.9 2.3 30.4 0 24 0 14.7 0 6.5 5.4 2.5 13.2l8.1 6.2C12.5 13.7 17.8 9.5 24 9.5z" />
-  </svg>
-);
-
 export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
   const [mode, setMode] = useState<AuthMode>("signin");
   const [email, setEmail] = useState("");
@@ -39,7 +29,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);  const [pendingFeature, setPendingFeature] = useState<string | null>(null);
 
@@ -67,17 +56,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
     setMode(next);
   };
 
-  const handleGoogleSignIn = async () => {
-    clearState();
-    setGoogleLoading(true);
-    // Dummy delay
-    setTimeout(() => {
-      setError("Google Sign-In is temporarily disabled.");
-      setGoogleLoading(false);
-    }, 1000);
-  };
-
-  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearState();
@@ -450,32 +428,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
                   )}
                 </Button>
 
-                {/* ─── Divider + Google (not on forgot/verify/reset) ─── */}
-                {(mode === "signin" || mode === "signup") && (
-                  <>
-                    <div className="flex items-center my-6">
-                      <div className="flex-1 border-t border-slate-200" />
-                      <span className="mx-4 text-xs font-bold tracking-widest text-slate-400 uppercase">OR</span>
-                      <div className="flex-1 border-t border-slate-200" />
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleGoogleSignIn}
-                      disabled={googleLoading}
-                      className="w-full h-12 flex items-center justify-center gap-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 transition-colors text-[15px] font-bold text-slate-700 disabled:opacity-50"
-                    >
-                      {googleLoading ? (
-                        <Loader2 size={18} className="animate-spin text-slate-400" />
-                      ) : (
-                        <>
-                          <GoogleIcon />
-                          Continue with Google
-                        </>
-                      )}
-                    </button>
-                  </>
-                )}
               </motion.form>
             </AnimatePresence>
             
