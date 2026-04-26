@@ -48,6 +48,22 @@ jobs:
           retention-days: 14
 
   # ─────────────────────────────────────────────────────────────────────────────
+  seed-quality:
+    name: Seed Quality Gate (Vocabulary)
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Validate vocab seed integrity and semantic image rules
+        run: npm run quality:vocab
+
+  # ─────────────────────────────────────────────────────────────────────────────
   build:
     name: Build (Vite + Server)
     runs-on: ubuntu-latest
@@ -75,7 +91,7 @@ jobs:
   docker:
     name: Docker Build Check
     runs-on: ubuntu-latest
-    needs: [type-check, test, build]
+    needs: [type-check, test, seed-quality, build]
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:

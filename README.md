@@ -106,9 +106,20 @@ docker run -p 3000:3000 \
 | Workflow | Trigger |
 |---|---|
 | **CI** | Every push / PR to `main` & `develop` |
-| **Deploy** | Push to `main` or a `v*.*.*` tag |
+| **Deploy** | Push to `main` or a `v*.*.*` tag (includes post-deploy auth smoke test) |
 
-Set `RENDER_DEPLOY_HOOK_URL` (or `FLY_API_TOKEN`) in your repository secrets.
+Set these repository secrets for production deploy:
+- `RENDER_DEPLOY_HOOK_URL`
+- `APP_URL` (e.g. `https://b4skills.com`)
+- `AUTH_SMOKE_EMAIL`
+- `AUTH_SMOKE_PASSWORD`
+- optional `DEPLOY_ALERT_WEBHOOK_URL` (called when smoke fails)
+
+You can also run the same check locally/CI:
+
+```bash
+BASE_URL=https://b4skills.com AUTH_EMAIL=admin@b4skills.com AUTH_PASSWORD='***' npm run smoke:auth
+```
 
 ---
 
@@ -147,6 +158,7 @@ Express.js Server (Node 20)
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for detailed service descriptions.
 See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for step-by-step cloud deployment guides.
+See [`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md) for rollback and backup/restore drills.
 
 ---
 

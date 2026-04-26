@@ -30,7 +30,8 @@
     "db:seed:grammar-300": "tsx scripts/seed-grammar-300-sota.ts",
     "db:seed:vocab-200": "tsx scripts/seed-vocab-200-sota.ts",
     "db:bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
-    "smoke:auth": "node scripts/smoke-auth.mjs"
+    "smoke:auth": "node scripts/smoke-auth.mjs",
+    "quality:vocab": "tsx scripts/validate-vocab-200-quality.ts"
   },
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.4.0",
