@@ -262,7 +262,6 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
 
   const saveResponse = async (item: TestItem, scoreOrCorrect: boolean | number, newEstimate: AbilityEstimate, responseArtifact?: string, feedback?: string, latencyMs?: number) => {
     try {
-      const responseRef = "dummy";
       await fetch('/api/responses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         itemId: item.id,
         type: item.type,

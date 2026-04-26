@@ -83,10 +83,10 @@ export default function App() {
   }, []);
 
   const startNewTest = async (productLine?: string) => {
-    if (!user || !userProfile) return;
+    if (!user || !userProfile?.organizationId) return;
     setTestCompleted(null);
     setCertificate(null);
-    setActiveSession({ orgId: userProfile.organizationId || "b4skills-demo", sessionId: "new", productLine });
+    setActiveSession({ orgId: userProfile.organizationId, sessionId: "new", productLine });
   };
 
   const handleTestComplete = async (finalTheta: number, sessionId: string) => {
@@ -254,7 +254,7 @@ export default function App() {
         ) : activeTab === "psychometrics" && isAdmin ? (
           <PsychometricManager />
         ) : activeTab === "rating" && isRater ? (
-          <RatingDashboard />
+          <RatingDashboard raterId={user?.uid} />
         ) : activeTab === "institutional" && isOrgAdmin ? (
           <InstitutionalDashboard organizationId={userProfile?.organizationId} />
         ) : activeTab === "results" && certificate ? (

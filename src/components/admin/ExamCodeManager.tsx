@@ -14,16 +14,20 @@ export const ExamCodeManager: React.FC<{ orgId?: string }> = ({ orgId }) => {
   const [copied, setCopied] = useState(false);
 
   const handleGenerateCodes = async () => {
+    if (!orgId) {
+      alert("No organization selected.");
+      return;
+    }
     try {
       setLoading(true);
       const res = await fetch("/api/codes/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-user-email": "bilalcelimli@gmail.com",
         },
+        credentials: "include",
         body: JSON.stringify({
-          organizationId: orgId || "b4skills-demo",
+          organizationId: orgId,
           productLine,
           count,
         }),

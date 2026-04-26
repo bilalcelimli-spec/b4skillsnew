@@ -12,7 +12,7 @@ export class AdaptiveEngine {
     externalBank?: TestItem[],
     targetType?: string
   ): TestItem {
-    const bank = externalBank || mockItems;
+    const bank = externalBank ?? mockItems;
     
     // Filter out used items and optionally by type
     const availableItems = bank.filter(item => 
@@ -20,9 +20,8 @@ export class AdaptiveEngine {
     );
 
     if (availableItems.length === 0) {
-      // Fallback if bank is empty
       if (bank.length > 0) return bank[0];
-      return mockItems[0];
+      throw new Error("Item bank is empty");
     }
 
     // Select item closest to current ability (theta)

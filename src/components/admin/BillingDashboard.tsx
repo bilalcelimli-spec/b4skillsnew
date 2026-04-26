@@ -27,7 +27,7 @@ export const BillingDashboard: React.FC<{ orgId: string }> = ({ orgId }) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/organizations/${orgId}/billing`, {
-        headers: { "x-user-email": "bilalcelimli@gmail.com" } // Mock admin auth
+        credentials: "include",
       });
       setBilling(await res.json());
     } catch (err) {
@@ -43,8 +43,8 @@ export const BillingDashboard: React.FC<{ orgId: string }> = ({ orgId }) => {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "x-user-email": "bilalcelimli@gmail.com" 
         },
+        credentials: "include",
         body: JSON.stringify({ amount })
       });
       if (res.ok) {

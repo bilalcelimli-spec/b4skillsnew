@@ -40,8 +40,8 @@ export const CalibrationStudy: React.FC = () => {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "x-user-email": "bilalcelimli@gmail.com" // Mocked for now
-        }
+        },
+        credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to conduct study");
       const data = await res.json();
@@ -61,8 +61,8 @@ export const CalibrationStudy: React.FC = () => {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "x-user-email": "bilalcelimli@gmail.com" // Mocked for now
-        }
+        },
+        credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to apply calibration");
       setApplied(true);

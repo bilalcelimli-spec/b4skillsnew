@@ -25,7 +25,9 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
-    "db:delete-all-items": "tsx scripts/delete-all-items.ts"
+    "db:delete-all-items": "tsx scripts/delete-all-items.ts",
+    "db:purge": "tsx scripts/purge-platform-data.ts",
+    "db:seed:grammar-300": "tsx scripts/seed-grammar-300-sota.ts"
   },
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.4.0",

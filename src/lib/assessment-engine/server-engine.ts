@@ -207,21 +207,13 @@ export const AssessmentService = {
   async launchSession(candidateId: string, organizationId: string, productLine?: string) {
     const engine = await getEngine();
     
-    // --- ENSURE RECORDS EXIST (MOCK SEED) ---
-    // If this is a new candidate or organization, create dummy rows to avoid FK errors
-    try {
-      await prisma.organization.upsert({
-        where: { id: organizationId },
-        update: {},
-        create: { id: organizationId, name: organizationId, slug: organizationId.toLowerCase() + '-' + Date.now() }
-      });
-      await prisma.user.upsert({
-         where: { id: candidateId },
-         update: {},
-         create: { id: candidateId, organizationId, email: `${candidateId}@b4skills.com`, name: "Candidate" }
-      });
-    } catch(e) {
-      logger.warn({ err: e }, "Could not upsert org/user - moving on");
+    const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+    if (!org) {
+      throw new Error("Organization not found. Create the organization in the admin console first.");
+    }
+    const candidate = await prisma.user.findUnique({ where: { id: candidateId } });
+    if (!candidate) {
+      throw new Error("Candidate user not found.");
     }
 
     // --- CREDIT CHECK ---

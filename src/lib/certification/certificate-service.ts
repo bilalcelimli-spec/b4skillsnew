@@ -42,15 +42,16 @@ export const CertificateService = {
     }
 
     // Create new score report (certificate)
+    const overallScore = Math.round((sessionData.theta + 3) * 16.6);
     const report = await prisma.scoreReport.create({
       data: {
         sessionId: sessionData.sessionId,
         overallCefr: sessionData.cefr as CefrLevel,
-        overallScore: Math.round((sessionData.theta + 3) * 16.6), // Map -3..3 to 0..100
-        readingScore: 85, // Mocked for demo
-        listeningScore: 92,
-        speakingScore: 78,
-        writingScore: 82,
+        overallScore, // Map -3..3 to 0..100
+        readingScore: null,
+        listeningScore: null,
+        speakingScore: null,
+        writingScore: null,
         isVerified: true
       }
     });
@@ -66,6 +67,8 @@ export const CertificateService = {
     const expiresAt = new Date(issuedAt);
     expiresAt.setFullYear(issuedAt.getFullYear() + 2);
 
+    const appBase = (process.env.APP_URL || "http://localhost:5173").replace(/\/$/, "");
+    const verifyUrl = `${appBase}/verify/${report.id}`;
     return {
       id: report.id,
       sessionId: report.sessionId,
@@ -83,8 +86,8 @@ export const CertificateService = {
       },
       issuedAt,
       expiresAt,
-      verificationUrl: `https://b4skills.com/verify/${report.id}`,
-      qrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://b4skills.com/verify/${report.id}`
+      verificationUrl: verifyUrl,
+      qrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(verifyUrl)}`
     };
   },
 

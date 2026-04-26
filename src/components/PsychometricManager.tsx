@@ -10,8 +10,6 @@ export const PsychometricManager: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const userEmail = "bilalcelimli@gmail.com"; // Mocked for now, should come from auth
-
   useEffect(() => {
     fetchConfig();
   }, []);
@@ -20,7 +18,7 @@ export const PsychometricManager: React.FC = () => {
     setLoading(true);
     try {
       const res = await fetch("/api/config/system", {
-        headers: { "x-user-email": userEmail }
+        credentials: "include",
       });
       const data = await res.json();
       setConfig(data);
@@ -39,8 +37,8 @@ export const PsychometricManager: React.FC = () => {
         method: "PUT",
         headers: { 
           "Content-Type": "application/json",
-          "x-user-email": userEmail
         },
+        credentials: "include",
         body: JSON.stringify(config)
       });
       

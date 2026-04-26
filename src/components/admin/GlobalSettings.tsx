@@ -37,8 +37,8 @@ export const GlobalSettings: React.FC<{ orgId: string }> = ({ orgId }) => {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-user-email": "bilalcelimli@gmail.com"
         },
+        credentials: "include",
         body: JSON.stringify(settings)
       });
       if (!res.ok) throw new Error("Server error");

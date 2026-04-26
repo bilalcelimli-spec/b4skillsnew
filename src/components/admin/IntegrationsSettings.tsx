@@ -34,8 +34,8 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
     setLoading(true);
     try {
       const [whRes, akRes] = await Promise.all([
-        fetch(`/api/organizations/${orgId}/webhooks`),
-        fetch(`/api/organizations/${orgId}/api-keys`)
+        fetch(`/api/organizations/${orgId}/webhooks`, { credentials: "include" }),
+        fetch(`/api/organizations/${orgId}/api-keys`, { credentials: "include" })
       ]);
       const whData = await whRes.json();
       const akData = await akRes.json();
@@ -54,6 +54,7 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
       const res = await fetch(`/api/organizations/${orgId}/webhooks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ url: newWebhookUrl, events: ["session.completed"] })
       });
       const newWh = await res.json();
@@ -70,6 +71,7 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
       const res = await fetch(`/api/organizations/${orgId}/api-keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ name: newKeyName })
       });
       const { key } = await res.json();
@@ -85,7 +87,7 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
     try {
       await fetch(`/api/organizations/${orgId}/webhooks/${webhookId}`, {
         method: "DELETE",
-        headers: { "x-user-email": "bilalcelimli@gmail.com" }
+        credentials: "include",
       });
       setWebhooks(prev => prev.filter(w => w.id !== webhookId));
     } catch (err) {
@@ -97,7 +99,7 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
     try {
       await fetch(`/api/organizations/${orgId}/api-keys/${keyId}`, {
         method: "DELETE",
-        headers: { "x-user-email": "bilalcelimli@gmail.com" }
+        credentials: "include",
       });
       setApiKeys(prev => prev.map(k => k.id === keyId ? { ...k, isActive: false } : k));
     } catch (err) {

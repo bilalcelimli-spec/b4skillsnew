@@ -27,7 +27,7 @@ interface RatingTask {
   createdAt: string;
 }
 
-export const RatingDashboard: React.FC = () => {
+export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => {
   const [tasks, setTasks] = useState<RatingTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<RatingTask | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,7 +42,7 @@ export const RatingDashboard: React.FC = () => {
   const fetchTasks = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/rating/tasks?status=PENDING");
+      const res = await fetch("/api/rating/tasks?status=PENDING", { credentials: "include" });
       const data = await res.json();
       setTasks(data);
     } catch (err) {
@@ -53,11 +53,13 @@ export const RatingDashboard: React.FC = () => {
   };
 
   const handleClaim = async (task: RatingTask) => {
+    if (!raterId) return;
     try {
       const res = await fetch(`/api/rating/tasks/${task.id}/claim`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raterId: "demo-rater" })
+        credentials: "include",
+        body: JSON.stringify({ raterId })
       });
       if (res.ok) {
         setSelectedTask(task);
@@ -74,6 +76,7 @@ export const RatingDashboard: React.FC = () => {
       const res = await fetch(`/api/rating/tasks/${selectedTask.id}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ score: score / 10, feedback })
       });
       if (res.ok) {

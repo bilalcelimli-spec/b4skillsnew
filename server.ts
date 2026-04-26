@@ -34,7 +34,7 @@ async function startServer() {
 
   app.set("trust proxy", 1);
 
-  // Probe DB connectivity — fall back to mock/demo mode if unreachable
+  // Probe DB connectivity — if unreachable, /api returns 503 (no mock data layer)
   if (process.env.DATABASE_URL) {
     try {
       await (prisma as any).$queryRaw`SELECT 1`;
@@ -42,7 +42,7 @@ async function startServer() {
       logger.info("Database connected");
     } catch (err) {
       dbAvailable = false;
-      logger.warn({ err }, "Database not reachable — running in mock/demo mode");
+      logger.warn({ err }, "Database not reachable — /api will return 503 until DATABASE_URL is valid");
     }
   }
 
@@ -406,254 +406,14 @@ async function startServer() {
     }
   });
   
-  // --- OFFLINE MOCK MIDDLEWARE ---
-  // If no database is available, we intercept admin routes and serve mock data
+  // When the database is unavailable, API routes return 503 (no offline mock data).
   app.use("/api", (req, res, next) => {
     if (!dbAvailable) {
-      const url = req.url;
-      const method = req.method;
-
-      // ── Health ──────────────────────────────────────────────────────────────
-      if (url === "/health") return next();
-
-      // ── Psychometrics config ─────────────────────────────────────────────────
-      if (url.includes("/config/system")) {
-        if (method === "GET") return res.json({ minItems: 10, maxItems: 30, semThreshold: 0.25, startingTheta: 0.0, pretestRatio: 0.1, cefrThresholds: { A1: -2.0, A2: -1.0, B1: 0.0, B2: 1.0, C1: 2.0, C2: 3.0 } });
-        if (method === "PUT") return res.json(req.body);
-      }
-
-      // ── Item Bank ────────────────────────────────────────────────────────────
-      if (url === "/items" && method === "GET") {
-        return res.json([
-          { id: "mock-item-1", skill: "READING", type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "The quick brown fox jumped over the lazy dog. What did the fox jump over?", options: ["A fence", "A wall", "The lazy dog", "A stream"], correctIndex: 2 }, difficulty: 1.0, status: "ACTIVE", assets: [] },
-          { id: "mock-item-2", skill: "READING", type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "She ___ to the store yesterday.", text: "Fill in the blank with the correct verb form.", options: ["go", "goes", "went", "gone"], correctIndex: 2 }, difficulty: 2.0, status: "ACTIVE", assets: [] },
-          { id: "mock-item-3", skill: "SPEAKING", type: "AUDIO_RESPONSE", cefrLevel: "B2", content: { prompt: "Describe your favorite hobby in detail.", text: "You have 60 seconds to respond." }, difficulty: 3.0, status: "ACTIVE", assets: [] },
-          { id: "mock-item-4", skill: "WRITING", type: "OPEN_RESPONSE", cefrLevel: "C1", content: { prompt: "Write an email to a colleague proposing a new project idea.", text: "Minimum 80 words required." }, difficulty: 4.0, status: "ACTIVE", assets: [] },
-          { id: "mock-item-5", skill: "READING", type: "MULTIPLE_CHOICE", cefrLevel: "A1", content: { prompt: "What color is the sky on a clear day?", options: ["Green", "Blue", "Red", "Yellow"], correctIndex: 1 }, difficulty: 0.5, status: "ACTIVE", assets: [] },
-          { id: "mock-item-6", skill: "WRITING", type: "OPEN_RESPONSE", cefrLevel: "B1", content: { prompt: "Describe your hometown in a few sentences.", text: "Use at least 50 words." }, difficulty: 2.5, status: "DRAFT", assets: [] },
-        ]);
-      }
-      if (url.startsWith("/items") && (method === "PUT" || method === "POST")) return res.json({ ...req.body, id: req.body.id || "new-item-" + Date.now() });
-      if (url.startsWith("/items") && method === "DELETE") return res.json({ success: true });
-
-      // ── Cohort / analytics ────────────────────────────────────────────────────
-      if (url.includes("/analytics/cohort")) {
-        return res.json({
-          totalCandidates: 450,
-          completedSessions: 312,
-          averageAbility: 0.85,
-          cefrDistribution: { A1: 12, A2: 25, B1: 80, B2: 110, C1: 60, C2: 25 },
-          skillPerformance: { Reading: 72, Listening: 68, Writing: 59, Speaking: 61, Grammar: 74, Vocabulary: 70 },
-          timeSeriesData: [
-            { date: "Sep", avgScore: 58 }, { date: "Oct", avgScore: 62 }, { date: "Nov", avgScore: 65 },
-            { date: "Dec", avgScore: 69 }, { date: "Jan", avgScore: 72 }, { date: "Feb", avgScore: 74 },
-            { date: "Mar", avgScore: 77 }, { date: "Apr", avgScore: 80 }
-          ],
-          settings: { webhookUrl: "", apiKey: "" }
-        });
-      }
-
-      // ── Org analytics (AdvancedAnalytics component format) ────────────────────
-      if (url.includes("/organizations/") && url.includes("/analytics")) {
-        return res.json({
-          sessionsCount: 312,
-          avgRating: 4.3,
-          feedbacksCount: 289,
-          cefrDistribution: [
-            { name: "A1", value: 12 }, { name: "A2", value: 25 }, { name: "B1", value: 80 },
-            { name: "B2", value: 110 }, { name: "C1", value: 60 }, { name: "C2", value: 25 }
-          ],
-          monthlyTrend: [
-            { month: "Nov", count: 42 }, { month: "Dec", count: 55 }, { month: "Jan", count: 63 },
-            { month: "Feb", count: 70 }, { month: "Mar", count: 89 }, { month: "Apr", count: 97 }
-          ],
-          skillBreakdown: [
-            { skill: "Reading", avg: 72 }, { skill: "Listening", avg: 68 }, { skill: "Writing", avg: 59 },
-            { skill: "Speaking", avg: 61 }, { skill: "Grammar", avg: 74 }, { skill: "Vocabulary", avg: 70 }
-          ]
-        });
-      }
-
-      // ── Audit logs ───────────────────────────────────────────────────────────
-      if (url.includes("/organizations/") && url.includes("/audit-logs")) {
-        return res.json([
-          { id: "log-1", action: "CANDIDATE_IMPORT", timestamp: new Date(Date.now() - 3600000).toISOString(), userId: "admin1", details: "50 candidates imported via CSV" },
-          { id: "log-2", action: "SETTINGS_UPDATED", timestamp: new Date(Date.now() - 7200000).toISOString(), userId: "admin1", details: "CEFR thresholds updated" },
-          { id: "log-3", action: "ITEM_DELETED", timestamp: new Date(Date.now() - 86400000).toISOString(), userId: "admin1", details: "Item mock-item-old removed from bank" },
-        ]);
-      }
-
-      // ── Billing ───────────────────────────────────────────────────────────────
-      if (url.includes("/organizations/") && url.includes("/billing/topup") && method === "POST") {
-        return res.json({ success: true });
-      }
-      if (url.includes("/organizations/") && url.includes("/billing")) {
-        return res.json({ creditsRemaining: 4876, licenseType: "Enterprise", expiryDate: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(), recentTransactions: [
-          { id: "txn-1", amount: 100000, creditsAdded: 1000, createdAt: new Date(Date.now() - 2592000000).toISOString(), status: "COMPLETED" },
-          { id: "txn-2", amount: 0, creditsAdded: -124, createdAt: new Date(Date.now() - 86400000).toISOString(), status: "COMPLETED" },
-        ]});
-      }
-
-      // ── Webhooks & API Keys ───────────────────────────────────────────────────
-      if (url.includes("/organizations/") && url.includes("/webhooks")) {
-        if (method === "GET") return res.json([{ id: "wh-1", url: "https://example.com/webhook", events: ["session.completed", "proctoring.alert"], active: true, createdAt: new Date().toISOString() }]);
-        if (method === "POST") return res.json({ id: "wh-" + Date.now(), ...req.body, active: true, createdAt: new Date().toISOString() });
-        if (method === "DELETE") return res.json({ success: true });
-      }
-      if (url.includes("/organizations/") && url.includes("/api-keys")) {
-        if (method === "GET") return res.json([{ id: "ak-1", name: "Production Key", key: "b4s_prod_xxxxxx", createdAt: new Date(Date.now() - 604800000).toISOString() }]);
-        if (method === "POST") return res.json({ id: "ak-" + Date.now(), name: req.body.name, key: "b4s_" + Math.random().toString(36).substr(2, 16), createdAt: new Date().toISOString() });
-        if (method === "DELETE") return res.json({ success: true });
-      }
-
-      // ── Proctoring alerts ─────────────────────────────────────────────────────
-      if (url.includes("/organizations/") && url.includes("/proctoring-alerts")) {
-        return res.json([
-          { id: "alert-1", type: "TAB_SWITCH", severity: 2, sessionId: "demo-sess-2", candidateName: "Ben Carter", timestamp: new Date(Date.now() - 600000).toISOString(), count: 3 },
-          { id: "alert-2", type: "MULTIPLE_FACES", severity: 5, sessionId: "demo-sess-4", candidateName: "David Kim", timestamp: new Date(Date.now() - 1800000).toISOString(), count: 1 },
-        ]);
-      }
-
-      // ── Branding ─────────────────────────────────────────────────────────────
-      if (url.includes("/branding")) {
-        if (method === "GET") return res.json({ primaryColor: "#9b276c", secondaryColor: "#0f172a", name: "b4skills", logoUrl: "", welcomeMessage: "Welcome to b4skills Assessment Platform" });
-        if (method === "PUT" || method === "POST") return res.json({ ...req.body, id: "branding-1" });
-      }
-
-      // ── Branding (general /api/branding/:orgId) ───────────────────────────────
-      if (url.startsWith("/api/branding/") || url.startsWith("/branding/")) {
-        return res.json({ primaryColor: "#9b276c", secondaryColor: "#0f172a", name: "b4skills", logoUrl: "", welcomeMessage: "Welcome to b4skills Assessment Platform" });
-      }
-
-      // ── Rating tasks ──────────────────────────────────────────────────────────
-      if (url.includes("/rating/tasks") && method === "GET") {
-        return res.json([
-          { id: "task-1", status: "PENDING", type: "WRITING", content: "The impact of AI on the modern workplace is undeniable. Companies are adopting machine learning tools at an unprecedented rate...", aiResult: { cefrLevel: "B2", score: 0.72, feedback: "Well-structured argument with good vocabulary." }, sessionId: "demo-sess-1", createdAt: new Date().toISOString() },
-          { id: "task-2", status: "PENDING", type: "SPEAKING", content: "Audio response recorded.", aiResult: { cefrLevel: "B1", score: 0.55, feedback: "Clear pronunciation but limited vocabulary range." }, sessionId: "demo-sess-3", createdAt: new Date().toISOString() },
-        ]);
-      }
-      if (url.includes("/rating/tasks/") && url.includes("/claim")) return res.json({ success: true });
-      if (url.includes("/rating/tasks/") && url.includes("/submit")) return res.json({ success: true });
-
-      // ── Calibration ───────────────────────────────────────────────────────────
-      if (url.includes("/calibration/study")) {
-        return res.json({ items: [{ id: "mock-item-1", irtA: 1.2, irtB: -0.5, irtC: 0.2 }], rmse: 0.12, bias: 0.003, sampleSize: 450 });
-      }
-      if (url.includes("/calibration/apply")) return res.json({ success: true, updatedCount: 1 });
-
-      // ── Ecosystem / Onboarding ────────────────────────────────────────────────
-      if (url.includes("/ecosystem/config")) return res.json({ settings: { webhookUrl: req.body?.webhookUrl || "", apiKey: "b4s_demo_key_xxxx" } });
-      if (url.includes("/onboarding/bulk")) {
-        const candidates = req.body?.candidates || [];
-        return res.json(candidates.map((c: any) => ({ email: c.email, status: "SUCCESS", candidateId: "new-" + Date.now() })));
-      }
-
-      // ── Exam code generation ────────────────────────────────────────────────────
-      if (url === "/codes/generate" && method === "POST") {
-        const { productLine: pl = "General", count: cnt = 1, prefix = "E" } = req.body || {};
-        const codes: { code: string }[] = [];
-        for (let i = 0; i < Math.min(Number(cnt), 500); i++) {
-          const ran = Math.random().toString(36).substring(2, 6).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
-          codes.push({ code: `${prefix}-${ran}` });
-        }
-        return res.json({ message: `Generated ${codes.length} codes`, codes: codes.map(c => c.code) });
-      }
-      if (url === "/codes/validate" && method === "POST") {
-        return res.json({ valid: true, examCode: { code: req.body?.code, productLine: "General", organizationId: "b4skills-demo" } });
-      }
-      if (url === "/codes/redeem" && method === "POST") {
-        return res.json({ success: true, organizationId: "b4skills-demo", productLine: "General" });
-      }
-
-      // ── Bulk candidate import ─────────────────────────────────────────────────────
-      if (url.includes("/candidates/bulk-import")) {
-        const candidates = req.body?.candidates || [];
-        return res.json(candidates.map((c: any) => ({ email: c.email, status: "CREATED" })));
-      }
-
-      // ── Candidate history ────────────────────────────────────────────────────
-      if (url.includes("/candidates/") && method === "DELETE") return res.json({ success: true });
-      if (url.includes("/candidates/")) {
-        return res.json([
-          { id: "hist-1", cefrLevel: "B2", theta: 1.2, completedAt: new Date(Date.now() - 86400000).toISOString(), status: "COMPLETED" },
-          { id: "hist-2", cefrLevel: "B1", theta: 0.4, completedAt: new Date(Date.now() - 7 * 86400000).toISOString(), status: "COMPLETED" },
-        ]);
-      }
-
-      // ── Org candidates list ────────────────────────────────────────────────────
-      if (url.includes("/organizations/") && url.includes("/candidates")) {
-        if (method === "GET") return res.json([
-          { id: "c-1", name: "Alice Johnson", email: "alice@example.com", role: "CANDIDATE", sessions: [{ status: "COMPLETED", completedAt: new Date(Date.now() - 86400000).toISOString(), theta: 1.2 }] },
-          { id: "c-2", name: "Ben Carter", email: "ben@example.com", role: "CANDIDATE", sessions: [{ status: "IN_PROGRESS", completedAt: null, theta: 0.3 }] },
-          { id: "c-3", name: "Clara Ricci", email: "clara@example.com", role: "CANDIDATE", sessions: [] },
-        ]);
-        if (method === "POST") return res.json({ id: "c-" + Date.now(), ...req.body, status: "CREATED" });
-      }
-
-      // ── Org sessions list ─────────────────────────────────────────────────────
-      if (url.includes("/organizations/") && url.includes("/sessions")) {
-        if (method === "GET") return res.json([
-          { id: "demo-sess-1", candidateId: "c-1", status: "COMPLETED", createdAt: new Date(Date.now() - 86400000).toISOString(), theta: 1.2, candidate: { name: "Alice Johnson", email: "alice@example.com" }, scoreReport: { overallCefr: "B2", overallScore: 70 } },
-          { id: "demo-sess-2", candidateId: "c-2", status: "IN_PROGRESS", createdAt: new Date(Date.now() - 3600000).toISOString(), theta: 0.3, candidate: { name: "Ben Carter", email: "ben@example.com" }, scoreReport: null },
-        ]);
-      }
-
-      // ── Delete webhook ─────────────────────────────────────────────────────────
-      if (url.includes("/organizations/") && url.includes("/webhooks/") && method === "DELETE") return res.json({ success: true });
-
-      // ── Delete/revoke api-key ──────────────────────────────────────────────────
-      if (url.includes("/organizations/") && url.includes("/api-keys/") && method === "DELETE") return res.json({ success: true });
-
-      // ── Org settings update ───────────────────────────────────────────────────
-      if (url.includes("/organizations/") && url.includes("/settings") && (method === "PATCH" || method === "PUT")) {
-        return res.json({ settings: req.body });
-      }
-
-      // ── SSO config update ─────────────────────────────────────────────────────
-      if (url.includes("/organizations/") && url.includes("/sso-config") && method === "PUT") {
-        return res.json(req.body);
-      }
-      if (url.includes("/organizations/") && url.includes("/sso-config") && method === "GET") {
-        return res.json({ provider: "", entryPoint: "", issuer: "", enabled: false });
-      }
-
-      // ── Session responses (SessionReview component) ───────────────────────────
-      if (url.match(/^\/sessions\/[^/]+\/responses$/) && method === "GET") {
-        return res.json([
-          { id: "resp-1", order: 1, score: 0.82, response: "Supply chain disruptions drive localized inflation.", metadata: { cefrLevel: "B2", confidence: 0.9 }, item: { id: "mock-item-1", skill: "READING", content: { prompt: "What is the author's primary argument regarding supply chains?" } } },
-          { id: "resp-2", order: 2, score: 0.55, response: "Audio response provided.", metadata: { cefrLevel: "B1", confidence: 0.72 }, item: { id: "mock-item-3", skill: "SPEAKING", content: { prompt: "Describe your favorite hobby in detail." } } },
-        ]);
-      }
-
-      // ── Session status / insights / next item ────────────────────────────────
-      if (url.match(/^\/sessions\/[^/]+\/status$/) && method === "GET") {
-        return res.json({ status: "IN_PROGRESS", itemsAnswered: 5, theta: 0.4 });
-      }
-      if (url.match(/^\/sessions\/[^/]+\/insights$/) && method === "GET") {
-        return res.json({ strengths: ["Reading comprehension", "Vocabulary"], weaknesses: ["Speaking fluency"], recommendations: ["Practice daily conversation"] });
-      }
-      if (url.match(/^\/sessions\/[^/]+\/respond$/) && method === "POST") {
-        return res.json({ success: true });
-      }
-      if (url.match(/^\/sessions\/[^/]+\/next$/) && method === "GET") {
-        return res.json({ done: false, item: { id: "mock-item-1", skill: "READING", type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "The quick brown fox...", options: ["A", "B", "C", "D"], correctIndex: 2 }, difficulty: 1.0, assets: [] } });
-      }
-      if (url.match(/^\/sessions\/[^/]+\/complete$/) && method === "POST") {
-        return res.json({ success: true, cefrLevel: "B2", theta: 1.2 });
-      }
-      if (url.match(/^\/sessions\/[^/]+\/feedback$/) && method === "POST") {
-        return res.json({ success: true });
-      }
-
-      // ── Session launch ────────────────────────────────────────────────────────
-      if (url === "/sessions/launch" && method === "POST") {
-        return res.json({ sessionId: "demo-sess-" + Date.now(), status: "IN_PROGRESS" });
-      }
-
-      // ── AI scoring (speaking multimodal) ─────────────────────────────────────
-      if (url.includes("/ai/score") || url.includes("/score/ai")) {
-        return res.json({ cefrLevel: "B2", score: 0.72, feedback: "Good performance.", breakdown: { grammar: 0.7, vocabulary: 0.75, fluency: 0.7 } });
-      }
+      if (req.url === "/health" || req.path === "/health") return next();
+      return res.status(503).json({
+        error: "Database unavailable",
+        message: "Configure DATABASE_URL and ensure PostgreSQL is reachable.",
+      });
     }
     next();
   });
@@ -672,10 +432,10 @@ async function startServer() {
         const decoded: any = jwt.verify(token, JWT_SECRET);
 
         if (!dbAvailable) {
-          // Demo mode: grant limited read-only access; never SUPER_ADMIN without DB
-          req.user = { id: decoded.userId, role: "INST_ADMIN", organizationId: "default-org" };
-          if (roles.some(r => ["INST_ADMIN", "PROCTOR", "RATER", "CANDIDATE"].includes(r))) return next();
-          return res.status(403).json({ error: "Forbidden: Insufficient permissions in demo mode" });
+          return res.status(503).json({
+            error: "Database unavailable",
+            message: "Configure DATABASE_URL and ensure PostgreSQL is reachable.",
+          });
         }
 
         const user = await prisma.user.findUnique({
@@ -695,51 +455,16 @@ async function startServer() {
     };
   };
 
-  
-// --- MOCK MODE FOR UI DEMO WITHOUT DB ---
-let mockSessions: Record<string, any> = {};
-let mockSessionIdCounter = 0;
-function isDBError(err: any) { return err && (err.message || "").includes("DATABASE_URL"); }
-
-// --- ASSESSMENT SESSION API ---
+  // --- ASSESSMENT SESSION API ---
   const { AssessmentService } = await import("./src/lib/assessment-engine/server-engine.js");
 
   app.post("/api/sessions/launch", async (req, res) => {
     try {
       const { candidateId, organizationId, productLine } = req.body;
-      let session;
-      try {
-        session = await AssessmentService.launchSession(
-          candidateId || "demo-user", 
-          organizationId || "demo-org",
-          productLine
-        );
-      } catch (err) {
-        if (isDBError(err) || err.name === "PrismaClientInitializationError") {
-          const { studioItems } = await import("./src/data/studioItems.js");
-          const sId = "demo-session-" + Date.now();
-          const filteredItems = productLine && productLine !== "General" ? studioItems.filter((i: any) => i.productLine === productLine) : studioItems;
-          const mappedItems = filteredItems.map((it: any) => ({
-            id: it.id,
-            skill: it.skill,
-            type: it.type,
-            metadata: {
-              prompt: it.prompt,
-              options: it.options?.map(o => o.text),
-              correctOption: it.options?.find(o => o.isCorrect)?.text,
-              rubric: it.rubric,
-              minWords: 30, maxTime: 60
-            },
-            irtA: it.discrimination,
-            irtB: it.difficulty,
-            irtC: it.guessing,
-            active: true
-          }));
-          mockSessions[sId] = { progress: 0, productLine, items: mappedItems.length ? mappedItems : [{ id: "fallback1", skill: "READING", type: "MULTIPLE_CHOICE", metadata: { prompt: "Default fallback item", options: ["A", "B", "C"], correctOption: "A" }, irtA:1, irtB:0, irtC:0 }] };
-          return res.json({ sessionId: sId, candidateId, organizationId, productLine, status: "STARTED", theta: 0, sem: 1, history: [] });
-        }
-        throw err;
+      if (!candidateId || !organizationId) {
+        return res.status(400).json({ error: "candidateId and organizationId are required" });
       }
+      const session = await AssessmentService.launchSession(candidateId, organizationId, productLine);
       res.json(session);
     } catch (error) {
       console.error("LAUNCH ERROR", error);
@@ -750,20 +475,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.get("/api/sessions/:id/next", async (req, res) => {
     try {
       const { id } = req.params;
-      let next;
-      try {
-        next = await AssessmentService.getNextItem(id);
-      } catch(err) {
-        if (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-")) {
-          const sDate = mockSessions[id];
-          if (!sDate) return res.json({ stop: true, finalTheta: 0 });
-          if (sDate.progress >= sDate.items.length) {
-            return res.json({ stop: true, finalTheta: 1.5 });
-          }
-          return res.json({ item: sDate.items[sDate.progress], stop: false });
-        }
-        throw err;
-      }
+      const next = await AssessmentService.getNextItem(id);
       res.json(next);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch next item" });
@@ -774,17 +486,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const { id } = req.params;
       const { itemId, value, latencyMs } = req.body;
-      let result;
-      try {
-        result = await AssessmentService.submitResponse(id, itemId, value, latencyMs);
-      } catch(err) {
-        if (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-")) {
-          if (mockSessions[id]) mockSessions[id].progress++;
-          const p = mockSessions[id]?.progress || 0;
-          return res.json({ success: true, progress: p, theta: 0.5 + p * 0.2 });
-        }
-        throw err;
-      }
+      const result = await AssessmentService.submitResponse(id, itemId, value, latencyMs);
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: "Failed to submit response" });
@@ -794,18 +496,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.get("/api/sessions/:id/status", async (req, res) => {
     try {
       const { id } = req.params;
-      let status;
-      try {
-        status = await AssessmentService.getSessionStatus(id);
-      } catch(err) {
-        if (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-")) {
-          const sData = mockSessions[id];
-          const pr = sData ? sData.progress : 0;
-          const max = sData ? sData.items.length : 20;
-          return res.json({ progress: pr, maxItems: max, isComplete: pr >= max, currentTheta: 0.5 + (pr * 0.2), cefrLevel: "B1" });
-        }
-        throw err;
-      }
+      const status = await AssessmentService.getSessionStatus(id);
       res.json(status);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch session status" });
@@ -1031,19 +722,19 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // --- EXAM CODES API ---
   app.post("/api/codes/generate", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
     try {
-      const { organizationId, productLine, count = 1, prefix = "E", expiresAt } = req.body;
-      const targetOrg = organizationId || "b4skills-demo";
+      const { organizationId: bodyOrgId, productLine, count = 1, prefix = "E", expiresAt } = req.body;
+      const authUser = (req as any).user as { id: string; role: string; organizationId?: string | null };
+      const targetOrg = bodyOrgId || authUser?.organizationId;
+      if (!targetOrg) {
+        return res.status(400).json({ error: "organizationId is required" });
+      }
+      if (authUser?.role === "INST_ADMIN" && authUser.organizationId && targetOrg !== authUser.organizationId) {
+        return res.status(403).json({ error: "You can only generate codes for your own organization" });
+      }
 
-      // Ensure the organization exists to prevent foreign key errors
       const org = await prisma.organization.findUnique({ where: { id: targetOrg } });
       if (!org) {
-        await prisma.organization.create({
-          data: {
-            id: targetOrg,
-            name: targetOrg,
-            slug: targetOrg + "-" + Date.now()
-          }
-        });
+        return res.status(404).json({ error: "Organization not found" });
       }
 
       const codes = [];
@@ -1098,12 +789,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         data: { isUsed: true, usedByEmail: email, usedAt: new Date() }
       });
 
-      // 3. Upsert user info in DB
-      await prisma.organization.upsert({
-        where: { id: examCode.organizationId },
-        update: {},
-        create: { id: examCode.organizationId, name: examCode.organizationId, slug: examCode.organizationId.toLowerCase() + "-" + Date.now() }
-      });
+      // 3. Ensure organization exists (codes must be issued for a real org)
+      const orgForCode = await prisma.organization.findUnique({ where: { id: examCode.organizationId } });
+      if (!orgForCode) {
+        return res.status(500).json({ error: "This exam code is not linked to a valid organization" });
+      }
       
       await prisma.user.upsert({
         where: { id: candidateId },

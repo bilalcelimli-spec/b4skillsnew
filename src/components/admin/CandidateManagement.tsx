@@ -38,7 +38,7 @@ export const CandidateManagement: React.FC<{ orgId: string, onGenerateCodes?: ()
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       const res = await fetch(`/api/organizations/${orgId}/candidates?${params}`, {
-        headers: { "x-user-email": "bilalcelimli@gmail.com" }
+        credentials: "include",
       });
       if (!res.ok) throw new Error("API error");
       const data = await res.json();

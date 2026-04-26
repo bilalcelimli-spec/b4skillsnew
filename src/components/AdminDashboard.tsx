@@ -59,7 +59,7 @@ interface SessionData {
 }
 
 export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId }) => {
-  const ORG_ID = propOrgId || "b4skills-demo";
+  const ORG_ID = propOrgId;
   const [activeTab, setActiveTab] = useState<
     | "overview"
     | "candidates"
@@ -87,59 +87,65 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
   });
 
   useEffect(() => {
-    const loadMockSessions = () => {
-      const mockSessions: SessionData[] = [
-        {
-          id: "demo-sess-1",
-          candidateId: "user-1",
-          organizationId: "b4skills-demo",
-          status: "completed",
-          currentStage: 20,
-          abilityEstimate: 1.2,
-          cefrLevel: "B2",
-          startedAt: new Date(Date.now() - 3600000),
-          completedAt: new Date(),
-          candidateName: "Alice Johnson",
-          candidateEmail: "alice@example.com",
-        },
-        {
-          id: "demo-sess-2",
-          candidateId: "user-2",
-          organizationId: "b4skills-demo",
-          status: "in_progress",
-          currentStage: 8,
-          abilityEstimate: 0.3,
-          cefrLevel: "B1",
-          startedAt: new Date(Date.now() - 900000),
-          candidateName: "Ben Carter",
-          candidateEmail: "ben@example.com",
-        },
-        {
-          id: "demo-sess-3",
-          candidateId: "user-3",
-          organizationId: "b4skills-demo",
-          status: "completed",
-          currentStage: 20,
-          abilityEstimate: 2.1,
-          cefrLevel: "C1",
-          startedAt: new Date(Date.now() - 7200000),
-          completedAt: new Date(Date.now() - 3600000),
-          candidateName: "Clara Ricci",
-          candidateEmail: "clara@example.com",
-        },
-      ];
-      setSessions(mockSessions);
-      setStats({ total: 3, completed: 2, inProgress: 1, avgTheta: 1.65 });
+    if (!ORG_ID) {
+      setSessions([]);
+      setStats({ total: 0, completed: 0, inProgress: 0, avgTheta: 0 });
       setLoading(false);
-    };
-
-    loadMockSessions();
-  }, []);
+      return;
+    }
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/organizations/${ORG_ID}/sessions?limit=100`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("sessions fetch failed");
+        const data = await res.json();
+        const normStatus = (s: string) => s.toLowerCase();
+        const mapped: SessionData[] = (data as any[]).map((s) => ({
+          id: s.id,
+          candidateId: s.candidateId,
+          organizationId: s.organizationId,
+          status: normStatus(s.status || ""),
+          currentStage: s.currentStage ?? 0,
+          abilityEstimate: s.theta ?? 0,
+          cefrLevel: s.scoreReport?.overallCefr ?? s.cefrLevel,
+          startedAt: s.startedAt || s.createdAt,
+          completedAt: s.completedAt,
+          candidateName: s.candidate?.name,
+          candidateEmail: s.candidate?.email,
+        }));
+        setSessions(mapped);
+        const total = mapped.length;
+        const completed = mapped.filter((x) => x.status === "completed").length;
+        const inProgress = mapped.filter((x) => x.status === "in_progress").length;
+        const avgTheta =
+          total > 0 ? mapped.reduce((a, b) => a + (b.abilityEstimate || 0), 0) / total : 0;
+        setStats({ total, completed, inProgress, avgTheta });
+      } catch {
+        setSessions([]);
+        setStats({ total: 0, completed: 0, inProgress: 0, avgTheta: 0 });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [ORG_ID]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="animate-spin text-indigo-600" size={32} />
+      </div>
+    );
+  }
+
+  if (!ORG_ID) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
+        <p className="font-semibold">No organization on your account</p>
+        <p className="text-sm mt-1 text-amber-800">
+          An administrator must assign you to an organization before the admin console can load data.
+        </p>
       </div>
     );
   }

@@ -53,7 +53,7 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/organizations/${orgId}/analytics`, {
-        headers: { "x-user-email": "bilalcelimli@gmail.com" } // Mock admin auth
+        credentials: "include",
       });
       setData(await res.json());
     } catch (err) {
