@@ -63,40 +63,53 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "1mb", extended: true }));
   app.use(cookieParser());
 
-  // --- CSRF PROTECTION ---
-  // For state-changing requests (POST/PUT/PATCH/DELETE) that carry cookies,
-  // verify the Origin or Referer header matches the expected host to block
-  // cross-site form submissions. SPA clients also send X-Requested-With.
+  // --- CSRF PROTECTION (Origin / Referer vs request host) ---
+  // Auth JSON endpoints: skip strict host check — Render/proxy can differ Host vs X-Forwarded-Host;
+  // login/register use bcrypt + later httpOnly cookies (SameSite=lax). Other /api/* still checked.
+  const hostnameNoPort = (h: string) => h.split(":")[0]!.toLowerCase();
+  const requestHostSet = (req: express.Request): Set<string> => {
+    const out = new Set<string>();
+    if (req.headers.host) out.add(hostnameNoPort(req.headers.host));
+    const xf = req.headers["x-forwarded-host"];
+    if (typeof xf === "string") {
+      for (const part of xf.split(",")) {
+        const t = part.trim();
+        if (t) out.add(hostnameNoPort(t));
+      }
+    }
+    return out;
+  };
   app.use((req, res, next) => {
     const method = req.method.toUpperCase();
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return next();
-    // Skip webhook-like routes that use HMAC signatures instead
-    if (req.path.startsWith('/api/webhooks/')) return next();
+    if (req.path.startsWith("/api/webhooks/")) return next();
+    if (req.path.startsWith("/api/auth/")) return next();
+
+    const allowed = requestHostSet(req);
+    if (allowed.size === 0) return next();
 
     const origin = req.headers.origin;
     const referer = req.headers.referer;
-    const host = req.headers.host;
 
     if (origin) {
       try {
-        const originHost = new URL(origin).host;
-        if (originHost !== host) {
-          return res.status(403).json({ error: 'CSRF check failed: origin mismatch' });
+        const originHost = hostnameNoPort(new URL(origin).host);
+        if (!allowed.has(originHost)) {
+          return res.status(403).json({ error: "CSRF check failed: origin mismatch" });
         }
       } catch {
-        return res.status(403).json({ error: 'CSRF check failed: invalid origin' });
+        return res.status(403).json({ error: "CSRF check failed: invalid origin" });
       }
     } else if (referer) {
       try {
-        const refHost = new URL(referer).host;
-        if (refHost !== host) {
-          return res.status(403).json({ error: 'CSRF check failed: referer mismatch' });
+        const refHost = hostnameNoPort(new URL(referer).host);
+        if (!allowed.has(refHost)) {
+          return res.status(403).json({ error: "CSRF check failed: referer mismatch" });
         }
       } catch {
-        return res.status(403).json({ error: 'CSRF check failed: invalid referer' });
+        return res.status(403).json({ error: "CSRF check failed: invalid referer" });
       }
     }
-    // Allow requests with no Origin/Referer only in dev (server-to-server calls)
     next();
   });
 
