@@ -24,7 +24,8 @@
     "db:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
-    "db:generate": "prisma generate"
+    "db:generate": "prisma generate",
+    "db:delete-all-items": "tsx scripts/delete-all-items.ts"
   },
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.4.0",
