@@ -1,10 +1,10 @@
 import { AssessmentEngine } from "./engine";
-import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint } from "./types";
+import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint, IrtParameters } from "./types";
 import { prisma } from "../prisma";
 import { ScoringOrchestrator } from "../scoring/scoring-orchestrator";
 import { RatingQueueService } from "../scoring/rating-queue";
 import { CalibrationService } from "./calibration-service";
-import { SessionStatus, ItemType, CefrLevel } from "@prisma/client";
+import { Prisma, SessionStatus, ItemType, CefrLevel } from "@prisma/client";
 import { BillingService } from "../enterprise/billing-service";
 import { validateItem } from "../language-skills/item-quality-validator.js";
 import { logger } from "../observability/index.js";
@@ -17,6 +17,38 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
     setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
   );
   return Promise.race([promise, timeout]);
+}
+
+function dbItemToEngineItem(u: {
+  id: string;
+  skill: string;
+  discrimination: number;
+  difficulty: number;
+  guessing: number;
+  content: unknown;
+  status: string;
+  isPretest: boolean;
+}): Item {
+  const c = (u.content as Record<string, unknown> | null) || {};
+  const ar = c.aReceptive;
+  const ap = c.aProductive;
+  const params: IrtParameters = { a: u.discrimination, b: u.difficulty, c: u.guessing };
+  if (typeof ar === "number" && Number.isFinite(ar)) params.aReceptive = ar;
+  if (typeof ap === "number" && Number.isFinite(ap)) params.aProductive = ap;
+  return {
+    id: u.id,
+    skill: u.skill as unknown as SkillType,
+    isPretest: u.isPretest || u.status === "PRETEST",
+    params,
+    metadata: u.content as any,
+  };
+}
+
+async function loadItemMapByIds(itemIds: string[]): Promise<Record<string, Item>> {
+  const uniq = [...new Set(itemIds)];
+  if (uniq.length === 0) return {};
+  const rows = await prisma.item.findMany({ where: { id: { in: uniq } } });
+  return Object.fromEntries(rows.map((row) => [row.id, dbItemToEngineItem(row)]));
 }
 
 function toEngineState(session: {
@@ -42,6 +74,9 @@ function toEngineState(session: {
     })),
     usedItemIds: new Set(session.responses.map((r) => r.itemId)),
     mstRouteKey: m.mstRouteKey as SessionState["mstRouteKey"],
+    skillProfiles: m.skillProfiles as SessionState["skillProfiles"],
+    mirtAbilityVector: m.mirtAbilityVector as SessionState["mirtAbilityVector"],
+    mirt2B: m.mirt2B as SessionState["mirt2B"],
   };
 }
 
@@ -104,11 +139,16 @@ export async function getEngine(): Promise<AssessmentEngine> {
       const blueprint: BlueprintConstraint[] = config.blueprint || DEFAULT_BLUEPRINT;
       const mst = (config as { mst?: { enabled: boolean; moduleSizes: number[]; continueWithCatAfterMst?: boolean } })
         .mst;
+      const useMirt2B = (config as { useMirt2B?: boolean }).useMirt2B === true;
+      const sprt = (config as { sprt?: EngineConfig["sprt"] }).sprt;
       engineInstance = new AssessmentEngine({
         ...DEFAULT_CONFIG,
         cefrThresholds,
         pretestRatio,
         blueprint,
+        useMirt2B,
+        useMirt: useMirt2B ? false : (config as { useMirt?: boolean }).useMirt ?? DEFAULT_CONFIG.useMirt,
+        ...(sprt?.enabled ? { sprt } : {}),
         ...(mst?.enabled && mst.moduleSizes?.length ? { mst } : {}),
       });
       lastConfigUpdate = now;
@@ -192,11 +232,14 @@ export const AssessmentService = {
     }
 
     const state = toEngineState(session);
+    const itemMapForStop = await loadItemMapByIds(
+      state.responses.map((r) => r.itemId)
+    );
 
     // Check if we should stop
-    const stopCheck = engine.shouldStop(state);
+    const stopCheck = engine.shouldStop(state, { items: itemMapForStop });
     if (stopCheck.stop) {
-      await this.finalizeSession(sessionId, session.theta);
+      await this.finalizeSession(sessionId, session.theta, { stopReason: stopCheck.reason });
       return { stop: true, reason: stopCheck.reason, finalTheta: session.theta };
     }
 
@@ -223,23 +266,12 @@ export const AssessmentService = {
       where: whereClause
     });
 
-    // Map DB items to Engine Item format
-    const itemPool: Item[] = dbItems.map(di => ({
-      id: di.id,
-      skill: di.skill as unknown as SkillType,
-      isPretest: (di as any).isPretest || di.status === "PRETEST",
-      params: {
-        a: di.discrimination,
-        b: di.difficulty,
-        c: di.guessing
-      },
-      metadata: di.content as any
-    }));
+    const itemPool: Item[] = dbItems.map((di) => dbItemToEngineItem(di));
 
     // Select next item
     const nextItem = await engine.getNextItem(state, itemPool);
     if (!nextItem) {
-      await this.finalizeSession(sessionId, session.theta);
+      await this.finalizeSession(sessionId, session.theta, { stopReason: "NO_ITEMS_LEFT" });
       return { stop: true, reason: "NO_ITEMS_LEFT", finalTheta: session.theta };
     }
 
@@ -273,17 +305,7 @@ export const AssessmentService = {
     });
     if (!dbItem) throw new Error("Item not found");
 
-    const item: Item = {
-      id: dbItem.id,
-      skill: dbItem.skill as unknown as SkillType,
-      isPretest: (dbItem as any).isPretest || dbItem.status === "PRETEST",
-      params: {
-        a: dbItem.discrimination,
-        b: dbItem.difficulty,
-        c: dbItem.guessing
-      },
-      metadata: dbItem.content as any
-    };
+    const item: Item = dbItemToEngineItem(dbItem);
 
     // Calculate score
     let score = 0;
@@ -360,15 +382,9 @@ export const AssessmentService = {
       });
       
       const itemDict: Record<string, Item> = { [item.id]: item };
-      usedItems.forEach(u => {
-        itemDict[u.id] = {
-          id: u.id,
-          skill: u.skill as unknown as SkillType,
-          isPretest: (u as any).isPretest || u.status === "PRETEST",
-          params: { a: u.discrimination, b: u.difficulty, c: u.guessing },
-          metadata: u.content as any
-        };
-      });
+      for (const u of usedItems) {
+        itemDict[u.id] = dbItemToEngineItem(u);
+      }
 
       // Update session state using the engine
       const rawState = engine.processResponse(state, response, itemDict);
@@ -422,7 +438,14 @@ export const AssessmentService = {
           metadata: {
             ...((session.metadata as Record<string, unknown> | null) || {}),
             ...(newState.mstRouteKey != null ? { mstRouteKey: newState.mstRouteKey } : {}),
-          },
+            ...(newState.skillProfiles && Object.keys(newState.skillProfiles).length
+              ? { skillProfiles: newState.skillProfiles }
+              : {}),
+            ...(newState.mirtAbilityVector
+              ? { mirtAbilityVector: newState.mirtAbilityVector }
+              : {}),
+            ...(newState.mirt2B ? { mirt2B: newState.mirt2B } : {}),
+          } as Prisma.InputJsonValue,
         }
       })
     ]);
@@ -452,19 +475,15 @@ export const AssessmentService = {
       });
     }
 
-    // Check if we should stop after this response
-    const stopCheck = engine.shouldStop(newState);
+    // Check if we should stop after this response (SPRT needs full item params)
+    const itemsForSprt = await loadItemMapByIds(newState.responses.map((r) => r.itemId));
+    const stopCheck = engine.shouldStop(newState, { items: itemsForSprt });
     if (stopCheck.stop) {
-      await this.finalizeSession(sessionId, newState.theta);
+      await this.finalizeSession(sessionId, newState.theta, { stopReason: stopCheck.reason });
     }
 
     // Online item calibration — fire-and-forget, won't block the response
     CalibrationService.recalibrateItem(itemId).catch(() => {});
-
-    // Persist per-skill theta profiles back to session metadata
-    const profileUpdate = newState.skillProfiles
-      ? { skillProfiles: newState.skillProfiles }
-      : {};
 
     return { 
       success: true, 
@@ -473,6 +492,7 @@ export const AssessmentService = {
       isCorrect: score >= 0.5,
       aiResult,
       isCompleted: stopCheck.stop,
+      stopReason: stopCheck.stop ? stopCheck.reason : null,
       skillProfiles: newState.skillProfiles
     };
   },
@@ -481,7 +501,11 @@ export const AssessmentService = {
    * Finalize a session: set status to COMPLETED, calculate CEFR, and create a full
    * diagnostic ScoreReport including per-skill CIs, Can-Do statements, and MIRT vector.
    */
-  async finalizeSession(sessionId: string, theta: number) {
+  async finalizeSession(
+    sessionId: string,
+    theta: number,
+    opts?: { stopReason?: string | null }
+  ) {
     const engine = await getEngine();
     const cefrLevel = engine.mapToCefr(theta);
 
@@ -525,13 +549,7 @@ export const AssessmentService = {
       const itemDict: Record<string, Item> = {};
       for (const r of session.responses) {
         if (r.item) {
-          itemDict[r.item.id] = {
-            id: r.item.id,
-            skill: r.item.skill as unknown as SkillType,
-            isPretest: r.isPretest,
-            params: { a: r.item.discrimination, b: r.item.difficulty, c: r.item.guessing },
-            metadata: r.item.content as any,
-          };
+          itemDict[r.item.id] = dbItemToEngineItem(r.item);
         }
       }
 
@@ -578,6 +596,9 @@ export const AssessmentService = {
 
     const overallCanDo = getCanDo(cefrLevel as any);
     const mirtVector = (session?.metadata as any)?.mirtAbilityVector ?? null;
+    const mirt2B = (session?.metadata as any)?.mirt2B ?? null;
+
+    const stopReason = opts?.stopReason ?? (session?.metadata as { stopReason?: string } | null)?.stopReason ?? null;
 
     const diagnosticReport = {
       overallTheta: theta,
@@ -587,13 +608,23 @@ export const AssessmentService = {
       canDoStatements: overallCanDo.flatMap(d => d.descriptors).slice(0, 6),
       skillProfiles: skillSubReports,
       mirtAbilityVector: mirtVector,
+      mirt2B,
+      stopReason,
       generatedAt: new Date().toISOString(),
     };
 
     await prisma.$transaction([
       prisma.session.update({
         where: { id: sessionId },
-        data: { status: SessionStatus.COMPLETED, completedAt: new Date(), cefrLevel: cefrLevel as any }
+        data: {
+          status: SessionStatus.COMPLETED,
+          completedAt: new Date(),
+          cefrLevel: cefrLevel as any,
+          metadata: {
+            ...((session?.metadata as Record<string, unknown> | null) || {}),
+            ...(stopReason != null ? { stopReason } : {}),
+          } as Prisma.InputJsonValue,
+        }
       }),
       prisma.scoreReport.upsert({
         where: { sessionId },

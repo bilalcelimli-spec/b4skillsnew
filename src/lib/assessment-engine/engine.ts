@@ -7,8 +7,13 @@ import {
   estimateMirtTheta,
   mirtSelectItem,
   uniToMirtParams,
-  SKILL_ORDER as MIRT_SKILL_ORDER,
 } from "../psychometrics/mirt-engine.js";
+import {
+  estimate2BTheta,
+  itemTo2BParams,
+  select2BItem,
+} from "../psychometrics/mirt-2b.js";
+import { evaluateSprtStop, cefrCutValues } from "./sequential-sprt.js";
 import { constructShadowTest } from "../psychometrics/shadow-test.js";
 import { getExposureStore } from "./exposure-store.js";
 import {
@@ -124,9 +129,27 @@ export class AssessmentEngine {
       }
     }
 
-    // 3. MIRT: run 6D ability estimation when enabled
+    // 3a. 2D receptive/productive MIRT (optional; takes precedence over 6D for state.mirt2B)
+    let updatedMirt2B = state.mirt2B;
+    if (this.config.useMirt2B) {
+      const binary = updatedResponses
+        .filter(r => !r.isPretest && items[r.itemId])
+        .map(r => ({
+          u: r.score,
+          params: itemTo2BParams(items[r.itemId]!),
+        }));
+      if (binary.length > 0) {
+        updatedMirt2B = estimate2BTheta(
+          binary,
+          this.config.priorMean ?? 0,
+          this.config.priorSd ?? 1
+        );
+      }
+    }
+
+    // 3b. MIRT: run 6D ability estimation when enabled (skipped when only 2B is on)
     let updatedMirtVector: MirtAbilityVector | undefined = state.mirtAbilityVector;
-    if (this.config.useMirt) {
+    if (this.config.useMirt && !this.config.useMirt2B) {
       const mirtResponses = updatedResponses
         .filter(r => !r.isPretest && items[r.itemId])
         .map(r => {
@@ -162,6 +185,7 @@ export class AssessmentEngine {
       mstRouteKey,
       skillProfiles: updatedSkillProfiles,
       mirtAbilityVector: updatedMirtVector,
+      mirt2B: updatedMirt2B,
     };
   }
 
@@ -250,8 +274,18 @@ export class AssessmentEngine {
       return nextItem as Item | null;
     }
 
-    // 4b. MIRT-weighted item selection
-    if (this.config.useMirt && state.mirtAbilityVector) {
+    // 4b1. 2B MIRT selection
+    if (this.config.useMirt2B && state.mirt2B) {
+      const selected2 = select2BItem(operationalPool, state.mirt2B, state.usedItemIds);
+      if (selected2) {
+        const store = await getExposureStore();
+        await store.recordExposure(selected2.id, state.theta);
+        return selected2;
+      }
+    }
+
+    // 4b2. 6D MIRT-weighted item selection
+    if (this.config.useMirt && !this.config.useMirt2B && state.mirtAbilityVector) {
       const mirtPool = operationalPool
         .filter(item => !state.usedItemIds.has(item.id))
         .map(item => ({
@@ -299,7 +333,10 @@ export class AssessmentEngine {
    *  4. Conditional SEM near CEFR boundaries (0.16 / 0.12 tiers)
    *  5. Posterior CEFR classification confidence ≥ threshold (default 0.90)
    */
-  public shouldStop(state: SessionState): { stop: boolean; reason: string | null } {
+  public shouldStop(
+    state: SessionState,
+    ctx?: { items?: Record<string, Item> }
+  ): { stop: boolean; reason: string | null } {
     const count = state.responses.length;
     const mst = this.config.mst;
     const mstOpNeed =
@@ -326,6 +363,20 @@ export class AssessmentEngine {
     // 1. Minimum items floor
     if (count < this.config.minItems) {
       return { stop: false, reason: null };
+    }
+
+    const sprt = this.config.sprt;
+    if (sprt?.enabled) {
+      const cuts = cefrCutValues(this.config.cefrThresholds);
+      const sprtOut = evaluateSprtStop(
+        state,
+        sprt,
+        cuts,
+        ctx?.items
+      );
+      if (sprtOut.stop) {
+        return sprtOut;
+      }
     }
 
     const operationalResponses = state.responses.filter(r => !r.isPretest);

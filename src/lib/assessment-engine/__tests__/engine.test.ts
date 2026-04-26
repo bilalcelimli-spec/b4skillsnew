@@ -125,6 +125,22 @@ describe("AssessmentEngine.shouldStop — priority ordering", () => {
       reason: "MST_STRUCTURE_COMPLETE",
     });
   });
+
+  it("SPRT/GLR: without item map, SPRT does not stop (defers to other rules or continues)", () => {
+    const engine = new AssessmentEngine(
+      baseConfig({
+        minItems: 5,
+        maxItems: 30,
+        semThreshold: 0.10,
+        sprt: { enabled: true, minItems: 5, alpha: 0.05, beta: 0.05, halfWidth: 0.18 },
+      })
+    );
+    // Strong SEM so other rules (info / SEM) do not end the test; SPRT has no 3PL context without `items`
+    const state = stateWith(5, 0, 0.5);
+    const { stop, reason } = engine.shouldStop(state);
+    expect(stop).toBe(false);
+    expect(reason).toBeNull();
+  });
 });
 
 describe("AssessmentEngine.mapToCefr", () => {

@@ -25,6 +25,9 @@ export interface IrtParameters {
   a: number; // Discrimination
   b: number; // Difficulty
   c: number; // Guessing
+  /** Optional: explicit 2B MIRT loadings (receptive / productive) */
+  aReceptive?: number;
+  aProductive?: number;
 }
 
 export interface Asset {
@@ -63,6 +66,14 @@ export interface MirtAbilityVector {
   covariance: number[][];
 }
 
+/** Receptive (reading/listening) vs productive (writing/speaking) 2D θ + SEM. */
+export interface Mirt2BProfile {
+  thetaR: number;
+  thetaP: number;
+  semR: number;
+  semP: number;
+}
+
 export interface SessionState {
   theta: number; // Overall composite ability estimate
   sem: number;   // Overall Standard Error of Measurement
@@ -74,6 +85,8 @@ export interface SessionState {
   skillProfiles?: Partial<Record<SkillType, SkillProfile>>;
   /** Full MIRT ability vector (when useMirt=true) */
   mirtAbilityVector?: MirtAbilityVector;
+  /** 2D receptive / productive MIRT (when useMirt2B=true) */
+  mirt2B?: Mirt2BProfile;
 }
 
 /** Defines the required content distribution for a test (content blueprint). */
@@ -136,6 +149,22 @@ export interface EngineConfig {
    * SessionState.mirtAbilityVector. Requires items to have cross-loading params.
    */
   useMirt?: boolean;
+  /**
+   * 2D bifactor (receptive vs productive) MIRT. When set, supersedes 6D `useMirt`
+   * for the extra `mirt2B` state and 2B item selection. Unidimensional EAP is unchanged.
+   */
+  useMirt2B?: boolean;
+  /**
+   * SPRT/GLR-style stopping on 3PL likelihoods at a CEFR cut (two simple θ points).
+   * Requires `items` context when `engine.shouldStop` is called from the server.
+   */
+  sprt?: {
+    enabled: boolean;
+    alpha?: number;
+    beta?: number;
+    halfWidth?: number;
+    minItems?: number;
+  };
   /**
    * Enable shadow-test item selection (van der Linden 2005).
    * Guarantees blueprint adherence at every step without greedy look-ahead failures.
