@@ -137,6 +137,7 @@ const DEFAULT_CONFIG: EngineConfig = {
   blueprint: DEFAULT_BLUEPRINT,
   useMirt: true,
   useRtIrt: false,             // Faz4 RT-IRT; enable via SystemConfig
+  useGrmProductive: false,     // Faz5 GRM for W/S; enable via SystemConfig
   useShadowTest: false,        // Shadow test off by default; enable via SystemConfig
   classificationConfidenceThreshold: 0.90,
   cefrThresholds: {
@@ -174,6 +175,7 @@ export async function getEngine(): Promise<AssessmentEngine> {
       const useMirt2B = (config as { useMirt2B?: boolean }).useMirt2B === true;
       const sprt = (config as { sprt?: EngineConfig["sprt"] }).sprt;
       const useRtIrt = (config as { useRtIrt?: boolean }).useRtIrt === true;
+      const useGrmProductive = (config as { useGrmProductive?: boolean }).useGrmProductive === true;
       engineInstance = new AssessmentEngine({
         ...DEFAULT_CONFIG,
         cefrThresholds,
@@ -182,6 +184,7 @@ export async function getEngine(): Promise<AssessmentEngine> {
         useMirt2B,
         useMirt: useMirt2B ? false : (config as { useMirt?: boolean }).useMirt ?? DEFAULT_CONFIG.useMirt,
         useRtIrt,
+        useGrmProductive,
         ...(sprt?.enabled ? { sprt } : {}),
         ...(mst?.enabled && mst.moduleSizes?.length ? { mst } : {}),
       });
@@ -632,7 +635,13 @@ export const AssessmentService = {
 
         if (skillResponses.length === 0) continue;
 
-        const { theta: sTheta, sem: sSem } = estimateThetaFn(skillResponses, itemDict);
+        const { theta: sTheta, sem: sSem } = estimateThetaFn(
+          skillResponses,
+          itemDict,
+          0,
+          1,
+          { useGrmProductive: engine.getConfig().useGrmProductive === true }
+        );
         const skillCefr = engine.mapToCefr(sTheta);
         const canDos = getCanDo(skillCefr as any, skill.toLowerCase() as any);
         const canDoStatements = canDos.flatMap(d => d.descriptors).slice(0, 4);

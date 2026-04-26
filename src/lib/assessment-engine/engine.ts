@@ -115,7 +115,8 @@ export class AssessmentEngine {
       updatedResponses,
       items,
       this.config.priorMean ?? 0,
-      this.config.priorSd ?? 1
+      this.config.priorSd ?? 1,
+      { useGrmProductive: this.config.useGrmProductive === true }
     );
 
     // 2. Update per-skill theta profiles (unidimensional per-skill EAP)
@@ -129,8 +130,13 @@ export class AssessmentEngine {
         r => !r.isPretest && items[r.itemId]?.skill === skill
       );
       if (skillResponses.length > 0) {
-        const skillEstimate = estimateTheta(skillResponses, items,
-          this.config.priorMean ?? 0, this.config.priorSd ?? 1);
+        const skillEstimate = estimateTheta(
+          skillResponses,
+          items,
+          this.config.priorMean ?? 0,
+          this.config.priorSd ?? 1,
+          { useGrmProductive: this.config.useGrmProductive === true }
+        );
         updatedSkillProfiles[skill] = skillEstimate;
       }
     }

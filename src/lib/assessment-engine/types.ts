@@ -172,6 +172,11 @@ export interface EngineConfig {
    */
   useRtIrt?: boolean;
   /**
+   * Faz5: Samejima GRM for WRITING/SPEAKING (rubric 0–1 as scaled categories) in joint EAP
+   * with 3PL for other skills. GRM param from `Item.metadata.grm` or `rubricToGrmParams(a,b)`.
+   */
+  useGrmProductive?: boolean;
+  /**
    * Enable shadow-test item selection (van der Linden 2005).
    * Guarantees blueprint adherence at every step without greedy look-ahead failures.
    * Requires a blueprint to be set.

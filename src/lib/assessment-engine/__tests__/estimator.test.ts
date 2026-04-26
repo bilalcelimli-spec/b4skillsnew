@@ -212,3 +212,19 @@ describe("EAP estimator — pretest exclusion", () => {
     expect(withPretest).toBeCloseTo(onlyOperational, 6);
   });
 });
+
+describe("Faz5 GRM+3PL joint EAP", () => {
+  it("runs when writing/speaking use GRM and MC items use 3PL", () => {
+    const items: Record<string, Item> = {
+      r1: { id: "r1", skill: SkillType.READING, params: { a: 1, b: 0, c: 0.2 } },
+      w1: { id: "w1", skill: SkillType.WRITING, params: { a: 1, b: 0, c: 0 } },
+    };
+    const responses: Response[] = [
+      { itemId: "r1", score: 1 },
+      { itemId: "w1", score: 0.6 },
+    ];
+    const t = estimateTheta(responses, items, 0, 1, { useGrmProductive: true });
+    expect(Number.isFinite(t.theta)).toBe(true);
+    expect(t.sem).toBeLessThan(4);
+  });
+});
