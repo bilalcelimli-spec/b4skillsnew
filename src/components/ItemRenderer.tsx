@@ -31,6 +31,21 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
     const [textValue, setTextValue] = useState<string>("");
     const itemSkill = String(item.skill).toUpperCase();
+  const fallbackImage =
+    "data:image/svg+xml;utf8," +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450">
+        <rect width="100%" height="100%" fill="#e2e8f0"/>
+        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#475569" font-family="Arial, sans-serif" font-size="24">
+          Image unavailable
+        </text>
+      </svg>`
+    );
+  const handleImageError: React.ReactEventHandler<HTMLImageElement> = (e) => {
+    const img = e.currentTarget;
+    img.onerror = null;
+    img.src = fallbackImage;
+  };
   
   const renderPassage = (passage: string | undefined) => {
     let elements = [];
@@ -38,7 +53,12 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     if (content?.imageUrl && !(itemSkill === 'LISTENING' && String(item.type).toUpperCase() === 'FILL_IN_BLANKS')) {
       elements.push(
         <div key="image" className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col justify-center items-center mb-6">
-          <img src={content.imageUrl} alt="Question Visual" className="max-w-full max-h-64 rounded-xl shadow-md" />
+          <img
+            src={content.imageUrl}
+            alt="Question Visual"
+            className="max-w-full max-h-64 rounded-xl shadow-md"
+            onError={handleImageError}
+          />
         </div>
       );
     }

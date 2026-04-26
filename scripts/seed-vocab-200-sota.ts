@@ -21,6 +21,11 @@ function irtA(cefr: CefrLevel): number {
   return 1.4;
 }
 
+function isVisualStem(stem: VocabStem): boolean {
+  const prompt = stem.prompt.toLowerCase();
+  return stem.topic.startsWith("visual_") || /(picture|image|photo|look at)/.test(prompt);
+}
+
 /** Rotate A–D for balanced key position. */
 function toContent(stem: VocabStem, pos: number) {
   const all = [stem.correct, stem.wrong[0], stem.wrong[1], stem.wrong[2]] as const;
@@ -40,7 +45,7 @@ function toContent(stem: VocabStem, pos: number) {
       };
     }),
   };
-  if (stem.imageUrl) {
+  if (stem.imageUrl && isVisualStem(stem)) {
     return { ...base, imageUrl: stem.imageUrl };
   }
   return base;

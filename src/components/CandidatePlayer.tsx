@@ -35,6 +35,21 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'analyzing' | 'success' | 'error'>('idle');
   const [fillAnswer, setFillAnswer] = useState<string>('');
   const [itemStartTime, setItemStartTime] = useState<number>(Date.now());
+  const fallbackImage =
+    "data:image/svg+xml;utf8," +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450">
+        <rect width="100%" height="100%" fill="#e2e8f0"/>
+        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#475569" font-family="Arial, sans-serif" font-size="24">
+          Image unavailable
+        </text>
+      </svg>`
+    );
+  const handleImageError: React.ReactEventHandler<HTMLImageElement> = (e) => {
+    const img = e.currentTarget;
+    img.onerror = null;
+    img.src = fallbackImage;
+  };
 
   const MAX_QUESTIONS = 10;
 
@@ -517,7 +532,8 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
                     <img 
                       src={currentItem.content.imageUrl} 
                       alt="Question context" 
-                      className="w-full max-h-60 object-cover object-center" 
+                      className="w-full max-h-60 object-cover object-center"
+                      onError={handleImageError}
                     />
                   </div>
                 )}
@@ -531,7 +547,8 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
                         <img 
                           src={currentItem.content.imageUrl} 
                           alt="Describe this" 
-                          className="w-full max-h-80 object-cover object-center" 
+                          className="w-full max-h-80 object-cover object-center"
+                          onError={handleImageError}
                         />
                       </div>
                     )}
@@ -587,7 +604,7 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
                           >
                             {imgUrl && (
                               <div className="aspect-square bg-slate-50">
-                                <img src={imgUrl} alt={label} className="w-full h-full object-cover" />
+                                <img src={imgUrl} alt={label} className="w-full h-full object-cover" onError={handleImageError} />
                               </div>
                             )}
                             <div className="p-3 text-center">
