@@ -171,9 +171,17 @@ model CandidateProfile {
   id            String    @id @default(cuid())
   userId        String    @unique
   user          User      @relation(fields: [userId], references: [id])
-  nativeLanguage String?
+
+  // Demographics (Phase 3)
+  nativeLanguage String?   // ISO 639-1: "es", "fr", "ar", "en", etc.
+  gender        String?   // "M" | "F" | "Other" | "Prefer not to say"
+  ageGroup      String?   // "13-17" | "18-25" | "26-35" | "36-50" | "50+"
+  educationLevel String?  // "Secondary" | "Undergraduate" | "Graduate"
+
   dateOfBirth   DateTime?
-  metadata      Json?     // { educationLevel, targetScore, etc }
+  metadata      Json?     // { targetScore, etc }
+
+  difReports    DifReportArchive[]
 }
 
 // --- ITEM BANK ---
@@ -219,6 +227,8 @@ model Item {
 
   responses       Response[]
   retirementAuditLogs RetirementAuditLog[]
+  difReports      DifReportArchive[]
+  difFlaggedItem  DifFlaggedItem?
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -250,6 +260,56 @@ model RetirementAuditLog {
   @@index([itemId])
   @@index([action])
   @@index([approvalStatus, createdAt])
+}
+
+model DifReportArchive {
+  id              String    @id @default(cuid())
+  itemId          String
+  item            Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  runDate         DateTime  @default(now())
+  groupVariable   String    // "gender" | "nativeLanguage" | "ageGroup"
+  referenceGroup  String
+  focalGroup      String
+
+  // Mantel-Haenszel statistics
+  mhOddsRatio     Float?
+  mhDelta         Float     // Log odds ratio
+  chiSquared      Float?
+  pValue          Float?
+
+  // ETS Classification
+  classification  String    // "A" | "B" | "C"
+  referenceN      Int
+  focalN          Int
+
+  // Logistic regression
+  logisticUniformDif     Float?
+  logisticNonUniformDif  Float?
+
+  // Review status
+  isReviewed      Boolean   @default(false)
+  reviewedBy      String?   // User.id
+  reviewedAt      DateTime?
+  reviewNotes     String?
+
+  @@index([itemId])
+  @@index([classification, runDate])
+  @@index([isReviewed])
+}
+
+model DifFlaggedItem {
+  id              String    @id @default(cuid())
+  itemId          String    @unique
+  item            Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  flaggedAt       DateTime  @default(now())
+  worstClassification String // "A" | "B" | "C"
+  totalDifResults Int       // Count of B/C classifications across all groups
+  status          String    @default("PENDING") // PENDING | IN_REVIEW | REMEDIATED | RETIRED
+  notes           String?
+
+  @@index([status, flaggedAt])
 }
 
 enum ItemType {

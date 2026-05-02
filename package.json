@@ -33,7 +33,8 @@
     "smoke:auth": "node scripts/smoke-auth.mjs",
     "quality:vocab": "tsx scripts/validate-vocab-200-quality.ts",
     "db:job:calibrate-pretest": "tsx scripts/jobs/auto-calibrate-pretest.ts",
-    "db:job:retire-items": "tsx scripts/jobs/item-retirement-job.ts"
+    "db:job:retire-items": "tsx scripts/jobs/item-retirement-job.ts",
+    "db:job:detect-dif": "tsx scripts/jobs/dif-detection-job.ts"
   },
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.4.0",

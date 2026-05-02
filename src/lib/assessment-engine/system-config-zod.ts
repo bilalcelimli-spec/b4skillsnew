@@ -54,6 +54,19 @@ export const SystemConfigPayloadSchema = z
         cronSchedule: z.string().optional(),
       })
       .optional(),
+    difDetection: z
+      .object({
+        enabled: z.boolean().optional(),
+        minResponses: z.number().int().min(10).max(1000).optional(),
+        cronSchedule: z.string().optional(),
+        thresholds: z
+          .object({
+            pValue: z.number().min(0.001).max(0.5).optional(),
+            effectSize: z.number().min(0.1).max(5).optional(),
+          })
+          .optional(),
+      })
+      .optional(),
   })
   .passthrough();
 
