@@ -1,8 +1,8 @@
 # https://render.com/docs/infrastructure-as-code
 # Blueprint: Dashboard > New > Blueprint, bu repoyu seçin
 #
-# Şema: repoda `prisma/migrations` yoksa `migrate deploy` çalışmaz; bu yüzden build’de `db push` kullanılır
-# (ileride `prisma migrate dev` ile migration eklerseniz buildCommand’i migrate deploy’a çevirin)
+# Şema: `prisma/migrations` klasörü migrations ile yönetilir
+# buildCommand sırasında `migrate deploy` otomatik olarak Phase 3/4 schema değişikliklerini uygular
 # CORS: APP_URL yoksa RENDER_EXTERNAL_URL (Render’ın verdiği) kullanılır
 # Gizliler: GEMINI, Stripe ve isteğe APP_URL / CORS_ORIGINS Dashboard’da
 
@@ -12,7 +12,7 @@ services:
     env: node
     region: oregon
     plan: starter
-    buildCommand: npm ci && npx prisma db push && npm run build
+    buildCommand: npm ci && npm run build && npx prisma migrate deploy
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true
