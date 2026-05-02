@@ -180,8 +180,6 @@ model CandidateProfile {
 
   dateOfBirth   DateTime?
   metadata      Json?     // { targetScore, etc }
-
-  difReports    DifReportArchive[]
 }
 
 // --- ITEM BANK ---

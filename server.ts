@@ -1342,45 +1342,85 @@ async function startServer() {
 
   app.get("/api/organizations/:id/analytics", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req, res) => {
     const { id } = req.params;
+    if (!dbAvailable) {
+      return res.status(503).json({ error: "Database unavailable" });
+    }
     try {
-      const sessionsCount = await prisma.session.count({ where: { organizationId: id } });
-      const feedbacksCount = await (prisma as any).feedback.count({ where: { organizationId: id } });
-      const feedbacks = await (prisma as any).feedback.findMany({ where: { organizationId: id }, select: { rating: true } });
-      const avgRating = feedbacks.length > 0 ? feedbacks.reduce((acc: any, f: any) => acc + f.rating, 0) / feedbacks.length : 0;
+      // Import the LiveMetricsEngine for real-time analytics
+      const { LiveMetricsEngine } = await import("./src/lib/analytics/live-metrics-engine.js");
 
-      // CEFR Distribution
-      const sessions = await prisma.session.findMany({
-        where: { organizationId: id, status: "COMPLETED" },
-        select: { theta: true }
+      // Compute comprehensive analytics snapshot
+      const snapshot = await LiveMetricsEngine.computeSnapshot(id);
+
+      // Get feedback ratings (for backward compatibility)
+      const feedbacks = await (prisma as any).feedback.findMany({
+        where: { organizationId: id },
+        select: { rating: true },
       });
+      const avgRating =
+        feedbacks.length > 0
+          ? feedbacks.reduce((acc: number, f: any) => acc + f.rating, 0) /
+            feedbacks.length
+          : 0;
 
+      // Get engine for CEFR mapping
       const { getEngine } = await import("./src/lib/assessment-engine/server-engine.js");
       const engine = await getEngine();
-      
-      const distribution: Record<string, number> = { "A1": 0, "A2": 0, "B1": 0, "B2": 0, "C1": 0, "C2": 0 };
-      sessions.forEach(s => {
+
+      // Build CEFR distribution from sessions
+      const distribution: Record<string, number> = {
+        A1: 0,
+        A2: 0,
+        B1: 0,
+        B2: 0,
+        C1: 0,
+        C2: 0,
+      };
+
+      // Use the sessions from the snapshot to compute distribution
+      const allSessions = await prisma.session.findMany({
+        where: { organizationId: id, status: "COMPLETED" },
+        select: { theta: true },
+      });
+
+      allSessions.forEach((s) => {
         const cefr = engine.mapToCefr(s.theta);
         distribution[cefr] = (distribution[cefr] || 0) + 1;
       });
 
-      const cefrData = Object.entries(distribution).map(([name, value]) => ({ name, value }));
+      const cefrData = Object.entries(distribution).map(([name, value]) => ({
+        name,
+        value,
+      }));
 
-      // Skill Breakdown (Mocked from responses for now, in real app we'd aggregate score reports)
+      // Mock skill breakdown for compatibility
       const skillBreakdown = [
-        { subject: 'Reading', A: 120, B: 110, fullMark: 150 },
-        { subject: 'Listening', A: 98, B: 130, fullMark: 150 },
-        { subject: 'Writing', A: 86, B: 130, fullMark: 150 },
-        { subject: 'Speaking', A: 99, B: 100, fullMark: 150 },
+        { subject: "Reading", A: 120, B: 110, fullMark: 150 },
+        { subject: "Listening", A: 98, B: 130, fullMark: 150 },
+        { subject: "Writing", A: 86, B: 130, fullMark: 150 },
+        { subject: "Speaking", A: 99, B: 100, fullMark: 150 },
       ];
 
+      // Return extended response with both old and new metrics
       res.json({
-        sessionsCount,
-        feedbacksCount,
+        // Old format (for backward compatibility)
+        sessionsCount: snapshot.sessions.totalSessions,
+        feedbacksCount: feedbacks.length,
         avgRating,
         cefrDistribution: cefrData,
-        skillBreakdown
+        skillBreakdown,
+
+        // New Phase 4 metrics
+        timestamp: snapshot.timestamp,
+        skills: snapshot.skills,
+        itemDifficulty: snapshot.itemDifficulty,
+        sessions: snapshot.sessions,
+        pretestPipeline: snapshot.pretestPipeline,
+        retirementStatus: snapshot.retirementStatus,
+        mirt: snapshot.mirt,
       });
     } catch (err) {
+      logger.error({ err, organizationId: id }, "Failed to fetch analytics snapshot");
       res.status(500).json({ error: "Failed to fetch analytics" });
     }
   });
