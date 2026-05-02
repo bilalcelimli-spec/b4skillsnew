@@ -39,7 +39,7 @@
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.4.0",
     "@google/genai": "^1.29.0",
-    "@prisma/client": "^6.1.0",
+    "@prisma/client": "^7.7.0",
     "@sentry/node": "^10.49.0",
     "@sentry/profiling-node": "^10.49.0",
     "@tailwindcss/vite": "^4.1.14",
