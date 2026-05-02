@@ -21,6 +21,21 @@ export interface ExposureStore {
   /** P(this item | stratum) = admin count (item, s) / total admin in stratum s. */
   getConditionalExposureRateSync(itemId: string, stratum: number): number;
   getStratumTotalSync(stratum: number): number;
+
+  // Phase 3: Cohort-based exposure tracking (per CEFR-skill-topic)
+  /**
+   * Record item exposure for a specific cohort.
+   * Cohort key format: "cefrLevel:skill:topic"
+   */
+  recordCohortExposure(itemId: string, cohortKey: string): Promise<void>;
+  /**
+   * Get exposure rate for item within a cohort: P(item | cohort)
+   */
+  getConditionalCohortExposureRateSync(itemId: string, cohortKey: string): number;
+  /**
+   * Get total administrations in a cohort.
+   */
+  getCohortTotalSync(cohortKey: string): number;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -33,11 +48,24 @@ class InMemoryExposureStore implements ExposureStore {
   private stratumTotal: number[] = new Array(STRATUM_COUNT).fill(0);
   private itemStratum = new Map<string, number[]>();
 
+  // Phase 3: Cohort-based tracking
+  private cohortTotal = new Map<string, number>();
+  private itemCohort = new Map<string, Map<string, number>>();
+
   private ensureRow(itemId: string): number[] {
     let row = this.itemStratum.get(itemId);
     if (!row) {
       row = new Array(STRATUM_COUNT).fill(0);
       this.itemStratum.set(itemId, row);
+    }
+    return row;
+  }
+
+  private ensureCohortRow(itemId: string): Map<string, number> {
+    let row = this.itemCohort.get(itemId);
+    if (!row) {
+      row = new Map<string, number>();
+      this.itemCohort.set(itemId, row);
     }
     return row;
   }
@@ -78,6 +106,24 @@ class InMemoryExposureStore implements ExposureStore {
     const row = this.itemStratum.get(itemId);
     return (row?.[s] ?? 0) / tot;
   }
+
+  // Phase 3: Cohort-based exposure
+  async recordCohortExposure(itemId: string, cohortKey: string): Promise<void> {
+    this.cohortTotal.set(cohortKey, (this.cohortTotal.get(cohortKey) ?? 0) + 1);
+    const row = this.ensureCohortRow(itemId);
+    row.set(cohortKey, (row.get(cohortKey) ?? 0) + 1);
+  }
+
+  getConditionalCohortExposureRateSync(itemId: string, cohortKey: string): number {
+    const tot = this.cohortTotal.get(cohortKey) ?? 0;
+    if (tot === 0) return 0;
+    const row = this.itemCohort.get(itemId);
+    return (row?.get(cohortKey) ?? 0) / tot;
+  }
+
+  getCohortTotalSync(cohortKey: string): number {
+    return this.cohortTotal.get(cohortKey) ?? 0;
+  }
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -90,6 +136,10 @@ const STRAT_TOT = "cat:st:tot:";  // {s}
 const ITEM_STRAT = "item:st:";    // {itemId}:{s}
 const RATE_CACHE_TTL_MS = 5_000;
 
+// Phase 3: Cohort-based exposure tracking
+const COHORT_TOT = "cohort:adm:";        // {cohortKey} → count
+const ITEM_COHORT = "cohort:exp:";       // {itemId}:{cohortKey} → count
+
 class RedisExposureStore implements ExposureStore {
   private client: any;
   private rateCache = new Map<string, { rate: number; ts: number }>();
@@ -98,6 +148,10 @@ class RedisExposureStore implements ExposureStore {
   /** In-process mirror so sync getters work after local writes. */
   private stratumMirror = new Map<number, number>();
   private itemStratMirror = new Map<string, number>();
+
+  // Phase 3: Cohort mirror for sync access
+  private cohortMirror = new Map<string, number>();
+  private itemCohortMirror = new Map<string, number>();
 
   constructor(client: any) {
     this.client = client;
@@ -159,6 +213,35 @@ class RedisExposureStore implements ExposureStore {
     const tot = this.getStratumTotalSync(s);
     if (tot === 0) return 0;
     return (this.itemStratMirror.get(`${itemId}:${s}`) ?? 0) / tot;
+  }
+
+  // Phase 3: Cohort-based exposure
+  async recordCohortExposure(itemId: string, cohortKey: string): Promise<void> {
+    const pipeline = this.client.pipeline();
+    const cohortKey_ = `${COHORT_TOT}${cohortKey}`;
+    const itemCohortKey = `${ITEM_COHORT}${itemId}:${cohortKey}`;
+
+    pipeline.incr(cohortKey_);
+    pipeline.expire(cohortKey_, 60 * 60 * 24 * 90);
+    pipeline.incr(itemCohortKey);
+    pipeline.expire(itemCohortKey, 60 * 60 * 24 * 90);
+
+    this.cohortMirror.set(cohortKey, (this.cohortMirror.get(cohortKey) ?? 0) + 1);
+    const key = `${itemId}:${cohortKey}`;
+    this.itemCohortMirror.set(key, (this.itemCohortMirror.get(key) ?? 0) + 1);
+
+    await pipeline.exec();
+  }
+
+  getConditionalCohortExposureRateSync(itemId: string, cohortKey: string): number {
+    const tot = this.getCohortTotalSync(cohortKey);
+    if (tot === 0) return 0;
+    const count = this.itemCohortMirror.get(`${itemId}:${cohortKey}`) ?? 0;
+    return count / tot;
+  }
+
+  getCohortTotalSync(cohortKey: string): number {
+    return this.cohortMirror.get(cohortKey) ?? 0;
   }
 }
 
