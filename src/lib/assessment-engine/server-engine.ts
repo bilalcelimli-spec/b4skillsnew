@@ -47,6 +47,7 @@ function dbItemToEngineItem(u: {
     id: u.id,
     skill: u.skill as unknown as SkillType,
     isPretest: u.isPretest || u.status === "PRETEST",
+    status: u.status as "DRAFT" | "REVIEW" | "ACTIVE" | "PRETEST" | "RETIRED",
     params,
     metadata: u.content as any,
   };

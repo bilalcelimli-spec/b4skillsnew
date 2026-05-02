@@ -42,6 +42,7 @@ export interface Item {
   skill: SkillType;
   params: IrtParameters;
   isPretest?: boolean; // If true, this item is for calibration and doesn't affect theta
+  status?: "DRAFT" | "REVIEW" | "ACTIVE" | "PRETEST" | "RETIRED"; // Item status (Phase 3+)
   metadata?: Record<string, any>;
   assets?: Asset[];
 }
