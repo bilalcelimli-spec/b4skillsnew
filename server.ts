@@ -568,7 +568,7 @@ async function startServer() {
     }
   });
 
-  // --- ITEM QUALITY VALIDATION ---
+  // --- ITEM QUALITY VALIDATION (legacy single-validator endpoint) ---
   app.get("/api/items/:id/validate", async (req, res) => {
     try {
       const { id } = req.params;
@@ -589,6 +589,105 @@ async function startServer() {
       res.status(500).json({ error: "Validation failed", details: devDetails(error) });
     }
   });
+
+  // --- PHASE 1 VALIDATION GATES (new, unified pipeline) ---
+  // POST /api/items/validate — validate a draft item that is NOT yet in the DB.
+  app.post(
+    "/api/items/validate",
+    validate({ body: Schemas.Validation.ValidateDraftBody }),
+    async (req, res) => {
+      try {
+        const { validateDraftItem, toDraftItem } = await import("./src/lib/ai/validation/index.js");
+        const body = req.body as import("zod").z.infer<typeof Schemas.Validation.ValidateDraftBody>;
+
+        const draft = {
+          type: body.type,
+          skill: body.skill,
+          cefrLevel: body.cefrLevel,
+          content: body.content,
+          discrimination: body.discrimination ?? null,
+          difficulty: body.difficulty ?? null,
+          guessing: body.guessing ?? null,
+          tags: body.tags ?? [],
+        };
+
+        let bankItems: ReturnType<typeof toDraftItem>[] = [];
+        if (body.options?.compareAgainstBank) {
+          const { prisma } = await import("./src/lib/prisma.js");
+          const rows = await prisma.item.findMany({
+            where: {
+              skill: body.skill,
+              cefrLevel: body.cefrLevel,
+              status: { in: ["ACTIVE", "PRETEST"] as never },
+            },
+            take: 500,
+            orderBy: { updatedAt: "desc" },
+            select: {
+              id: true,
+              type: true,
+              skill: true,
+              cefrLevel: true,
+              content: true,
+              discrimination: true,
+              difficulty: true,
+              guessing: true,
+              tags: true,
+            },
+          });
+          bankItems = rows.map((r) =>
+            toDraftItem({
+              id: r.id,
+              type: r.type,
+              skill: r.skill,
+              cefrLevel: r.cefrLevel,
+              content: r.content,
+              discrimination: r.discrimination,
+              difficulty: r.difficulty,
+              guessing: r.guessing,
+              tags: r.tags,
+            })
+          );
+        }
+
+        const report = await validateDraftItem(draft, {
+          bankItems,
+          allowEmbeddings: body.options?.allowEmbeddings,
+          allowLlmJudge: body.options?.allowLlmJudge,
+          disabledGates: body.options?.disabledGates,
+          gateTimeoutMs: body.options?.gateTimeoutMs,
+        });
+
+        res.json(report);
+      } catch (error) {
+        logger.error({ err: error }, "validation.draft-item.failed");
+        res.status(500).json({ error: "Validation pipeline failed", details: devDetails(error) });
+      }
+    }
+  );
+
+  // POST /api/items/:id/validate-gates — run full Phase 1 gates on an existing item.
+  app.post(
+    "/api/items/:id/validate-gates",
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!id || typeof id !== "string") {
+          return res.status(400).json({ error: "Missing item id" });
+        }
+        const { ItemGenerationPipeline } = await import("./src/lib/ai/item-generation-pipeline.js");
+        const report = await ItemGenerationPipeline.runPhase1Gates(id, {
+          allowEmbeddings: req.body?.allowEmbeddings,
+          allowLlmJudge: req.body?.allowLlmJudge,
+          disabledGates: req.body?.disabledGates,
+          gateTimeoutMs: req.body?.gateTimeoutMs,
+        });
+        res.json(report);
+      } catch (error) {
+        logger.error({ err: error, itemId: req.params.id }, "validation.item.failed");
+        res.status(500).json({ error: "Validation pipeline failed", details: devDetails(error) });
+      }
+    }
+  );
 
   app.put("/api/items/:id", async (req, res) => {
     try {

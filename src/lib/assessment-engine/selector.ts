@@ -33,7 +33,9 @@ export async function selectNextItem(
   blueprint?: BlueprintConstraint[],
   currentSkillCounts?: Partial<Record<SkillType, number>>
 ): Promise<Item | null> {
-  const availableItems = pool.filter((item) => !usedItemIds.has(item.id));
+  const availableItems = pool.filter(
+    (item) => !usedItemIds.has(item.id) && item.status !== "RETIRED"
+  );
   if (availableItems.length === 0) {
     return null;
   }

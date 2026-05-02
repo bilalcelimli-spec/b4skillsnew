@@ -40,6 +40,20 @@ export const SystemConfigPayloadSchema = z
       .optional(),
     cefrThresholds: z.record(z.string(), z.number().finite()).optional(),
     blueprint: z.array(z.unknown()).optional(),
+    itemRetirement: z
+      .object({
+        enabled: z.boolean().optional(),
+        minResponses: z.number().int().min(10).max(1000).optional(),
+        gracePeriodDays: z.number().int().min(1).max(30).optional(),
+        scoreThresholds: z
+          .object({
+            flag: z.number().min(0).max(1).optional(),
+            autoRetire: z.number().min(0).max(1).optional(),
+          })
+          .optional(),
+        cronSchedule: z.string().optional(),
+      })
+      .optional(),
   })
   .passthrough();
 

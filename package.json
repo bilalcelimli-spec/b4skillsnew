@@ -31,7 +31,9 @@
     "db:seed:vocab-200": "tsx scripts/seed-vocab-200-sota.ts",
     "db:bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
     "smoke:auth": "node scripts/smoke-auth.mjs",
-    "quality:vocab": "tsx scripts/validate-vocab-200-quality.ts"
+    "quality:vocab": "tsx scripts/validate-vocab-200-quality.ts",
+    "db:job:calibrate-pretest": "tsx scripts/jobs/auto-calibrate-pretest.ts",
+    "db:job:retire-items": "tsx scripts/jobs/item-retirement-job.ts"
   },
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.4.0",

@@ -223,7 +223,7 @@ export const AssessmentService = {
     }
 
     const initialState = engine.initializeSession();
-    
+
     const session = await prisma.session.create({
       data: {
         candidateId,
@@ -240,6 +240,13 @@ export const AssessmentService = {
     getExposureStore()
       .then((store) => store.recordTestStart())
       .catch(() => {});
+
+    // --- PRETEST INJECTION (Phase 2) ---
+    // Inject 2-3 PRETEST items to collect calibration data during live testing
+    const { injectPretestItems } = await import("./pretest-manager.js");
+    await injectPretestItems(session.id).catch((err) => {
+      logger.warn({ err, sessionId: session.id }, "pretest injection failed — non-blocking");
+    });
 
     // --- CONSUME CREDIT ---
     await BillingService.consumeCredit(organizationId);
@@ -470,7 +477,7 @@ export const AssessmentService = {
               ? irtInputScore
               : null,
           isCorrect: score >= 0.5,
-          isPretest: item.isPretest || false,
+          isPretest: item.isPretest || dbItem.status === "PRETEST" || requiresHumanReview || false,
           aiScore: aiResult?.score,
           latencyMs: typeof clientLatencyMs === 'number' && clientLatencyMs > 0 ? clientLatencyMs : 0,
           rtZScore: rtZ,

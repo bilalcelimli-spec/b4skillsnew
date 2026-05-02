@@ -1,6 +1,12 @@
 import { prisma } from "../prisma";
 import { CalibrationService } from "../assessment-engine/calibration-service";
 import { validateItem } from "../language-skills/item-quality-validator";
+import {
+  validateDraftItem,
+  toDraftItem,
+  type ValidationReport,
+  type ValidationOptions,
+} from "./validation/index.js";
 
 /**
  * AI Item Generation Pipeline
@@ -56,6 +62,80 @@ const ACTIVATION_CRITERIA = {
 };
 
 export const ItemGenerationPipeline = {
+  /**
+   * Stage 2 (NEW — Phase 1 Validation Gates): Run the full unified gate
+   * pipeline on a generated item. This supersedes runAutoQA.
+   *
+   *  — Pulls a CEFR/skill-matched bank slice for duplicate detection
+   *  — Calls every gate (structural, readability, distractor-quality,
+   *    key-uniqueness, duplicate, bias-fairness, plagiarism)
+   *  — Returns a structured ValidationReport with PUBLISH/REVIEW/REJECT verdict
+   *
+   * Callers should:
+   *   verdict === "PUBLISH"  → auto-promote to PRETEST
+   *   verdict === "REVIEW"   → submitForExpertReview()
+   *   verdict === "REJECT"   → mark as rejected; surface issues to writer
+   */
+  async runPhase1Gates(
+    itemId: string,
+    options: Pick<ValidationOptions, "allowEmbeddings" | "allowLlmJudge" | "disabledGates" | "gateTimeoutMs"> = {}
+  ): Promise<ValidationReport> {
+    const item = await prisma.item.findUnique({ where: { id: itemId } });
+    if (!item) throw new Error(`Item ${itemId} not found`);
+
+    // Pull a same-skill / same-CEFR bank slice for duplicate detection.
+    // Cap at 500 items to keep the n-gram comparison cheap.
+    const bankRows = await prisma.item.findMany({
+      where: {
+        id: { not: itemId },
+        skill: item.skill,
+        cefrLevel: item.cefrLevel,
+        status: { in: ["ACTIVE", "PRETEST"] as never },
+      },
+      take: 500,
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        type: true,
+        skill: true,
+        cefrLevel: true,
+        content: true,
+        discrimination: true,
+        difficulty: true,
+        guessing: true,
+        tags: true,
+      },
+    });
+
+    const draft = toDraftItem({
+      id: item.id,
+      type: item.type,
+      skill: item.skill,
+      cefrLevel: item.cefrLevel,
+      content: item.content,
+      discrimination: item.discrimination,
+      difficulty: item.difficulty,
+      guessing: item.guessing,
+      tags: item.tags,
+    });
+    const bankItems = bankRows.map((row) =>
+      toDraftItem({
+        id: row.id,
+        type: row.type,
+        skill: row.skill,
+        cefrLevel: row.cefrLevel,
+        content: row.content,
+        discrimination: row.discrimination,
+        difficulty: row.difficulty,
+        guessing: row.guessing,
+        tags: row.tags,
+      })
+    );
+
+    const report = await validateDraftItem(draft, { ...options, bankItems });
+    return report;
+  },
+
   /**
    * Stage 2: Run automated QA on a generated item
    */

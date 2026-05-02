@@ -205,9 +205,21 @@ model Item {
   // Stats
   exposureCount   Int       @default(0)
   pVal            Float?    // Classical test theory difficulty
-  
+
+  // Item Retirement (Phase 3)
+  difStatus       String?   // CLEAR | FLAGGED | MONITORING
+  latestDifReviewAt DateTime?
+
+  retirementReason     String?   // "Low discrimination" | "Poor fit" | "Too easy/hard" | "Negative correlation"
+  retiredAt            DateTime?
+  retiredBy            String?   // User.id
+  retirementScore      Float?    // Latest retirement score (0-1)
+  retirementScoreHistory Json?   // Array of { score, computedAt }
+  canBeReactivated     Boolean   @default(true)
+
   responses       Response[]
-  
+  retirementAuditLogs RetirementAuditLog[]
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -215,6 +227,29 @@ model Item {
   @@index([skill, cefrLevel])
   @@index([status, skill])
   @@index([organizationId, status])
+  @@index([status, retirementScore])  // For retirement monitoring queries
+}
+
+model RetirementAuditLog {
+  id              String    @id @default(cuid())
+  itemId          String
+  item            Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  action          String    // FLAGGED_FOR_REVIEW | AUTO_RETIRED | MANUAL_RETIRED | REACTIVATED | REJECTED
+  score           Float?    // Retirement score at time of action
+  reason          String?   // Explanation of why this action was taken
+
+  triggeredBy     String?   // BATCH_JOB | User.id
+  approvalStatus  String    @default("PENDING")  // PENDING | APPROVED | REJECTED
+  approvedBy      String?   // User.id who approved/rejected
+  approvalDate    DateTime?
+  notes           String?   // Additional notes from approver
+
+  createdAt       DateTime  @default(now())
+
+  @@index([itemId])
+  @@index([action])
+  @@index([approvalStatus, createdAt])
 }
 
 enum ItemType {
