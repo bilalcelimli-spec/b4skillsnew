@@ -310,7 +310,7 @@ export class AIItemGenerator {
       discrimination: item.irtParams?.a ?? levelNorm?.a.target ?? 1.0,
       difficulty: item.irtParams?.b ?? levelNorm?.b.target ?? 0.0,
       guessing: item.irtParams?.c ?? levelNorm?.c.target ?? 0.2,
-      content: item as Record<string, unknown>,
+      content: item as unknown as Record<string, unknown>,
     });
 
     let readabilityScore = 100;
@@ -320,8 +320,8 @@ export class AIItemGenerator {
       if (!report.passesQualityGate) {
         qualityReport.issues.push(...report.issues.map(iss => ({
           code: "READ-GATE",
-          severity: iss.severity as "critical" | "major" | "minor",
-          category: "language_quality" as const,
+          severity: iss.severity.toUpperCase() as import("./item-quality-validator.js").QualityIssueSeverity,
+          category: "writing_guidelines" as const,
           message: iss.message,
           field: "stimulus",
         })));
@@ -402,7 +402,7 @@ export class AIItemGenerator {
         overallVerdict: "REVISE",
         issues: qualityReport.issues.map(iss => ({
           category: (iss.category ?? "item_format") as ItemReviewIssue["category"],
-          severity: iss.severity,
+          severity: iss.severity.toLowerCase() as ItemReviewIssue["severity"],
           description: iss.message,
           suggestion: iss.suggestion ?? "Please correct this issue.",
         })),

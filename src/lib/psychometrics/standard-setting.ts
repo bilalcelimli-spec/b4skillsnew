@@ -250,6 +250,13 @@ export const StandardSettingService = {
   /**
    * Apply cut-scores to the engine configuration
    */
+  async listStudies(): Promise<StandardSettingStudy[]> {
+    const configs = await prisma.systemConfig.findMany({
+      where: { id: { startsWith: "standard_setting_" } },
+    });
+    return configs.map((c) => c.config as unknown as StandardSettingStudy);
+  },
+
   async applyCutScores(studyId: string) {
     const configDoc = await prisma.systemConfig.findUnique({
       where: { id: `standard_setting_${studyId}` },

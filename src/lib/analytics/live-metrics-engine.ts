@@ -23,7 +23,7 @@ export interface SkillMetrics {
   avgTheta: number;
   stdTheta: number;
   avgResponses: number;
-  byCSfR: Record<CefrLevel, { count: number; avgTheta: number; avgScore: number }>;
+  byCSfR: Partial<Record<CefrLevel, { count: number; avgTheta: number; avgScore: number }>>;
 }
 
 export interface ItemDifficultyDistribution {

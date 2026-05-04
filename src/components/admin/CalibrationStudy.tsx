@@ -24,6 +24,7 @@ import {
   Users
 } from "lucide-react";
 import { motion } from "motion/react";
+import { CsemCurveChart } from "./CsemCurveChart";
 
 export const CalibrationStudy: React.FC = () => {
   const [results, setResults] = useState<any>(null);
@@ -247,6 +248,9 @@ export const CalibrationStudy: React.FC = () => {
           <p className="text-xs font-medium mt-2">Run a study to establish precise CEFR cut-scores.</p>
         </div>
       )}
+
+      {/* Conditional SEM curve — always rendered from live session data */}
+      <CsemCurveChart />
     </div>
   );
 };

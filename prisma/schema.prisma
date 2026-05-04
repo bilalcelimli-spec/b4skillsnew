@@ -207,6 +207,7 @@ model Item {
   status          ItemStatus @default(DRAFT)
   isPretest       Boolean    @default(false)
   version         Int        @default(1)
+  metadata        Json?      // Pipeline state, QA scores, audit trail
   
   // Stats
   exposureCount   Int       @default(0)

@@ -168,27 +168,21 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
     setUploadStatus('uploading');
 
     try {
-      // 1. Upload to Storage with progress tracking
-      const storageRef = ref(storage, `organizations/${organizationId}/sessions/${sessionId}/speaking/${currentItem.id}_${Date.now()}.webm`);
-      const uploadTask = uploadBytesResumable(storageRef, blob);
-
+      // 1. Encode blob as data URL (no external storage dependency)
       const audioUrl = await new Promise<string>((resolve, reject) => {
-        uploadTask.on(
-          'state_changed',
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            setUploadProgress(progress);
-          },
-          (error) => {
-            setUploadStatus('error');
-            reject(error);
-          },
-          async () => {
-            setUploadStatus('analyzing');
-            const url = await getDownloadURL(uploadTask.snapshot.ref);
-            resolve(url);
-          }
-        );
+        const reader = new FileReader();
+        reader.onprogress = (e) => {
+          if (e.lengthComputable) setUploadProgress((e.loaded / e.total) * 100);
+        };
+        reader.onload = () => {
+          setUploadStatus('analyzing');
+          resolve(reader.result as string);
+        };
+        reader.onerror = () => {
+          setUploadStatus('error');
+          reject(reader.error);
+        };
+        reader.readAsDataURL(blob);
       });
 
       // 2. Call AI Scoring API (Simulated)
@@ -224,29 +218,22 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
     setUploadStatus('uploading');
 
     try {
-      // 1. Upload to Storage
-      const storageRef = ref(storage, `organizations/${organizationId}/sessions/${sessionId}/writing/${currentItem.id}_${Date.now()}.html`);
+      // 1. Encode writing content as data URL (no external storage dependency)
       const blob = new Blob([text], { type: 'text/html' });
-      
-      const uploadTask = uploadBytesResumable(storageRef, blob);
-
       const artifactUrl = await new Promise<string>((resolve, reject) => {
-        uploadTask.on(
-          'state_changed',
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            setUploadProgress(progress);
-          },
-          (error) => {
-            setUploadStatus('error');
-            reject(error);
-          },
-          async () => {
-            setUploadStatus('analyzing');
-            const url = await getDownloadURL(uploadTask.snapshot.ref);
-            resolve(url);
-          }
-        );
+        const reader = new FileReader();
+        reader.onprogress = (e) => {
+          if (e.lengthComputable) setUploadProgress((e.loaded / e.total) * 100);
+        };
+        reader.onload = () => {
+          setUploadStatus('analyzing');
+          resolve(reader.result as string);
+        };
+        reader.onerror = () => {
+          setUploadStatus('error');
+          reject(reader.error);
+        };
+        reader.readAsDataURL(blob);
       });
 
       // 2. Call AI Scoring API (Simulated)

@@ -25,6 +25,14 @@ import {
   Key,
   Loader2,
   Wand2,
+  Database,
+  FlaskConical,
+  Trash2,
+  TrendingUp,
+  Layers,
+  Network,
+  FileText,
+  Share2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
@@ -43,6 +51,50 @@ import { CalibrationStudy } from "./admin/CalibrationStudy";
 import { ContentReviewDashboard } from "./admin/ContentReviewDashboard";
 import { ExamCodeManager } from "./admin/ExamCodeManager";
 import { ItemGeneratorPanel } from "./admin/ItemGeneratorPanel";
+import { ItemBankInventory } from "./admin/ItemBankInventory";
+import { DistractorAudit } from "./admin/DistractorAudit";
+import { AigQualityPanel } from "./admin/AigQualityPanel";
+import { FraudDashboard } from "./admin/FraudDashboard";
+import { BiasReviewPanel } from "./admin/BiasReviewPanel";
+import { DifDashboard } from "./admin/DifDashboard";
+import { ItemBankPanel } from "./admin/ItemBankPanel";
+import { StandardSettingPanel } from "./admin/StandardSettingPanel";
+import { EquatingPanel } from "./admin/EquatingPanel";
+import { PsychometricQualityPanel } from "./admin/PsychometricQualityPanel";
+import { ItemRetirementPanel } from "./admin/ItemRetirementPanel";
+import { MirtDiagnosticsPanel } from "./admin/MirtDiagnosticsPanel";
+import { GrmScoringPanel } from "./admin/GrmScoringPanel";
+import { ItemExposurePanel } from "./admin/ItemExposurePanel";
+import { RaterReliabilityPanel } from "./admin/RaterReliabilityPanel";
+import { ClassificationAccuracyPanel } from "./admin/ClassificationAccuracyPanel";
+import { ContentBlueprintPanel } from "./admin/ContentBlueprintPanel";
+import { ThetaDiagnosticsPanel } from "./admin/ThetaDiagnosticsPanel";
+import { TestInformationPanel } from "./admin/TestInformationPanel";
+import { PersonFitPanel } from "./admin/PersonFitPanel";
+import { ShadowTestPanel } from "./admin/ShadowTestPanel";
+import { ItemDriftPanel } from "./admin/ItemDriftPanel";
+import { CognitiveDiagnosticPanel } from "./admin/CognitiveDiagnosticPanel";
+import { BayesianCalibrationPanel } from "./admin/BayesianCalibrationPanel";
+import { MSTRoutingPanel } from "./admin/MSTRoutingPanel";
+import { ResponseTimeDiagnosticsPanel } from "./admin/ResponseTimeDiagnosticsPanel";
+import { LocalItemDependencePanel } from "./admin/LocalItemDependencePanel";
+import { AnchorItemMonitorPanel } from "./admin/AnchorItemMonitorPanel";
+import { SubscaleCompositeScoringPanel } from "./admin/SubscaleCompositeScoringPanel";
+import { ConditionalSEMPanel } from "./admin/ConditionalSEMPanel";
+import { TestCharacteristicCurvePanel } from "./admin/TestCharacteristicCurvePanel";
+import { DifferentialBundleFunctioningPanel } from "./admin/DifferentialBundleFunctioningPanel";
+import { PolytomousDIFPanel } from "./admin/PolytomousDIFPanel";
+import { ScoreReliabilitySubgroupPanel } from "./admin/ScoreReliabilitySubgroupPanel";
+import { AdaptiveStoppingRulePanel } from "./admin/AdaptiveStoppingRulePanel";
+import { ItemFitPanel } from "./admin/ItemFitPanel";
+import { CATItemSelectionPanel } from "./admin/CATItemSelectionPanel";
+import { ScoreNormingPanel } from "./admin/ScoreNormingPanel";
+import { OnlineCalibrationMonitorPanel } from "./admin/OnlineCalibrationMonitorPanel";
+import { DifferentialStepFunctioningPanel } from "./admin/DifferentialStepFunctioningPanel";
+import { BayesianNetworkDependencePanel } from "./admin/BayesianNetworkDependencePanel";
+import { ScoreReportingAnalyticsPanel } from "./admin/ScoreReportingAnalyticsPanel";
+import { MultigroupInvariancePanel } from "./admin/MultigroupInvariancePanel";
+import { IRTResponseTimePanel } from "./admin/IRTResponseTimePanel";
 
 interface SessionData {
   id: string;
@@ -72,7 +124,7 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
     | "settings"
     | "proctoring"
     | "billing"
-    | "calibration" | "content-qa" | "item-generator"
+    | "calibration" | "content-qa" | "item-generator" | "item-inventory" | "distractor-audit" | "aig-quality" | "fraud" | "bias-review" | "dif" | "item-bank" | "standard-setting" | "equating" | "psychometric-quality" | "item-retirement" | "mirt" | "grm" | "exposure" | "rater-reliability" | "classification" | "blueprint" | "theta-diag" | "tif" | "person-fit" | "shadow-test" | "item-drift" | "cognitive-diag" | "bayes-calib" | "mst-routing" | "rt-diag" | "local-dep" | "anchor-items" | "subscale" | "csem" | "tcc" | "dbf" | "poly-dif" | "reliability" | "stopping-rule" | "item-fit" | "cat-sim" | "score-norms" | "online-calib" | "dsf" | "bn-dep" | "score-report" | "mg-inv" | "irt-rt"
   >("overview");
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -278,6 +330,327 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
             }}
             icon={<Wand2 size={14} />}
             label="AI Generator"
+          />
+          <TabButton
+            active={activeTab === "item-inventory"}
+            onClick={() => {
+              setActiveTab("item-inventory");
+              setSelectedSessionId(null);
+            }}
+            icon={<Database size={14} />}
+            label="Item Inventory"
+          />
+          <TabButton
+            active={activeTab === "distractor-audit"}
+            onClick={() => {
+              setActiveTab("distractor-audit");
+              setSelectedSessionId(null);
+            }}
+            icon={<FlaskConical size={14} />}
+            label="Item Quality"
+          />
+          <TabButton
+            active={activeTab === "aig-quality"}
+            onClick={() => {
+              setActiveTab("aig-quality");
+              setSelectedSessionId(null);
+            }}
+            icon={<Wand2 size={14} />}
+            label="AIG Quality"
+          />
+          <TabButton
+            active={activeTab === "bias-review"}
+            onClick={() => {
+              setActiveTab("bias-review");
+              setSelectedSessionId(null);
+            }}
+            icon={<ShieldAlert size={14} />}
+            label="Bias Review"
+          />
+          <TabButton
+            active={activeTab === "fraud"}
+            onClick={() => {
+              setActiveTab("fraud");
+              setSelectedSessionId(null);
+            }}
+            icon={<ShieldAlert size={14} />}
+            label="Fraud Monitor"
+          />
+          <TabButton
+            active={activeTab === "dif"}
+            onClick={() => {
+              setActiveTab("dif");
+              setSelectedSessionId(null);
+            }}
+            icon={<FlaskConical size={14} />}
+            label="DIF Monitor"
+          />
+          <TabButton
+            active={activeTab === "item-bank"}
+            onClick={() => {
+              setActiveTab("item-bank");
+              setSelectedSessionId(null);
+            }}
+            icon={<Database size={14} />}
+            label="Item Bank"
+          />
+          <TabButton
+            active={activeTab === "standard-setting"}
+            onClick={() => {
+              setActiveTab("standard-setting");
+              setSelectedSessionId(null);
+            }}
+            icon={<Calculator size={14} />}
+            label="Standard Setting"
+          />
+          <TabButton
+            active={activeTab === "equating"}
+            onClick={() => {
+              setActiveTab("equating");
+              setSelectedSessionId(null);
+            }}
+            icon={<ArrowUpRight size={14} />}
+            label="Equating"
+          />
+          <TabButton
+            active={activeTab === "psychometric-quality"}
+            onClick={() => {
+              setActiveTab("psychometric-quality");
+              setSelectedSessionId(null);
+            }}
+            icon={<Activity size={14} />}
+            label="Quality"
+          />
+          <TabButton
+            active={activeTab === "item-retirement"}
+            onClick={() => {
+              setActiveTab("item-retirement");
+              setSelectedSessionId(null);
+            }}
+            icon={<Trash2 size={14} />}
+            label="Item Retirement"
+          />
+          <TabButton
+            active={activeTab === "mirt"}
+            onClick={() => {
+              setActiveTab("mirt");
+              setSelectedSessionId(null);
+            }}
+            icon={<Zap size={14} />}
+            label="MIRT 6D"
+          />
+          <TabButton
+            active={activeTab === "grm"}
+            onClick={() => {
+              setActiveTab("grm");
+              setSelectedSessionId(null);
+            }}
+            icon={<BarChart3 size={14} />}
+            label="GRM Scoring"
+          />
+          <TabButton
+            active={activeTab === "exposure"}
+            onClick={() => {
+              setActiveTab("exposure");
+              setSelectedSessionId(null);
+            }}
+            icon={<ShieldCheck size={14} />}
+            label="Exposure"
+          />
+          <TabButton
+            active={activeTab === "rater-reliability"}
+            onClick={() => {
+              setActiveTab("rater-reliability");
+              setSelectedSessionId(null);
+            }}
+            icon={<Users size={14} />}
+            label="Rater IRR"
+          />
+          <TabButton
+            active={activeTab === "classification"}
+            onClick={() => {
+              setActiveTab("classification");
+              setSelectedSessionId(null);
+            }}
+            icon={<Activity size={14} />}
+            label="Classification"
+          />
+          <TabButton
+            active={activeTab === "blueprint"}
+            onClick={() => {
+              setActiveTab("blueprint");
+              setSelectedSessionId(null);
+            }}
+            icon={<LayoutDashboard size={14} />}
+            label="Blueprint"
+          />
+          <TabButton
+            active={activeTab === "theta-diag"}
+            onClick={() => {
+              setActiveTab("theta-diag");
+              setSelectedSessionId(null);
+            }}
+            icon={<Zap size={14} />}
+            label="θ Diagnostics"
+          />
+          <TabButton
+            active={activeTab === "tif"}
+            onClick={() => {
+              setActiveTab("tif");
+              setSelectedSessionId(null);
+            }}
+            icon={<BarChart3 size={14} />}
+            label="TIF"
+          />
+          <TabButton
+            active={activeTab === "person-fit"}
+            onClick={() => { setActiveTab("person-fit"); setSelectedSessionId(null); }}
+            icon={<ShieldAlert size={14} />}
+            label="Person Fit"
+          />
+          <TabButton
+            active={activeTab === "shadow-test"}
+            onClick={() => { setActiveTab("shadow-test"); setSelectedSessionId(null); }}
+            icon={<Database size={14} />}
+            label="Shadow Test"
+          />
+          <TabButton
+            active={activeTab === "item-drift"}
+            onClick={() => { setActiveTab("item-drift"); setSelectedSessionId(null); }}
+            icon={<FlaskConical size={14} />}
+            label="Item Drift"
+          />
+          <TabButton
+            active={activeTab === "cognitive-diag"}
+            onClick={() => { setActiveTab("cognitive-diag"); setSelectedSessionId(null); }}
+            icon={<Wand2 size={14} />}
+            label="Cognitive Diag"
+          />
+          <TabButton
+            active={activeTab === "bayes-calib"}
+            onClick={() => { setActiveTab("bayes-calib"); setSelectedSessionId(null); }}
+            icon={<Calculator size={14} />}
+            label="Bayes Calib"
+          />
+          <TabButton
+            active={activeTab === "mst-routing"}
+            onClick={() => { setActiveTab("mst-routing"); setSelectedSessionId(null); }}
+            icon={<LayoutDashboard size={14} />}
+            label="MST Routing"
+          />
+          <TabButton
+            active={activeTab === "rt-diag"}
+            onClick={() => { setActiveTab("rt-diag"); setSelectedSessionId(null); }}
+            icon={<Clock size={14} />}
+            label="RT Diagnostics"
+          />
+          <TabButton
+            active={activeTab === "local-dep"}
+            onClick={() => { setActiveTab("local-dep"); setSelectedSessionId(null); }}
+            icon={<Key size={14} />}
+            label="Local Dep"
+          />
+          <TabButton
+            active={activeTab === "anchor-items"}
+            onClick={() => { setActiveTab("anchor-items"); setSelectedSessionId(null); }}
+            icon={<Upload size={14} />}
+            label="Anchor Items"
+          />
+          <TabButton
+            active={activeTab === "subscale"}
+            onClick={() => { setActiveTab("subscale"); setSelectedSessionId(null); }}
+            icon={<BarChart3 size={14} />}
+            label="Subscale"
+          />
+          <TabButton
+            active={activeTab === "csem"}
+            onClick={() => { setActiveTab("csem"); setSelectedSessionId(null); }}
+            icon={<Activity size={14} />}
+            label="Cond. SEM"
+          />
+          <TabButton
+            active={activeTab === "tcc"}
+            onClick={() => { setActiveTab("tcc"); setSelectedSessionId(null); }}
+            icon={<TrendingUp size={14} />}
+            label="TCC"
+          />
+          <TabButton
+            active={activeTab === "dbf"}
+            onClick={() => { setActiveTab("dbf"); setSelectedSessionId(null); }}
+            icon={<ShieldAlert size={14} />}
+            label="DBF"
+          />
+          <TabButton
+            active={activeTab === "poly-dif"}
+            onClick={() => { setActiveTab("poly-dif"); setSelectedSessionId(null); }}
+            icon={<ShieldCheck size={14} />}
+            label="Poly DIF"
+          />
+          <TabButton
+            active={activeTab === "reliability"}
+            onClick={() => { setActiveTab("reliability"); setSelectedSessionId(null); }}
+            icon={<BarChart3 size={14} />}
+            label="Reliability"
+          />
+          <TabButton
+            active={activeTab === "stopping-rule"}
+            onClick={() => { setActiveTab("stopping-rule"); setSelectedSessionId(null); }}
+            icon={<Zap size={14} />}
+            label="Stop Rules"
+          />
+          <TabButton
+            active={activeTab === "item-fit"}
+            onClick={() => { setActiveTab("item-fit"); setSelectedSessionId(null); }}
+            icon={<FlaskConical size={14} />}
+            label="Item Fit"
+          />
+          <TabButton
+            active={activeTab === "cat-sim"}
+            onClick={() => { setActiveTab("cat-sim"); setSelectedSessionId(null); }}
+            icon={<Calculator size={14} />}
+            label="CAT Sim"
+          />
+          <TabButton
+            active={activeTab === "score-norms"}
+            onClick={() => { setActiveTab("score-norms"); setSelectedSessionId(null); }}
+            icon={<Database size={14} />}
+            label="Norms"
+          />
+          <TabButton
+            active={activeTab === "online-calib"}
+            onClick={() => { setActiveTab("online-calib"); setSelectedSessionId(null); }}
+            icon={<TrendingUp size={14} />}
+            label="Drift"
+          />
+          <TabButton
+            active={activeTab === "dsf"}
+            onClick={() => { setActiveTab("dsf"); setSelectedSessionId(null); }}
+            icon={<Layers size={14} />}
+            label="DSF"
+          />
+          <TabButton
+            active={activeTab === "bn-dep"}
+            onClick={() => { setActiveTab("bn-dep"); setSelectedSessionId(null); }}
+            icon={<Network size={14} />}
+            label="BN Dep"
+          />
+          <TabButton
+            active={activeTab === "score-report"}
+            onClick={() => { setActiveTab("score-report"); setSelectedSessionId(null); }}
+            icon={<FileText size={14} />}
+            label="Score Report"
+          />
+          <TabButton
+            active={activeTab === "mg-inv"}
+            onClick={() => { setActiveTab("mg-inv"); setSelectedSessionId(null); }}
+            icon={<Share2 size={14} />}
+            label="MG Inv."
+          />
+          <TabButton
+            active={activeTab === "irt-rt"}
+            onClick={() => { setActiveTab("irt-rt"); setSelectedSessionId(null); }}
+            icon={<Clock size={14} />}
+            label="RT Model"
           />
           <TabButton
             active={activeTab === "settings"}
@@ -573,6 +946,490 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
             exit={{ opacity: 0, x: -20 }}
           >
             <ItemGeneratorPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "item-inventory" && (
+          <motion.div
+            key="item-inventory"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ItemBankInventory />
+          </motion.div>
+        )}
+
+        {activeTab === "distractor-audit" && (
+          <motion.div
+            key="distractor-audit"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <DistractorAudit />
+          </motion.div>
+        )}
+
+        {activeTab === "aig-quality" && (
+          <motion.div
+            key="aig-quality"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <AigQualityPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "fraud" && (
+          <motion.div
+            key="fraud"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <FraudDashboard />
+          </motion.div>
+        )}
+
+        {activeTab === "bias-review" && (
+          <motion.div
+            key="bias-review"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <BiasReviewPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "dif" && (
+          <motion.div
+            key="dif"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <DifDashboard />
+          </motion.div>
+        )}
+
+        {activeTab === "item-bank" && (
+          <motion.div
+            key="item-bank"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ItemBankPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "standard-setting" && (
+          <motion.div
+            key="standard-setting"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <StandardSettingPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "equating" && (
+          <motion.div
+            key="equating"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <EquatingPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "psychometric-quality" && (
+          <motion.div
+            key="psychometric-quality"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <PsychometricQualityPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "item-retirement" && (
+          <motion.div
+            key="item-retirement"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ItemRetirementPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "mirt" && (
+          <motion.div
+            key="mirt"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <MirtDiagnosticsPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "grm" && (
+          <motion.div
+            key="grm"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <GrmScoringPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "exposure" && (
+          <motion.div
+            key="exposure"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ItemExposurePanel />
+          </motion.div>
+        )}
+
+        {activeTab === "rater-reliability" && (
+          <motion.div
+            key="rater-reliability"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <RaterReliabilityPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "classification" && (
+          <motion.div
+            key="classification"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ClassificationAccuracyPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "blueprint" && (
+          <motion.div
+            key="blueprint"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ContentBlueprintPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "theta-diag" && (
+          <motion.div
+            key="theta-diag"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ThetaDiagnosticsPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "tif" && (
+          <motion.div
+            key="tif"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <TestInformationPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "person-fit" && (
+          <motion.div
+            key="person-fit"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <PersonFitPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "shadow-test" && (
+          <motion.div
+            key="shadow-test"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ShadowTestPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "item-drift" && (
+          <motion.div
+            key="item-drift"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ItemDriftPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "cognitive-diag" && (
+          <motion.div
+            key="cognitive-diag"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <CognitiveDiagnosticPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "bayes-calib" && (
+          <motion.div
+            key="bayes-calib"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <BayesianCalibrationPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "mst-routing" && (
+          <motion.div
+            key="mst-routing"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <MSTRoutingPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "rt-diag" && (
+          <motion.div
+            key="rt-diag"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ResponseTimeDiagnosticsPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "local-dep" && (
+          <motion.div
+            key="local-dep"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <LocalItemDependencePanel />
+          </motion.div>
+        )}
+
+        {activeTab === "anchor-items" && (
+          <motion.div
+            key="anchor-items"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <AnchorItemMonitorPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "subscale" && (
+          <motion.div
+            key="subscale"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <SubscaleCompositeScoringPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "csem" && (
+          <motion.div
+            key="csem"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ConditionalSEMPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "tcc" && (
+          <motion.div
+            key="tcc"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <TestCharacteristicCurvePanel />
+          </motion.div>
+        )}
+
+        {activeTab === "dbf" && (
+          <motion.div
+            key="dbf"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <DifferentialBundleFunctioningPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "poly-dif" && (
+          <motion.div
+            key="poly-dif"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <PolytomousDIFPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "reliability" && (
+          <motion.div
+            key="reliability"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ScoreReliabilitySubgroupPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "stopping-rule" && (
+          <motion.div
+            key="stopping-rule"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <AdaptiveStoppingRulePanel />
+          </motion.div>
+        )}
+
+        {activeTab === "item-fit" && (
+          <motion.div
+            key="item-fit"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ItemFitPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "cat-sim" && (
+          <motion.div
+            key="cat-sim"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <CATItemSelectionPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "score-norms" && (
+          <motion.div
+            key="score-norms"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ScoreNormingPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "online-calib" && (
+          <motion.div
+            key="online-calib"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <OnlineCalibrationMonitorPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "dsf" && (
+          <motion.div
+            key="dsf"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <DifferentialStepFunctioningPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "bn-dep" && (
+          <motion.div
+            key="bn-dep"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <BayesianNetworkDependencePanel />
+          </motion.div>
+        )}
+
+        {activeTab === "score-report" && (
+          <motion.div
+            key="score-report"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ScoreReportingAnalyticsPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "mg-inv" && (
+          <motion.div
+            key="mg-inv"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <MultigroupInvariancePanel />
+          </motion.div>
+        )}
+
+        {activeTab === "irt-rt" && (
+          <motion.div
+            key="irt-rt"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <IRTResponseTimePanel />
           </motion.div>
         )}
 

@@ -1,0 +1,64 @@
+name: DIF Audit
+
+# Differential Item Functioning weekly scan.
+# Runs Mantel-Haenszel + logistic regression across all ACTIVE items.
+# Fails with exit-code 1 (and pages via Sentry) if any C-class DIF is found.
+# Also runnable on-demand via workflow_dispatch.
+
+on:
+  schedule:
+    # Every Sunday at 03:00 UTC (off-peak)
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run — analyse but do not alert Sentry"
+        type: boolean
+        default: false
+
+jobs:
+  dif-audit:
+    name: Run DIF audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SENTRY_DSN: ${{ inputs.dry_run == 'true' && '' || secrets.SENTRY_DSN }}
+      NODE_ENV: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run DIF audit
+        id: dif
+        run: npx tsx scripts/dif-audit-runner.ts
+
+      - name: Upload DIF results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dif-audit-results-${{ github.run_id }}
+          path: dif-audit-results.json
+          retention-days: 90
+
+      - name: Annotate flagged items
+        if: failure() && steps.dif.outcome == 'failure'
+        run: |
+          echo "::error title=DIF Audit Failed::One or more items flagged with C-class DIF. Download the dif-audit-results artifact for details."
+          cat dif-audit-results.json | npx tsx -e "
+            const data = JSON.parse(require('fs').readFileSync('dif-audit-results.json','utf8'));
+            const flagged = data.results.filter(r => r.flagged);
+            flagged.forEach(r => console.log('::warning title=DIF Flagged::Item ' + r.itemId + ' — ' + r.responseCount + ' responses'));
+          " || true

@@ -195,8 +195,12 @@ export class BatchDifDetectionService {
           select: {
             candidate: {
               select: {
-                gender: true,
-                nativeLanguage: true,
+                candidateProfile: {
+                  select: {
+                    gender: true,
+                    nativeLanguage: true,
+                  },
+                },
               },
             },
           },
@@ -211,7 +215,7 @@ export class BatchDifDetectionService {
       itemId,
       responses,
       "gender",
-      (r) => r.session.candidate.gender || "Unknown"
+      (r) => r.session.candidate.candidateProfile?.gender || "Unknown"
     );
     allResults.push(...genderResults);
 
@@ -220,7 +224,7 @@ export class BatchDifDetectionService {
       itemId,
       responses,
       "nativeLanguage",
-      (r) => r.session.candidate.nativeLanguage || "Unknown"
+      (r) => r.session.candidate.candidateProfile?.nativeLanguage || "Unknown"
     );
     allResults.push(...l1Results);
 
@@ -238,7 +242,7 @@ export class BatchDifDetectionService {
     responses: Array<{
       isCorrect: boolean | null;
       score: number | null;
-      session: { candidate: { gender: string | null; nativeLanguage: string | null } };
+      session: { candidate: { candidateProfile: { gender: string | null; nativeLanguage: string | null } | null } };
     }>,
     variable: "gender" | "nativeLanguage" | "ageGroup",
     groupExtractor: (

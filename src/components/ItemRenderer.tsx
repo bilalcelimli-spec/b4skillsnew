@@ -50,7 +50,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   const renderPassage = (passage: string | undefined) => {
     let elements = [];
     
-    if (content?.imageUrl && !(itemSkill === 'LISTENING' && String(item.type).toUpperCase() === 'FILL_IN_BLANKS')) {
+    if (content?.imageUrl && !(itemSkill === 'LISTENING' && String((item as any).type).toUpperCase() === 'FILL_IN_BLANKS')) {
       elements.push(
         <div key="image" className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col justify-center items-center mb-6">
           <img

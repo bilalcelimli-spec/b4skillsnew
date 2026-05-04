@@ -193,8 +193,8 @@ export const ItemGenerationPipeline = {
     if (item.guessing > 0.35) { issues.push("High guessing parameter"); score -= 10; }
 
     // Quality validator issues
-    if (report && !report.isValid) {
-      issues.push(...(report.errors || []).map((e: any) => typeof e === 'string' ? e : e.message || String(e)));
+    if (report && report.status !== "APPROVED") {
+      issues.push(...report.issues.map((e) => e.message));
       score -= 15;
     }
 

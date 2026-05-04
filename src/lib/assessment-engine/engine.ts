@@ -14,7 +14,7 @@ import {
   select2BItem,
 } from "../psychometrics/mirt-2b.js";
 import { evaluateSprtStop, cefrCutValues } from "./sequential-sprt.js";
-import { constructShadowTest } from "../psychometrics/shadow-test.js";
+import { constructShadowTestLPAdapter } from "../psychometrics/shadow-test-solver.js";
 import { getExposureStore } from "./exposure-store.js";
 import {
   filterPoolByMstModule,
@@ -267,9 +267,9 @@ export class AssessmentEngine {
       operationalPool = available.length > 0 ? available : operationalPool;
     }
 
-    // 4a. Shadow-test item selection (van der Linden 2005)
+    // 4a. Shadow-test item selection — Lagrangian LP (van der Linden 2005)
     if (this.config.useShadowTest && effectiveBlueprint && effectiveBlueprint.length > 0) {
-      const { nextItem } = constructShadowTest(
+      const { nextItem } = constructShadowTestLPAdapter(
         operationalPool as any,
         state.theta,
         state.usedItemIds,
