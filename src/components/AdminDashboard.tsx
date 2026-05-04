@@ -33,6 +33,8 @@ import {
   Network,
   FileText,
   Share2,
+  Shield,
+  Link2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
@@ -95,6 +97,9 @@ import { BayesianNetworkDependencePanel } from "./admin/BayesianNetworkDependenc
 import { ScoreReportingAnalyticsPanel } from "./admin/ScoreReportingAnalyticsPanel";
 import { MultigroupInvariancePanel } from "./admin/MultigroupInvariancePanel";
 import { IRTResponseTimePanel } from "./admin/IRTResponseTimePanel";
+import { ItemExposureControlPanel } from "./admin/ItemExposureControlPanel";
+import { ScaleEquatingDiagnosticsPanel } from "./admin/ScaleEquatingDiagnosticsPanel";
+import { PersonFitGrowthPanel } from "./admin/PersonFitGrowthPanel";
 
 interface SessionData {
   id: string;
@@ -124,7 +129,7 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
     | "settings"
     | "proctoring"
     | "billing"
-    | "calibration" | "content-qa" | "item-generator" | "item-inventory" | "distractor-audit" | "aig-quality" | "fraud" | "bias-review" | "dif" | "item-bank" | "standard-setting" | "equating" | "psychometric-quality" | "item-retirement" | "mirt" | "grm" | "exposure" | "rater-reliability" | "classification" | "blueprint" | "theta-diag" | "tif" | "person-fit" | "shadow-test" | "item-drift" | "cognitive-diag" | "bayes-calib" | "mst-routing" | "rt-diag" | "local-dep" | "anchor-items" | "subscale" | "csem" | "tcc" | "dbf" | "poly-dif" | "reliability" | "stopping-rule" | "item-fit" | "cat-sim" | "score-norms" | "online-calib" | "dsf" | "bn-dep" | "score-report" | "mg-inv" | "irt-rt"
+    | "calibration" | "content-qa" | "item-generator" | "item-inventory" | "distractor-audit" | "aig-quality" | "fraud" | "bias-review" | "dif" | "item-bank" | "standard-setting" | "equating" | "psychometric-quality" | "item-retirement" | "mirt" | "grm" | "exposure" | "rater-reliability" | "classification" | "blueprint" | "theta-diag" | "tif" | "person-fit" | "shadow-test" | "item-drift" | "cognitive-diag" | "bayes-calib" | "mst-routing" | "rt-diag" | "local-dep" | "anchor-items" | "subscale" | "csem" | "tcc" | "dbf" | "poly-dif" | "reliability" | "stopping-rule" | "item-fit" | "cat-sim" | "score-norms" | "online-calib" | "dsf" | "bn-dep" | "score-report" | "mg-inv" | "irt-rt" | "exposure" | "scale-eq" | "growth"
   >("overview");
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -651,6 +656,24 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
             onClick={() => { setActiveTab("irt-rt"); setSelectedSessionId(null); }}
             icon={<Clock size={14} />}
             label="RT Model"
+          />
+          <TabButton
+            active={activeTab === "exposure"}
+            onClick={() => { setActiveTab("exposure"); setSelectedSessionId(null); }}
+            icon={<Shield size={14} />}
+            label="Exposure"
+          />
+          <TabButton
+            active={activeTab === "scale-eq"}
+            onClick={() => { setActiveTab("scale-eq"); setSelectedSessionId(null); }}
+            icon={<Link2 size={14} />}
+            label="Scale Eq."
+          />
+          <TabButton
+            active={activeTab === "growth"}
+            onClick={() => { setActiveTab("growth"); setSelectedSessionId(null); }}
+            icon={<TrendingUp size={14} />}
+            label="Growth"
           />
           <TabButton
             active={activeTab === "settings"}
@@ -1430,6 +1453,39 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
             exit={{ opacity: 0, x: -20 }}
           >
             <IRTResponseTimePanel />
+          </motion.div>
+        )}
+
+        {activeTab === "exposure" && (
+          <motion.div
+            key="exposure"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ItemExposureControlPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "scale-eq" && (
+          <motion.div
+            key="scale-eq"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ScaleEquatingDiagnosticsPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "growth" && (
+          <motion.div
+            key="growth"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <PersonFitGrowthPanel />
           </motion.div>
         )}
 

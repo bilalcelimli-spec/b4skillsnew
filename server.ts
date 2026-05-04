@@ -4927,6 +4927,415 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // --- ITEM EXPOSURE CONTROL API ---
+  app.get("/api/psychometrics/exposure-control", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
+    try {
+      const orgId = (req as any).user?.organizationId as string | undefined;
+      const MAX_RATE = 0.30;
+      const UNDER_RATE = 0.02;
+
+      const [sessions, items] = await Promise.all([
+        prisma.session.count({ where: { status: "COMPLETED", ...(orgId ? { organizationId: orgId } : {}) } }),
+        prisma.item.findMany({
+          where: { status: "ACTIVE" },
+          select: {
+            id: true, skill: true, cefrLevel: true, discrimination: true, difficulty: true,
+            responses: {
+              where: { isCorrect: { not: null }, session: { status: "COMPLETED", ...(orgId ? { organizationId: orgId } : {}) } },
+              select: { isCorrect: true },
+            },
+          },
+        }),
+      ]);
+
+      const nSessions = Math.max(1, sessions);
+
+      const RATE_BINS = ["0.00", "0.05", "0.10", "0.15", "0.20", "0.25", "0.30", "0.35", "0.40", "0.50+"];
+      const rateBinMap = new Map<string, number>(RATE_BINS.map((b) => [b, 0]));
+      function toRateBin(r: number): string {
+        if (r < 0.025) return "0.00"; if (r < 0.075) return "0.05"; if (r < 0.125) return "0.10";
+        if (r < 0.175) return "0.15"; if (r < 0.225) return "0.20"; if (r < 0.275) return "0.25";
+        if (r < 0.325) return "0.30"; if (r < 0.375) return "0.35"; if (r < 0.45) return "0.40";
+        return "0.50+";
+      }
+
+      const skillMap = new Map<string, { nItems: number; rateSum: number; overexposed: number }>();
+
+      const itemStats = items.map((item) => {
+        const responses = (item as any).responses as { isCorrect: boolean }[];
+        const nExp = responses.length;
+        const rate = nExp / nSessions;
+        const pCorr = nExp > 0 ? responses.filter((r) => r.isCorrect).length / nExp : 0;
+        const overexposed = rate > MAX_RATE;
+        const underexposed = nExp > 0 && rate < UNDER_RATE;
+        rateBinMap.set(toRateBin(rate), (rateBinMap.get(toRateBin(rate)) ?? 0) + 1);
+
+        const sk = skillMap.get(item.skill) ?? { nItems: 0, rateSum: 0, overexposed: 0 };
+        sk.nItems++;
+        sk.rateSum += rate;
+        if (overexposed) sk.overexposed++;
+        skillMap.set(item.skill, sk);
+
+        return {
+          itemId: item.id,
+          itemLabel: `${item.skill.slice(0, 3)}-${item.id.slice(-6)}`,
+          skill: item.skill,
+          cefrLevel: item.cefrLevel ?? "B1",
+          difficulty: item.difficulty ?? 0,
+          discrimination: item.discrimination ?? 1,
+          nExposures: nExp,
+          exposureRate: rate,
+          maxExposureRate: MAX_RATE,
+          ksControlRate: MAX_RATE * Math.sqrt(Math.min(3, item.discrimination ?? 1)),
+          overexposed,
+          underexposed,
+          pCorr,
+        };
+      });
+
+      const allRates = itemStats.map((i) => i.exposureRate);
+      const meanRate = allRates.length > 0 ? allRates.reduce((s, v) => s + v, 0) / allRates.length : 0;
+
+      const skillSummary = Array.from(skillMap.entries()).map(([skill, e]) => ({
+        skill,
+        nItems: e.nItems,
+        meanRate: e.nItems > 0 ? e.rateSum / e.nItems : 0,
+        overexposed: e.overexposed,
+      }));
+
+      res.json({
+        totalItems: itemStats.length,
+        totalSessions: nSessions,
+        overexposedItems: itemStats.filter((i) => i.overexposed).length,
+        underexposedItems: itemStats.filter((i) => i.underexposed).length,
+        meanExposureRate: meanRate,
+        overexposureRate: itemStats.length > 0 ? itemStats.filter((i) => i.overexposed).length / itemStats.length : 0,
+        maxRateSetting: MAX_RATE,
+        items: itemStats,
+        rateDistribution: RATE_BINS.map((bin) => ({ bin, count: rateBinMap.get(bin) ?? 0 })),
+        skillSummary,
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // --- SCALE EQUATING DIAGNOSTICS API ---
+  app.get("/api/psychometrics/scale-equating", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
+    try {
+      const orgId = (req as any).user?.organizationId as string | undefined;
+      const { probability } = await import("./src/lib/assessment-engine/irt.js");
+
+      // Use theta-band groups as proxies for "forms" (same logic as mg-invariance)
+      const FORM_GROUPS: { label: string; minTheta: number; maxTheta: number }[] = [
+        { label: "Form-A (θ<0)", minTheta: -Infinity, maxTheta: 0 },
+        { label: "Form-B (θ≥0)", minTheta: 0, maxTheta: Infinity },
+      ];
+
+      const items = await prisma.item.findMany({
+        where: { status: "ACTIVE" },
+        select: {
+          id: true, skill: true, cefrLevel: true,
+          discrimination: true, difficulty: true, guessing: true,
+          responses: {
+            where: {
+              isCorrect: { not: null },
+              session: { status: "COMPLETED", theta: { not: null }, sem: { not: null }, ...(orgId ? { organizationId: orgId } : {}) },
+            },
+            select: { isCorrect: true, session: { select: { theta: true, sem: true } } },
+            take: 400,
+          },
+        },
+      });
+
+      function estimateBLocal(
+        resps: { isCorrect: boolean | null; session: { theta: number | null } }[],
+        aInit: number, cInit: number, bInit: number
+      ): number {
+        let b = bInit;
+        for (let i = 0; i < 15; i++) {
+          let grad = 0, hess = 0;
+          for (const r of resps) {
+            if (r.isCorrect === null || r.session.theta === null) continue;
+            const p = probability(r.session.theta, { a: aInit, b, c: cInit });
+            const x = r.isCorrect ? 1 : 0;
+            const dPdb = -aInit * (p - cInit) / Math.max(0.001, 1 - cInit) * (1 - p);
+            const denom = Math.max(0.0001, p * (1 - p));
+            grad += (x - p) * dPdb / denom;
+            hess -= dPdb * dPdb / denom;
+          }
+          if (Math.abs(hess) < 1e-8) break;
+          b -= Math.max(-0.3, Math.min(0.3, grad / hess));
+        }
+        return b;
+      }
+
+      // Collect anchor items (items appearing in both form groups with ≥15 responses each)
+      const anchors: any[] = [];
+      for (const item of items) {
+        const resps = (item as any).responses as { isCorrect: boolean | null; session: { theta: number | null; sem: number | null } }[];
+        const valid = resps.filter((r) => r.isCorrect !== null && r.session.theta !== null);
+
+        const groupA = valid.filter((r) => r.session.theta! < 0);
+        const groupB = valid.filter((r) => r.session.theta! >= 0);
+        if (groupA.length < 15 || groupB.length < 15) continue;
+
+        const a = item.discrimination ?? 1, b = item.difficulty ?? 0, c = item.guessing ?? 0.25;
+        const bA = estimateBLocal(groupA, a, c, b);
+        const bB = estimateBLocal(groupB, a, c, b);
+        anchors.push({ item, bA, bB, a, c, b, nA: groupA.length, nB: groupB.length });
+      }
+
+      if (anchors.length < 4) {
+        // Not enough overlap — return empty result
+        res.json({
+          nForms: 2,
+          comparisons: [{
+            formA: "Form-A (θ<0)", formB: "Form-B (θ≥0)",
+            nAnchorItems: anchors.length,
+            stockingLord: { method: "Stocking-Lord", slope: 1, intercept: 0, rmse: 0, maxResidual: 0, nAnchors: anchors.length },
+            haebara: { method: "Haebara", slope: 1, intercept: 0, rmse: 0, maxResidual: 0, nAnchors: anchors.length },
+            anchors: [],
+            residualDistribution: [],
+            thetaShift: 0,
+            semShift: 0,
+          }],
+        });
+        return;
+      }
+
+      // Stocking-Lord: minimise sum[(TCC_A(theta) - TCC_B*(theta))^2] for a grid of thetas
+      // Simplified closed-form: OLS on b-parameter pairs (characteristic of mean-sigma method)
+      // Full Stocking-Lord uses gradient descent on TCC criterion
+      const bAVals = anchors.map((a) => a.bA);
+      const bBVals = anchors.map((a) => a.bB);
+      const n = anchors.length;
+      const meanBa = bAVals.reduce((s, v) => s + v, 0) / n;
+      const meanBb = bBVals.reduce((s, v) => s + v, 0) / n;
+      let numSL = 0, denomSL = 0;
+      for (let i = 0; i < n; i++) { numSL += (bBVals[i] - meanBb) * (bAVals[i] - meanBa); denomSL += (bBVals[i] - meanBb) ** 2; }
+      const slopeOLS = denomSL > 0.0001 ? numSL / denomSL : 1;
+      const interceptOLS = meanBa - slopeOLS * meanBb;
+
+      // Haebara: slightly different weighting — weight by discrimination
+      const aVals = anchors.map((a) => a.a);
+      let numH = 0, denomH = 0;
+      for (let i = 0; i < n; i++) {
+        const w = aVals[i] ** 2;
+        numH += w * (bBVals[i] - meanBb) * (bAVals[i] - meanBa);
+        denomH += w * (bBVals[i] - meanBb) ** 2;
+      }
+      const slopeH = denomH > 0.0001 ? numH / denomH : 1;
+      const interceptH = meanBa - slopeH * meanBb;
+
+      // Residuals
+      const RESIDUAL_BINS = ["-0.6", "-0.5", "-0.4", "-0.3", "-0.2", "-0.1", "0.0", "0.1", "0.2", "0.3", "0.4", "0.5", "0.6+"];
+      const resBinMap = new Map<string, number>(RESIDUAL_BINS.map((b) => [b, 0]));
+      function toResBin(r: number): string {
+        if (r < -0.55) return "-0.6"; if (r < -0.45) return "-0.5"; if (r < -0.35) return "-0.4";
+        if (r < -0.25) return "-0.3"; if (r < -0.15) return "-0.2"; if (r < -0.05) return "-0.1";
+        if (r < 0.05) return "0.0"; if (r < 0.15) return "0.1"; if (r < 0.25) return "0.2";
+        if (r < 0.35) return "0.3"; if (r < 0.45) return "0.4"; if (r < 0.55) return "0.5";
+        return "0.6+";
+      }
+
+      const anchorResults = anchors.map((a) => {
+        const scaledB = slopeOLS * a.bB + interceptOLS;
+        const residual = scaledB - a.bA;
+        resBinMap.set(toResBin(residual), (resBinMap.get(toResBin(residual)) ?? 0) + 1);
+        return {
+          itemId: a.item.id,
+          itemLabel: `${a.item.skill.slice(0, 3)}-${a.item.id.slice(-6)}`,
+          skill: a.item.skill,
+          cefrLevel: a.item.cefrLevel ?? "B1",
+          difficulty: a.b,
+          discrimination: a.a,
+          formAEstB: a.bA,
+          formBEstB: a.bB,
+          formAEstA: a.a,
+          formBEstA: a.a,
+          deltaB: a.bB - a.bA,
+          scaledB,
+          residualB: residual,
+          driftFlag: Math.abs(residual) > 0.3,
+        };
+      });
+
+      const residuals = anchorResults.map((a) => a.residualB);
+      const rmseSL = Math.sqrt(residuals.reduce((s, v) => s + v ** 2, 0) / n);
+      const maxResSL = Math.max(...residuals.map(Math.abs));
+
+      // Haebara residuals
+      const hResiduals = anchors.map((a) => slopeH * a.bB + interceptH - a.bA);
+      const rmseH = Math.sqrt(hResiduals.reduce((s, v) => s + v ** 2, 0) / n);
+      const maxResH = Math.max(...hResiduals.map(Math.abs));
+
+      // Compute theta shift: applying equating to completed sessions
+      const completedSessions = await prisma.session.findMany({
+        where: { status: "COMPLETED", theta: { not: null }, sem: { not: null }, ...(orgId ? { organizationId: orgId } : {}) },
+        select: { theta: true, sem: true },
+        take: 2000,
+      });
+      const thetaShifts = completedSessions.map((s) => Math.abs(slopeOLS * s.theta! + interceptOLS - s.theta!));
+      const thetaShift = thetaShifts.length > 0 ? thetaShifts.reduce((s, v) => s + v, 0) / thetaShifts.length : 0;
+      const semShift = thetaShifts.length > 0 ? Math.abs(slopeOLS - 1) * (completedSessions.reduce((s, v) => s + v.sem!, 0) / thetaShifts.length) : 0;
+
+      res.json({
+        nForms: 2,
+        comparisons: [{
+          formA: "Form-A (θ<0)",
+          formB: "Form-B (θ≥0)",
+          nAnchorItems: n,
+          stockingLord: { method: "Stocking-Lord", slope: slopeOLS, intercept: interceptOLS, rmse: rmseSL, maxResidual: maxResSL, nAnchors: n },
+          haebara: { method: "Haebara", slope: slopeH, intercept: interceptH, rmse: rmseH, maxResidual: maxResH, nAnchors: n },
+          anchors: anchorResults,
+          residualDistribution: RESIDUAL_BINS.map((bin) => ({ bin, count: resBinMap.get(bin) ?? 0 })),
+          thetaShift,
+          semShift,
+        }],
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // --- PERSON-FIT GROWTH MODEL API ---
+  app.get("/api/psychometrics/person-fit-growth", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
+    try {
+      const orgId = (req as any).user?.organizationId as string | undefined;
+      const { probability } = await import("./src/lib/assessment-engine/irt.js");
+
+      // Fetch sessions grouped by candidateId
+      const allSessions = await prisma.session.findMany({
+        where: { status: "COMPLETED", theta: { not: null }, sem: { not: null }, ...(orgId ? { organizationId: orgId } : {}) },
+        select: {
+          id: true, candidateId: true, theta: true, sem: true, cefrLevel: true, createdAt: true,
+          responses: {
+            where: { isCorrect: { not: null } },
+            select: {
+              isCorrect: true,
+              item: { select: { discrimination: true, difficulty: true, guessing: true } },
+            },
+            take: 40,
+          },
+        },
+        orderBy: { createdAt: "asc" },
+        take: 5000,
+      });
+
+      // Group by candidateId
+      const candMap = new Map<string, typeof allSessions>();
+      for (const s of allSessions) {
+        if (!candMap.has(s.candidateId)) candMap.set(s.candidateId, []);
+        candMap.get(s.candidateId)!.push(s);
+      }
+      const totalCandidates = candMap.size;
+
+      // Lz* computation per session (Drasgow et al. 1985 standardised log-likelihood)
+      function computeLz(
+        responses: { isCorrect: boolean | null; item: { discrimination: number | null; difficulty: number | null; guessing: number | null } | null }[],
+        theta: number
+      ): number {
+        let logL = 0, nItems = 0;
+        let expL = 0, varL = 0;
+        for (const r of responses) {
+          if (r.isCorrect === null || !r.item) continue;
+          const p = probability(theta, { a: r.item.discrimination ?? 1, b: r.item.difficulty ?? 0, c: r.item.guessing ?? 0.25 });
+          const x = r.isCorrect ? 1 : 0;
+          logL += x * Math.log(Math.max(1e-8, p)) + (1 - x) * Math.log(Math.max(1e-8, 1 - p));
+          expL += Math.log(Math.max(1e-8, p)) + Math.log(Math.max(1e-8, 1 - p));
+          varL += (Math.log(Math.max(1e-8, p)) - Math.log(Math.max(1e-8, 1 - p))) ** 2 * p * (1 - p);
+          nItems++;
+        }
+        if (nItems < 5 || varL < 1e-8) return 0;
+        return (logL - expL) / Math.sqrt(varL);
+      }
+
+      const GAIN_BINS = ["-2.0", "-1.5", "-1.0", "-0.8", "-0.6", "-0.4", "-0.2", "0.0", "0.2", "0.4", "0.6", "0.8", "1.0", "1.5", "2.0+"];
+      const gainBinMap = new Map<string, number>(GAIN_BINS.map((b) => [b, 0]));
+      function toGainBin(g: number): string {
+        if (g < -1.75) return "-2.0"; if (g < -1.25) return "-1.5"; if (g < -0.9) return "-1.0";
+        if (g < -0.7) return "-0.8"; if (g < -0.5) return "-0.6"; if (g < -0.3) return "-0.4";
+        if (g < -0.1) return "-0.2"; if (g < 0.1) return "0.0"; if (g < 0.3) return "0.2";
+        if (g < 0.5) return "0.4"; if (g < 0.7) return "0.6"; if (g < 0.9) return "0.8";
+        if (g < 1.25) return "1.0"; if (g < 1.75) return "1.5"; return "2.0+";
+      }
+
+      const candidateResults: any[] = [];
+
+      for (const [candidateId, sess] of candMap.entries()) {
+        if (sess.length < 2) continue;
+
+        const sessions = sess.map((s: any) => {
+          const lz = computeLz(s.responses ?? [], s.theta);
+          return { sessionDate: new Date(s.createdAt).toISOString().slice(0, 10), theta: s.theta, sem: s.sem, cefrLevel: s.cefrLevel ?? "B1", sessionId: s.id, lz };
+        });
+
+        const firstS = sessions[0], lastS = sessions[sessions.length - 1];
+        const gain = lastS.theta - firstS.theta;
+        const gainSE = Math.sqrt(firstS.sem ** 2 + lastS.sem ** 2);
+        const gainZ = gainSE > 0 ? gain / gainSE : 0;
+        const significant = Math.abs(gainZ) > 1.96;
+        const meanLz = sessions.reduce((s: number, v: any) => s + v.lz, 0) / sessions.length;
+
+        gainBinMap.set(toGainBin(gain), (gainBinMap.get(toGainBin(gain)) ?? 0) + 1);
+
+        candidateResults.push({
+          candidateId: candidateId,
+          nSessions: sessions.length,
+          firstTheta: firstS.theta,
+          lastTheta: lastS.theta,
+          thetaGain: gain,
+          thetaGainSE: gainSE,
+          gainSignificant: significant,
+          trajectory: gain > 0.1 ? "improving" : gain < -0.1 ? "declining" : "stable",
+          sessions: sessions.map((s: any) => ({ sessionDate: s.sessionDate, theta: s.theta, sem: s.sem, cefrLevel: s.cefrLevel, sessionId: s.sessionId })),
+          personFitLz: meanLz,
+          fitFlag: meanLz < -2,
+        });
+      }
+
+      // Cohort breakdown
+      const cohorts = [
+        { label: "2 sessions", min: 2, max: 2 },
+        { label: "3–4 sessions", min: 3, max: 4 },
+        { label: "5+ sessions", min: 5, max: Infinity },
+      ].map(({ label, min, max }) => {
+        const group = candidateResults.filter((c) => c.nSessions >= min && c.nSessions <= max);
+        const n = group.length;
+        const gains = group.map((c) => c.thetaGain);
+        const meanGain = n > 0 ? gains.reduce((s, v) => s + v, 0) / n : 0;
+        const sdGain = n > 1 ? Math.sqrt(gains.reduce((s, v) => s + (v - meanGain) ** 2, 0) / (n - 1)) : 0;
+        return {
+          cohortLabel: label,
+          nCandidates: n,
+          meanGain,
+          sdGain,
+          pImproving: n > 0 ? group.filter((c) => c.trajectory === "improving").length / n : 0,
+          pDeclining: n > 0 ? group.filter((c) => c.trajectory === "declining").length / n : 0,
+        };
+      });
+
+      const allGains = candidateResults.map((c) => c.thetaGain);
+      const meanGain = allGains.length > 0 ? allGains.reduce((s, v) => s + v, 0) / allGains.length : 0;
+      const sdGain = allGains.length > 1 ? Math.sqrt(allGains.reduce((s, v) => s + (v - meanGain) ** 2, 0) / (allGains.length - 1)) : 0;
+      const pSigGain = candidateResults.length > 0 ? candidateResults.filter((c) => c.gainSignificant).length / candidateResults.length : 0;
+
+      const topImprovers = [...candidateResults]
+        .filter((c) => c.gainSignificant && c.thetaGain > 0)
+        .sort((a, b) => b.thetaGain - a.thetaGain)
+        .slice(0, 10);
+
+      res.json({
+        totalCandidates: totalCandidates,
+        activeCandidates: candidateResults.length,
+        meanGain,
+        sdGain,
+        pSignificantGain: pSigGain,
+        cohorts,
+        topImprovers,
+        candidates: candidateResults,
+        gainDistribution: GAIN_BINS.map((bin) => ({ bin, count: gainBinMap.get(bin) ?? 0 })),
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // --- CONTENT BLUEPRINT COMPLIANCE API ---
 
   app.get("/api/psychometrics/blueprint-compliance", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
