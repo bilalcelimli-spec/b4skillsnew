@@ -4,7 +4,7 @@ import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
 import { Label } from "./ui/Label";
 
-export const CodeEntryPage: React.FC<{ onBack: () => void, onSuccess: (productLine: string, orgId: string, email: string) => void }> = ({ onBack, onSuccess }) => {
+export const CodeEntryPage: React.FC<{ onBack: () => void, onSuccess: (productLine: string, orgId: string, email: string, candidateId: string) => void }> = ({ onBack, onSuccess }) => {
   const [step, setStep] = useState(1);
   const [code, setCode] = useState("");
   const [formData, setFormData] = useState({
@@ -35,8 +35,9 @@ export const CodeEntryPage: React.FC<{ onBack: () => void, onSuccess: (productLi
     e.preventDefault();
     setError(null);
     setLoading(true);
+    // Generate a stable candidateId for this registration and reuse it
+    const cid = "cand_" + Date.now();
     try {
-      const cid = "cand_" + Date.now(); // Fake simple ID since Firebase is broken
       const res = await fetch("/api/codes/redeem", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -46,7 +47,7 @@ export const CodeEntryPage: React.FC<{ onBack: () => void, onSuccess: (productLi
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       
-      onSuccess(data.productLine, data.organizationId, formData.email);
+      onSuccess(data.productLine, data.organizationId, formData.email, cid);
     } catch (err: any) {
       setError(err.message || "Registration failed");
     } finally {

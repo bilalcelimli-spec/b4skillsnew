@@ -83,7 +83,12 @@ export default function App() {
   }, []);
 
   const startNewTest = async (productLine?: string) => {
-    if (!user || !userProfile?.organizationId) return;
+    if (!user) return;
+    if (!userProfile?.organizationId) {
+      // User has no organization yet — prompt them to enter an exam code
+      setShowCodeEntry(true);
+      return;
+    }
     setTestCompleted(null);
     setCertificate(null);
     setActiveSession({ orgId: userProfile.organizationId, sessionId: "new", productLine });
@@ -122,10 +127,13 @@ export default function App() {
   }
 
   if (showCodeEntry) {
-    return <CodeEntryPage onBack={() => { setShowCodeEntry(false); setShowLanding(true); }} onSuccess={(productLine, orgId, email) => {
-      setUser({ uid: "cand_" + Date.now(), email } as any);
-      setUserProfile({ role: "candidate", organizationId: orgId, allowedProductLine: productLine });
+    return <CodeEntryPage onBack={() => { setShowCodeEntry(false); setShowLanding(true); }} onSuccess={(productLine, orgId, email, candidateId) => {
+      setUser({ uid: candidateId, email } as any);
+      setUserProfile({ role: "CANDIDATE", organizationId: orgId, allowedProductLine: productLine });
       setShowCodeEntry(false);
+      setTestCompleted(null);
+      setCertificate(null);
+      setActiveSession({ orgId, sessionId: "new", productLine });
     }} />;
   }
 

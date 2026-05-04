@@ -166,6 +166,15 @@ async function startServer() {
     legacyHeaders: false,
   });
 
+  // Rate limiter for session launch — prevents anonymous abuse
+  const sessionLaunchLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20,
+    message: { error: 'Too many session launch attempts. Please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
   // Returns error details only in non-production environments
   const devDetails = (err: unknown): string | undefined =>
     process.env.NODE_ENV !== 'production' ? String(err) : undefined;
@@ -447,11 +456,27 @@ async function startServer() {
   // --- ASSESSMENT SESSION API ---
   const { AssessmentService } = await import("./src/lib/assessment-engine/server-engine.js");
 
-  app.post("/api/sessions/launch", async (req, res) => {
+  app.post("/api/sessions/launch", sessionLaunchLimiter, async (req, res) => {
     try {
       const { candidateId, organizationId, productLine } = req.body;
-      if (!candidateId || !organizationId) {
-        return res.status(400).json({ error: "candidateId and organizationId are required" });
+      if (!candidateId || typeof candidateId !== "string" || candidateId.length > 128) {
+        return res.status(400).json({ error: "candidateId is required and must be a string" });
+      }
+      if (!organizationId || typeof organizationId !== "string") {
+        return res.status(400).json({ error: "organizationId is required" });
+      }
+      // If a valid JWT is present, ensure candidateId matches the authenticated user
+      const token = req.cookies?.accessToken || (req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.split(" ")[1] : null);
+      if (token) {
+        try {
+          const decoded: any = jwt.verify(token, JWT_SECRET);
+          if (decoded.userId && decoded.userId !== candidateId) {
+            return res.status(403).json({ error: "candidateId does not match authenticated user" });
+          }
+        } catch {
+          // Invalid/expired token — reject rather than allow mismatch
+          return res.status(401).json({ error: "Invalid or expired access token" });
+        }
       }
       const session = await AssessmentService.launchSession(candidateId, organizationId, productLine);
       res.json(session);

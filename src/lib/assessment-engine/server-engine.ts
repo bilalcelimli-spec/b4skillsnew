@@ -212,9 +212,18 @@ export const AssessmentService = {
     if (!org) {
       throw new Error("Organization not found. Create the organization in the admin console first.");
     }
-    const candidate = await prisma.user.findUnique({ where: { id: candidateId } });
+    let candidate = await prisma.user.findUnique({ where: { id: candidateId } });
     if (!candidate) {
-      throw new Error("Candidate user not found.");
+      // Auto-create a guest candidate record (e.g. from code-entry flow)
+      candidate = await prisma.user.create({
+        data: {
+          id: candidateId,
+          email: `guest_${candidateId}@exam.local`,
+          name: "Guest Candidate",
+          role: "CANDIDATE",
+          organizationId,
+        },
+      });
     }
 
     // --- CREDIT CHECK ---
