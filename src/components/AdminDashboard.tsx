@@ -35,6 +35,9 @@ import {
   Share2,
   Shield,
   Link2,
+  UserCheck,
+  GitBranch,
+  CheckSquare,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
@@ -100,6 +103,9 @@ import { IRTResponseTimePanel } from "./admin/IRTResponseTimePanel";
 import { ItemExposureControlPanel } from "./admin/ItemExposureControlPanel";
 import { ScaleEquatingDiagnosticsPanel } from "./admin/ScaleEquatingDiagnosticsPanel";
 import { PersonFitGrowthPanel } from "./admin/PersonFitGrowthPanel";
+import { RaterCalibrationPanel } from "./admin/RaterCalibrationPanel";
+import { LongitudinalDIFPanel } from "./admin/LongitudinalDIFPanel";
+import { ScoreValidityEvidencePanel } from "./admin/ScoreValidityEvidencePanel";
 
 interface SessionData {
   id: string;
@@ -129,7 +135,7 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
     | "settings"
     | "proctoring"
     | "billing"
-    | "calibration" | "content-qa" | "item-generator" | "item-inventory" | "distractor-audit" | "aig-quality" | "fraud" | "bias-review" | "dif" | "item-bank" | "standard-setting" | "equating" | "psychometric-quality" | "item-retirement" | "mirt" | "grm" | "exposure" | "rater-reliability" | "classification" | "blueprint" | "theta-diag" | "tif" | "person-fit" | "shadow-test" | "item-drift" | "cognitive-diag" | "bayes-calib" | "mst-routing" | "rt-diag" | "local-dep" | "anchor-items" | "subscale" | "csem" | "tcc" | "dbf" | "poly-dif" | "reliability" | "stopping-rule" | "item-fit" | "cat-sim" | "score-norms" | "online-calib" | "dsf" | "bn-dep" | "score-report" | "mg-inv" | "irt-rt" | "exposure" | "scale-eq" | "growth"
+    | "calibration" | "content-qa" | "item-generator" | "item-inventory" | "distractor-audit" | "aig-quality" | "fraud" | "bias-review" | "dif" | "item-bank" | "standard-setting" | "equating" | "psychometric-quality" | "item-retirement" | "mirt" | "grm" | "exposure" | "rater-reliability" | "classification" | "blueprint" | "theta-diag" | "tif" | "person-fit" | "shadow-test" | "item-drift" | "cognitive-diag" | "bayes-calib" | "mst-routing" | "rt-diag" | "local-dep" | "anchor-items" | "subscale" | "csem" | "tcc" | "dbf" | "poly-dif" | "reliability" | "stopping-rule" | "item-fit" | "cat-sim" | "score-norms" | "online-calib" | "dsf" | "bn-dep" | "score-report" | "mg-inv" | "irt-rt" | "exposure" | "scale-eq" | "growth" | "rater-calib" | "long-dif" | "validity"
   >("overview");
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -674,6 +680,24 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
             onClick={() => { setActiveTab("growth"); setSelectedSessionId(null); }}
             icon={<TrendingUp size={14} />}
             label="Growth"
+          />
+          <TabButton
+            active={activeTab === "rater-calib"}
+            onClick={() => { setActiveTab("rater-calib"); setSelectedSessionId(null); }}
+            icon={<UserCheck size={14} />}
+            label="Rater Calib."
+          />
+          <TabButton
+            active={activeTab === "long-dif"}
+            onClick={() => { setActiveTab("long-dif"); setSelectedSessionId(null); }}
+            icon={<GitBranch size={14} />}
+            label="Long. DIF"
+          />
+          <TabButton
+            active={activeTab === "validity"}
+            onClick={() => { setActiveTab("validity"); setSelectedSessionId(null); }}
+            icon={<CheckSquare size={14} />}
+            label="Validity"
           />
           <TabButton
             active={activeTab === "settings"}
@@ -1486,6 +1510,39 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
             exit={{ opacity: 0, x: -20 }}
           >
             <PersonFitGrowthPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "rater-calib" && (
+          <motion.div
+            key="rater-calib"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <RaterCalibrationPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "long-dif" && (
+          <motion.div
+            key="long-dif"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <LongitudinalDIFPanel />
+          </motion.div>
+        )}
+
+        {activeTab === "validity" && (
+          <motion.div
+            key="validity"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+          >
+            <ScoreValidityEvidencePanel />
           </motion.div>
         )}
 
