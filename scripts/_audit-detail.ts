@@ -4,7 +4,7 @@
  * 2. Listening items missing ttsScript or audioUrl
  */
 import 'dotenv/config';
-import { PrismaClient } from '@prismaClient';
+import { PrismaClient } from '@prisma/client';
 const p = new PrismaClient();
 
 async function main() {
