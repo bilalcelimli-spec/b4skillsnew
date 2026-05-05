@@ -55,7 +55,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   const [sectionIndex, setSectionIndex] = useState<number>(0);
   const responseStartTime = React.useRef<number>(Date.now());
 
-  const SECTION_ORDER = ['VOCABULARY', 'GRAMMAR', 'LISTENING', 'READING', 'WRITING', 'SPEAKING'];
+  const SECTION_ORDER = ['VOCABULARY', 'GRAMMAR', 'LISTENING', 'READING'];
   const SECTION_LABELS: Record<string, string> = {
     VOCABULARY: 'Vocabulary',
     GRAMMAR: 'Grammar',

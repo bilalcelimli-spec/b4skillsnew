@@ -36,8 +36,11 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   /** Renders the item code badge (top-right corner) */
   const renderCodeBadge = () =>
     itemCode ? (
-      <div className="flex justify-end mb-2">
-        <span className="font-mono text-[10px] font-bold tracking-widest text-slate-400 bg-slate-100 px-2 py-0.5 rounded select-all" title="Item code">
+      <div className="flex justify-end mb-3">
+        <span
+          className="font-mono text-[11px] font-black tracking-widest text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg select-all shadow-sm"
+          title="Item code"
+        >
           {itemCode}
         </span>
       </div>

@@ -1,4 +1,5 @@
 import { AssessmentEngine } from "./engine";
+import { selectNextItem } from "./selector.js";
 import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint, IrtParameters } from "./types";
 import { prisma } from "../prisma";
 import { ScoringOrchestrator } from "../scoring/scoring-orchestrator";
@@ -121,29 +122,24 @@ function toEngineState(session: {
  */
 
 // ─── STRUCTURED SECTION ORDER ─────────────────────────────────────────────────
-// Pedagogical rationale:
-//  1. VOCABULARY   — Foundation: lexical knowledge underpins all other skills
-//  2. GRAMMAR      — Structure: morpho-syntax informs productive skill scoring
-//  3. LISTENING    — Receptive (aural): real-time parsing with audio
-//  4. READING      — Receptive (written): text comprehension at own pace
-//  5. WRITING      — Productive (written): informed by vocab + grammar scores
-//  6. SPEAKING     — Productive (oral): highest cognitive load, last to avoid fatigue
+// 4-skill adaptive assessment: VOCABULARY → GRAMMAR → LISTENING → READING
+// Each section uses IRT-based adaptive item selection (MFI + exposure control).
+// Sections advance when per-skill SEM ≤ threshold OR max items reached.
 export const SECTION_ORDER: SkillType[] = [
   SkillType.VOCABULARY,
   SkillType.GRAMMAR,
   SkillType.LISTENING,
   SkillType.READING,
-  SkillType.WRITING,
-  SkillType.SPEAKING,
 ];
 
+// Per-section stopping config.
+// semThreshold: SEM value that triggers early stop (requires minItems already answered).
+// Values are calibrated for typical IRT items with a ≈ 1.0–1.5.
 const SECTION_CONFIG: Record<string, { minItems: number; maxItems: number; semThreshold: number }> = {
-  VOCABULARY: { minItems: 15, maxItems: 25, semThreshold: 0.35 },
-  GRAMMAR:    { minItems: 15, maxItems: 25, semThreshold: 0.35 },
-  LISTENING:  { minItems: 5,  maxItems: 12, semThreshold: 0.45 },
-  READING:    { minItems: 5,  maxItems: 12, semThreshold: 0.45 },
-  WRITING:    { minItems: 1,  maxItems: 2,  semThreshold: 1.0  },
-  SPEAKING:   { minItems: 1,  maxItems: 2,  semThreshold: 1.0  },
+  VOCABULARY: { minItems: 6, maxItems: 10, semThreshold: 0.45 },
+  GRAMMAR:    { minItems: 5, maxItems: 8,  semThreshold: 0.45 },
+  LISTENING:  { minItems: 4, maxItems: 6,  semThreshold: 0.50 },
+  READING:    { minItems: 3, maxItems: 5,  semThreshold: 0.50 },
 };
 
 /** Default content blueprint: min/max items per skill in a 15-item test. */
@@ -382,8 +378,17 @@ export const AssessmentService = {
     const dbItems = await prisma.item.findMany({ where: whereClause });
     const itemPool: Item[] = dbItems.map((di) => dbItemToEngineItem(di));
 
-    // Select next item using CAT engine (MFI + exposure control + IRT)
-    const nextItem = await engine.getNextItem(state, itemPool);
+    // Select next item using direct MFI + exposure control (bypasses global blueprint
+    // which would incorrectly cap single-skill section pools).
+    const operationalPool = itemPool.filter(item => !item.isPretest);
+    const nextItem = await selectNextItem(
+      operationalPool,
+      state.theta,
+      state.usedItemIds,
+      5,        // topN candidates for randomisation
+      undefined, // no blueprint constraint — section itself is the constraint
+      undefined
+    );
     if (!nextItem) {
       // No more items in this section — force advance
       const newSectionIndex = sectionIndex + 1;
