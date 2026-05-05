@@ -215,7 +215,8 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     case "LISTENING":
       return (
         <div className="space-y-6" role="form" aria-labelledby="listening-prompt">
-          {renderPassage(content.passage && !content.passage.startsWith('[Audio:') ? content.passage : undefined)}
+          {/* Never show the raw TTS script — only render passage for mock [Audio:] placeholders without a real audioUrl */}
+          {!content.audioUrl && renderPassage(content.passage && !content.passage.startsWith('[Audio:') ? content.passage : undefined)}
           
           {/* Real Audio Player */}
           {content.audioUrl ? (

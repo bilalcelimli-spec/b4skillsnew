@@ -491,7 +491,7 @@ export const CandidatePlayer: React.FC<CandidatePlayerProps> = ({ organizationId
                   <span className="text-slate-400 text-xs">•</span>
                   <span className="text-slate-500 text-xs font-medium">Difficulty: {currentItem.difficulty}</span>
                 </div>
-                {currentItem.content.passage && (
+                {currentItem.content.passage && !(currentItem.skill === 'LISTENING' && currentItem.content.audioUrl) && (
                   <div className="p-4 bg-white border border-slate-200 rounded-lg text-slate-800 leading-relaxed mb-4 italic">
                     {currentItem.content.passage}
                   </div>

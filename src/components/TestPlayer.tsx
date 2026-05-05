@@ -13,7 +13,12 @@ import {
   AlertCircle, 
   ChevronRight, 
   GraduationCap,
-  Activity
+  Activity,
+  BookOpen,
+  Headphones,
+  Pen,
+  Mic as MicIcon,
+  BookMarked
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
@@ -45,6 +50,27 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'analyzing' | 'success' | 'error'>('idle');
   const [showPractice, setShowPractice] = useState(true);
+  const [sectionTransition, setSectionTransition] = useState<{ completedSection: string; nextSection: string; sectionIndex: number; totalSections: number } | null>(null);
+  const [currentSection, setCurrentSection] = useState<string>('VOCABULARY');
+  const [sectionIndex, setSectionIndex] = useState<number>(0);
+
+  const SECTION_ORDER = ['VOCABULARY', 'GRAMMAR', 'LISTENING', 'READING', 'WRITING', 'SPEAKING'];
+  const SECTION_LABELS: Record<string, string> = {
+    VOCABULARY: 'Vocabulary',
+    GRAMMAR: 'Grammar',
+    LISTENING: 'Listening',
+    READING: 'Reading',
+    WRITING: 'Writing',
+    SPEAKING: 'Speaking',
+  };
+  const SECTION_COLORS: Record<string, string> = {
+    VOCABULARY: 'bg-pink-500',
+    GRAMMAR: 'bg-violet-500',
+    LISTENING: 'bg-cyan-500',
+    READING: 'bg-blue-500',
+    WRITING: 'bg-emerald-500',
+    SPEAKING: 'bg-amber-500',
+  };
 
   // Launch Session
   useEffect(() => {
@@ -96,6 +122,30 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         setFinished(true);
         onComplete(data.finalTheta, sid);
         return;
+      }
+
+      // Section transition — show interstitial screen then auto-continue
+      if (data.sectionTransition) {
+        setSectionTransition({
+          completedSection: data.completedSection,
+          nextSection: data.nextSection,
+          sectionIndex: data.sectionIndex,
+          totalSections: data.totalSections,
+        });
+        setCurrentSection(data.nextSection);
+        setSectionIndex(data.sectionIndex);
+        setLoading(false);
+        // Auto-advance after 3s
+        setTimeout(() => {
+          setSectionTransition(null);
+          fetchNextItem(sid);
+        }, 3000);
+        return;
+      }
+
+      if (data.currentSection) {
+        setCurrentSection(data.currentSection);
+        setSectionIndex(data.sectionIndex ?? 0);
       }
 
       setCurrentItem(data.item);
@@ -297,14 +347,27 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         </div>
       </header>
 
-      {/* Progress Bar */}
-      <div className="h-1.5 w-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={20} aria-valuenow={status?.progress || 0}>
-        <motion.div 
-          className="h-full bg-indigo-600"
-          initial={{ width: 0 }}
-          animate={{ width: `${(status?.progress / 20) * 100}%` }} // 20 is maxItems
-          transition={{ duration: 0.5 }}
-        />
+      {/* Section Progress Bar */}
+      <div className="bg-white border-b border-slate-100 px-6 py-2 flex items-center gap-2">
+        {SECTION_ORDER.map((sec, i) => (
+          <div key={sec} className="flex items-center gap-1.5">
+            <div
+              className={cn(
+                "text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full transition-all",
+                i < sectionIndex
+                  ? `${SECTION_COLORS[sec]} text-white opacity-70`
+                  : i === sectionIndex
+                  ? `${SECTION_COLORS[sec]} text-white shadow-sm`
+                  : "bg-slate-100 text-slate-400"
+              )}
+            >
+              {SECTION_LABELS[sec]}
+            </div>
+            {i < SECTION_ORDER.length - 1 && (
+              <ChevronRight size={12} className="text-slate-300" />
+            )}
+          </div>
+        ))}
       </div>
 
       {/* Main Content */}
@@ -349,7 +412,32 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
           </AnimatePresence>
 
           <AnimatePresence mode="wait">
-            {finished ? (
+            {sectionTransition ? (
+              <motion.div
+                key="section-transition"
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                className="flex flex-col items-center justify-center py-24 text-center"
+              >
+                <div className={cn("w-20 h-20 rounded-2xl flex items-center justify-center text-white shadow-xl mb-6", SECTION_COLORS[sectionTransition.nextSection])}>
+                  <CheckCircle2 size={40} />
+                </div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Section {sectionTransition.sectionIndex} of {sectionTransition.totalSections} Complete
+                </div>
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-2">
+                  {SECTION_LABELS[sectionTransition.completedSection]} Complete
+                </h2>
+                <p className="text-slate-500 font-medium mb-8">
+                  Next up: <span className="font-black text-slate-800">{SECTION_LABELS[sectionTransition.nextSection]}</span>
+                </p>
+                <div className="flex items-center gap-2 text-slate-400 text-sm">
+                  <Loader2 size={16} className="animate-spin" />
+                  Starting {SECTION_LABELS[sectionTransition.nextSection]} section...
+                </div>
+              </motion.div>
+            ) : finished ? (
               <motion.div
                 key="feedback"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -387,11 +475,11 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
               >
                 <div className="mb-8 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold uppercase tracking-widest">
-                      {currentItem.skill}
+                    <span className={cn("px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-widest text-white", SECTION_COLORS[currentSection] ?? 'bg-indigo-500')}>
+                      {SECTION_LABELS[currentSection] ?? currentItem.skill}
                     </span>
                     <span className="text-xs text-slate-400 font-medium">
-                      Task {(status?.progress ?? 0) + 1} of 20
+                      {status?.progress ?? 0} answered
                     </span>
                   </div>
                   <div className="flex items-center gap-2">

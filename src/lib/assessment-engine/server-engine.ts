@@ -118,6 +118,32 @@ function toEngineState(session: {
  * Manages the lifecycle of test sessions and interacts with the database.
  */
 
+// ─── STRUCTURED SECTION ORDER ─────────────────────────────────────────────────
+// Pedagogical rationale:
+//  1. VOCABULARY   — Foundation: lexical knowledge underpins all other skills
+//  2. GRAMMAR      — Structure: morpho-syntax informs productive skill scoring
+//  3. LISTENING    — Receptive (aural): real-time parsing with audio
+//  4. READING      — Receptive (written): text comprehension at own pace
+//  5. WRITING      — Productive (written): informed by vocab + grammar scores
+//  6. SPEAKING     — Productive (oral): highest cognitive load, last to avoid fatigue
+export const SECTION_ORDER: SkillType[] = [
+  SkillType.VOCABULARY,
+  SkillType.GRAMMAR,
+  SkillType.LISTENING,
+  SkillType.READING,
+  SkillType.WRITING,
+  SkillType.SPEAKING,
+];
+
+const SECTION_CONFIG: Record<string, { minItems: number; maxItems: number; semThreshold: number }> = {
+  VOCABULARY: { minItems: 15, maxItems: 25, semThreshold: 0.35 },
+  GRAMMAR:    { minItems: 15, maxItems: 25, semThreshold: 0.35 },
+  LISTENING:  { minItems: 5,  maxItems: 12, semThreshold: 0.45 },
+  READING:    { minItems: 5,  maxItems: 12, semThreshold: 0.45 },
+  WRITING:    { minItems: 1,  maxItems: 2,  semThreshold: 1.0  },
+  SPEAKING:   { minItems: 1,  maxItems: 2,  semThreshold: 1.0  },
+};
+
 /** Default content blueprint: min/max items per skill in a 15-item test. */
 const DEFAULT_BLUEPRINT: BlueprintConstraint[] = [
   { skill: SkillType.READING,    minCount: 2, maxCount: 4 },
@@ -265,72 +291,138 @@ export const AssessmentService = {
   },
 
   /**
-   * Get the next item for a session
+   * Get the next item for a session — structured section flow:
+   * VOCABULARY → GRAMMAR → LISTENING → READING → WRITING → SPEAKING
    */
   async getNextItem(sessionId: string) {
     const engine = await getEngine();
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
-      include: { responses: true }
+      include: { responses: { include: { item: { select: { skill: true } } } } }
     });
 
     if (!session || session.status !== SessionStatus.IN_PROGRESS) {
       throw new Error("Invalid session");
     }
 
+    const meta = (session.metadata as any) ?? {};
     const state = toEngineState(session);
-    const itemMapForStop = await loadItemMapByIds(
-      state.responses.map((r) => r.itemId)
+
+    // ── SECTION FLOW ──────────────────────────────────────────────────────────
+    // Determine current section (default to index 0 = VOCABULARY)
+    const sectionIndex: number = meta.sectionIndex ?? 0;
+
+    // All sections complete
+    if (sectionIndex >= SECTION_ORDER.length) {
+      await this.finalizeSession(sessionId, session.theta, { stopReason: "ALL_SECTIONS_COMPLETE" });
+      return { stop: true, reason: "ALL_SECTIONS_COMPLETE", finalTheta: session.theta };
+    }
+
+    const currentSkill = SECTION_ORDER[sectionIndex];
+    const sectionCfg = SECTION_CONFIG[currentSkill as string];
+
+    // Count non-pretest responses for the current skill
+    const sectionResponses = session.responses.filter(
+      (r) => !r.isPretest && r.item?.skill === (currentSkill as string)
     );
+    const sectionCount = sectionResponses.length;
 
-    // Check if we should stop
-    const stopCheck = engine.shouldStop(state, { items: itemMapForStop });
-    if (stopCheck.stop) {
-      await this.finalizeSession(sessionId, session.theta, { stopReason: stopCheck.reason });
-      return { stop: true, reason: stopCheck.reason, finalTheta: session.theta };
-    }
+    // Per-skill SEM from skill profiles (falls back to global SEM)
+    const skillSem = state.skillProfiles?.[currentSkill]?.sem ?? state.sem;
 
-    // Fetch available items from DB
-    let whereClause: any = {
-      status: { in: ["ACTIVE", "PRETEST"] },
-      id: { notIn: Array.from(state.usedItemIds) }
-    };
-    
-    // Filter by product line / skill if session was launched with a specific one
-    const SKILL_TYPES = ["READING", "LISTENING", "WRITING", "SPEAKING", "GRAMMAR", "VOCABULARY"];
-    const pLine = (session.metadata as any)?.productLine;
-    if (pLine && pLine !== "General") {
-      if (SKILL_TYPES.includes(pLine)) {
-        // productLine maps directly to a SkillType — filter by skill
-        whereClause.skill = pLine;
-      } else {
-        // productLine is a custom tag (e.g. a course code)
-        whereClause.tags = { has: pLine };
+    // Check if current section is complete
+    const sectionDone =
+      sectionCount >= sectionCfg.minItems &&
+      (skillSem <= sectionCfg.semThreshold || sectionCount >= sectionCfg.maxItems);
+
+    if (sectionDone) {
+      const newSectionIndex = sectionIndex + 1;
+
+      if (newSectionIndex >= SECTION_ORDER.length) {
+        // All sections done → finalize
+        await this.finalizeSession(sessionId, session.theta, { stopReason: "ALL_SECTIONS_COMPLETE" });
+        return { stop: true, reason: "ALL_SECTIONS_COMPLETE", finalTheta: session.theta };
       }
+
+      const nextSkill = SECTION_ORDER[newSectionIndex];
+      // Persist new section index in metadata
+      await prisma.session.update({
+        where: { id: sessionId },
+        data: {
+          metadata: {
+            ...meta,
+            sectionIndex: newSectionIndex,
+            [`${currentSkill}_theta`]: session.theta,
+            [`${currentSkill}_sem`]: skillSem,
+          }
+        }
+      });
+
+      return {
+        stop: false,
+        sectionTransition: true,
+        completedSection: currentSkill as string,
+        nextSection: nextSkill as string,
+        sectionIndex: newSectionIndex,
+        totalSections: SECTION_ORDER.length,
+        sectionProgress: sectionCount,
+      };
     }
 
-    const dbItems = await prisma.item.findMany({
-      where: whereClause
-    });
+    // ── ITEM SELECTION ────────────────────────────────────────────────────────
+    // Fetch available items restricted to the current skill section
+    const whereClause: any = {
+      status: { in: ["ACTIVE", "PRETEST"] },
+      id: { notIn: Array.from(state.usedItemIds) },
+      skill: currentSkill as string,
+    };
 
+    const dbItems = await prisma.item.findMany({ where: whereClause });
     const itemPool: Item[] = dbItems.map((di) => dbItemToEngineItem(di));
 
-    // Select next item
+    // Select next item using CAT engine (MFI + exposure control + IRT)
     const nextItem = await engine.getNextItem(state, itemPool);
     if (!nextItem) {
-      await this.finalizeSession(sessionId, session.theta, { stopReason: "NO_ITEMS_LEFT" });
-      return { stop: true, reason: "NO_ITEMS_LEFT", finalTheta: session.theta };
+      // No more items in this section — force advance
+      const newSectionIndex = sectionIndex + 1;
+      if (newSectionIndex >= SECTION_ORDER.length) {
+        await this.finalizeSession(sessionId, session.theta, { stopReason: "ALL_SECTIONS_COMPLETE" });
+        return { stop: true, reason: "ALL_SECTIONS_COMPLETE", finalTheta: session.theta };
+      }
+      const nextSkill = SECTION_ORDER[newSectionIndex];
+      await prisma.session.update({
+        where: { id: sessionId },
+        data: { metadata: { ...meta, sectionIndex: newSectionIndex } }
+      });
+      return {
+        stop: false,
+        sectionTransition: true,
+        completedSection: currentSkill as string,
+        nextSection: nextSkill as string,
+        sectionIndex: newSectionIndex,
+        totalSections: SECTION_ORDER.length,
+        sectionProgress: sectionCount,
+        reason: "NO_ITEMS_LEFT_IN_SECTION",
+      };
     }
 
     // ── ANSWER SECURITY ──────────────────────────────────────────────────────
     // Strip sensitive answer/rubric fields before sending to client.
     // Scoring always happens server-side; the client never receives the key.
     const safeContent = { ...(nextItem.metadata || {}) };
-    delete safeContent.correctAnswer;
-    delete safeContent.correctOptionIndex;
-    delete safeContent.rubric;
+    delete (safeContent as any).correctAnswer;
+    delete (safeContent as any).correctOptionIndex;
+    delete (safeContent as any).rubric;
 
-    return { stop: false, item: { ...nextItem, metadata: safeContent } };
+    return {
+      stop: false,
+      sectionTransition: false,
+      item: { ...nextItem, metadata: safeContent },
+      currentSection: currentSkill as string,
+      sectionIndex,
+      totalSections: SECTION_ORDER.length,
+      sectionProgress: sectionCount,
+    };
   },
 
   /**
