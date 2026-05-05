@@ -143,8 +143,12 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     if (audioCtxRef.current?.state === "suspended") {
       audioCtxRef.current.resume();
     }
-    audioRef.current.play();
-    setIsPlaying(true);
+    audioRef.current.play().then(() => {
+      setIsPlaying(true);
+    }).catch((err) => {
+      console.warn("Audio playback failed:", err);
+      setIsPlaying(false);
+    });
   };
 
   const handlePause = () => {
@@ -220,6 +224,10 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
         onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
         onEnded={handleEnded}
+        onError={() => {
+          setIsPlaying(false);
+          console.warn("Audio failed to load:", src);
+        }}
       />
 
       {/* Waveform Canvas */}

@@ -112,6 +112,22 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     return () => clearInterval(timer);
   }, [loading, sessionId, finished, timeLeft]);
 
+  // Applies the result of a /next fetch to state (shared between normal flow and pre-fetched transition)
+  const applyNextData = (data: any, sid: string) => {
+    if (data.stop) {
+      setFinished(true);
+      onComplete(data.finalTheta, sid);
+      return;
+    }
+    if (data.currentSection) {
+      setCurrentSection(data.currentSection);
+      setSectionIndex(data.sectionIndex ?? 0);
+    }
+    responseStartTime.current = Date.now();
+    setCurrentItem(data.item);
+    fetchStatus(sid);
+  };
+
   const fetchNextItem = async (sid: string) => {
     setLoading(true);
     setUploadStatus('idle');
@@ -130,7 +146,9 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         return;
       }
 
-      // Section transition — show interstitial screen then auto-continue
+      // Section transition: show interstitial AND pre-fetch the next item in parallel.
+      // The transition screen stays until BOTH the minimum display time (2.5s) AND the
+      // next item fetch have completed — eliminating the stale-closure setTimeout bug.
       if (data.sectionTransition) {
         setSectionTransition({
           completedSection: data.completedSection,
@@ -141,22 +159,45 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         setCurrentSection(data.nextSection);
         setSectionIndex(data.sectionIndex);
         setLoading(false);
-        // Auto-advance after 3s
-        setTimeout(() => {
+
+        const MIN_DISPLAY_MS = 2500;
+        const t0 = Date.now();
+        try {
+          const nextRes = await fetch(`/api/sessions/${sid}/next`);
+          const nextData = await nextRes.json();
+          // Wait for minimum display time
+          const elapsed = Date.now() - t0;
+          if (elapsed < MIN_DISPLAY_MS) {
+            await new Promise<void>(r => setTimeout(r, MIN_DISPLAY_MS - elapsed));
+          }
           setSectionTransition(null);
-          fetchNextItem(sid);
-        }, 3000);
+          if (nextData.stop) {
+            setFinished(true);
+            onComplete(nextData.finalTheta, sid);
+          } else if (nextData.sectionTransition) {
+            // Empty section — show briefly then continue
+            setSectionTransition({
+              completedSection: nextData.completedSection,
+              nextSection: nextData.nextSection,
+              sectionIndex: nextData.sectionIndex,
+              totalSections: nextData.totalSections,
+            });
+            setCurrentSection(nextData.nextSection);
+            setSectionIndex(nextData.sectionIndex);
+            await new Promise<void>(r => setTimeout(r, 1500));
+            setSectionTransition(null);
+            fetchNextItem(sid);
+          } else {
+            applyNextData(nextData, sid);
+          }
+        } catch {
+          setSectionTransition(null);
+          setError("Failed to fetch next item after section transition.");
+        }
         return;
       }
 
-      if (data.currentSection) {
-        setCurrentSection(data.currentSection);
-        setSectionIndex(data.sectionIndex ?? 0);
-      }
-
-      responseStartTime.current = Date.now();
-      setCurrentItem(data.item);
-      fetchStatus(sid);
+      applyNextData(data, sid);
     } catch (err) {
       setError("Failed to fetch next item.");
     } finally {
@@ -443,10 +484,19 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
                 <p className="text-slate-500 font-medium mb-8">
                   Next up: <span className="font-black text-slate-800">{SECTION_LABELS[sectionTransition.nextSection]}</span>
                 </p>
-                <div className="flex items-center gap-2 text-slate-400 text-sm">
+                <div className="flex items-center gap-2 text-slate-400 text-sm mb-6">
                   <Loader2 size={16} className="animate-spin" />
                   Starting {SECTION_LABELS[sectionTransition.nextSection]} section...
                 </div>
+                <button
+                  onClick={() => {
+                    setSectionTransition(null);
+                    if (sessionId) fetchNextItem(sessionId);
+                  }}
+                  className="text-xs text-indigo-500 hover:text-indigo-700 font-bold underline underline-offset-2 transition-colors"
+                >
+                  Continue manually →
+                </button>
               </motion.div>
             ) : finished ? (
               <motion.div

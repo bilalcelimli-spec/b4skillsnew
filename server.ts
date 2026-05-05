@@ -7411,7 +7411,7 @@ async function startServer() {
     // do not send index.html — that breaks CSS/JS MIME types in the browser.
     app.get("*", (req, res) => {
       const p = req.path;
-      if (p.startsWith("/assets/") || /\.(js|mjs|css|map|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|json|webmanifest)$/i.test(p)) {
+      if (p.startsWith("/assets/") || /\.(js|mjs|css|map|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|json|webmanifest|wav|mp3|ogg|aac|m4a)$/i.test(p)) {
         return res.status(404).type("text/plain").send("Not found");
       }
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
