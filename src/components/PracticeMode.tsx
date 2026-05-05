@@ -292,26 +292,21 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
       </h3>
 
       <div className="p-6 bg-indigo-50 border border-indigo-100 rounded-2xl space-y-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 mb-2">
           <Volume2 className="text-indigo-600" size={24} />
           <div>
             <div className="font-bold text-slate-900">Audio Player Demo</div>
             <div className="text-sm text-slate-500">In the real test, audio auto-plays with a 3-second countdown. You get 2 plays maximum.</div>
           </div>
         </div>
-        <div className="bg-white rounded-xl p-4 border border-indigo-100">
-          <div className="flex items-center gap-3 text-sm text-slate-600">
-            <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">▶</div>
-            <div className="flex-1">
-              <div className="h-2 bg-indigo-100 rounded-full w-full" />
-              <div className="flex justify-between mt-1 text-xs text-slate-400">
-                <span>0:00</span>
-                <span>2 plays left</span>
-                <span>1:30</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <AudioPlayer
+          src="/audio/practice-demo.wav"
+          maxPlays={2}
+          autoPlay={false}
+          countdownSeconds={0}
+          showWaveform={true}
+          onAllPlaysUsed={() => {}}
+        />
       </div>
 
       <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex gap-3">
