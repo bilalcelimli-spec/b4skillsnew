@@ -39,6 +39,7 @@ export interface Asset {
 
 export interface Item {
   id: string;
+  itemCode?: string | null; // Human-readable unique code e.g. VOC-B1-0042
   skill: SkillType;
   params: IrtParameters;
   isPretest?: boolean; // If true, this item is for calibration and doesn't affect theta

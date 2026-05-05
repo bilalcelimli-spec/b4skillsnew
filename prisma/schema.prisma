@@ -186,6 +186,7 @@ model CandidateProfile {
 
 model Item {
   id              String    @id @default(cuid())
+  itemCode        String?   @unique // Human-readable code e.g. VOC-B1-0042
   organizationId  String?   // Null means global/system item
   organization    Organization? @relation(fields: [organizationId], references: [id])
   

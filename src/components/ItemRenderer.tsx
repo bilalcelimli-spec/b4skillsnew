@@ -28,9 +28,20 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   uploadStatus = 'idle'
 }) => {
   const content = (item as any).content ?? item.metadata ?? {};
+  const itemCode = (item as any).itemCode as string | null | undefined;
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
     const [textValue, setTextValue] = useState<string>("");
     const itemSkill = String(item.skill).toUpperCase();
+
+  /** Renders the item code badge (top-right corner) */
+  const renderCodeBadge = () =>
+    itemCode ? (
+      <div className="flex justify-end mb-2">
+        <span className="font-mono text-[10px] font-bold tracking-widest text-slate-400 bg-slate-100 px-2 py-0.5 rounded select-all" title="Item code">
+          {itemCode}
+        </span>
+      </div>
+    ) : null;
   const fallbackImage =
     "data:image/svg+xml;utf8," +
     encodeURIComponent(
@@ -102,6 +113,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     return <>{elements}</>;
   };
 
+  const renderItem = (): React.ReactElement => {
   switch (itemSkill) {
     case "READING":
     case "GRAMMAR":
@@ -451,4 +463,12 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     default:
       return <div>Unsupported item type</div>;
   }
+  }; // end renderItem
+
+  return (
+    <>
+      {renderCodeBadge()}
+      {renderItem()}
+    </>
+  );
 };

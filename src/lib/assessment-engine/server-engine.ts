@@ -29,6 +29,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 
 function dbItemToEngineItem(u: {
   id: string;
+  itemCode?: string | null;
   skill: string;
   discrimination: number;
   difficulty: number;
@@ -45,6 +46,7 @@ function dbItemToEngineItem(u: {
   if (typeof ap === "number" && Number.isFinite(ap)) params.aProductive = ap;
   return {
     id: u.id,
+    itemCode: u.itemCode ?? null,
     skill: u.skill as unknown as SkillType,
     isPretest: u.isPretest || u.status === "PRETEST",
     status: u.status as "DRAFT" | "REVIEW" | "ACTIVE" | "PRETEST" | "RETIRED",
