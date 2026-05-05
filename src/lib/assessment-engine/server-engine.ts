@@ -647,13 +647,6 @@ export const AssessmentService = {
       });
     }
 
-    // Check if we should stop after this response (SPRT needs full item params)
-    const itemsForSprt = await loadItemMapByIds(newState.responses.map((r) => r.itemId));
-    const stopCheck = engine.shouldStop(newState, { items: itemsForSprt });
-    if (stopCheck.stop) {
-      await this.finalizeSession(sessionId, newState.theta, { stopReason: stopCheck.reason });
-    }
-
     // Online item calibration — fire-and-forget, won't block the response
     CalibrationService.recalibrateItem(itemId).catch(() => {});
 
@@ -663,8 +656,6 @@ export const AssessmentService = {
       sem: newState.sem,
       isCorrect: score >= 0.5,
       aiResult,
-      isCompleted: stopCheck.stop,
-      stopReason: stopCheck.stop ? stopCheck.reason : null,
       skillProfiles: newState.skillProfiles
     };
   },

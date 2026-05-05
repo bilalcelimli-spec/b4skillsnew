@@ -94,7 +94,7 @@ export default function App() {
     setActiveSession({ orgId: userProfile.organizationId, sessionId: "new", productLine });
   };
 
-  const handleTestComplete = async (finalTheta: number, sessionId: string) => {
+  const handleTestComplete = async (finalTheta: number | null, sessionId: string) => {
     const cefr = thetaToCefr(finalTheta);
     setTestCompleted({ theta: finalTheta, cefr, sessionId });
     setActiveSession(null);

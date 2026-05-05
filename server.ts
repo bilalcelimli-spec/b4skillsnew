@@ -491,8 +491,14 @@ async function startServer() {
       const { id } = req.params;
       const next = await AssessmentService.getNextItem(id);
       res.json(next);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch next item" });
+    } catch (error: any) {
+      const msg = error?.message ?? "Failed to fetch next item";
+      // "Invalid session" means session is complete / not in progress — treat as stop
+      if (msg === "Invalid session") {
+        return res.status(409).json({ error: msg, stop: false });
+      }
+      console.error("[sessions/next]", error);
+      res.status(500).json({ error: msg });
     }
   });
 
@@ -502,8 +508,9 @@ async function startServer() {
       const { itemId, value, latencyMs } = req.body;
       const result = await AssessmentService.submitResponse(id, itemId, value, latencyMs);
       res.json(result);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to submit response" });
+    } catch (error: any) {
+      console.error("[sessions/respond]", error);
+      res.status(500).json({ error: error?.message ?? "Failed to submit response" });
     }
   });
 

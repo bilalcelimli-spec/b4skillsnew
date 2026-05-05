@@ -32,7 +32,7 @@ interface TestPlayerProps {
   organizationId: string;
   candidateId: string;
   productLine?: string;
-  onComplete: (finalTheta: number, sessionId: string) => void;
+  onComplete: (finalTheta: number | null, sessionId: string) => void;
 }
 
 export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidateId, productLine, onComplete }) => {
@@ -53,6 +53,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   const [sectionTransition, setSectionTransition] = useState<{ completedSection: string; nextSection: string; sectionIndex: number; totalSections: number } | null>(null);
   const [currentSection, setCurrentSection] = useState<string>('VOCABULARY');
   const [sectionIndex, setSectionIndex] = useState<number>(0);
+  const responseStartTime = React.useRef<number>(Date.now());
 
   const SECTION_ORDER = ['VOCABULARY', 'GRAMMAR', 'LISTENING', 'READING', 'WRITING', 'SPEAKING'];
   const SECTION_LABELS: Record<string, string> = {
@@ -97,14 +98,19 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     launch();
   }, []);
 
-  // Timer
+  // Timer — ends the exam when it reaches 0
   useEffect(() => {
-    if (loading || !sessionId) return;
+    if (loading || !sessionId || finished) return;
+    if (timeLeft === 0) {
+      setFinished(true);
+      onComplete(null, sessionId);
+      return;
+    }
     const timer = setInterval(() => {
       setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(timer);
-  }, [loading, sessionId]);
+  }, [loading, sessionId, finished, timeLeft]);
 
   const fetchNextItem = async (sid: string) => {
     setLoading(true);
@@ -148,6 +154,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         setSectionIndex(data.sectionIndex ?? 0);
       }
 
+      responseStartTime.current = Date.now();
       setCurrentItem(data.item);
       fetchStatus(sid);
     } catch (err) {
@@ -256,17 +263,21 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       const res = await fetch(`/api/sessions/${sessionId}/respond`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId: currentItem.id, value: finalValue })
+        body: JSON.stringify({ itemId: currentItem.id, value: finalValue, latencyMs: Date.now() - responseStartTime.current })
       });
+      const submitData = await res.json();
       
-      if (res.ok) {
-        fetchNextItem(sessionId);
-      } else {
-        setError("Failed to submit response. Please try again.");
+      if (!res.ok) {
+        console.error('[respond]', submitData);
+        // Don't crash the whole exam for a single failed submit — show inline warning
+        setItemFeedback({ error: submitData?.error || "Failed to submit response. Please try again." });
         setUploadStatus('error');
+      } else {
+        fetchNextItem(sessionId);
       }
     } catch (err) {
-      setError("Connection error. Retrying...");
+      console.error('[respond network]', err);
+      setItemFeedback({ error: "Connection error. Please check your internet and try again." });
       setUploadStatus('error');
     } finally {
       setSubmitting(false);
