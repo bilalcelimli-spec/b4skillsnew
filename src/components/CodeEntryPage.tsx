@@ -47,7 +47,8 @@ export const CodeEntryPage: React.FC<{ onBack: () => void, onSuccess: (productLi
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       
-      onSuccess(data.productLine, data.organizationId, formData.email, cid);
+      // Use the server-resolved candidateId (the actual DB user id, not the local cid)
+      onSuccess(data.productLine, data.organizationId, formData.email, data.candidateId || cid);
     } catch (err: any) {
       setError(err.message || "Registration failed");
     } finally {

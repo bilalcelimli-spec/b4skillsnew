@@ -890,38 +890,57 @@ async function startServer() {
 
   app.post("/api/codes/redeem", async (req, res) => {
     try {
-      const { code, candidateId, email, name, surname, school, className } = req.body;
-      // 1. Verify code
+      const { code, candidateId: suggestedCandidateId, email, name, surname, school, className } = req.body;
+
+      // Basic input validation
+      if (!code || !email || !name || !surname) {
+        return res.status(400).json({ error: "Missing required fields: code, email, name, surname" });
+      }
+
+      // 1. Verify code (outside transaction so we can return clear errors early)
       const examCode = await prisma.examCode.findUnique({ where: { code } });
-      if(!examCode) return res.status(404).json({ error: "Code not found" });
-      if(examCode.isUsed) return res.status(400).json({ error: "Code already used" });
+      if (!examCode) return res.status(404).json({ error: "Code not found" });
+      if (examCode.isUsed) return res.status(400).json({ error: "Code already used" });
+      if (examCode.expiresAt && examCode.expiresAt < new Date()) {
+        return res.status(400).json({ error: "Code has expired" });
+      }
 
-      // 2. Mark code used
-      await prisma.examCode.update({
-        where: { id: examCode.id },
-        data: { isUsed: true, usedByEmail: email, usedAt: new Date() }
-      });
-
-      // 3. Ensure organization exists (codes must be issued for a real org)
+      // 2. Ensure organization exists before touching anything else
       const orgForCode = await prisma.organization.findUnique({ where: { id: examCode.organizationId } });
       if (!orgForCode) {
-        return res.status(500).json({ error: "This exam code is not linked to a valid organization" });
+        return res.status(422).json({ error: "This exam code is not linked to a valid organization" });
       }
-      
-      await prisma.user.upsert({
-        where: { id: candidateId },
-        update: { email: email, name: `${name} ${surname}`, organizationId: examCode.organizationId },
-        create: { id: candidateId, email: email, name: `${name} ${surname}`, organizationId: examCode.organizationId, role: "CANDIDATE" }
+
+      // 3. Run user creation + mark code used atomically so a failed upsert
+      //    never leaves the code permanently burned.
+      const resolvedCandidateId = await prisma.$transaction(async (tx) => {
+        // Upsert by email (the only @unique field we know at this point).
+        // If the candidate already has an account, update their org/name.
+        // If not, create with the client-supplied suggestedCandidateId (or generate one).
+        const newId = suggestedCandidateId || `cand_${Date.now()}`;
+        const user = await tx.user.upsert({
+          where: { email },
+          update: { name: `${name} ${surname}`, organizationId: examCode.organizationId },
+          create: { id: newId, email, name: `${name} ${surname}`, organizationId: examCode.organizationId, role: "CANDIDATE" },
+        });
+
+        await tx.candidateProfile.upsert({
+          where: { userId: user.id },
+          update: { metadata: { school, className } },
+          create: { userId: user.id, metadata: { school, className } },
+        });
+
+        await tx.examCode.update({
+          where: { id: examCode.id },
+          data: { isUsed: true, usedByEmail: email, usedAt: new Date() },
+        });
+
+        return user.id;
       });
 
-      await prisma.candidateProfile.upsert({
-        where: { userId: candidateId },
-        update: { metadata: { school, className } },
-        create: { userId: candidateId, metadata: { school, className } }
-      });
-
-      res.json({ success: true, organizationId: examCode.organizationId, productLine: examCode.productLine });
-    } catch(err) {
+      res.json({ success: true, organizationId: examCode.organizationId, productLine: examCode.productLine, candidateId: resolvedCandidateId });
+    } catch (err) {
+      console.error("[redeem]", err);
       res.status(500).json({ error: "Redeem failed", details: String(err) });
     }
   });
