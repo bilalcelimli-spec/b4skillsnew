@@ -47,6 +47,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const [countdown, setCountdown] = useState<number | null>(autoPlay ? countdownSeconds : null);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1);
+  const [audioLoadError, setAudioLoadError] = useState(false);
 
   const playsRemaining = maxPlays > 0 ? maxPlays - playCount : Infinity;
   const canPlay = !disabled && playsRemaining > 0;
@@ -62,9 +63,12 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
   useEffect(() => {
     if (countdown === 0 && autoPlay && canPlay) {
-      handlePlay();
+      // Autoplay attempt — browser may block it; failure is handled silently so
+      // the user can still click play manually.
+      handlePlay().catch(() => {});
       setCountdown(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countdown, autoPlay, canPlay]);
 
   // Setup Web Audio API for waveform
@@ -137,18 +141,30 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     };
   }, [isPlaying, showWaveform, drawWaveform]);
 
-  const handlePlay = () => {
+  const handlePlay = async () => {
     if (!canPlay || !audioRef.current) return;
+    setAudioLoadError(false);
     setupAudioContext();
-    if (audioCtxRef.current?.state === "suspended") {
-      audioCtxRef.current.resume();
-    }
-    audioRef.current.play().then(() => {
+    try {
+      // IMPORTANT: resume() must be awaited before play().
+      // Once createMediaElementSource() is called, the audio element is routed
+      // exclusively through the AudioContext graph. If the context remains in
+      // "suspended" state when play() is invoked, the audio is silenced even
+      // though the play() promise resolves successfully.
+      if (audioCtxRef.current?.state === "suspended") {
+        await audioCtxRef.current.resume();
+      }
+      await audioRef.current.play();
       setIsPlaying(true);
-    }).catch((err) => {
+    } catch (err) {
       console.warn("Audio playback failed:", err);
       setIsPlaying(false);
-    });
+      // NotAllowedError = browser autoplay policy — not an error the user needs to see;
+      // they can still press play manually. Any other error is a real load failure.
+      if ((err as DOMException)?.name !== "NotAllowedError") {
+        setAudioLoadError(true);
+      }
+    }
   };
 
   const handlePause = () => {
@@ -226,9 +242,29 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         onEnded={handleEnded}
         onError={() => {
           setIsPlaying(false);
+          setAudioLoadError(true);
           console.warn("Audio failed to load:", src);
         }}
       />
+
+      {/* Audio load error banner */}
+      {audioLoadError && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium">
+          <span className="shrink-0">⚠</span>
+          <span>Audio file could not be loaded. Please check your connection or try again.</span>
+          <button
+            onClick={() => {
+              setAudioLoadError(false);
+              if (audioRef.current) {
+                audioRef.current.load();
+              }
+            }}
+            className="ml-auto shrink-0 text-xs font-bold underline underline-offset-2 hover:text-red-900"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Waveform Canvas */}
       {showWaveform && (
