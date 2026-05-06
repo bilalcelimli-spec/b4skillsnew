@@ -159,9 +159,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     } catch (err) {
       console.warn("Audio playback failed:", err);
       setIsPlaying(false);
-      // NotAllowedError = browser autoplay policy — not an error the user needs to see;
-      // they can still press play manually. Any other error is a real load failure.
-      if ((err as DOMException)?.name !== "NotAllowedError") {
+      const name = (err as DOMException)?.name;
+      // NotAllowedError  = browser autoplay policy — user can still press play manually.
+      // AbortError       = play() was interrupted by a subsequent pause/src-change — not a real error.
+      // NotSupportedError = can happen transiently before the audio element is ready; not a load failure.
+      if (name !== "NotAllowedError" && name !== "AbortError" && name !== "NotSupportedError") {
         setAudioLoadError(true);
       }
     }

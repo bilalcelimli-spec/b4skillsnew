@@ -7406,6 +7406,19 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
+
+    // Serve audio files with dedicated route so Range requests stream correctly
+    // and browsers never cache 404s for audio.
+    app.use("/audio", express.static(path.join(distPath, "audio"), {
+      maxAge: "7d",
+      immutable: false,
+      acceptRanges: true,
+      setHeaders(res) {
+        // Ensure browsers always re-validate and don't serve stale 404s
+        res.setHeader("Accept-Ranges", "bytes");
+      },
+    }));
+
     app.use(express.static(distPath));
     // SPA fallback only for document routes. If a hashed /assets/* file is missing (stale CDN HTML),
     // do not send index.html — that breaks CSS/JS MIME types in the browser.
