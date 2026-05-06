@@ -31,6 +31,36 @@ const FORCE = process.env.FORCE === "1";
 const PUBLIC_AUDIO_DIR = path.join(__dirname, "../public/audio");
 
 // ---------------------------------------------------------------------------
+// WAV header builder — Gemini TTS returns raw 16-bit PCM at 24 kHz mono.
+// Browsers require a proper RIFF/WAV container.
+// ---------------------------------------------------------------------------
+const WAV_SAMPLE_RATE  = 24000;
+const WAV_CHANNELS     = 1;
+const WAV_BITS         = 16;
+
+function buildWavHeader(pcm: Buffer): Buffer {
+  const byteRate   = WAV_SAMPLE_RATE * WAV_CHANNELS * (WAV_BITS / 8);
+  const blockAlign = WAV_CHANNELS * (WAV_BITS / 8);
+  const header     = Buffer.alloc(44);
+
+  header.write('RIFF', 0, 'ascii');
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVE', 8, 'ascii');
+  header.write('fmt ', 12, 'ascii');
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);                  // PCM
+  header.writeUInt16LE(WAV_CHANNELS, 22);
+  header.writeUInt32LE(WAV_SAMPLE_RATE, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(WAV_BITS, 34);
+  header.write('data', 36, 'ascii');
+  header.writeUInt32LE(pcm.length, 40);
+
+  return Buffer.concat([header, pcm]);
+}
+
+// ---------------------------------------------------------------------------
 // Voice assignments — map moduleId prefix → Gemini voice name
 // Available voices (confirmed): aoede, autonoe, callirrhoe, charon, despina, enceladus,
 //   erinome, fenrir, gacrux, iapetus, kore, laomedeia, leda, orus, puck, pulcherrima,
@@ -137,9 +167,13 @@ async function main() {
         throw new Error("No audio data returned from Gemini");
       }
 
-      const audioBuffer = Buffer.from(part.inlineData.data, "base64");
-      fs.writeFileSync(outputPath, audioBuffer);
-      console.log(`[OK]    Saved ${(audioBuffer.length / 1024).toFixed(0)} KB → ${outputPath}`);
+      const pcmBuffer = Buffer.from(part.inlineData.data, "base64");
+
+      // Gemini 2.5 Flash TTS returns raw 16-bit PCM at 24 kHz mono.
+      // Browsers require a proper RIFF/WAV header — prepend it here.
+      const wavBuffer = buildWavHeader(pcmBuffer);
+      fs.writeFileSync(outputPath, wavBuffer);
+      console.log(`[OK]    Saved ${(wavBuffer.length / 1024).toFixed(0)} KB → ${outputPath}`);
 
       await patchAudioUrl(itemIds, audioUrl);
       generated++;
