@@ -42,5 +42,5 @@ databases:
   - name: linguadapt-db
     databaseName: linguadapt
     user: linguadapt
-    plan: free
+    plan: starter
     region: oregon

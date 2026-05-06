@@ -23,7 +23,7 @@
  *   npx tsx scripts/fix-item-quality.ts
  */
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 
 const prisma = new PrismaClient();
 const DRY_RUN = process.env.DRY_RUN === "1";
@@ -162,7 +162,7 @@ async function main() {
       batch.map(u =>
         prisma.item.update({
           where: { id: u.id },
-          data: { content: u.newContent },
+          data: { content: u.newContent as Prisma.InputJsonValue },
         })
       )
     );

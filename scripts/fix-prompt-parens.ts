@@ -16,7 +16,7 @@
  * Apply:    npx tsx scripts/fix-prompt-parens.ts
  */
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 
 const prisma = new PrismaClient();
 const DRY_RUN = process.env.DRY_RUN === "1";
@@ -89,7 +89,7 @@ async function main() {
     const batch = updates.slice(i, i + BATCH);
     await prisma.$transaction(
       batch.map(u =>
-        prisma.item.update({ where: { id: u.id }, data: { content: u.newContent } })
+        prisma.item.update({ where: { id: u.id }, data: { content: u.newContent as Prisma.InputJsonValue } })
       )
     );
     done += batch.length;
