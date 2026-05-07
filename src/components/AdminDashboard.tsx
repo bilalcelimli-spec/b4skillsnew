@@ -135,7 +135,7 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
     | "settings"
     | "proctoring"
     | "billing"
-    | "calibration" | "content-qa" | "item-generator" | "item-inventory" | "distractor-audit" | "aig-quality" | "fraud" | "bias-review" | "dif" | "item-bank" | "standard-setting" | "equating" | "psychometric-quality" | "item-retirement" | "mirt" | "grm" | "exposure" | "rater-reliability" | "classification" | "blueprint" | "theta-diag" | "tif" | "person-fit" | "shadow-test" | "item-drift" | "cognitive-diag" | "bayes-calib" | "mst-routing" | "rt-diag" | "local-dep" | "anchor-items" | "subscale" | "csem" | "tcc" | "dbf" | "poly-dif" | "reliability" | "stopping-rule" | "item-fit" | "cat-sim" | "score-norms" | "online-calib" | "dsf" | "bn-dep" | "score-report" | "mg-inv" | "irt-rt" | "exposure" | "scale-eq" | "growth" | "rater-calib" | "long-dif" | "validity"
+    | "calibration" | "content-qa" | "item-generator" | "item-inventory" | "distractor-audit" | "aig-quality" | "fraud" | "bias-review" | "dif" | "item-bank" | "standard-setting" | "equating" | "psychometric-quality" | "item-retirement" | "mirt" | "grm" | "exposure" | "exposure-ctrl" | "rater-reliability" | "classification" | "blueprint" | "theta-diag" | "tif" | "person-fit" | "shadow-test" | "item-drift" | "cognitive-diag" | "bayes-calib" | "mst-routing" | "rt-diag" | "local-dep" | "anchor-items" | "subscale" | "csem" | "tcc" | "dbf" | "poly-dif" | "reliability" | "stopping-rule" | "item-fit" | "cat-sim" | "score-norms" | "online-calib" | "dsf" | "bn-dep" | "score-report" | "mg-inv" | "irt-rt" | "scale-eq" | "growth" | "rater-calib" | "long-dif" | "validity"
   >("overview");
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -257,7 +257,8 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
             <NavItem id="psychometric-quality" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Activity size={13} />} label="Quality" />
             <NavItem id="mirt" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Zap size={13} />} label="MIRT 6D" />
             <NavItem id="grm" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<BarChart3 size={13} />} label="GRM Scoring" />
-            <NavItem id="exposure" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<ShieldCheck size={13} />} label="Exposure" />
+            <NavItem id="exposure" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<ShieldCheck size={13} />} label="Exposure Monitor" />
+            <NavItem id="exposure-ctrl" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Shield size={13} />} label="Exposure Control" />
             <NavItem id="rater-reliability" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Users size={13} />} label="Rater IRR" />
             <NavItem id="classification" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Activity size={13} />} label="Classification" />
             <NavItem id="blueprint" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<LayoutDashboard size={13} />} label="Blueprint" />
@@ -1090,9 +1091,9 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
           </motion.div>
         )}
 
-        {activeTab === "exposure" && (
+        {activeTab === "exposure-ctrl" && (
           <motion.div
-            key="exposure"
+            key="exposure-ctrl"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
@@ -1269,7 +1270,8 @@ const NAV_LABELS: Record<string, string> = {
   "psychometric-quality": "Quality",
   mirt: "MIRT 6D",
   grm: "GRM Scoring",
-  exposure: "Exposure",
+  exposure: "Exposure (Monitor)",
+  "exposure-ctrl": "Exposure Control",
   "rater-reliability": "Rater IRR",
   classification: "Classification",
   blueprint: "Blueprint",
