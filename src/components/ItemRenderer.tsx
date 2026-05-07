@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Item } from "../lib/assessment-engine/types";
 import { Card, CardContent, CardHeader } from "./ui/Card";
 import { Button } from "./ui/Button";
@@ -33,6 +33,56 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   const [textValue, setTextValue] = useState<string>("");
   const [fibAnswers, setFibAnswers] = useState<string[]>([]);
   const itemSkill = String(item.skill).toUpperCase();
+  const itemId = (item as any).id as string | undefined;
+
+  // Reset all input state when item changes
+  useEffect(() => {
+    setSelectedOption(null);
+    setTextValue("");
+    setFibAnswers([]);
+  }, [itemId]);
+
+  /**
+   * Renders a fill-in-the-blanks scaffold inline.
+   * Each `___` in the text is replaced with a real <input> element.
+   * Returns [ReactNode, blankCount, allFilled, currentAnswers, setAnswers].
+   */
+  const renderInlineFIB = (
+    scaffold: string,
+    answers: string[],
+    setAnswers: React.Dispatch<React.SetStateAction<string[]>>,
+    dis: boolean
+  ): React.ReactNode => {
+    const parts = scaffold.split("___");
+    const count = parts.length - 1;
+    // Ensure answers array is sized
+    const ans = answers.length === count ? answers : Array(count).fill("") as string[];
+    return (
+      <div className="text-lg leading-loose text-slate-800 font-semibold whitespace-pre-wrap">
+        {parts.map((part, i) => (
+          <React.Fragment key={i}>
+            <span>{part}</span>
+            {i < count && (
+              <input
+                type="text"
+                value={ans[i] ?? ""}
+                onChange={(e) => {
+                  const next = [...(answers.length === count ? answers : Array(count).fill(""))];
+                  next[i] = e.target.value;
+                  setAnswers(next);
+                }}
+                disabled={dis}
+                placeholder={`···`}
+                className="inline-block border-b-2 border-indigo-500 focus:border-indigo-700 bg-transparent outline-none text-indigo-700 font-bold px-1 mx-1 text-center transition-all disabled:opacity-50"
+                style={{ minWidth: "72px", width: Math.max(72, ((ans[i]?.length || 4) + 2) * 11) }}
+                aria-label={`Blank ${i + 1}`}
+              />
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    );
+  };
 
   /** Renders the item code badge (top-right corner) */
   const renderCodeBadge = () =>
@@ -128,19 +178,43 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
         (!item.type && !hasRGVOptions);
 
       if (isRGVFib) {
+        // Determine if prompt has inline blanks (___)
+        const rgvPrompt = content.prompt as string | undefined;
+        const rgvPassageRaw = content.passage as string | undefined;
+        const rgvScaffold = (rgvPrompt?.includes("___") ? rgvPrompt : null) ??
+                             (rgvPassageRaw?.includes("___") ? rgvPassageRaw : null);
+        const rgvBlankCount = rgvScaffold ? (rgvScaffold.match(/___/g) || []).length : 0;
+
+        // Ensure fibAnswers is sized for this item
+        const rgvAnswers = fibAnswers.length === rgvBlankCount
+          ? fibAnswers
+          : Array(Math.max(1, rgvBlankCount)).fill("") as string[];
+        const rgvAllFilled = rgvBlankCount > 0
+          ? rgvAnswers.every((a) => a.trim() !== "")
+          : textValue.trim() !== "";
+
         return (
           <div className="space-y-6" role="form" aria-labelledby="item-prompt">
-            {renderPassage(content.passage)}
+            {renderPassage(rgvScaffold ? undefined : rgvPassageRaw)}
             <fieldset className="space-y-4">
-              <legend id="item-prompt" className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">
-                {content.prompt}
-              </legend>
+              {/* Show prompt as label only when it's not the scaffold */}
+              {rgvPrompt && !rgvScaffold && (
+                <legend id="item-prompt" className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">
+                  {rgvPrompt}
+                </legend>
+              )}
               {content.question && (
                 <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-medium text-slate-800 mb-4">
                   {content.question}
                 </div>
               )}
-              <div>
+              {rgvScaffold && rgvBlankCount > 0 ? (
+                // Inline FIB: render ___ as real inputs inside the text
+                <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl">
+                  {renderInlineFIB(rgvScaffold, rgvAnswers, setFibAnswers, !!disabled)}
+                </div>
+              ) : (
+                // Single plain input (no scaffold)
                 <input
                   type="text"
                   value={textValue}
@@ -155,14 +229,23 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                     }
                   }}
                 />
-              </div>
-              <div className="pt-4">
+              )}
+              <div className="pt-2">
                 <button
-                  disabled={!textValue.trim() || disabled}
-                  onClick={() => { if (textValue.trim()) { onResponse(textValue.trim()); setTextValue(""); } }}
+                  disabled={!rgvAllFilled || !!disabled}
+                  onClick={() => {
+                    if (!rgvAllFilled) return;
+                    if (rgvScaffold && rgvBlankCount > 0) {
+                      onResponse(rgvAnswers.map((a) => a.trim()).join("|"));
+                      setFibAnswers([]);
+                    } else {
+                      onResponse(textValue.trim());
+                      setTextValue("");
+                    }
+                  }}
                   className={cn(
                     "w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all",
-                    textValue.trim() && !disabled
+                    rgvAllFilled && !disabled
                       ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100"
                       : "bg-slate-100 text-slate-400 cursor-not-allowed"
                   )}
@@ -253,17 +336,15 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
         item.type === "FILL_IN_BLANKS" ||
         (!item.type && !hasOptions && !!fibScaffold);
 
-      // For multi-blank FIB, parse the number of expected answers from correctAnswer
-      const correctAnswerStr = content.correctAnswer as string | undefined;
-      const expectedAnswers: string[] = correctAnswerStr
-        ? correctAnswerStr.split("|").map((a: string) => a.trim())
-        : [""];
-      const blankCount = isListeningFIB ? Math.max(1, expectedAnswers.length) : 0;
+      // Count blanks directly from the scaffold text
+      const blankCount = isListeningFIB && fibScaffold
+        ? (fibScaffold.match(/___/g) || []).length
+        : isListeningFIB ? 1 : 0;
 
       // Ensure fibAnswers state array is sized correctly
       const currentFibAnswers = fibAnswers.length === blankCount
         ? fibAnswers
-        : Array(blankCount).fill("") as string[];
+        : Array(Math.max(1, blankCount)).fill("") as string[];
 
       const fibAllFilled = isListeningFIB && currentFibAnswers.every((a) => a.trim() !== "");
 
@@ -294,19 +375,19 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           {/* ── Question body ─────────────────────────────────────────── */}
           {isListeningFIB ? (
             <div className="space-y-4">
-              {/* Blank scaffold — show with whitespace preserved so numbered lines render correctly */}
-              {fibScaffold && (
+              {/* Inline FIB: ___ replaced with real input elements */}
+              {fibScaffold ? (
                 <div
                   id="listening-prompt"
-                  className="p-5 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-semibold text-slate-800 whitespace-pre-wrap leading-relaxed"
+                  className="p-5 bg-slate-50 border border-slate-200 rounded-2xl leading-loose"
                   aria-label="Fill in the blanks task"
                 >
-                  {fibScaffold}
+                  {renderInlineFIB(fibScaffold, currentFibAnswers, setFibAnswers, !!disabled)}
                 </div>
-              )}
-              {/* One input per blank */}
-              {blankCount === 1 ? (
+              ) : (
+                /* No scaffold — plain single input */
                 <input
+                  id="listening-prompt"
                   type="text"
                   value={currentFibAnswers[0] ?? ""}
                   onChange={(e) => setFibAnswers([e.target.value])}
@@ -314,35 +395,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                   placeholder="Type what you heard…"
                   className="w-full text-lg p-4 rounded-2xl border-2 border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all disabled:opacity-50"
                   aria-label="Answer"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && currentFibAnswers[0]?.trim() && !disabled) {
-                      onResponse(currentFibAnswers[0].trim());
-                      setFibAnswers([]);
-                    }
-                  }}
                 />
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Fill in each blank:</p>
-                  {Array.from({ length: blankCount }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <span className="text-sm font-black text-indigo-600 w-6 shrink-0">{i + 1}.</span>
-                      <input
-                        type="text"
-                        value={currentFibAnswers[i] ?? ""}
-                        onChange={(e) => {
-                          const next = [...currentFibAnswers];
-                          next[i] = e.target.value;
-                          setFibAnswers(next);
-                        }}
-                        disabled={disabled}
-                        placeholder={`Blank ${i + 1}…`}
-                        className="flex-1 text-base p-3 rounded-xl border-2 border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all disabled:opacity-50"
-                        aria-label={`Blank ${i + 1}`}
-                      />
-                    </div>
-                  ))}
-                </div>
               )}
               <button
                 disabled={!fibAllFilled || disabled}
