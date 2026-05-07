@@ -214,502 +214,112 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
   }
 
   return (
-    <div className="space-y-8">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">
-            Admin Command Center
+    <div className="flex gap-0 items-start min-h-screen -mx-4 md:-mx-8">
+      {/* ── Sidebar Navigation ───────────────────────────────────────────── */}
+      <aside className="w-56 flex-shrink-0 bg-white border-r border-slate-200 sticky top-0 h-screen overflow-y-auto flex flex-col">
+        {/* Brand header */}
+        <div className="px-4 py-4 border-b border-slate-100">
+          <div className="text-xs font-black text-slate-900 uppercase tracking-tighter leading-tight">
+            Admin Command
+          </div>
+          <div className="text-[10px] text-slate-400 font-medium mt-0.5">
+            Enterprise Console
+          </div>
+        </div>
+
+        <nav className="flex-1 py-3 space-y-0.5 overflow-y-auto px-2">
+          {/* ─ Core ─ */}
+          <NavGroup label="Core">
+            <NavItem id="overview" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<LayoutDashboard size={13} />} label="Overview" />
+            <NavItem id="candidates" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Users size={13} />} label="Candidates" />
+            <NavItem id="codes" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Key size={13} />} label="Exam Codes" />
+            <NavItem id="analytics" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<BarChart3 size={13} />} label="Analytics" />
+          </NavGroup>
+
+          {/* ─ Content ─ */}
+          <NavGroup label="Content">
+            <NavItem id="content-qa" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<CheckCircle2 size={13} />} label="Content QA" />
+            <NavItem id="item-generator" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Wand2 size={13} />} label="AI Generator" />
+            <NavItem id="item-inventory" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Database size={13} />} label="Item Inventory" />
+            <NavItem id="item-bank" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Layers size={13} />} label="Item Bank" />
+            <NavItem id="distractor-audit" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<FlaskConical size={13} />} label="Item Quality" />
+            <NavItem id="aig-quality" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Activity size={13} />} label="AIG Quality" />
+            <NavItem id="bias-review" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<ShieldAlert size={13} />} label="Bias Review" />
+            <NavItem id="item-retirement" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Trash2 size={13} />} label="Item Retirement" />
+          </NavGroup>
+
+          {/* ─ IRT / Psychometrics ─ */}
+          <NavGroup label="Psychometrics">
+            <NavItem id="calibration" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Calculator size={13} />} label="Calibration" />
+            <NavItem id="dif" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<FlaskConical size={13} />} label="DIF Monitor" />
+            <NavItem id="standard-setting" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Calculator size={13} />} label="Standard Setting" />
+            <NavItem id="equating" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<ArrowUpRight size={13} />} label="Equating" />
+            <NavItem id="psychometric-quality" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Activity size={13} />} label="Quality" />
+            <NavItem id="mirt" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Zap size={13} />} label="MIRT 6D" />
+            <NavItem id="grm" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<BarChart3 size={13} />} label="GRM Scoring" />
+            <NavItem id="exposure" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<ShieldCheck size={13} />} label="Exposure" />
+            <NavItem id="rater-reliability" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Users size={13} />} label="Rater IRR" />
+            <NavItem id="classification" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Activity size={13} />} label="Classification" />
+            <NavItem id="blueprint" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<LayoutDashboard size={13} />} label="Blueprint" />
+            <NavItem id="theta-diag" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Zap size={13} />} label="θ Diagnostics" />
+            <NavItem id="tif" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<BarChart3 size={13} />} label="TIF" />
+            <NavItem id="person-fit" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<ShieldAlert size={13} />} label="Person Fit" />
+            <NavItem id="shadow-test" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Database size={13} />} label="Shadow Test" />
+            <NavItem id="item-drift" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<FlaskConical size={13} />} label="Item Drift" />
+            <NavItem id="cognitive-diag" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Wand2 size={13} />} label="Cognitive Diag" />
+            <NavItem id="bayes-calib" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Calculator size={13} />} label="Bayes Calib" />
+            <NavItem id="mst-routing" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Network size={13} />} label="MST Routing" />
+            <NavItem id="rt-diag" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Clock size={13} />} label="RT Diagnostics" />
+            <NavItem id="local-dep" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Link2 size={13} />} label="Local Dep." />
+            <NavItem id="anchor-items" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Upload size={13} />} label="Anchor Items" />
+            <NavItem id="subscale" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<BarChart3 size={13} />} label="Subscale" />
+            <NavItem id="csem" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Activity size={13} />} label="Cond. SEM" />
+            <NavItem id="tcc" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<TrendingUp size={13} />} label="TCC" />
+            <NavItem id="dbf" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<ShieldAlert size={13} />} label="DBF" />
+            <NavItem id="poly-dif" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<ShieldCheck size={13} />} label="Poly DIF" />
+            <NavItem id="reliability" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<BarChart3 size={13} />} label="Reliability" />
+            <NavItem id="stopping-rule" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Zap size={13} />} label="Stop Rules" />
+            <NavItem id="item-fit" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<FlaskConical size={13} />} label="Item Fit" />
+            <NavItem id="cat-sim" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Calculator size={13} />} label="CAT Sim" />
+            <NavItem id="score-norms" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Database size={13} />} label="Score Norms" />
+            <NavItem id="online-calib" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<TrendingUp size={13} />} label="Online Calib." />
+            <NavItem id="dsf" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Layers size={13} />} label="DSF" />
+            <NavItem id="bn-dep" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Network size={13} />} label="BN Dep." />
+            <NavItem id="score-report" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<FileText size={13} />} label="Score Report" />
+            <NavItem id="mg-inv" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Share2 size={13} />} label="MG Invariance" />
+            <NavItem id="irt-rt" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Clock size={13} />} label="IRT-RT Model" />
+            <NavItem id="scale-eq" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Link2 size={13} />} label="Scale Equating" />
+            <NavItem id="growth" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<TrendingUp size={13} />} label="Growth" />
+            <NavItem id="rater-calib" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<UserCheck size={13} />} label="Rater Calib." />
+            <NavItem id="long-dif" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<GitBranch size={13} />} label="Long. DIF" />
+            <NavItem id="validity" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<CheckSquare size={13} />} label="Validity" />
+          </NavGroup>
+
+          {/* ─ Operations ─ */}
+          <NavGroup label="Operations">
+            <NavItem id="import" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Upload size={13} />} label="Import" />
+            <NavItem id="branding" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Palette size={13} />} label="Branding" />
+            <NavItem id="fraud" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<ShieldAlert size={13} />} label="Fraud Monitor" />
+            <NavItem id="proctoring" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<ShieldCheck size={13} />} label="Proctoring" />
+            <NavItem id="billing" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<CreditCard size={13} />} label="Billing" />
+            <NavItem id="integrations" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<Zap size={13} />} label="Integrations" />
+            <NavItem id="audit" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<ShieldCheck size={13} />} label="Audit Logs" />
+            <NavItem id="settings" activeTab={activeTab} setActiveTab={setActiveTab} setSelectedSessionId={setSelectedSessionId} icon={<SettingsIcon size={13} />} label="Settings" />
+          </NavGroup>
+        </nav>
+      </aside>
+
+      {/* ── Main Content ─────────────────────────────────────────────────── */}
+      <main className="flex-1 min-w-0 px-6 py-6 overflow-auto">
+        {/* Page title bar */}
+        <header className="mb-6">
+          <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">
+            {NAV_LABELS[activeTab] ?? "Admin"}
           </h1>
-          <p className="text-slate-500 font-medium text-sm">
+          <p className="text-slate-400 font-medium text-xs mt-0.5">
             Enterprise Management & Global Analytics
           </p>
-        </div>
-        <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
-          <TabButton
-            active={activeTab === "overview"}
-            onClick={() => {
-              setActiveTab("overview");
-              setSelectedSessionId(null);
-            }}
-            icon={<LayoutDashboard size={14} />}
-            label="Overview"
-          />
-          <TabButton
-            active={activeTab === "candidates"}
-            onClick={() => {
-              setActiveTab("candidates");
-              setSelectedSessionId(null);
-            }}
-            icon={<Users size={14} />}
-            label="Candidates"
-          />
-          <TabButton
-            active={activeTab === "content-qa"}
-            onClick={() => {
-              setActiveTab("content-qa");
-              setSelectedSessionId(null);
-            }}
-            icon={<CheckCircle2 size={14} />}
-            label="Content QA"
-          />
-          <TabButton
-            active={activeTab === "branding"}
-            onClick={() => {
-              setActiveTab("branding");
-              setSelectedSessionId(null);
-            }}
-            icon={<Palette size={14} />}
-            label="Branding"
-          />
-          <TabButton
-            active={activeTab === "import"}
-            onClick={() => {
-              setActiveTab("import");
-              setSelectedSessionId(null);
-            }}
-            icon={<Upload size={14} />}
-            label="Import"
-          />
-          <TabButton
-            active={activeTab === "codes"}
-            onClick={() => {
-              setActiveTab("codes");
-              setSelectedSessionId(null);
-            }}
-            icon={<Key size={14} />}
-            label="Exam Codes"
-          />
-          <TabButton
-            active={activeTab === "integrations"}
-            onClick={() => {
-              setActiveTab("integrations");
-              setSelectedSessionId(null);
-            }}
-            icon={<Zap size={14} />}
-            label="Integrations"
-          />
-          <TabButton
-            active={activeTab === "audit"}
-            onClick={() => {
-              setActiveTab("audit");
-              setSelectedSessionId(null);
-            }}
-            icon={<ShieldCheck size={14} />}
-            label="Audit Logs"
-          />
-          <TabButton
-            active={activeTab === "proctoring"}
-            onClick={() => {
-              setActiveTab("proctoring");
-              setSelectedSessionId(null);
-            }}
-            icon={<ShieldAlert size={14} />}
-            label="Proctoring"
-          />
-          <TabButton
-            active={activeTab === "billing"}
-            onClick={() => {
-              setActiveTab("billing");
-              setSelectedSessionId(null);
-            }}
-            icon={<CreditCard size={14} />}
-            label="Billing"
-          />
-          <TabButton
-            active={activeTab === "analytics"}
-            onClick={() => {
-              setActiveTab("analytics");
-              setSelectedSessionId(null);
-            }}
-            icon={<BarChart3 size={14} />}
-            label="Analytics"
-          />
-          <TabButton
-            active={activeTab === "calibration"}
-            onClick={() => {
-              setActiveTab("calibration");
-              setSelectedSessionId(null);
-            }}
-            icon={<Calculator size={14} />}
-            label="Calibration"
-          />
-          <TabButton
-            active={activeTab === "item-generator"}
-            onClick={() => {
-              setActiveTab("item-generator");
-              setSelectedSessionId(null);
-            }}
-            icon={<Wand2 size={14} />}
-            label="AI Generator"
-          />
-          <TabButton
-            active={activeTab === "item-inventory"}
-            onClick={() => {
-              setActiveTab("item-inventory");
-              setSelectedSessionId(null);
-            }}
-            icon={<Database size={14} />}
-            label="Item Inventory"
-          />
-          <TabButton
-            active={activeTab === "distractor-audit"}
-            onClick={() => {
-              setActiveTab("distractor-audit");
-              setSelectedSessionId(null);
-            }}
-            icon={<FlaskConical size={14} />}
-            label="Item Quality"
-          />
-          <TabButton
-            active={activeTab === "aig-quality"}
-            onClick={() => {
-              setActiveTab("aig-quality");
-              setSelectedSessionId(null);
-            }}
-            icon={<Wand2 size={14} />}
-            label="AIG Quality"
-          />
-          <TabButton
-            active={activeTab === "bias-review"}
-            onClick={() => {
-              setActiveTab("bias-review");
-              setSelectedSessionId(null);
-            }}
-            icon={<ShieldAlert size={14} />}
-            label="Bias Review"
-          />
-          <TabButton
-            active={activeTab === "fraud"}
-            onClick={() => {
-              setActiveTab("fraud");
-              setSelectedSessionId(null);
-            }}
-            icon={<ShieldAlert size={14} />}
-            label="Fraud Monitor"
-          />
-          <TabButton
-            active={activeTab === "dif"}
-            onClick={() => {
-              setActiveTab("dif");
-              setSelectedSessionId(null);
-            }}
-            icon={<FlaskConical size={14} />}
-            label="DIF Monitor"
-          />
-          <TabButton
-            active={activeTab === "item-bank"}
-            onClick={() => {
-              setActiveTab("item-bank");
-              setSelectedSessionId(null);
-            }}
-            icon={<Database size={14} />}
-            label="Item Bank"
-          />
-          <TabButton
-            active={activeTab === "standard-setting"}
-            onClick={() => {
-              setActiveTab("standard-setting");
-              setSelectedSessionId(null);
-            }}
-            icon={<Calculator size={14} />}
-            label="Standard Setting"
-          />
-          <TabButton
-            active={activeTab === "equating"}
-            onClick={() => {
-              setActiveTab("equating");
-              setSelectedSessionId(null);
-            }}
-            icon={<ArrowUpRight size={14} />}
-            label="Equating"
-          />
-          <TabButton
-            active={activeTab === "psychometric-quality"}
-            onClick={() => {
-              setActiveTab("psychometric-quality");
-              setSelectedSessionId(null);
-            }}
-            icon={<Activity size={14} />}
-            label="Quality"
-          />
-          <TabButton
-            active={activeTab === "item-retirement"}
-            onClick={() => {
-              setActiveTab("item-retirement");
-              setSelectedSessionId(null);
-            }}
-            icon={<Trash2 size={14} />}
-            label="Item Retirement"
-          />
-          <TabButton
-            active={activeTab === "mirt"}
-            onClick={() => {
-              setActiveTab("mirt");
-              setSelectedSessionId(null);
-            }}
-            icon={<Zap size={14} />}
-            label="MIRT 6D"
-          />
-          <TabButton
-            active={activeTab === "grm"}
-            onClick={() => {
-              setActiveTab("grm");
-              setSelectedSessionId(null);
-            }}
-            icon={<BarChart3 size={14} />}
-            label="GRM Scoring"
-          />
-          <TabButton
-            active={activeTab === "exposure"}
-            onClick={() => {
-              setActiveTab("exposure");
-              setSelectedSessionId(null);
-            }}
-            icon={<ShieldCheck size={14} />}
-            label="Exposure"
-          />
-          <TabButton
-            active={activeTab === "rater-reliability"}
-            onClick={() => {
-              setActiveTab("rater-reliability");
-              setSelectedSessionId(null);
-            }}
-            icon={<Users size={14} />}
-            label="Rater IRR"
-          />
-          <TabButton
-            active={activeTab === "classification"}
-            onClick={() => {
-              setActiveTab("classification");
-              setSelectedSessionId(null);
-            }}
-            icon={<Activity size={14} />}
-            label="Classification"
-          />
-          <TabButton
-            active={activeTab === "blueprint"}
-            onClick={() => {
-              setActiveTab("blueprint");
-              setSelectedSessionId(null);
-            }}
-            icon={<LayoutDashboard size={14} />}
-            label="Blueprint"
-          />
-          <TabButton
-            active={activeTab === "theta-diag"}
-            onClick={() => {
-              setActiveTab("theta-diag");
-              setSelectedSessionId(null);
-            }}
-            icon={<Zap size={14} />}
-            label="θ Diagnostics"
-          />
-          <TabButton
-            active={activeTab === "tif"}
-            onClick={() => {
-              setActiveTab("tif");
-              setSelectedSessionId(null);
-            }}
-            icon={<BarChart3 size={14} />}
-            label="TIF"
-          />
-          <TabButton
-            active={activeTab === "person-fit"}
-            onClick={() => { setActiveTab("person-fit"); setSelectedSessionId(null); }}
-            icon={<ShieldAlert size={14} />}
-            label="Person Fit"
-          />
-          <TabButton
-            active={activeTab === "shadow-test"}
-            onClick={() => { setActiveTab("shadow-test"); setSelectedSessionId(null); }}
-            icon={<Database size={14} />}
-            label="Shadow Test"
-          />
-          <TabButton
-            active={activeTab === "item-drift"}
-            onClick={() => { setActiveTab("item-drift"); setSelectedSessionId(null); }}
-            icon={<FlaskConical size={14} />}
-            label="Item Drift"
-          />
-          <TabButton
-            active={activeTab === "cognitive-diag"}
-            onClick={() => { setActiveTab("cognitive-diag"); setSelectedSessionId(null); }}
-            icon={<Wand2 size={14} />}
-            label="Cognitive Diag"
-          />
-          <TabButton
-            active={activeTab === "bayes-calib"}
-            onClick={() => { setActiveTab("bayes-calib"); setSelectedSessionId(null); }}
-            icon={<Calculator size={14} />}
-            label="Bayes Calib"
-          />
-          <TabButton
-            active={activeTab === "mst-routing"}
-            onClick={() => { setActiveTab("mst-routing"); setSelectedSessionId(null); }}
-            icon={<LayoutDashboard size={14} />}
-            label="MST Routing"
-          />
-          <TabButton
-            active={activeTab === "rt-diag"}
-            onClick={() => { setActiveTab("rt-diag"); setSelectedSessionId(null); }}
-            icon={<Clock size={14} />}
-            label="RT Diagnostics"
-          />
-          <TabButton
-            active={activeTab === "local-dep"}
-            onClick={() => { setActiveTab("local-dep"); setSelectedSessionId(null); }}
-            icon={<Key size={14} />}
-            label="Local Dep"
-          />
-          <TabButton
-            active={activeTab === "anchor-items"}
-            onClick={() => { setActiveTab("anchor-items"); setSelectedSessionId(null); }}
-            icon={<Upload size={14} />}
-            label="Anchor Items"
-          />
-          <TabButton
-            active={activeTab === "subscale"}
-            onClick={() => { setActiveTab("subscale"); setSelectedSessionId(null); }}
-            icon={<BarChart3 size={14} />}
-            label="Subscale"
-          />
-          <TabButton
-            active={activeTab === "csem"}
-            onClick={() => { setActiveTab("csem"); setSelectedSessionId(null); }}
-            icon={<Activity size={14} />}
-            label="Cond. SEM"
-          />
-          <TabButton
-            active={activeTab === "tcc"}
-            onClick={() => { setActiveTab("tcc"); setSelectedSessionId(null); }}
-            icon={<TrendingUp size={14} />}
-            label="TCC"
-          />
-          <TabButton
-            active={activeTab === "dbf"}
-            onClick={() => { setActiveTab("dbf"); setSelectedSessionId(null); }}
-            icon={<ShieldAlert size={14} />}
-            label="DBF"
-          />
-          <TabButton
-            active={activeTab === "poly-dif"}
-            onClick={() => { setActiveTab("poly-dif"); setSelectedSessionId(null); }}
-            icon={<ShieldCheck size={14} />}
-            label="Poly DIF"
-          />
-          <TabButton
-            active={activeTab === "reliability"}
-            onClick={() => { setActiveTab("reliability"); setSelectedSessionId(null); }}
-            icon={<BarChart3 size={14} />}
-            label="Reliability"
-          />
-          <TabButton
-            active={activeTab === "stopping-rule"}
-            onClick={() => { setActiveTab("stopping-rule"); setSelectedSessionId(null); }}
-            icon={<Zap size={14} />}
-            label="Stop Rules"
-          />
-          <TabButton
-            active={activeTab === "item-fit"}
-            onClick={() => { setActiveTab("item-fit"); setSelectedSessionId(null); }}
-            icon={<FlaskConical size={14} />}
-            label="Item Fit"
-          />
-          <TabButton
-            active={activeTab === "cat-sim"}
-            onClick={() => { setActiveTab("cat-sim"); setSelectedSessionId(null); }}
-            icon={<Calculator size={14} />}
-            label="CAT Sim"
-          />
-          <TabButton
-            active={activeTab === "score-norms"}
-            onClick={() => { setActiveTab("score-norms"); setSelectedSessionId(null); }}
-            icon={<Database size={14} />}
-            label="Norms"
-          />
-          <TabButton
-            active={activeTab === "online-calib"}
-            onClick={() => { setActiveTab("online-calib"); setSelectedSessionId(null); }}
-            icon={<TrendingUp size={14} />}
-            label="Drift"
-          />
-          <TabButton
-            active={activeTab === "dsf"}
-            onClick={() => { setActiveTab("dsf"); setSelectedSessionId(null); }}
-            icon={<Layers size={14} />}
-            label="DSF"
-          />
-          <TabButton
-            active={activeTab === "bn-dep"}
-            onClick={() => { setActiveTab("bn-dep"); setSelectedSessionId(null); }}
-            icon={<Network size={14} />}
-            label="BN Dep"
-          />
-          <TabButton
-            active={activeTab === "score-report"}
-            onClick={() => { setActiveTab("score-report"); setSelectedSessionId(null); }}
-            icon={<FileText size={14} />}
-            label="Score Report"
-          />
-          <TabButton
-            active={activeTab === "mg-inv"}
-            onClick={() => { setActiveTab("mg-inv"); setSelectedSessionId(null); }}
-            icon={<Share2 size={14} />}
-            label="MG Inv."
-          />
-          <TabButton
-            active={activeTab === "irt-rt"}
-            onClick={() => { setActiveTab("irt-rt"); setSelectedSessionId(null); }}
-            icon={<Clock size={14} />}
-            label="RT Model"
-          />
-          <TabButton
-            active={activeTab === "exposure"}
-            onClick={() => { setActiveTab("exposure"); setSelectedSessionId(null); }}
-            icon={<Shield size={14} />}
-            label="Exposure"
-          />
-          <TabButton
-            active={activeTab === "scale-eq"}
-            onClick={() => { setActiveTab("scale-eq"); setSelectedSessionId(null); }}
-            icon={<Link2 size={14} />}
-            label="Scale Eq."
-          />
-          <TabButton
-            active={activeTab === "growth"}
-            onClick={() => { setActiveTab("growth"); setSelectedSessionId(null); }}
-            icon={<TrendingUp size={14} />}
-            label="Growth"
-          />
-          <TabButton
-            active={activeTab === "rater-calib"}
-            onClick={() => { setActiveTab("rater-calib"); setSelectedSessionId(null); }}
-            icon={<UserCheck size={14} />}
-            label="Rater Calib."
-          />
-          <TabButton
-            active={activeTab === "long-dif"}
-            onClick={() => { setActiveTab("long-dif"); setSelectedSessionId(null); }}
-            icon={<GitBranch size={14} />}
-            label="Long. DIF"
-          />
-          <TabButton
-            active={activeTab === "validity"}
-            onClick={() => { setActiveTab("validity"); setSelectedSessionId(null); }}
-            icon={<CheckSquare size={14} />}
-            label="Validity"
-          />
-          <TabButton
-            active={activeTab === "settings"}
-            onClick={() => {
-              setActiveTab("settings");
-              setSelectedSessionId(null);
-            }}
-            icon={<SettingsIcon size={14} />}
-            label="Settings"
-          />
-        </div>
-      </header>
+        </header>
 
       <AnimatePresence mode="wait">
         {activeTab === "overview" && (
@@ -1634,33 +1244,119 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
           </motion.div>
         )}
       </AnimatePresence>
+      </main>
     </div>
   );
 };
 
-function TabButton({
-  active,
-  onClick,
+const NAV_LABELS: Record<string, string> = {
+  overview: "Overview",
+  candidates: "Candidates",
+  codes: "Exam Codes",
+  analytics: "Analytics",
+  "content-qa": "Content QA",
+  "item-generator": "AI Generator",
+  "item-inventory": "Item Inventory",
+  "item-bank": "Item Bank",
+  "distractor-audit": "Item Quality",
+  "aig-quality": "AIG Quality",
+  "bias-review": "Bias Review",
+  "item-retirement": "Item Retirement",
+  calibration: "Calibration",
+  dif: "DIF Monitor",
+  "standard-setting": "Standard Setting",
+  equating: "Equating",
+  "psychometric-quality": "Quality",
+  mirt: "MIRT 6D",
+  grm: "GRM Scoring",
+  exposure: "Exposure",
+  "rater-reliability": "Rater IRR",
+  classification: "Classification",
+  blueprint: "Blueprint",
+  "theta-diag": "θ Diagnostics",
+  tif: "TIF",
+  "person-fit": "Person Fit",
+  "shadow-test": "Shadow Test",
+  "item-drift": "Item Drift",
+  "cognitive-diag": "Cognitive Diag",
+  "bayes-calib": "Bayes Calibration",
+  "mst-routing": "MST Routing",
+  "rt-diag": "RT Diagnostics",
+  "local-dep": "Local Dep.",
+  "anchor-items": "Anchor Items",
+  subscale: "Subscale",
+  csem: "Cond. SEM",
+  tcc: "TCC",
+  dbf: "DBF",
+  "poly-dif": "Poly DIF",
+  reliability: "Reliability",
+  "stopping-rule": "Stop Rules",
+  "item-fit": "Item Fit",
+  "cat-sim": "CAT Sim",
+  "score-norms": "Score Norms",
+  "online-calib": "Online Calibration",
+  dsf: "DSF",
+  "bn-dep": "BN Dep.",
+  "score-report": "Score Report",
+  "mg-inv": "MG Invariance",
+  "irt-rt": "IRT-RT Model",
+  "scale-eq": "Scale Equating",
+  growth: "Growth",
+  "rater-calib": "Rater Calibration",
+  "long-dif": "Longitudinal DIF",
+  validity: "Validity Evidence",
+  import: "Import",
+  branding: "Branding",
+  fraud: "Fraud Monitor",
+  proctoring: "Proctoring",
+  billing: "Billing",
+  integrations: "Integrations",
+  audit: "Audit Logs",
+  settings: "Settings",
+};
+
+function NavGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-1">
+      <div className="px-3 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function NavItem({
+  id,
+  activeTab,
+  setActiveTab,
+  setSelectedSessionId,
   icon,
   label,
 }: {
-  active: boolean;
-  onClick: () => void;
+  id: string;
+  activeTab: string;
+  setActiveTab: (tab: any) => void;
+  setSelectedSessionId: (id: string | null) => void;
   icon: React.ReactNode;
   label: string;
 }) {
+  const active = activeTab === id;
   return (
     <button
-      onClick={onClick}
+      onClick={() => { setActiveTab(id); setSelectedSessionId(null); }}
       className={cn(
-        "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+        "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all text-left",
         active
-          ? "bg-white text-indigo-600 shadow-sm"
-          : "text-slate-400 hover:text-slate-600",
+          ? "bg-indigo-50 text-indigo-700 font-bold"
+          : "text-slate-500 hover:bg-slate-50 hover:text-slate-700",
       )}
     >
-      {icon}
-      {label}
+      <span className={cn("flex-shrink-0", active ? "text-indigo-500" : "text-slate-400")}>
+        {icon}
+      </span>
+      <span className="truncate">{label}</span>
+      {active && <span className="ml-auto w-1 h-4 rounded-full bg-indigo-500 flex-shrink-0" />}
     </button>
   );
 }
