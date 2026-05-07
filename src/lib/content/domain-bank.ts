@@ -421,6 +421,192 @@ export const DOMAIN_CONFIGS: Record<string, DomainConfig> = {
     itemTags: ["cambridge", "pet", "b1-preliminary", "b1", "general-english"],
     minBankSize: 250,
   },
+
+  // ── TOEFL JUNIOR ─────────────────────────────────────────────────────────
+  TOEFL_JUNIOR: {
+    id: "TOEFL_JUNIOR",
+    name: "TOEFL Junior Standard",
+    description:
+      "ETS TOEFL Junior Standard — A2 to B2 proficiency test for students aged 11–15. " +
+      "Three sections: Listening Comprehension, Language Form and Meaning, Reading Comprehension. " +
+      "42 items per section, 126 items total. Score range 300–900.",
+    blueprint: [
+      { skill: SkillType.READING,    minCount: 5, maxCount: 7 },
+      { skill: SkillType.LISTENING,  minCount: 4, maxCount: 6 },
+      { skill: SkillType.GRAMMAR,    minCount: 3, maxCount: 5 },
+      { skill: SkillType.VOCABULARY, minCount: 3, maxCount: 5 },
+    ],
+    vocabularySpecs: {
+      A2: {
+        topicAreas: [
+          "school life", "family and friends", "sports and hobbies", "food and nutrition",
+          "transport and travel", "nature and wildlife",
+        ],
+        minWordCount: 800,
+        maxWordCount: 1200,
+        registerLevel: "informal",
+      },
+      B1: {
+        topicAreas: [
+          "science and technology", "health and physical education", "history and social studies",
+          "geography and environment", "arts and music", "community and society",
+          "media and communication",
+        ],
+        minWordCount: 2000,
+        maxWordCount: 3000,
+        registerLevel: "semi-formal",
+      },
+      B2: {
+        topicAreas: [
+          "academic subjects (biology, chemistry, physics)", "global issues",
+          "literature and narrative", "future plans and careers",
+        ],
+        minWordCount: 4000,
+        maxWordCount: 5000,
+        registerLevel: "semi-formal",
+      },
+    },
+    contentSpecs: {
+      LISTENING: {
+        A2: {
+          topics: ["school life", "family", "sports", "food", "transport"],
+          textTypes: ["short conversation (2 speakers)", "school announcement"],
+          wordRange: [50, 120],
+          features: [
+            "natural speech with contractions",
+            "2-speaker exchanges 4–8 turns",
+            "everyday school settings",
+            "main idea and detail questions",
+          ],
+        },
+        B1: {
+          topics: ["science", "history", "geography", "health", "arts"],
+          textTypes: ["short monologue (announcement/instruction)", "classroom discussion"],
+          wordRange: [100, 250],
+          features: [
+            "single-speaker short talks",
+            "classroom mini-lectures (teacher + 1–2 students)",
+            "academic language: enumeration, cause-effect",
+            "inference and vocabulary-in-context questions",
+          ],
+        },
+        B2: {
+          topics: ["science experiment", "historical event", "environmental issue"],
+          textTypes: ["academic mini-lecture (200–380 words)"],
+          wordRange: [200, 380],
+          features: [
+            "extended academic discussion",
+            "speaker purpose and attitude questions",
+            "organisation and structure questions",
+          ],
+        },
+      },
+      GRAMMAR: {
+        A2: {
+          topics: ["everyday school context"],
+          textTypes: ["single sentence with blank"],
+          wordRange: [15, 30],
+          features: [
+            "simple present / past / future",
+            "modal verbs (can/should/must)",
+            "articles and prepositions",
+            "comparatives",
+          ],
+        },
+        B1: {
+          topics: ["school subjects", "social studies", "science facts"],
+          textTypes: ["sentence or 2-sentence context with blank"],
+          wordRange: [20, 50],
+          features: [
+            "present/past perfect",
+            "passive voice",
+            "conditionals (1st and 2nd)",
+            "relative clauses",
+            "gerunds vs infinitives",
+          ],
+        },
+        B2: {
+          topics: ["academic content", "current events (age-appropriate)"],
+          textTypes: ["2–3 sentence context with blank"],
+          wordRange: [30, 60],
+          features: [
+            "mixed conditionals",
+            "reported speech",
+            "noun clauses",
+            "participial phrases",
+            "complex conjunctions (whereas/although/unless)",
+          ],
+        },
+      },
+      VOCABULARY: {
+        A2: {
+          topics: ["everyday topics", "school subjects"],
+          textTypes: ["single sentence with underlined word or blank"],
+          wordRange: [15, 35],
+          features: [
+            "synonym questions",
+            "basic collocations",
+            "common phrasal verbs",
+          ],
+        },
+        B1: {
+          topics: ["science", "social studies", "health", "geography"],
+          textTypes: ["1–2 sentences with underlined word"],
+          wordRange: [20, 60],
+          features: [
+            "Tier 2 academic vocabulary (analyse, contribute, significant)",
+            "vocabulary-in-context",
+            "word with multiple meanings",
+            "B1 phrasal verbs",
+          ],
+        },
+        B2: {
+          topics: ["academic disciplines", "media", "technology"],
+          textTypes: ["2–3 sentences with underlined word or blank"],
+          wordRange: [30, 80],
+          features: [
+            "advanced academic vocabulary",
+            "definition from context",
+            "collocations with academic verbs",
+            "derivational morphology (-tion/-ment/-ous/-able)",
+          ],
+        },
+      },
+      READING: {
+        B1: {
+          topics: ["science articles", "history texts", "personal letters", "practical notices"],
+          textTypes: [
+            "literary / narrative (200–300 words)",
+            "informational article (250–400 words)",
+            "practical text (email/notice/schedule)",
+          ],
+          wordRange: [200, 450],
+          features: [
+            "main idea and detail questions",
+            "inference questions",
+            "vocabulary-in-context",
+            "reference questions (pronoun antecedent)",
+          ],
+        },
+        B2: {
+          topics: ["complex science", "history analysis", "literature excerpt"],
+          textTypes: [
+            "longer informational article (350–450 words)",
+            "biography / profile",
+          ],
+          wordRange: [300, 450],
+          features: [
+            "author's purpose and tone",
+            "text organisation questions",
+            "complex inference",
+            "comparison / contrast across paragraphs",
+          ],
+        },
+      },
+    },
+    itemTags: ["toefl-junior", "ets", "toefl", "middle-school", "a2-b2", "young-learners"],
+    minBankSize: 300,
+  },
 };
 
 /**
