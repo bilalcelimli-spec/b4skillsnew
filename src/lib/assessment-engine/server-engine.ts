@@ -1,5 +1,7 @@
 import { AssessmentEngine } from "./engine";
 import { selectNextItem } from "./selector.js";
+import { getProfile } from "../product-lines/profiles.js";
+import { resolveMstPhase, buildMstTagFilter } from "../selection/mst-router.js";
 import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint, IrtParameters } from "./types";
 import { prisma } from "../prisma";
 import { ScoringOrchestrator } from "../scoring/scoring-orchestrator";
@@ -306,18 +308,24 @@ export const AssessmentService = {
     const meta = (session.metadata as any) ?? {};
     const state = toEngineState(session);
 
+    // ── PRODUCT LINE PROFILE ──────────────────────────────────────────────────
+    // Resolve profile for this session's product line. Falls back to Diagnostic.
+    const profile = getProfile(meta.productLine);
+    const activeSectionOrder = profile.sectionOrder;
+    const activeSectionConfig = profile.sectionConfig;
+
     // ── SECTION FLOW ──────────────────────────────────────────────────────────
-    // Determine current section (default to index 0 = VOCABULARY)
+    // Determine current section (default to index 0)
     const sectionIndex: number = meta.sectionIndex ?? 0;
 
     // All sections complete
-    if (sectionIndex >= SECTION_ORDER.length) {
+    if (sectionIndex >= activeSectionOrder.length) {
       await this.finalizeSession(sessionId, session.theta, { stopReason: "ALL_SECTIONS_COMPLETE" });
       return { stop: true, reason: "ALL_SECTIONS_COMPLETE", finalTheta: session.theta };
     }
 
-    const currentSkill = SECTION_ORDER[sectionIndex];
-    const sectionCfg = SECTION_CONFIG[currentSkill as string];
+    const currentSkill = activeSectionOrder[sectionIndex];
+    const sectionCfg = activeSectionConfig[currentSkill as string] ?? SECTION_CONFIG[currentSkill as string];
 
     // Count non-pretest responses for the current skill
     const sectionResponses = session.responses.filter(
@@ -336,14 +344,14 @@ export const AssessmentService = {
     if (sectionDone) {
       const newSectionIndex = sectionIndex + 1;
 
-      if (newSectionIndex >= SECTION_ORDER.length) {
+      if (newSectionIndex >= activeSectionOrder.length) {
         // All sections done → finalize
         await this.finalizeSession(sessionId, session.theta, { stopReason: "ALL_SECTIONS_COMPLETE" });
         return { stop: true, reason: "ALL_SECTIONS_COMPLETE", finalTheta: session.theta };
       }
 
-      const nextSkill = SECTION_ORDER[newSectionIndex];
-      // Persist new section index in metadata
+      const nextSkill = activeSectionOrder[newSectionIndex];
+      // Persist new section index and completed section stats in metadata
       await prisma.session.update({
         where: { id: sessionId },
         data: {
@@ -362,41 +370,110 @@ export const AssessmentService = {
         completedSection: currentSkill as string,
         nextSection: nextSkill as string,
         sectionIndex: newSectionIndex,
-        totalSections: SECTION_ORDER.length,
+        totalSections: activeSectionOrder.length,
         sectionProgress: sectionCount,
       };
     }
 
     // ── ITEM SELECTION ────────────────────────────────────────────────────────
-    // Fetch available items restricted to the current skill section
+    // Fetch available items restricted to the current skill section.
+    // Optionally narrow by exam source tags defined in the product line profile.
     const whereClause: any = {
       status: { in: ["ACTIVE", "PRETEST"] },
       id: { notIn: Array.from(state.usedItemIds) },
       skill: currentSkill as string,
     };
 
+    // Exam source tag filter: only apply when profile has specific sources
+    // ("general" is the catch-all — never use it as a restrictive tag).
+    const specificSources = profile.examSources.filter((s) => s !== "general");
+    if (specificSources.length > 0) {
+      whereClause.OR = [
+        { tags: { hasSome: specificSources } },
+        { tags: { isEmpty: true } },   // untagged items are always eligible
+      ];
+    }
+
+    // ── MST ROUTING (Junior Suite, Academia) ─────────────────────────────────
+    // When the profile has an MST config, resolve the current phase and:
+    //  - During the routing module: no track filter applied
+    //  - After routing: assign track to metadata (once) and filter by track
+    const totalNonPretestResponses = session.responses.filter((r) => !r.isPretest).length;
+    if (profile.mst?.enabled) {
+      const mstPhase = resolveMstPhase(
+        meta,
+        totalNonPretestResponses,
+        state.theta,
+        profile.mst
+      );
+
+      // Persist track assignment on the first call after routing completes
+      if (mstPhase.shouldAssignTrack && mstPhase.trackLabel) {
+        await prisma.session.update({
+          where: { id: sessionId },
+          data: {
+            metadata: {
+              ...meta,
+              mstTrack: mstPhase.trackLabel,
+              mstRoutingTheta: mstPhase.routingTheta,
+            }
+          }
+        });
+        // Update local meta so the track filter below sees the new value
+        meta.mstTrack = mstPhase.trackLabel;
+      }
+
+      // Apply MST track filter to the Prisma where clause
+      const trackFilter = buildMstTagFilter(mstPhase);
+      if (trackFilter) {
+        // Merge: if OR already set (exam sources), nest inside an AND
+        if (whereClause.OR) {
+          whereClause.AND = [{ OR: whereClause.OR }, trackFilter];
+          delete whereClause.OR;
+        } else {
+          Object.assign(whereClause, trackFilter);
+        }
+      }
+    }
+
     const dbItems = await prisma.item.findMany({ where: whereClause });
     const itemPool: Item[] = dbItems.map((di) => dbItemToEngineItem(di));
 
-    // Select next item using direct MFI + exposure control (bypasses global blueprint
-    // which would incorrectly cap single-skill section pools).
-    const operationalPool = itemPool.filter(item => !item.isPretest);
+    // ── WARM-UP FILTERING ─────────────────────────────────────────────────────
+    // For the first N items across all sections, restrict to easier items so
+    // candidates build confidence before harder adaptive items appear.
+    const operationalPool = itemPool.filter((item) => {
+      if (item.isPretest) return false;
+      if (totalNonPretestResponses < profile.warmupItems) {
+        // Warm-up window: only items with b ≤ θ + offset
+        return item.params.b <= state.theta + profile.warmupDifficultyOffset;
+      }
+      return true;
+    });
+
+    // If warm-up filter empties the pool, fall back to full operational pool
+    const selectionPool =
+      operationalPool.length > 0
+        ? operationalPool
+        : itemPool.filter((item) => !item.isPretest);
+
+    // Select next item using MFI + Sympson-Hetter exposure control
     const nextItem = await selectNextItem(
-      operationalPool,
+      selectionPool,
       state.theta,
       state.usedItemIds,
-      5,        // topN candidates for randomisation
+      5,         // topN candidates for randomisation
       undefined, // no blueprint constraint — section itself is the constraint
       undefined
     );
     if (!nextItem) {
       // No more items in this section — force advance
       const newSectionIndex = sectionIndex + 1;
-      if (newSectionIndex >= SECTION_ORDER.length) {
+      if (newSectionIndex >= activeSectionOrder.length) {
         await this.finalizeSession(sessionId, session.theta, { stopReason: "ALL_SECTIONS_COMPLETE" });
         return { stop: true, reason: "ALL_SECTIONS_COMPLETE", finalTheta: session.theta };
       }
-      const nextSkill = SECTION_ORDER[newSectionIndex];
+      const nextSkill = activeSectionOrder[newSectionIndex];
       await prisma.session.update({
         where: { id: sessionId },
         data: { metadata: { ...meta, sectionIndex: newSectionIndex } }
@@ -407,7 +484,7 @@ export const AssessmentService = {
         completedSection: currentSkill as string,
         nextSection: nextSkill as string,
         sectionIndex: newSectionIndex,
-        totalSections: SECTION_ORDER.length,
+        totalSections: activeSectionOrder.length,
         sectionProgress: sectionCount,
         reason: "NO_ITEMS_LEFT_IN_SECTION",
       };
@@ -427,8 +504,9 @@ export const AssessmentService = {
       item: { ...nextItem, metadata: safeContent },
       currentSection: currentSkill as string,
       sectionIndex,
-      totalSections: SECTION_ORDER.length,
+      totalSections: activeSectionOrder.length,
       sectionProgress: sectionCount,
+      productLine: profile.name,
     };
   },
 
@@ -778,6 +856,17 @@ export const AssessmentService = {
     const mirt2B = (session?.metadata as any)?.mirt2B ?? null;
 
     const stopReason = opts?.stopReason ?? (session?.metadata as { stopReason?: string } | null)?.stopReason ?? null;
+    const sessionMeta = (session?.metadata as Record<string, unknown> | null) ?? {};
+    const sessionProductLine: string | null = (sessionMeta.productLine as string) ?? null;
+    const sessionMstTrack: string | null = (sessionMeta.mstTrack as string) ?? null;
+
+    // Compact skill profile snapshot for session metadata (theta + SEM only)
+    const skillProfilesSnapshot: Record<string, { theta: number; sem: number }> = {};
+    for (const [skill, report] of Object.entries(skillSubReports)) {
+      if (report) {
+        skillProfilesSnapshot[skill] = { theta: report.theta, sem: report.sem };
+      }
+    }
 
     const ec = engine.getConfig();
     const opCount =
@@ -811,6 +900,8 @@ export const AssessmentService = {
       mirtAbilityVector: mirtVector,
       mirt2B,
       stopReason,
+      productLine: sessionProductLine,
+      mstTrack: sessionMstTrack,
       psychometrics,
       generatedAt: new Date().toISOString(),
     };
@@ -823,8 +914,10 @@ export const AssessmentService = {
           completedAt: new Date(),
           cefrLevel: cefrLevel as any,
           metadata: {
-            ...((session?.metadata as Record<string, unknown> | null) || {}),
+            ...sessionMeta,
             ...(stopReason != null ? { stopReason } : {}),
+            skillProfiles: skillProfilesSnapshot,
+            ...(sessionMstTrack != null ? { mstTrack: sessionMstTrack } : {}),
           } as Prisma.InputJsonValue,
         }
       }),

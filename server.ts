@@ -552,6 +552,27 @@ async function startServer() {
         return res.status(400).json({ error: "skill, level, and format are required" });
       }
       spec.quantity = Math.min(Number(spec.quantity) || 1, 5); // Cap at 5 per request
+
+      // If a productLine is supplied and no prompt override exists, use the
+      // ExamSourceRouter to pick the correct exam-aligned prompt format.
+      if (spec.productLine && !spec.promptOverride) {
+        try {
+          const { routeGenerationRequest } = await import("./src/lib/generation/exam-source-router.js");
+          const routed = routeGenerationRequest({
+            productLine: spec.productLine,
+            skill: spec.skill,
+            cefrLevel: spec.level,
+            topic: spec.topic,
+            quantity: spec.quantity,
+          });
+          spec.promptOverride = routed.prompt;
+          spec._examSource = routed.examSource;
+          spec._taskId = routed.taskId;
+        } catch {
+          // Routing failed — fall through to default generation without override
+        }
+      }
+
       const result = await itemGenerator.generate(spec);
       res.json(result);
     } catch (error) {
