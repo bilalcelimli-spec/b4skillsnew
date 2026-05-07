@@ -84,7 +84,7 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
     setPracticeAnswer(null);
     setPracticeText("");
     setPracticeSubmitted(false);
-    const steps: Step[] = ["device-check", "mc-practice", "fill-practice", "listening-practice", "speaking-practice", "writing-practice", "ready"];
+    const steps: Step[] = ["device-check", "mc-practice", "fill-practice", "listening-practice", "speaking-practice", "ready"];
     const idx = steps.indexOf(currentStep);
     if (idx < steps.length - 1) setCurrentStep(steps[idx + 1]);
   }, [currentStep]);
