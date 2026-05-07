@@ -6229,6 +6229,155 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── ITEM BANK HEALTH DASHBOARD ─────────────────────────────────────────────
+  // Returns a comprehensive snapshot of the item bank:
+  //   • Counts by skill × level × status
+  //   • CEFR quality review summary (overallScore distribution, top issues)
+  //   • IRT parameter distribution (mean/sd for a, b per level)
+  //   • PRETEST items ready for calibration (≥ MIN_N responses)
+  //   • Items flagged REVIEW/REJECTED and their issue breakdown
+  app.get("/api/psychometrics/item-bank-health", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
+    try {
+      const SKILLS     = ["VOCABULARY", "GRAMMAR", "LISTENING", "READING", "WRITING", "SPEAKING"] as const;
+      const LEVELS     = ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"] as const;
+      const MIN_ACTIVE = 30; // target active items per slot
+      const MIN_CALIB  = parseInt(String(req.query.minResponses ?? "30"), 10);
+
+      // 1. All items (status counts by skill × level)
+      const items = await prisma.item.findMany({
+        select: {
+          id: true,
+          skill: true,
+          cefrLevel: true,
+          status: true,
+          difficulty: true,
+          discrimination: true,
+          guessing: true,
+          metadata: true,
+          _count: { select: { responses: true } },
+        },
+      });
+
+      // Build skill × level matrix
+      type SlotStats = {
+        active: number; pretest: number; draft: number; review: number;
+        retired: number; total: number; deficit: number; healthy: boolean;
+        pretestReadyForCalib: number;
+        avgB: number; avgA: number;
+      };
+      const matrix: Record<string, Record<string, SlotStats>> = {};
+      for (const skill of SKILLS) {
+        matrix[skill] = {};
+        for (const level of LEVELS) {
+          matrix[skill][level] = {
+            active: 0, pretest: 0, draft: 0, review: 0, retired: 0,
+            total: 0, deficit: 0, healthy: false,
+            pretestReadyForCalib: 0, avgB: 0, avgA: 0,
+          };
+        }
+      }
+
+      let sumB = 0, sumA = 0, bCount = 0;
+      const scoreDist: number[] = [];
+      const issueCounts: Record<string, number> = {};
+      const reviewItems: { id: string; skill: string; cefrLevel: string; score: number; issues: string[] }[] = [];
+
+      for (const item of items) {
+        const slot = matrix[item.skill]?.[item.cefrLevel];
+        if (!slot) continue;
+
+        slot.total++;
+        if (item.status === "ACTIVE")   { slot.active++;   sumB += item.difficulty; sumA += item.discrimination; bCount++; slot.avgB += item.difficulty; slot.avgA += item.discrimination; }
+        if (item.status === "PRETEST")  { slot.pretest++;  if (item._count.responses >= MIN_CALIB) slot.pretestReadyForCalib++; }
+        if (item.status === "DRAFT")    slot.draft++;
+        if (item.status === "REVIEW")   slot.review++;
+        if (item.status === "RETIRED")  slot.retired++;
+
+        // CEFR review metadata
+        const meta = item.metadata as Record<string, unknown> | null;
+        const review = meta?.cefrQualityReview as { overallScore: number; issues?: Array<{ code: string }> } | undefined;
+        if (review) {
+          scoreDist.push(review.overallScore);
+          for (const issue of review.issues ?? []) {
+            issueCounts[issue.code] = (issueCounts[issue.code] ?? 0) + 1;
+          }
+          if (item.status === "REVIEW") {
+            reviewItems.push({
+              id: item.id,
+              skill: item.skill,
+              cefrLevel: item.cefrLevel,
+              score: review.overallScore,
+              issues: (review.issues ?? []).map((i) => i.code),
+            });
+          }
+        }
+      }
+
+      // Finalise slot averages
+      for (const skill of SKILLS) {
+        for (const level of LEVELS) {
+          const slot = matrix[skill][level];
+          if (slot.active > 0) {
+            slot.avgB = slot.avgB / slot.active;
+            slot.avgA = slot.avgA / slot.active;
+          }
+          slot.deficit  = Math.max(0, MIN_ACTIVE - slot.active);
+          slot.healthy  = slot.active >= MIN_ACTIVE;
+        }
+      }
+
+      // IRT distribution
+      const allActive = items.filter((i) => i.status === "ACTIVE");
+      const irtDist = {
+        meanB: bCount > 0 ? sumB / bCount : null,
+        meanA: bCount > 0 ? sumA / bCount : null,
+        bByLevel: LEVELS.reduce((acc, level) => {
+          const lvlItems = allActive.filter((i) => i.cefrLevel === level);
+          acc[level] = lvlItems.length > 0
+            ? { mean: lvlItems.reduce((s, i) => s + i.difficulty, 0) / lvlItems.length, n: lvlItems.length }
+            : null;
+          return acc;
+        }, {} as Record<string, { mean: number; n: number } | null>),
+      };
+
+      // CEFR quality summary
+      const cefrSummary = {
+        itemsWithReview: scoreDist.length,
+        meanScore: scoreDist.length ? scoreDist.reduce((s, x) => s + x, 0) / scoreDist.length : null,
+        approved: scoreDist.filter((s) => s >= 70).length,
+        review:   scoreDist.filter((s) => s >= 40 && s < 70).length,
+        rejected: scoreDist.filter((s) => s < 40).length,
+        topIssues: Object.entries(issueCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 20)
+          .map(([code, count]) => ({ code, count })),
+      };
+
+      // Slots needing urgent attention
+      const criticalSlots = SKILLS.flatMap((skill) =>
+        LEVELS.map((level) => ({ skill, level, ...matrix[skill][level] }))
+      ).filter((s) => s.active < 10 && s.total > 0).slice(0, 20);
+
+      res.json({
+        generatedAt: new Date().toISOString(),
+        totals: {
+          all: items.length,
+          active: items.filter((i) => i.status === "ACTIVE").length,
+          pretest: items.filter((i) => i.status === "PRETEST").length,
+          draft: items.filter((i) => i.status === "DRAFT").length,
+          review: items.filter((i) => i.status === "REVIEW").length,
+          retired: items.filter((i) => i.status === "RETIRED").length,
+          pretestReadyForCalib: items.filter((i) => i.status === "PRETEST" && i._count.responses >= MIN_CALIB).length,
+        },
+        slotHealth: { minActive: MIN_ACTIVE, matrix },
+        criticalSlots,
+        irtDistribution: irtDist,
+        cefrQualitySummary: cefrSummary,
+        reviewItems: reviewItems.sort((a, b) => a.score - b.score).slice(0, 50),
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // CSEM curve: returns dense SEM data across theta range for a smooth chart
   app.get("/api/psychometrics/csem-curve", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
     try {
