@@ -1,0 +1,150 @@
+name: Weekly Item Bank Health
+
+# Runs a full item-bank diagnostic every Monday at 04:00 UTC.
+# Steps:
+#   1. Run the item-bank-health endpoint check via the health script
+#   2. Run distractor analytics (read-only, no patching)
+#   3. Re-evaluate any items still in REVIEW status
+#   4. Post a summary to Slack (if webhook is configured)
+# Also runnable on-demand via workflow_dispatch.
+
+on:
+  schedule:
+    # Every Monday at 04:00 UTC
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      patch_db:
+        description: "Patch DB — write analytics back to item metadata"
+        type: boolean
+        default: false
+      retire_poor:
+        description: "Retire items graded F in distractor analysis"
+        type: boolean
+        default: false
+      limit:
+        description: "Max items to re-evaluate (0 = no limit)"
+        type: number
+        default: 200
+
+jobs:
+  item-bank-health:
+    name: Item bank health check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      NODE_ENV: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      # ── Step 1: Distractor analytics (always read-only in scheduled run) ──────
+      - name: Distractor analytics
+        id: distractor
+        run: |
+          PATCH_DB=${{ inputs.patch_db == 'true' && '1' || '0' }} \
+          RETIRE_POOR=${{ inputs.retire_poor == 'true' && '1' || '0' }} \
+          OUTPUT=json \
+          npx tsx scripts/distractor-analytics.ts > distractor-report.json
+        continue-on-error: true
+
+      # ── Step 2: IRT calibration runner (dry-run only) ─────────────────────────
+      - name: IRT calibration (dry-run)
+        id: irt
+        run: |
+          DRY_RUN=1 npx tsx scripts/irt-calibration-runner.ts > irt-calibration-report.json
+        continue-on-error: true
+
+      # ── Step 3: Triage REVIEW items ───────────────────────────────────────────
+      - name: Triage REVIEW items
+        id: triage
+        run: |
+          npx tsx scripts/triage-review-items.ts > triage-report.json
+        continue-on-error: true
+
+      # ── Step 4: AIG quality check ─────────────────────────────────────────────
+      - name: AIG b-parameter correlation report
+        id: aig
+        run: |
+          npx tsx scripts/aig-quality-report.ts > aig-quality-report.json
+        continue-on-error: true
+
+      # ── Step 5: Summarise results ─────────────────────────────────────────────
+      - name: Build summary
+        id: summary
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync } from "fs";
+
+          function safeRead(path) {
+            try { return JSON.parse(readFileSync(path, "utf8")); }
+            catch { return null; }
+          }
+
+          const triage = safeRead("triage-report.json");
+          const aig    = safeRead("aig-quality-report.json");
+
+          const lines = ["## 📊 Weekly Item Bank Health Report", ""];
+
+          if (triage) {
+            lines.push(`**REVIEW items**: ${triage.reviewCount ?? "n/a"}`);
+            lines.push(`**Critical slots** (ACTIVE < 10): ${triage.criticalSlots ?? "n/a"}`);
+            lines.push(`**Top issue**: ${triage.topIssues?.[0]?.code ?? "none"}`);
+            lines.push("");
+          }
+
+          if (aig) {
+            lines.push(`**AIG survival rate**: ${aig.survivalRatePct ?? "n/a"}%`);
+            lines.push(`**b-parameter correlation** (predicted vs empirical): ${aig.bCorrelation ?? "n/a"}`);
+            lines.push(`**Miscalibrated generators**: ${aig.miscalibratedGenerators ?? 0}`);
+          }
+
+          const summary = lines.join("\n");
+          console.log(summary);
+
+          // Write to GitHub step summary
+          const fs = await import("fs");
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary + "\n");
+          EOF
+
+      # ── Step 6: Upload artifacts ──────────────────────────────────────────────
+      - name: Upload health reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: item-bank-health-${{ github.run_id }}
+          path: |
+            distractor-report.json
+            irt-calibration-report.json
+            triage-report.json
+            aig-quality-report.json
+          retention-days: 90
+
+      # ── Step 7: Slack notification (optional) ─────────────────────────────────
+      - name: Notify Slack
+        if: always() && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          STATUS="${{ job.status }}"
+          COLOR=$([ "$STATUS" = "success" ] && echo "good" || echo "warning")
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          PAYLOAD=$(jq -n \
+            --arg color "$COLOR" \
+            --arg status "$STATUS" \
+            --arg url "$RUN_URL" \
+            '{attachments: [{color: $color, text: ("Item Bank Health: *" + $status + "* — <" + $url + "|View run>")}]}')
+          curl -s -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$SLACK_WEBHOOK_URL"

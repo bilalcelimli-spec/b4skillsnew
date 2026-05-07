@@ -6378,6 +6378,209 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // Subscore reliability analysis (Livingston-Lewis 1995)
+  // Returns per-skill reliability, added-value criterion (Haberman 2008), and
+  // Kelley-regressed scores. Accepts optional ?skill=GRAMMAR&minSessions=200
+  app.get(
+    "/api/psychometrics/subscore-reliability",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req, res) => {
+      try {
+        const { analyzeSubscoreReliability } = await import(
+          "./src/lib/psychometrics/subscore-reliability.js"
+        );
+        const MIN_SESS = Math.min(Number(req.query.minSessions ?? 200), 5000);
+        const orgId = (req as any).user?.organizationId as string | undefined;
+
+        // Pull completed sessions with theta + SEM + subscores
+        const sessions = await prisma.session.findMany({
+          where: {
+            status: "COMPLETED",
+            ...(orgId ? { organizationId: orgId } : {}),
+          },
+          select: {
+            id: true,
+            theta: true,
+            sem: true,
+            subscores: true,   // JSON: { GRAMMAR: {theta, sem}, VOCABULARY: {theta, sem}, ... }
+          },
+          orderBy: { completedAt: "desc" },
+          take: MIN_SESS,
+        });
+
+        if (sessions.length < 10) {
+          return res.json({
+            message: "Insufficient sessions for subscore analysis",
+            sampleSize: sessions.length,
+          });
+        }
+
+        // Build per-skill input vectors from session subscores
+        const skillMap: Record<string, { thetas: number[]; sems: number[] }> = {};
+        for (const sess of sessions) {
+          const sub = sess.subscores as Record<string, { theta: number; sem: number }> | null;
+          if (!sub) continue;
+          for (const [skill, vals] of Object.entries(sub)) {
+            if (!skillMap[skill]) skillMap[skill] = { thetas: [], sems: [] };
+            skillMap[skill].thetas.push(vals.theta ?? 0);
+            skillMap[skill].sems.push(vals.sem ?? 0.5);
+          }
+        }
+
+        const compositeThetas = sessions.map((s) => s.theta);
+        const inputs = Object.entries(skillMap).map(([skill, data]) => ({
+          skill: skill as any,
+          thetas: data.thetas,
+          sems: data.sems,
+        }));
+
+        if (inputs.length === 0) {
+          return res.json({
+            message: "No subscore data found in sessions. Sessions must include a subscores JSON field.",
+            sampleSize: sessions.length,
+          });
+        }
+
+        const report = analyzeSubscoreReliability(inputs, compositeThetas);
+        res.json({ sampleSize: sessions.length, ...report });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // AIG quality metrics: b-parameter correlation + generation funnel
+  app.get(
+    "/api/psychometrics/aig-quality",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req, res) => {
+      try {
+        const CEFR_EXPECTED_B: Record<string, number> = {
+          A1: -2.5, A2: -1.5, B1: -0.5, B2: 0.5, C1: 1.5, C2: 2.5,
+        };
+        const DELTA_THRESHOLD = 0.80;
+
+        const allItems = await prisma.item.findMany({
+          select: {
+            id: true,
+            skill: true,
+            cefrLevel: true,
+            status: true,
+            difficulty: true,
+            discrimination: true,
+            pVal: true,
+            metadata: true,
+          },
+        });
+
+        // Funnel counts
+        const byStatus: Record<string, number> = {};
+        const funnelBySkill: Record<string, Record<string, number>> = {};
+        for (const item of allItems) {
+          const s = item.status;
+          byStatus[s] = (byStatus[s] ?? 0) + 1;
+          if (!funnelBySkill[item.skill]) funnelBySkill[item.skill] = {};
+          funnelBySkill[item.skill][s] = (funnelBySkill[item.skill][s] ?? 0) + 1;
+        }
+
+        const total = allItems.length;
+        const active = byStatus["ACTIVE"] ?? 0;
+        const survivalDenom = total - (byStatus["DRAFT"] ?? 0) - (byStatus["REVIEW"] ?? 0);
+        const survivalRatePct = survivalDenom > 0
+          ? Number(((active / survivalDenom) * 100).toFixed(1))
+          : null;
+
+        // b-correlation
+        const calibrated = allItems.filter(
+          (i) => i.status === "ACTIVE" && i.difficulty !== 0 && i.cefrLevel in CEFR_EXPECTED_B
+        );
+        const expectedBs  = calibrated.map((i) => CEFR_EXPECTED_B[i.cefrLevel]);
+        const empiricalBs = calibrated.map((i) => i.difficulty);
+
+        function pearsonLocal(xs: number[], ys: number[]): number {
+          const n = xs.length;
+          if (n < 3) return NaN;
+          const mx = xs.reduce((a, b) => a + b, 0) / n;
+          const my = ys.reduce((a, b) => a + b, 0) / n;
+          let num = 0, dx2 = 0, dy2 = 0;
+          for (let i = 0; i < n; i++) {
+            num += (xs[i] - mx) * (ys[i] - my);
+            dx2 += (xs[i] - mx) ** 2;
+            dy2 += (ys[i] - my) ** 2;
+          }
+          const denom = Math.sqrt(dx2 * dy2);
+          return denom < 1e-9 ? NaN : num / denom;
+        }
+
+        const bCorrelation = calibrated.length >= 3
+          ? Number(pearsonLocal(expectedBs, empiricalBs).toFixed(3))
+          : null;
+
+        const miscalibrated = calibrated.filter(
+          (i) => Math.abs(CEFR_EXPECTED_B[i.cefrLevel] - i.difficulty) > DELTA_THRESHOLD
+        );
+
+        // Per-level deviation
+        const bDeviationByLevel: Record<string, { n: number; meanDelta: number; rmse: number }> = {};
+        for (const level of Object.keys(CEFR_EXPECTED_B)) {
+          const subset = calibrated.filter((i) => i.cefrLevel === level);
+          if (subset.length === 0) continue;
+          const deltas = subset.map((i) => i.difficulty - CEFR_EXPECTED_B[level]);
+          const m = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+          const rmse = Math.sqrt(deltas.reduce((a, d) => a + d * d, 0) / deltas.length);
+          bDeviationByLevel[level] = {
+            n: subset.length,
+            meanDelta: Number(m.toFixed(3)),
+            rmse: Number(rmse.toFixed(3)),
+          };
+        }
+
+        // Per-generator stats
+        const byGen: Record<string, { total: number; active: number }> = {};
+        for (const item of allItems) {
+          const gen = (item.metadata as any)?.generatedBy ?? "unknown";
+          if (!byGen[gen]) byGen[gen] = { total: 0, active: 0 };
+          byGen[gen].total++;
+          if (item.status === "ACTIVE") byGen[gen].active++;
+        }
+        const generatorStats = Object.entries(byGen)
+          .map(([generator, c]) => ({
+            generator,
+            total: c.total,
+            active: c.active,
+            survivalRatePct: Number(((c.active / c.total) * 100).toFixed(1)),
+          }))
+          .sort((a, b) => b.total - a.total);
+
+        res.json({
+          generatedAt: new Date().toISOString(),
+          totalItems: total,
+          statusBreakdown: byStatus,
+          aig: { funnelBySkill, survivalRatePct, generatorStats },
+          bParameterCorrelation: {
+            calibratedItemsN: calibrated.length,
+            bCorrelation,
+            bDeviationByLevel,
+            miscalibratedItems: miscalibrated.length,
+            deltaThreshold: DELTA_THRESHOLD,
+            interpretation: bCorrelation == null
+              ? "insufficient data"
+              : bCorrelation >= 0.7 ? "GOOD"
+              : bCorrelation >= 0.4 ? "MODERATE"
+              : "POOR",
+          },
+          itemQuality: {
+            activeCount: active,
+            meanPval: calibrated.length
+              ? Number((calibrated.filter((i) => i.pVal != null).reduce((a, i) => a + (i.pVal ?? 0), 0) / calibrated.length).toFixed(3))
+              : null,
+            meanDiscrimination: active > 0
+              ? Number((allItems.filter((i) => i.status === "ACTIVE").reduce((a, i) => a + i.discrimination, 0) / active).toFixed(3))
+              : null,
+          },
+        });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
   // CSEM curve: returns dense SEM data across theta range for a smooth chart
   app.get("/api/psychometrics/csem-curve", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
     try {
