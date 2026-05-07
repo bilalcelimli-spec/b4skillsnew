@@ -120,8 +120,13 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   switch (itemSkill) {
     case "READING":
     case "GRAMMAR":
-    case "VOCABULARY":
-      if ((item as any).type === "FILL_IN_BLANKS") {
+    case "VOCABULARY": {
+      const hasRGVOptions = Array.isArray(content.options) && content.options.length > 0;
+      const isRGVFib =
+        item.type === "FILL_IN_BLANKS" ||
+        (!item.type && !hasRGVOptions);
+
+      if (isRGVFib) {
         return (
           <div className="space-y-6" role="form" aria-labelledby="item-prompt">
             {renderPassage(content.passage)}
@@ -226,14 +231,21 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           </fieldset>
         </div>
       );
+    }
 
-    case "LISTENING":
+    case "LISTENING": {
+      // Detect item type robustly: prefer explicit type field, fall back to content structure
+      const hasTtsScript = !!(content.ttsScript || content.script);
+      const ttsScript: string = content.ttsScript || content.script || "";
+      const hasOptions = Array.isArray(content.options) && content.options.length > 0;
+      const passageHasBlanks = typeof content.passage === "string" && content.passage.includes("___");
+      const isListeningFIB =
+        item.type === "FILL_IN_BLANKS" ||
+        (!item.type && !hasOptions && (passageHasBlanks || hasTtsScript));
+
       return (
         <div className="space-y-6" role="form" aria-labelledby="listening-prompt">
-          {/* Never show the raw TTS script — only render passage for mock [Audio:] placeholders without a real audioUrl */}
-          {!content.audioUrl && renderPassage(content.passage && !content.passage.startsWith('[Audio:') ? content.passage : undefined)}
-          
-          {/* Real Audio Player */}
+          {/* ── Audio section ─────────────────────────────────────────── */}
           {content.audioUrl ? (
             <AudioPlayer
               src={content.audioUrl}
@@ -243,7 +255,8 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
               showWaveform={true}
               onAllPlaysUsed={() => {}}
             />
-          ) : content.passage?.startsWith('[Audio:') ? (
+          ) : content.passage?.startsWith("[Audio:") ? (
+            /* Legacy [Audio: ...] placeholder */
             <div className="p-8 bg-indigo-50 border border-indigo-100 rounded-2xl flex flex-col items-center gap-4">
               <div className="w-16 h-16 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-200">
                 <Volume2 size={32} />
@@ -253,34 +266,53 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                 <div className="text-sm text-indigo-600 mt-2 italic">{content.passage.slice(7, -1).trim()}</div>
               </div>
             </div>
-          ) : null}
-          
-          {/* Fill-in-blanks for listening */}
-          {(item as any).type === "FILL_IN_BLANKS" ? (
+          ) : (
+            /* No audio available — show TTS script or notice */
+            <div className="p-6 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-4">
+              <div className="w-10 h-10 bg-amber-400 text-white rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                <Volume2 size={20} />
+              </div>
+              <div className="flex-1">
+                <div className="font-black text-amber-900 text-sm uppercase tracking-widest mb-1">Listening Task</div>
+                {ttsScript ? (
+                  <p className="text-sm text-amber-800 leading-relaxed italic">"{ttsScript}"</p>
+                ) : (
+                  <p className="text-sm text-amber-700">Audio is being prepared. Read the script below carefully.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Question body ─────────────────────────────────────────── */}
+          {isListeningFIB ? (
             <div className="space-y-4">
               <h3 id="listening-prompt" className="text-xl font-bold text-slate-900">{content.prompt}</h3>
               {content.question && (
-                <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-medium text-slate-800 mb-4">
+                <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-medium text-slate-800">
                   {content.question}
                 </div>
               )}
-              <div>
-                <input
-                  type="text"
-                  value={textValue}
-                  onChange={(e) => setTextValue(e.target.value)}
-                  disabled={disabled}
-                  placeholder="Type what you heard..."
-                  className="w-full text-lg p-4 rounded-2xl border-2 border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all disabled:opacity-50"
-                  aria-label="Type your answer"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && textValue.trim() && !disabled) {
-                      onResponse(textValue.trim());
-                      setTextValue("");
-                    }
-                  }}
-                />
-              </div>
+              {/* Show passage with blanks as visual cue */}
+              {content.passage && !content.passage.startsWith("[Audio:") && (
+                <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm leading-relaxed text-slate-700">
+                  {content.passage}
+                </div>
+              )}
+              <input
+                type="text"
+                value={textValue}
+                onChange={(e) => setTextValue(e.target.value)}
+                disabled={disabled}
+                placeholder="Type what you heard..."
+                className="w-full text-lg p-4 rounded-2xl border-2 border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all disabled:opacity-50"
+                aria-label="Type your answer"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && textValue.trim() && !disabled) {
+                    onResponse(textValue.trim());
+                    setTextValue("");
+                  }
+                }}
+              />
               <button
                 disabled={!textValue.trim() || disabled}
                 onClick={() => { if (textValue.trim()) { onResponse(textValue.trim()); setTextValue(""); } }}
@@ -298,57 +330,72 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
             /* Multiple choice for listening */
             <div className="space-y-4">
               <h3 id="listening-prompt" className="text-xl font-bold text-slate-900">{content.prompt}</h3>
-              <div className="grid grid-cols-1 gap-3" role="radiogroup" aria-labelledby="listening-prompt">
-                {content.options?.map((option: any, index: number) => {
-                  const optionText = typeof option === "string" ? option : option.text;
-                  return (
-                  <button
-                    key={index}
-                    role="radio"
-                    aria-checked={selectedOption === index ? "true" : "false"}
-                    disabled={disabled}
-                    onClick={() => setSelectedOption(index)}
-                    className={cn(
-                      "w-full text-left p-5 rounded-2xl border-2 transition-all group focus:ring-4 focus:ring-indigo-100 outline-none",
-                      selectedOption === index
-                        ? "border-indigo-500 bg-indigo-50"
-                        : "border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/50",
-                      "disabled:opacity-50 disabled:cursor-not-allowed"
-                    )}
-                    aria-label={`Option ${String.fromCharCode(65 + index)}: ${optionText}`}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs transition-colors border",
-                        selectedOption === index
-                          ? "bg-indigo-600 text-white border-indigo-600"
-                          : "bg-slate-50 text-slate-400 group-hover:bg-white group-hover:text-indigo-600 border-slate-100"
-                      )}>
-                        {String.fromCharCode(65 + index)}
-                      </div>
-                      <span className="font-bold text-slate-700 uppercase tracking-tight text-sm">{optionText}</span>
-                    </div>
-                  </button>
-                )})}
-              </div>
-              <div className="pt-4">
-                <button
-                  disabled={selectedOption === null || disabled}
-                  onClick={() => { if (selectedOption !== null) { onResponse(selectedOption); setSelectedOption(null); } }}
-                  className={cn(
-                    "w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all",
-                    selectedOption !== null && !disabled
-                      ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100"
-                      : "bg-slate-100 text-slate-400 cursor-not-allowed"
-                  )}
-                >
-                  Confirm Answer
-                </button>
-              </div>
+              {content.passage && !content.passage.startsWith("[Audio:") && (
+                <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm leading-relaxed text-slate-700">
+                  {content.passage}
+                </div>
+              )}
+              {hasOptions ? (
+                <>
+                  <div className="grid grid-cols-1 gap-3" role="radiogroup" aria-labelledby="listening-prompt">
+                    {content.options.map((option: any, index: number) => {
+                      const optionText = typeof option === "string" ? option : option.text;
+                      return (
+                        <button
+                          key={index}
+                          role="radio"
+                          aria-checked={selectedOption === index ? "true" : "false"}
+                          disabled={disabled}
+                          onClick={() => setSelectedOption(index)}
+                          className={cn(
+                            "w-full text-left p-5 rounded-2xl border-2 transition-all group focus:ring-4 focus:ring-indigo-100 outline-none",
+                            selectedOption === index
+                              ? "border-indigo-500 bg-indigo-50"
+                              : "border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/50",
+                            "disabled:opacity-50 disabled:cursor-not-allowed"
+                          )}
+                          aria-label={`Option ${String.fromCharCode(65 + index)}: ${optionText}`}
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className={cn(
+                              "w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs transition-colors border",
+                              selectedOption === index
+                                ? "bg-indigo-600 text-white border-indigo-600"
+                                : "bg-slate-50 text-slate-400 group-hover:bg-white group-hover:text-indigo-600 border-slate-100"
+                            )}>
+                              {String.fromCharCode(65 + index)}
+                            </div>
+                            <span className="font-bold text-slate-700 uppercase tracking-tight text-sm">{optionText}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="pt-4">
+                    <button
+                      disabled={selectedOption === null || disabled}
+                      onClick={() => { if (selectedOption !== null) { onResponse(selectedOption); setSelectedOption(null); } }}
+                      className={cn(
+                        "w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all",
+                        selectedOption !== null && !disabled
+                          ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100"
+                          : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                      )}
+                    >
+                      Confirm Answer
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 font-bold text-sm text-center">
+                  Item configuration error: no answer options found.
+                </div>
+              )}
             </div>
           )}
         </div>
       );
+    }
 
     case "SPEAKING":
       return (

@@ -40,6 +40,7 @@ export interface Asset {
 export interface Item {
   id: string;
   itemCode?: string | null; // Human-readable unique code e.g. VOC-B1-0042
+  type?: string; // MULTIPLE_CHOICE | FILL_IN_BLANKS | DRAG_DROP | SPEAKING_PROMPT | WRITING_PROMPT | INTEGRATED_TASK
   skill: SkillType;
   params: IrtParameters;
   isPretest?: boolean; // If true, this item is for calibration and doesn't affect theta
