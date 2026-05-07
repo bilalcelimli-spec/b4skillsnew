@@ -258,12 +258,26 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
         );
       }
 
+      // Safety-net: if no separate passage but the prompt contains both a
+      // passage body and a question stem, split them on the fly.
+      const rawPassage = content.passage as string | undefined;
+      const rawPrompt = (content.prompt as string | undefined) ?? "";
+      let displayPassage = rawPassage;
+      let displayPrompt = rawPrompt;
+      if (!rawPassage && rawPrompt.endsWith("?")) {
+        const splitMatch = rawPrompt.match(/^([\s\S]{60,}?[.!])\s{0,6}([A-Z][^\n.!?]{8,}\?)\s*$/);
+        if (splitMatch && splitMatch[1].trim().split(/\s+/).length >= 8) {
+          displayPassage = splitMatch[1].trim();
+          displayPrompt = splitMatch[2].trim();
+        }
+      }
+
       return (
         <div className="space-y-6" role="form" aria-labelledby="item-prompt">
-          {renderPassage(content.passage)}
+          {renderPassage(displayPassage)}
           <fieldset className="space-y-4">
             <legend id="item-prompt" className="text-xl font-black text-slate-900 uppercase tracking-tight mb-4">
-              {content.prompt}
+              {displayPrompt}
             </legend>
             <div className="grid grid-cols-1 gap-3" role="radiogroup" aria-labelledby="item-prompt">
               {content.options?.map((option: any, index: number) => {
