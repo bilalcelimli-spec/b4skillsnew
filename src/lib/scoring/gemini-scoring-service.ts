@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { buildCefrRubricPrompt, type CefrLevel } from "../cefr/cefr-framework.js";
+import { buildCefrScoringKnowledge } from "../cefr/cefr-knowledge-base.js";
 import { buildSkillAwarePromptAddendum, type MacroSkill } from "../language-skills/language-skill-framework.js";
 
 /**
@@ -45,13 +46,24 @@ type ScoreMode = "primary" | "verifier";
 const SYSTEM_INSTRUCTION = `
 You are a senior CEFR examiner certified by the Council of Europe.
 Your evaluations are used in high-stakes language assessments for universities, corporations, and immigration bodies.
-You are intimately familiar with the CEFR Companion Volume (2018), ALTE Can-Do statements, and Cambridge Assessment rubrics.
+You are intimately familiar with:
+  • The CEFR Companion Volume (2018) — including mediation, interaction, and online communication scales
+  • ALTE Can-Do statements and Cambridge Assessment rubrics
+  • Grammar inventories per CEFR level (English Profile Programme corpus)
+  • Vocabulary frequency bands: NGSL, Oxford 3000/5000, Academic Word List (Coxhead 2000)
+  • Typical learner error profiles per CEFR level — for calibrated, principled scoring
+  • Discourse and pragmatic competence development across CEFR levels
+  • Text complexity benchmarks per level (sentence length, lexical density, TTR, clause depth)
+  • Age-appropriate expectations for young learners (7-10, 11-14) vs. adult learners
+
 For EVERY response you must:
-  1. Apply the level-specific CEFR rubric provided in the user prompt.
+  1. Apply the level-specific CEFR rubric AND the CEFR knowledge block provided in the user prompt.
   2. Consider all five sub-criteria: Grammar, Vocabulary, Coherence/Cohesion, Fluency (speaking), and Task Achievement.
   3. Provide targeted, actionable feedback anchored in the rubric language.
   4. Cite specific examples from the candidate's response in corrections and feedback.
   5. If the performance clearly exceeds or falls below the target level, reflect this in cefrLevel.
+  6. Use the error profile in the knowledge block to calibrate scoring tolerance — errors typical of this level should not be penalised as harshly as errors that indicate a lower-level candidate.
+  7. Use the Can-Do descriptors in the knowledge block to anchor your qualitative feedback.
 Be objective, rigorous, and precise. Always return valid JSON.
 `;
 
@@ -85,6 +97,7 @@ async function scoreSpeakingInternal(
   targetCefr?: CefrLevel
 ): Promise<AIScore> {
   const cefrRubricBlock = targetCefr ? buildCefrRubricPrompt(targetCefr, "speaking") : "";
+  const cefrScoringKnowledge = targetCefr ? buildCefrScoringKnowledge(targetCefr, "speaking") : "";
   const skillAddendum = targetCefr ? buildSkillAwarePromptAddendum("SPEAKING" as MacroSkill, targetCefr) : "";
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
@@ -94,6 +107,7 @@ async function scoreSpeakingInternal(
 Evaluate the candidate SPEAKING response to the following prompt:
 "${prompt}"
 
+${cefrScoringKnowledge}
 ${cefrRubricBlock}
 ${skillAddendum}
 
@@ -193,6 +207,7 @@ Return JSON with these exact fields:
 }
 
 async function scoreWritingInternal(text: string, prompt: string, mode: ScoreMode, targetCefr?: CefrLevel): Promise<AIScore> {
+  const cefrScoringKnowledge = targetCefr ? buildCefrScoringKnowledge(targetCefr, "writing") : "";
   const skillAddendum = targetCefr ? buildSkillAwarePromptAddendum("WRITING" as MacroSkill, targetCefr) : "";
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
@@ -200,6 +215,7 @@ async function scoreWritingInternal(text: string, prompt: string, mode: ScoreMod
 Evaluate the candidate WRITING response to the following prompt:
 "${prompt}"
 
+${cefrScoringKnowledge}
 ${targetCefr ? buildCefrRubricPrompt(targetCefr as CefrLevel, "writing") : ""}
 ${skillAddendum}
 

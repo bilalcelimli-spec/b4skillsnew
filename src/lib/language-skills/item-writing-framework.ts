@@ -22,6 +22,7 @@
  */
 
 import type { CefrLevel } from "../cefr/cefr-framework.js";
+import { buildCefrKnowledgeBlock } from "../cefr/cefr-knowledge-base.js";
 import type { MacroSkill, TextGenre } from "./language-skill-framework.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -557,6 +558,24 @@ export function buildItemGenerationPrompt(spec: ItemGenerationSpec): string {
   const formatSpec = getItemFormatSpec(format);
   const skillGuidance = getSkillItemGuidance(skill);
 
+  // Determine age group from topic hint
+  const ageGroup: "primary" | "junior" | "adult" =
+    topic?.toLowerCase().includes("primary") || topic?.toLowerCase().includes("7-10") ? "primary" :
+    topic?.toLowerCase().includes("junior") || topic?.toLowerCase().includes("11-14") ? "junior" : "adult";
+
+  const skillKey = skill.toLowerCase() as "reading" | "listening" | "writing" | "speaking" | "grammar" | "vocabulary";
+
+  const cefrKnowledgeBlock = buildCefrKnowledgeBlock(level, {
+    includeGrammar: ["GRAMMAR", "WRITING", "READING"].includes(skill),
+    includeVocabulary: true,
+    includeTextComplexity: ["READING", "LISTENING", "WRITING"].includes(skill),
+    includeErrorProfile: true,
+    includeDiscourse: ["WRITING", "SPEAKING"].includes(skill),
+    includeCanDo: true,
+    skill: skillKey,
+    ageGroup,
+  });
+
   return `
 You are a senior language test development specialist with 20+ years experience writing CEFR-aligned EFL/ESL items for Cambridge Assessment, IELTS, and B4Skills.
 Your task: generate ${quantity} high-quality assessment item(s) meeting ALL specifications below.
@@ -571,6 +590,8 @@ ITEM SPECIFICATION
 • Topic Domain: ${topic ?? "Neutral, universally accessible topic"}
 • Sub-Skill:    ${targetSubSkill ?? "General " + skill.toLowerCase() + " proficiency"}
 • Variety:      ${language}
+
+${cefrKnowledgeBlock}
 
 ═══════════════════════════════════════════════
 IRT PARAMETER TARGETS (for calibration tagging)
