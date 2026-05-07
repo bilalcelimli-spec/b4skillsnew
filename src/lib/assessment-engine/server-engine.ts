@@ -1,5 +1,7 @@
 import { AssessmentEngine } from "./engine";
 import { selectNextItem } from "./selector.js";
+import { getCATSelector, ShadowItem } from "../selection/cat-selector.js";
+import { SequencingContext } from "../selection/sequencing-rules.js";
 import { getProfile } from "../product-lines/profiles.js";
 import { resolveMstPhase, buildMstTagFilter } from "../selection/mst-router.js";
 import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint, IrtParameters } from "./types";
@@ -457,15 +459,30 @@ export const AssessmentService = {
         ? operationalPool
         : itemPool.filter((item) => !item.isPretest);
 
-    // Select next item using MFI + Sympson-Hetter exposure control
-    const nextItem = await selectNextItem(
-      selectionPool,
-      state.theta,
-      state.usedItemIds,
-      5,         // topN candidates for randomisation
-      undefined, // no blueprint constraint — section itself is the constraint
-      undefined
+    // ── CAT SELECTION (composite α/β/γ/δ + shadow-test + sequencing) ─────────
+    // Build administeredItems from pool (items already used in this session)
+    const itemById = new Map<string, Item>(itemPool.map((i) => [i.id, i]));
+    const administeredItems: Item[] = session.responses
+      .map((r) => itemById.get(r.itemId))
+      .filter((i): i is Item => i != null);
+
+    const seqCtx: SequencingContext = {
+      administeredItems,
+      responses: state.responses,
+      plannedTotal:
+        (activeSectionConfig[currentSkill as string] as any)?.targetItems ??
+        profile.globalMaxItems,
+      profile,
+    };
+
+    const catSelector = getCATSelector(profile);
+    const catResult = await catSelector.selectNext(
+      selectionPool as ShadowItem[],
+      state,
+      seqCtx,
+      profile.blueprint
     );
+    const nextItem = catResult?.item ?? null;
     if (!nextItem) {
       // No more items in this section — force advance
       const newSectionIndex = sectionIndex + 1;
@@ -859,6 +876,11 @@ export const AssessmentService = {
     const sessionMeta = (session?.metadata as Record<string, unknown> | null) ?? {};
     const sessionProductLine: string | null = (sessionMeta.productLine as string) ?? null;
     const sessionMstTrack: string | null = (sessionMeta.mstTrack as string) ?? null;
+    const sessionProfile = getProfile(sessionProductLine);
+    const stoppingRule = {
+      globalMaxItems: sessionProfile.globalMaxItems,
+      globalSemThreshold: sessionProfile.globalSemThreshold,
+    };
 
     // Compact skill profile snapshot for session metadata (theta + SEM only)
     const skillProfilesSnapshot: Record<string, { theta: number; sem: number }> = {};
@@ -918,6 +940,7 @@ export const AssessmentService = {
             ...(stopReason != null ? { stopReason } : {}),
             skillProfiles: skillProfilesSnapshot,
             ...(sessionMstTrack != null ? { mstTrack: sessionMstTrack } : {}),
+            stoppingRule,
           } as Prisma.InputJsonValue,
         }
       }),
