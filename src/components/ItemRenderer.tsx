@@ -30,8 +30,9 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   const content = (item as any).content ?? item.metadata ?? {};
   const itemCode = (item as any).itemCode as string | null | undefined;
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
-    const [textValue, setTextValue] = useState<string>("");
-    const itemSkill = String(item.skill).toUpperCase();
+  const [textValue, setTextValue] = useState<string>("");
+  const [fibAnswers, setFibAnswers] = useState<string[]>([]);
+  const itemSkill = String(item.skill).toUpperCase();
 
   /** Renders the item code badge (top-right corner) */
   const renderCodeBadge = () =>
@@ -217,7 +218,14 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
             <div className="pt-4">
               <button
                 disabled={selectedOption === null || disabled}
-                onClick={() => { if (selectedOption !== null) { onResponse(selectedOption); setSelectedOption(null); } }}
+                onClick={() => {
+                  if (selectedOption !== null) {
+                    const opt = content.options[selectedOption];
+                    const answer = (opt && typeof opt === "object" && opt.id) ? opt.id : selectedOption;
+                    onResponse(answer);
+                    setSelectedOption(null);
+                  }
+                }}
                 className={cn(
                   "w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all",
                   selectedOption !== null && !disabled
@@ -234,16 +242,34 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     }
 
     case "LISTENING": {
-      // Detect item type: prefer explicit type, fall back to content structure
+      // ── Type detection ────────────────────────────────────────────────────
       const hasOptions = Array.isArray(content.options) && content.options.length > 0;
-      const passageHasBlanks = typeof content.passage === "string" && content.passage.includes("___");
+      // FIB scaffold can be in content.prompt (new seed format) or content.passage (legacy)
+      const fibScaffold: string | undefined =
+        (typeof content.prompt === "string" && content.prompt.includes("___")) ? content.prompt :
+        (typeof content.passage === "string" && content.passage.includes("___")) ? content.passage :
+        undefined;
       const isListeningFIB =
         item.type === "FILL_IN_BLANKS" ||
-        (!item.type && !hasOptions && passageHasBlanks);
+        (!item.type && !hasOptions && !!fibScaffold);
+
+      // For multi-blank FIB, parse the number of expected answers from correctAnswer
+      const correctAnswerStr = content.correctAnswer as string | undefined;
+      const expectedAnswers: string[] = correctAnswerStr
+        ? correctAnswerStr.split("|").map((a: string) => a.trim())
+        : [""];
+      const blankCount = isListeningFIB ? Math.max(1, expectedAnswers.length) : 0;
+
+      // Ensure fibAnswers state array is sized correctly
+      const currentFibAnswers = fibAnswers.length === blankCount
+        ? fibAnswers
+        : Array(blankCount).fill("") as string[];
+
+      const fibAllFilled = isListeningFIB && currentFibAnswers.every((a) => a.trim() !== "");
 
       return (
         <div className="space-y-6" role="form" aria-labelledby="listening-prompt">
-          {/* ── Audio section — NEVER show passage/ttsScript (leaks answers) ── */}
+          {/* ── Audio player ─ NEVER show transcript/passage/ttsScript to student ── */}
           {content.audioUrl ? (
             <AudioPlayer
               src={content.audioUrl}
@@ -268,39 +294,67 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           {/* ── Question body ─────────────────────────────────────────── */}
           {isListeningFIB ? (
             <div className="space-y-4">
-              <h3 id="listening-prompt" className="text-xl font-bold text-slate-900">{content.prompt}</h3>
-              {content.question && (
-                <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-medium text-slate-800">
-                  {content.question}
+              {/* Blank scaffold — show with whitespace preserved so numbered lines render correctly */}
+              {fibScaffold && (
+                <div
+                  id="listening-prompt"
+                  className="p-5 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-semibold text-slate-800 whitespace-pre-wrap leading-relaxed"
+                  aria-label="Fill in the blanks task"
+                >
+                  {fibScaffold}
                 </div>
               )}
-              {/* Show blanks sentence as visual scaffold (no speaker labels / scripts) */}
-              {passageHasBlanks && content.passage && (
-                <div className="p-5 bg-white border-2 border-dashed border-slate-300 rounded-xl leading-relaxed text-slate-700 text-lg">
-                  {content.passage}
+              {/* One input per blank */}
+              {blankCount === 1 ? (
+                <input
+                  type="text"
+                  value={currentFibAnswers[0] ?? ""}
+                  onChange={(e) => setFibAnswers([e.target.value])}
+                  disabled={disabled}
+                  placeholder="Type what you heard…"
+                  className="w-full text-lg p-4 rounded-2xl border-2 border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all disabled:opacity-50"
+                  aria-label="Answer"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && currentFibAnswers[0]?.trim() && !disabled) {
+                      onResponse(currentFibAnswers[0].trim());
+                      setFibAnswers([]);
+                    }
+                  }}
+                />
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Fill in each blank:</p>
+                  {Array.from({ length: blankCount }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className="text-sm font-black text-indigo-600 w-6 shrink-0">{i + 1}.</span>
+                      <input
+                        type="text"
+                        value={currentFibAnswers[i] ?? ""}
+                        onChange={(e) => {
+                          const next = [...currentFibAnswers];
+                          next[i] = e.target.value;
+                          setFibAnswers(next);
+                        }}
+                        disabled={disabled}
+                        placeholder={`Blank ${i + 1}…`}
+                        className="flex-1 text-base p-3 rounded-xl border-2 border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all disabled:opacity-50"
+                        aria-label={`Blank ${i + 1}`}
+                      />
+                    </div>
+                  ))}
                 </div>
               )}
-              <input
-                type="text"
-                value={textValue}
-                onChange={(e) => setTextValue(e.target.value)}
-                disabled={disabled}
-                placeholder="Type what you heard…"
-                className="w-full text-lg p-4 rounded-2xl border-2 border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all disabled:opacity-50"
-                aria-label="Type your answer"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && textValue.trim() && !disabled) {
-                    onResponse(textValue.trim());
-                    setTextValue("");
+              <button
+                disabled={!fibAllFilled || disabled}
+                onClick={() => {
+                  if (fibAllFilled) {
+                    onResponse(currentFibAnswers.map((a) => a.trim()).join("|"));
+                    setFibAnswers([]);
                   }
                 }}
-              />
-              <button
-                disabled={!textValue.trim() || disabled}
-                onClick={() => { if (textValue.trim()) { onResponse(textValue.trim()); setTextValue(""); } }}
                 className={cn(
                   "w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all",
-                  textValue.trim() && !disabled
+                  fibAllFilled && !disabled
                     ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100"
                     : "bg-slate-100 text-slate-400 cursor-not-allowed"
                 )}
@@ -351,7 +405,15 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                   <div className="pt-2">
                     <button
                       disabled={selectedOption === null || disabled}
-                      onClick={() => { if (selectedOption !== null) { onResponse(selectedOption); setSelectedOption(null); } }}
+                      onClick={() => {
+                        if (selectedOption !== null) {
+                          const opt = content.options[selectedOption];
+                          // Send option id if available (e.g. "A"), else index
+                          const answer = (opt && typeof opt === "object" && opt.id) ? opt.id : selectedOption;
+                          onResponse(answer);
+                          setSelectedOption(null);
+                        }
+                      }}
                       className={cn(
                         "w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all",
                         selectedOption !== null && !disabled
