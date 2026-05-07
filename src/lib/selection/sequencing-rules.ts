@@ -30,6 +30,11 @@ export interface SequencingContext {
   plannedTotal: number;
   /** The product line profile driving this session */
   profile: ProductLineProfile;
+  /**
+   * Total responses across ALL sections so far (not just the current section pool).
+   * Used by productive-last rule to know how far into the full exam we are.
+   */
+  totalAdministeredAcrossAllSections?: number;
 }
 
 // ─── Rule Implementations ─────────────────────────────────────────────────────
@@ -105,7 +110,10 @@ function passesProductiveLast(
   if (!productive.has(candidate.skill)) return true;
 
   const cutoff = Math.floor(ctx.plannedTotal * 0.70);
-  const pos = ctx.administeredItems.length + 1; // 1-based position of next item
+  // Use cross-section total when available so productive-last is evaluated
+  // against the full exam position, not just current section item count.
+  const administered = ctx.totalAdministeredAcrossAllSections ?? ctx.administeredItems.length;
+  const pos = administered + 1; // 1-based position of next item
   return pos > cutoff;
 }
 

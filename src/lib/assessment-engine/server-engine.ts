@@ -471,9 +471,8 @@ export const AssessmentService = {
     const seqCtx: SequencingContext = {
       administeredItems,
       responses: state.responses,
-      plannedTotal:
-        (activeSectionConfig[currentSkill as string] as any)?.targetItems ??
-        profile.globalMaxItems,
+      plannedTotal: profile.globalMaxItems,
+      totalAdministeredAcrossAllSections: session.responses.length,
       profile,
     };
 

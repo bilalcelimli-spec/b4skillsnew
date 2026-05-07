@@ -73,8 +73,7 @@ export interface ProductLineProfile {
 
 /**
  * Primary (7-10) — Cambridge YLE style
- * Listening always first, task-format aligned to Cambridge YLE structure.
- * No standalone Writing/Speaking (age-appropriate; embedded in tasks).
+ * Listening first; Writing and Speaking tasks at the end (age-appropriate).
  */
 const PRIMARY: ProductLineProfile = {
   name: "Primary (7-10)",
@@ -85,23 +84,29 @@ const PRIMARY: ProductLineProfile = {
     SkillType.READING,
     SkillType.GRAMMAR,
     SkillType.VOCABULARY,
+    SkillType.WRITING,
+    SkillType.SPEAKING,
   ],
   sectionConfig: {
     LISTENING:  { minItems: 4, maxItems: 8,  semThreshold: 0.52 },
     READING:    { minItems: 4, maxItems: 8,  semThreshold: 0.52 },
     GRAMMAR:    { minItems: 3, maxItems: 6,  semThreshold: 0.52 },
     VOCABULARY: { minItems: 3, maxItems: 6,  semThreshold: 0.52 },
+    WRITING:    { minItems: 1, maxItems: 2,  semThreshold: 0.65 },
+    SPEAKING:   { minItems: 1, maxItems: 2,  semThreshold: 0.65 },
   },
   blueprint: [
     { skill: SkillType.LISTENING,  minCount: 4, maxCount: 8  },
     { skill: SkillType.READING,    minCount: 4, maxCount: 8  },
     { skill: SkillType.GRAMMAR,    minCount: 3, maxCount: 6  },
     { skill: SkillType.VOCABULARY, minCount: 3, maxCount: 6  },
+    { skill: SkillType.WRITING,    minCount: 1, maxCount: 2  },
+    { skill: SkillType.SPEAKING,   minCount: 1, maxCount: 2  },
   ],
-  globalMaxItems: 28,
+  globalMaxItems: 32,
   globalSemThreshold: 0.50,
   maxExposureRate: 0.25,
-  examSources: ["cambridge_yle", "cambridge_starters", "cambridge_movers", "cambridge_flyers"],
+  examSources: ["primary", "general"],
   reportTemplate: "yle",
   warmupItems: 3,
   warmupDifficultyOffset: 0.5,
@@ -121,23 +126,29 @@ const JUNIOR_SUITE: ProductLineProfile = {
     SkillType.GRAMMAR,
     SkillType.VOCABULARY,
     SkillType.READING,
+    SkillType.WRITING,
+    SkillType.SPEAKING,
   ],
   sectionConfig: {
     LISTENING:  { minItems: 6, maxItems: 12, semThreshold: 0.42 },
     GRAMMAR:    { minItems: 5, maxItems: 10, semThreshold: 0.42 },
     VOCABULARY: { minItems: 5, maxItems: 10, semThreshold: 0.42 },
     READING:    { minItems: 6, maxItems: 12, semThreshold: 0.42 },
+    WRITING:    { minItems: 1, maxItems: 2,  semThreshold: 0.55 },
+    SPEAKING:   { minItems: 1, maxItems: 2,  semThreshold: 0.55 },
   },
   blueprint: [
     { skill: SkillType.LISTENING,  minCount: 6,  maxCount: 12 },
     { skill: SkillType.GRAMMAR,    minCount: 5,  maxCount: 10 },
     { skill: SkillType.VOCABULARY, minCount: 5,  maxCount: 10 },
     { skill: SkillType.READING,    minCount: 6,  maxCount: 12 },
+    { skill: SkillType.WRITING,    minCount: 1,  maxCount: 2  },
+    { skill: SkillType.SPEAKING,   minCount: 1,  maxCount: 2  },
   ],
-  globalMaxItems: 40,
+  globalMaxItems: 44,
   globalSemThreshold: 0.38,
   maxExposureRate: 0.30,
-  examSources: ["toefl_junior", "cambridge_ket", "cambridge_pet"],
+  examSources: ["junior", "general"],
   mst: {
     enabled: true,
     stages: 2,
@@ -153,8 +164,8 @@ const JUNIOR_SUITE: ProductLineProfile = {
 
 /**
  * 15-Min Diagnostic — Quick CEFR placement
- * Full CAT, aggressive stopping (max 18 items).
- * Goal: estimate CEFR band quickly, not precision measurement.
+ * Full CAT, aggressive stopping (max 20 items).
+ * Includes 1 Writing and 1 Speaking task at the end for holistic profiling.
  */
 const DIAGNOSTIC_15: ProductLineProfile = {
   name: "15-Min Diagnostic",
@@ -165,20 +176,26 @@ const DIAGNOSTIC_15: ProductLineProfile = {
     SkillType.GRAMMAR,
     SkillType.READING,
     SkillType.LISTENING,
+    SkillType.WRITING,
+    SkillType.SPEAKING,
   ],
   sectionConfig: {
     VOCABULARY: { minItems: 3, maxItems: 5, semThreshold: 0.40 },
     GRAMMAR:    { minItems: 3, maxItems: 5, semThreshold: 0.40 },
     READING:    { minItems: 2, maxItems: 4, semThreshold: 0.45 },
     LISTENING:  { minItems: 2, maxItems: 4, semThreshold: 0.45 },
+    WRITING:    { minItems: 1, maxItems: 1, semThreshold: 0.99 },
+    SPEAKING:   { minItems: 1, maxItems: 1, semThreshold: 0.99 },
   },
   blueprint: [
     { skill: SkillType.VOCABULARY, minCount: 3, maxCount: 5 },
     { skill: SkillType.GRAMMAR,    minCount: 3, maxCount: 5 },
     { skill: SkillType.READING,    minCount: 2, maxCount: 4 },
     { skill: SkillType.LISTENING,  minCount: 2, maxCount: 4 },
+    { skill: SkillType.WRITING,    minCount: 1, maxCount: 1 },
+    { skill: SkillType.SPEAKING,   minCount: 1, maxCount: 1 },
   ],
-  globalMaxItems: 18,
+  globalMaxItems: 20,
   globalSemThreshold: 0.35,
   maxExposureRate: 0.35,
   examSources: ["general"],
@@ -216,7 +233,7 @@ const ACADEMIA: ProductLineProfile = {
   globalMaxItems: 60,
   globalSemThreshold: 0.30,
   maxExposureRate: 0.20,
-  examSources: ["ielts_academic", "general"],
+  examSources: ["academia", "general"],
   mst: {
     enabled: true,
     stages: 3,
@@ -265,7 +282,7 @@ const CORPORATE: ProductLineProfile = {
   globalMaxItems: 35,
   globalSemThreshold: 0.35,
   maxExposureRate: 0.30,
-  examSources: ["bec", "bulats", "general"],
+  examSources: ["corporate", "general"],
   reportTemplate: "corporate",
   warmupItems: 2,
   warmupDifficultyOffset: 0.4,
@@ -274,6 +291,7 @@ const CORPORATE: ProductLineProfile = {
 /**
  * Language Schools — General English
  * Standard CAT, CEFR band output, A1–C1 range.
+ * Includes Writing and Speaking sections for holistic assessment.
  */
 const LANGUAGE_SCHOOLS: ProductLineProfile = {
   name: "Language Schools",
@@ -284,23 +302,29 @@ const LANGUAGE_SCHOOLS: ProductLineProfile = {
     SkillType.GRAMMAR,
     SkillType.READING,
     SkillType.LISTENING,
+    SkillType.WRITING,
+    SkillType.SPEAKING,
   ],
   sectionConfig: {
     VOCABULARY: { minItems: 6, maxItems: 10, semThreshold: 0.43 },
     GRAMMAR:    { minItems: 5, maxItems: 8,  semThreshold: 0.43 },
     READING:    { minItems: 4, maxItems: 8,  semThreshold: 0.45 },
     LISTENING:  { minItems: 3, maxItems: 6,  semThreshold: 0.48 },
+    WRITING:    { minItems: 1, maxItems: 2,  semThreshold: 0.60 },
+    SPEAKING:   { minItems: 1, maxItems: 2,  semThreshold: 0.60 },
   },
   blueprint: [
     { skill: SkillType.VOCABULARY, minCount: 6, maxCount: 10 },
     { skill: SkillType.GRAMMAR,    minCount: 5, maxCount: 8  },
     { skill: SkillType.READING,    minCount: 4, maxCount: 8  },
     { skill: SkillType.LISTENING,  minCount: 3, maxCount: 6  },
+    { skill: SkillType.WRITING,    minCount: 1, maxCount: 2  },
+    { skill: SkillType.SPEAKING,   minCount: 1, maxCount: 2  },
   ],
-  globalMaxItems: 30,
+  globalMaxItems: 34,
   globalSemThreshold: 0.38,
   maxExposureRate: 0.30,
-  examSources: ["general", "cambridge_ket", "cambridge_pet"],
+  examSources: ["language-schools", "general"],
   reportTemplate: "cefr_band",
   warmupItems: 2,
   warmupDifficultyOffset: 0.4,
