@@ -235,6 +235,7 @@ model Item {
 
   @@index([organizationId])
   @@index([skill, cefrLevel])
+  @@index([skill, cefrLevel, status])  // Critical composite for CAT item selection query
   @@index([status, skill])
   @@index([organizationId, status])
   @@index([status, retirementScore])  // For retirement monitoring queries

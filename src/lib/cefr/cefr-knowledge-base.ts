@@ -73,6 +73,9 @@ export const GRAMMAR_INVENTORY: Record<CefrLevel, GrammarInventory> = {
       { feature: "Question words (What, Where, When, Who)", description: "Basic interrogatives", exampleStem: "___ do you live?", commonErrors: ["Where you live?", "What you name?"] },
       { feature: "Prepositions of place (in, on, at, next to, behind)", description: "Location description", exampleStem: "The book is ___ the table.", commonErrors: ["on/in confusion", "in front of vs front of confusion"] },
       { feature: "Demonstratives (this, that, these, those)", description: "Deictic reference", commonErrors: ["this cars", "those book"] },
+      { feature: "Articles (a, an, the, zero article)", description: "Indefinite (a/an), definite (the), zero article with names/uncountable; fundamental A1 production", exampleStem: "___ dog is in the garden.", commonErrors: ["a apple (a vs an)", "the dogs (over-use of the)", "omit the"] },
+      { feature: "Imperative (affirmative and negative)", description: "Commands and instructions: Come here! Don't move!", exampleStem: "___ the door, please. (Open)", commonErrors: ["Opens the door", "You open the door (pronoun retained)"] },
+      { feature: "Prepositions of time (at, in, on)", description: "at + time, in + month/year, on + day/date", exampleStem: "The class starts ___ Monday.", commonErrors: ["in Monday", "on morning"] },
     ],
     receptive: [
       { feature: "Going to (plans)", description: "Near future plans" },
@@ -92,7 +95,7 @@ export const GRAMMAR_INVENTORY: Record<CefrLevel, GrammarInventory> = {
       { feature: "Comparative adjectives", description: "Regular and irregular: bigger, more expensive", exampleStem: "London is ___ than my city. (big)", commonErrors: ["more bigger", "biger", "London is bigger as"] },
       { feature: "Superlative adjectives", description: "the biggest, the most beautiful", exampleStem: "It is the ___ city in the world. (large)", commonErrors: ["most large", "largest of the world", "the more large"] },
       { feature: "Countable / uncountable nouns", description: "Some, any, much, many, a lot of, a few, a little", exampleStem: "There isn't ___ sugar left. (much/many)", commonErrors: ["many sugar", "a few water", "much books"] },
-      { feature: "Modal verbs (should, must, mustn't, have to)", description: "Obligation, advice, prohibition", exampleStem: "You ___ wear a seatbelt. It's the law. (must/have to)", commonErrors: ["must to wear", "you should to", "mustn't = don't have to"] },
+      { feature: "Modal verbs (should, must, mustn't, have to, may, might, can)", description: "Obligation, advice, prohibition (must/have to/mustn't); possibility (may/might); ability (can/can't)", exampleStem: "You ___ wear a seatbelt. It's the law. (must/have to)", commonErrors: ["must to wear", "you should to", "mustn't = don't have to", "can for possibility instead of may/might"] },
       { feature: "Past continuous", description: "Background action with past simple", exampleStem: "When he arrived, she ___ (cook).", commonErrors: ["she cooked (missing progressive aspect)", "she was cook (omitting -ing)"] },
       { feature: "Relative clauses (who, which, that)", description: "Defining relative clauses only", exampleStem: "The man ___ lives next door is a doctor.", commonErrors: ["The man who he lives (doubled subject)", "The man which (wrong pronoun for person)", "The man lives (omitting relative pronoun)"] },
       { feature: "First conditional (if + present simple, will)", description: "Real conditions", exampleStem: "If it ___ tomorrow, we ___ stay inside. (rain/will)", commonErrors: ["If it will rain", "we will stayed", "we stay"] },
@@ -121,6 +124,8 @@ export const GRAMMAR_INVENTORY: Record<CefrLevel, GrammarInventory> = {
       { feature: "Used to / would (past habits)", description: "Distinguishing habitual past from simple past", exampleStem: "When I was young, I ___ (used to/would) walk to school.", commonErrors: ["I used to walked", "I would am", "I was used to walk"] },
       { feature: "Quantifiers (both, all, neither, each, every)", description: "Precise quantification", exampleStem: "___ of the students passed the exam. (All/Both/Neither)", commonErrors: ["All of students (missing the)", "Both students (missing of with pronoun: Both of them)", "Neither…nor misused as Neither…or"] },
       { feature: "Wish + past simple / would (present regret)", description: "Expressing wishes and regrets", exampleStem: "I wish I ___ taller. (be)", commonErrors: ["I wish I was (acceptable in informal, were is formal)", "I wish I am (present tense after wish)", "I hope I were (confusing wish and hope)"] },
+      { feature: "Future continuous (will be + -ing)", description: "Action in progress at a future point; polite enquiry", exampleStem: "This time tomorrow, she ___ (fly) to Paris.", commonErrors: ["will be fly", "will flying", "be will flying"] },
+      { feature: "Be about to (immediate future)", description: "Near-future event on the verge of happening", exampleStem: "The train ___ leave — hurry!", commonErrors: ["is about leave (missing to)", "is going to about"] },
     ],
     receptive: [
       { feature: "Third conditional (if + past perfect, would have)", description: "Unreal past conditions" },
@@ -129,7 +134,7 @@ export const GRAMMAR_INVENTORY: Record<CefrLevel, GrammarInventory> = {
       { feature: "Cleft sentences (It is… who…)", description: "Basic cleft for emphasis recognition" },
       { feature: "Despite / although / in spite of", description: "Concession in complex sentences" },
     ],
-    notYet: ["Subjunctive mood (formal: I suggest he go)", "Complex inversion (Never have I seen)", "Nominalisations (realisation, development)", "Participle clauses replacing subordinate clauses", "Double passives", "Modal perfect range (should have, ought to have, needn't have)"],
+    notYet: ["Subjunctive mood (formal: I suggest he go)", "Complex inversion (Never have I seen)", "Nominalisations (realisation, development)", "Participle clauses replacing subordinate clauses", "Double passives", "Modal perfect range (should have, ought to have, needn't have)", "Future perfect (will have done)", "Future perfect continuous (will have been doing)"],
   },
 
   B2: {
@@ -151,8 +156,13 @@ export const GRAMMAR_INVENTORY: Record<CefrLevel, GrammarInventory> = {
       { feature: "Double object constructions with passives (He was given…)", description: "Complex passive" },
       { feature: "Free indirect speech", description: "Narrative technique blending narrator and character voice" },
       { feature: "Pseudo-cleft (What they found was…)", description: "Emphatic theme-rheme" },
+      { feature: "Future perfect (will have done)", description: "Completion before a future point" },
+      { feature: "Future perfect continuous (will have been doing)", description: "Duration up to a future point" },
     ],
-    notYet: ["Complex garden-path sentences", "Full subjunctive range in formal writing", "Absolute clauses", "Verb complementation patterns (verbs taking that-clauses without 'that')", "Fronted focus (Rarely does one encounter…) — recognition only"],
+    notYet: ["Complex garden-path sentences", "Full subjunctive range in formal writing", "Absolute clauses", "Verb complementation patterns (verbs taking that-clauses without 'that')"],
+    // NOTE: The following B2 structures are sometimes tested at B2+ level but are NOT in the standard productive B2 inventory:
+    // Mandative subjunctive (I suggest he BE) — treat as C1 productive
+    // Conditional inversion (Had I known / Were I to go) — treat as C1 receptive only
   },
 
   C1: {
