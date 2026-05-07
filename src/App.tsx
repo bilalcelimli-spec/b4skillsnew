@@ -37,6 +37,8 @@ export default function App() {
   const [testCompleted, setTestCompleted] = useState<{ theta: number; cefr: string; sessionId: string } | null>(null);
   const [branding, setBranding] = useState<any>(null);
   const [certificate, setCertificate] = useState<any>(null);
+  const [certificateLoading, setCertificateLoading] = useState(false);
+  const [certificateError, setCertificateError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUser = async (retryRefresh = true) => {
@@ -91,6 +93,8 @@ export default function App() {
     }
     setTestCompleted(null);
     setCertificate(null);
+    setCertificateLoading(false);
+    setCertificateError(null);
     setActiveSession({ orgId: userProfile.organizationId, sessionId: "new", productLine });
   };
 
@@ -99,6 +103,16 @@ export default function App() {
     setTestCompleted({ theta: finalTheta, cefr, sessionId });
     setActiveSession(null);
     setActiveTab("results");
+    setCertificateLoading(true);
+    setCertificateError(null);
+    setCertificate(null);
+
+    // Resolve display name: prefer user.displayName, then userProfile.displayName, then email prefix
+    const displayName =
+      (user as any)?.displayName ||
+      userProfile?.displayName ||
+      userProfile?.name ||
+      (userProfile?.email ? userProfile.email.split("@")[0] : "Candidate");
 
     // Auto-generate certificate
     try {
@@ -107,14 +121,22 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           sessionData: { sessionId, theta: finalTheta, cefr, organizationId: userProfile.organizationId },
-          candidateProfile: userProfile,
+          candidateProfile: { ...userProfile, displayName, uid: userProfile.uid || userProfile.id || (user as any)?.uid },
           branding
         })
       });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.error || "Certificate generation failed");
+      }
       const cert = await res.json();
+      if (cert?.error) throw new Error(cert.error);
       setCertificate(cert);
-    } catch (err) {
-      console.error("Failed to generate certificate");
+    } catch (err: any) {
+      console.error("Failed to generate certificate", err);
+      setCertificateError(err?.message || "Failed to generate certificate");
+    } finally {
+      setCertificateLoading(false);
     }
   };
 
@@ -127,12 +149,20 @@ export default function App() {
   }
 
   if (showCodeEntry) {
-    return <CodeEntryPage onBack={() => { setShowCodeEntry(false); setShowLanding(true); }} onSuccess={(productLine, orgId, email, candidateId) => {
-      setUser({ uid: candidateId, email } as any);
-      setUserProfile({ role: "CANDIDATE", organizationId: orgId, allowedProductLine: productLine });
+    return <CodeEntryPage onBack={() => { setShowCodeEntry(false); setShowLanding(true); }} onSuccess={async (productLine, orgId, email, candidateId, name, surname) => {
+      const displayName = `${name} ${surname}`.trim();
+      setUser({ uid: candidateId, email, displayName } as any);
+      setUserProfile({ role: "CANDIDATE", organizationId: orgId, allowedProductLine: productLine, uid: candidateId, displayName, email });
       setShowCodeEntry(false);
       setTestCompleted(null);
       setCertificate(null);
+      setCertificateLoading(false);
+      setCertificateError(null);
+      // Fetch branding for the organisation so certificate/UI has correct logo & colors
+      try {
+        const bRes = await fetch(`/api/branding/${orgId}`);
+        if (bRes.ok) setBranding(await bRes.json());
+      } catch (_) {}
       setActiveSession({ orgId, sessionId: "new", productLine });
     }} />;
   }
@@ -267,6 +297,17 @@ export default function App() {
           <InstitutionalDashboard organizationId={userProfile?.organizationId} />
         ) : activeTab === "results" && certificate ? (
           <CertificateView certificate={certificate} branding={branding} />
+        ) : activeTab === "results" && certificateLoading ? (
+          <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
+            <p className="text-slate-500 font-medium">Generating your certificate…</p>
+          </div>
+        ) : activeTab === "results" && certificateError ? (
+          <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center text-red-500 text-2xl">✕</div>
+            <p className="text-red-600 font-bold">Certificate generation failed</p>
+            <p className="text-slate-500 text-sm max-w-sm">{certificateError}</p>
+          </div>
         ) : activeTab === "profile" ? (
           <CandidateProfile user={userProfile} onLogout={() => signOut()} />
         ) : (

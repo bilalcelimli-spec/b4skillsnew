@@ -67,15 +67,30 @@ export const CertificateService = {
     const expiresAt = new Date(issuedAt);
     expiresAt.setFullYear(issuedAt.getFullYear() + 2);
 
-    const appBase = (process.env.APP_URL || "http://localhost:5173").replace(/\/$/, "");
-    const verifyUrl = `${appBase}/verify/${report.id}`;
+    const appBase = (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");
+    const verifyUrl = appBase
+      ? `${appBase}/verify/${report.id}`
+      : `/verify/${report.id}`;   // relative – client will prepend origin
+
+    // Resolve candidate identity defensively
+    const candidateName =
+      candidateProfile?.displayName ||
+      candidateProfile?.name ||
+      (candidateProfile?.email ? candidateProfile.email.split("@")[0] : "Candidate");
+
+    const candidateId =
+      candidateProfile?.uid ||
+      candidateProfile?.id ||
+      candidateProfile?.candidateId ||
+      "unknown";
+
     return {
       id: report.id,
       sessionId: report.sessionId,
-      candidateId: candidateProfile.uid,
-      candidateName: candidateProfile.displayName,
-      organizationId: orgBranding.organizationId,
-      organizationName: orgBranding.name,
+      candidateId,
+      candidateName,
+      organizationId: orgBranding?.organizationId || "",
+      organizationName: orgBranding?.name || "b4skills",
       cefrLevel: report.overallCefr,
       theta: (report.overallScore / 16.6) - 3,
       skillScores: {
@@ -87,7 +102,10 @@ export const CertificateService = {
       issuedAt,
       expiresAt,
       verificationUrl: verifyUrl,
-      qrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(verifyUrl)}`
+      // qrCodeUrl kept for backwards-compat but CertificateView now generates it client-side
+      qrCodeUrl: verifyUrl
+        ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(verifyUrl)}`
+        : ""
     };
   },
 

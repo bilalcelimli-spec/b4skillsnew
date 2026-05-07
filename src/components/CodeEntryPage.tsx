@@ -4,7 +4,7 @@ import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
 import { Label } from "./ui/Label";
 
-export const CodeEntryPage: React.FC<{ onBack: () => void, onSuccess: (productLine: string, orgId: string, email: string, candidateId: string) => void }> = ({ onBack, onSuccess }) => {
+export const CodeEntryPage: React.FC<{ onBack: () => void, onSuccess: (productLine: string, orgId: string, email: string, candidateId: string, name: string, surname: string) => void }> = ({ onBack, onSuccess }) => {
   const [step, setStep] = useState(1);
   const [code, setCode] = useState("");
   const [formData, setFormData] = useState({
@@ -48,7 +48,7 @@ export const CodeEntryPage: React.FC<{ onBack: () => void, onSuccess: (productLi
       if (!res.ok) throw new Error(data.error);
       
       // Use the server-resolved candidateId (the actual DB user id, not the local cid)
-      onSuccess(data.productLine, data.organizationId, formData.email, data.candidateId || cid);
+      onSuccess(data.productLine, data.organizationId, formData.email, data.candidateId || cid, formData.name, formData.surname);
     } catch (err: any) {
       setError(err.message || "Registration failed");
     } finally {
