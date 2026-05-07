@@ -234,18 +234,16 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     }
 
     case "LISTENING": {
-      // Detect item type robustly: prefer explicit type field, fall back to content structure
-      const hasTtsScript = !!(content.ttsScript || content.script);
-      const ttsScript: string = content.ttsScript || content.script || "";
+      // Detect item type: prefer explicit type, fall back to content structure
       const hasOptions = Array.isArray(content.options) && content.options.length > 0;
       const passageHasBlanks = typeof content.passage === "string" && content.passage.includes("___");
       const isListeningFIB =
         item.type === "FILL_IN_BLANKS" ||
-        (!item.type && !hasOptions && (passageHasBlanks || hasTtsScript));
+        (!item.type && !hasOptions && passageHasBlanks);
 
       return (
         <div className="space-y-6" role="form" aria-labelledby="listening-prompt">
-          {/* ── Audio section ─────────────────────────────────────────── */}
+          {/* ── Audio section — NEVER show passage/ttsScript (leaks answers) ── */}
           {content.audioUrl ? (
             <AudioPlayer
               src={content.audioUrl}
@@ -255,30 +253,14 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
               showWaveform={true}
               onAllPlaysUsed={() => {}}
             />
-          ) : content.passage?.startsWith("[Audio:") ? (
-            /* Legacy [Audio: ...] placeholder */
-            <div className="p-8 bg-indigo-50 border border-indigo-100 rounded-2xl flex flex-col items-center gap-4">
-              <div className="w-16 h-16 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-200">
-                <Volume2 size={32} />
-              </div>
-              <div className="text-center">
-                <div className="font-bold text-indigo-900">Listening Task</div>
-                <div className="text-sm text-indigo-600 mt-2 italic">{content.passage.slice(7, -1).trim()}</div>
-              </div>
-            </div>
           ) : (
-            /* No audio available — show TTS script or notice */
-            <div className="p-6 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-4">
-              <div className="w-10 h-10 bg-amber-400 text-white rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                <Volume2 size={20} />
+            <div className="p-6 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-center gap-4">
+              <div className="w-12 h-12 bg-indigo-600 text-white rounded-full flex items-center justify-center shrink-0">
+                <Volume2 size={22} />
               </div>
-              <div className="flex-1">
-                <div className="font-black text-amber-900 text-sm uppercase tracking-widest mb-1">Listening Task</div>
-                {ttsScript ? (
-                  <p className="text-sm text-amber-800 leading-relaxed italic">"{ttsScript}"</p>
-                ) : (
-                  <p className="text-sm text-amber-700">Audio is being prepared. Read the script below carefully.</p>
-                )}
+              <div>
+                <div className="font-black text-indigo-900 text-sm uppercase tracking-widest">Listening Task</div>
+                <div className="text-xs text-indigo-600 mt-1">Audio will be available in the live assessment.</div>
               </div>
             </div>
           )}
@@ -288,13 +270,13 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
             <div className="space-y-4">
               <h3 id="listening-prompt" className="text-xl font-bold text-slate-900">{content.prompt}</h3>
               {content.question && (
-                <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-medium text-slate-800">
+                <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-medium text-slate-800">
                   {content.question}
                 </div>
               )}
-              {/* Show passage with blanks as visual cue */}
-              {content.passage && !content.passage.startsWith("[Audio:") && (
-                <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm leading-relaxed text-slate-700">
+              {/* Show blanks sentence as visual scaffold (no speaker labels / scripts) */}
+              {passageHasBlanks && content.passage && (
+                <div className="p-5 bg-white border-2 border-dashed border-slate-300 rounded-xl leading-relaxed text-slate-700 text-lg">
                   {content.passage}
                 </div>
               )}
@@ -303,7 +285,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                 value={textValue}
                 onChange={(e) => setTextValue(e.target.value)}
                 disabled={disabled}
-                placeholder="Type what you heard..."
+                placeholder="Type what you heard…"
                 className="w-full text-lg p-4 rounded-2xl border-2 border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all disabled:opacity-50"
                 aria-label="Type your answer"
                 onKeyDown={(e) => {
@@ -327,14 +309,9 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
               </button>
             </div>
           ) : (
-            /* Multiple choice for listening */
+            /* Multiple choice */
             <div className="space-y-4">
               <h3 id="listening-prompt" className="text-xl font-bold text-slate-900">{content.prompt}</h3>
-              {content.passage && !content.passage.startsWith("[Audio:") && (
-                <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm leading-relaxed text-slate-700">
-                  {content.passage}
-                </div>
-              )}
               {hasOptions ? (
                 <>
                   <div className="grid grid-cols-1 gap-3" role="radiogroup" aria-labelledby="listening-prompt">
@@ -371,7 +348,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                       );
                     })}
                   </div>
-                  <div className="pt-4">
+                  <div className="pt-2">
                     <button
                       disabled={selectedOption === null || disabled}
                       onClick={() => { if (selectedOption !== null) { onResponse(selectedOption); setSelectedOption(null); } }}
@@ -397,20 +374,46 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
       );
     }
 
-    case "SPEAKING":
+    case "SPEAKING": {
+      // Strip [EXAMINER: ...] instructions from prompt — students must not see them
+      const rawPrompt: string = content.prompt || "";
+      const studentPrompt = rawPrompt.replace(/\[EXAMINER:[^\]]*\]/gi, "").replace(/\n{2,}/g, "\n").trim();
+      const maxTime: number = content.responseTime || content.maxTime || 60;
+      const prepTime: number = content.prepTime || 0;
+
       return (
-        <div className="space-y-8">
-          {renderPassage(content.passage)}
+        <div className="space-y-6">
+          {/* Image if provided (e.g. "Look at the picture") */}
+          {content.imageUrl && (
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex justify-center">
+              <img
+                src={content.imageUrl}
+                alt="Speaking prompt visual"
+                className="max-w-full max-h-64 rounded-xl shadow-md"
+                onError={handleImageError}
+              />
+            </div>
+          )}
+
+          {/* Task card */}
           <div className="p-8 bg-rose-50 border border-rose-100 rounded-3xl flex flex-col items-center gap-4">
             <div className="w-16 h-16 bg-rose-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-rose-200">
               <Mic size={32} />
             </div>
-            <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight text-center">{content.prompt}</h3>
-            <div className="text-xs text-rose-600 font-black uppercase tracking-widest bg-white px-4 py-1 rounded-full border border-rose-100">
-              Max Time: {content.maxTime || 60}s
+            <h3 className="text-xl font-black text-slate-900 text-center leading-snug whitespace-pre-line">{studentPrompt}</h3>
+            <div className="flex items-center gap-3 flex-wrap justify-center">
+              {prepTime > 0 && (
+                <div className="text-xs text-amber-700 font-black uppercase tracking-widest bg-amber-50 px-4 py-1 rounded-full border border-amber-200">
+                  Preparation: {prepTime}s
+                </div>
+              )}
+              <div className="text-xs text-rose-600 font-black uppercase tracking-widest bg-white px-4 py-1 rounded-full border border-rose-100">
+                Response time: {maxTime}s
+              </div>
             </div>
           </div>
-          
+
+          {/* AI feedback (post-submission) */}
           {feedback && (
             <Card className="border-emerald-100 bg-emerald-50/30 rounded-3xl overflow-hidden shadow-sm">
               <CardHeader className="border-b border-emerald-100/50 bg-emerald-50/50 p-4">
@@ -420,9 +423,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                 </div>
               </CardHeader>
               <CardContent className="p-6 space-y-4">
-                <div className="text-sm text-slate-700 font-medium leading-relaxed italic">
-                  "{feedback.feedback}"
-                </div>
+                <div className="text-sm text-slate-700 font-medium leading-relaxed italic">"{feedback.feedback}"</div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {Object.entries(feedback.rubricScores || {}).map(([key, val]: [string, any]) => (
                     <div key={key} className="p-3 bg-white rounded-2xl border border-emerald-100 shadow-sm">
@@ -435,8 +436,8 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
             </Card>
           )}
 
-          <SpeakingRecorder 
-            maxTime={content.maxTime || 60}
+          <SpeakingRecorder
+            maxTime={maxTime}
             onRecordingComplete={onResponse}
             isUploading={isUploading}
             uploadProgress={uploadProgress}
@@ -444,33 +445,59 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           />
         </div>
       );
+    }
 
-    case "WRITING":
+    case "WRITING": {
+      // Resolve word limits — data uses wordRange.min/max, legacy uses minWords
+      const minWords: number = content.wordRange?.min ?? content.minWords ?? 50;
+      const maxWords: number | null = content.wordRange?.max ?? content.maxWords ?? null;
+      // Writing task prompt — prefer content.prompt (task description) over content.question
+      const writingTask: string = content.prompt || content.question || "";
+      // Any contextual stimulus (e.g. table, chart, input text) lives in content.passage
+      const hasStimulus = !!(content.passage || content.input || content.stimulus);
+      const stimulus: string = content.passage || content.input || content.stimulus || "";
+
       return (
-        <div className="space-y-8">
-          {renderPassage(content.passage)}
-          
-          <div className="p-8 bg-indigo-50 border border-indigo-100 rounded-3xl">
-            <div className="flex items-center gap-2 mb-4 text-indigo-600 font-black uppercase tracking-widest text-[10px]">
+        <div className="space-y-6">
+          {/* Stimulus material (reading input, chart description, etc.) */}
+          {hasStimulus && (
+            <div
+              className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm leading-relaxed text-slate-700"
+              aria-label="Reading input for writing task"
+            >
+              {stimulus}
+            </div>
+          )}
+
+          {/* Task card */}
+          <div className="p-7 bg-indigo-50 border border-indigo-100 rounded-3xl">
+            <div className="flex items-center gap-2 mb-3 text-indigo-600 font-black uppercase tracking-widest text-[10px]">
               <FileText size={14} />
               Writing Task
             </div>
-            <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">{content.question || content.prompt}</h3>
-            {content.question && content.prompt !== content.question && (
-              <p className="text-sm font-medium text-slate-600 mb-4">{content.prompt}</p>
-            )}
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Minimum requirement: {content.minWords || 50} words</div>
+            <p className="text-lg font-bold text-slate-900 leading-relaxed whitespace-pre-line">{writingTask}</p>
+            <div className="mt-4 flex items-center gap-3 flex-wrap">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                Minimum: {minWords} words
+              </span>
+              {maxWords && (
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  · Maximum: {maxWords} words
+                </span>
+              )}
+            </div>
           </div>
 
-          <WritingEditor 
-            prompt={content.question || content.prompt}
-            minWords={content.minWords || 50}
+          <WritingEditor
+            prompt={writingTask}
+            minWords={minWords}
             onWritingComplete={onResponse}
             isUploading={isUploading}
             uploadProgress={uploadProgress}
             uploadStatus={uploadStatus}
           />
-          
+
+          {/* AI feedback (post-submission) */}
           {feedback?.corrections && feedback.corrections.length > 0 && (
             <Card className="border-indigo-100 bg-indigo-50/30 rounded-3xl overflow-hidden shadow-sm">
               <CardHeader className="border-b border-indigo-100/50 bg-indigo-50/50 p-4">
@@ -497,9 +524,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                             {corr.type}
                           </span>
                         </div>
-                        <div className="text-[10px] text-slate-500 font-medium leading-relaxed">
-                          {corr.explanation}
-                        </div>
+                        <div className="text-[10px] text-slate-500 font-medium leading-relaxed">{corr.explanation}</div>
                       </div>
                     </div>
                   ))}
@@ -509,6 +534,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           )}
         </div>
       );
+    }
 
     default:
       return <div>Unsupported item type</div>;
