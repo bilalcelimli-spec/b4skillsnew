@@ -334,13 +334,30 @@ async function main() {
           console.log(`      ↳ Status changed: DRAFT → REVIEW`);
         }
 
-        await prisma.item.update({
-          where: { id: item.id },
-          data: {
-            metadata: newMeta as any,
-            ...(newStatus !== item.status ? { status: newStatus as any } : {}),
-          },
-        });
+        // Retry DB write up to 4 times on connection pool / transient errors
+        for (let attempt = 0; attempt < 4; attempt++) {
+          try {
+            await prisma.item.update({
+              where: { id: item.id },
+              data: {
+                metadata: newMeta as any,
+                ...(newStatus !== item.status ? { status: newStatus as any } : {}),
+              },
+            });
+            break;
+          } catch (dbErr: any) {
+            const retryable = ["P1017", "P2024", "P1001"].includes(dbErr?.code);
+            if (retryable && attempt < 3) {
+              const wait = (attempt + 1) * 5000;
+              process.stdout.write(` [db-retry ${attempt + 1}/3 in ${wait}ms]`);
+              await sleep(wait);
+              await prisma.$disconnect();
+              await prisma.$connect();
+            } else {
+              throw dbErr;
+            }
+          }
+        }
       }
 
       processed++;
