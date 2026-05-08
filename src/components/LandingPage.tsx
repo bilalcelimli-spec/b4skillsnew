@@ -49,7 +49,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
       <nav className={cn(
         "fixed top-0 left-0 w-full z-50 transition-all duration-300",
         scrolled ? "bg-white/95 backdrop-blur-md shadow-sm py-4" : "bg-transparent py-6"
-      )}>
+      )} aria-label="Main navigation">
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between relative">
           <div className="flex items-center gap-2">
             <div className="bg-[#9b276c] justify-center text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight flex items-center">
@@ -144,10 +144,10 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
             <a href="#technology" className="hover:text-slate-900 transition-colors h-16 flex items-center">Technology & Pedagogy</a>
             <a href="#research" className="hover:text-slate-900 transition-colors h-16 flex items-center">Research</a>
             <div className="flex items-center gap-6 h-16">
-              <button onClick={onCodeEntry} className="text-slate-600 hover:text-slate-900 font-bold transition-colors">
+              <button onClick={onCodeEntry} className="text-slate-600 hover:text-slate-900 font-bold transition-colors" aria-label="Enter your exam code">
                 Enter Exam Code
               </button>
-              <button onClick={onStart} className="text-slate-900 font-bold border-b-2 border-[#9b276c] hover:bg-[#9b276c] hover:text-white px-2 py-1 transition-all rounded">
+              <button onClick={onStart} className="text-slate-900 font-bold border-b-2 border-[#9b276c] hover:bg-[#9b276c] hover:text-white px-2 py-1 transition-all rounded" aria-label="Sign in as test taker">
                 Test Taker Login
               </button>
               <Button onClick={onStart} className="bg-slate-900 hover:bg-slate-800 text-white rounded-full px-6">
@@ -157,14 +157,14 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
           </div>
 
           {/* Mobile Menu Button */}
-          <button className="md:hidden p-2 text-slate-900" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+          <button className="md:hidden p-2 text-slate-900" aria-label={mobileMenuOpen ? "Close menu" : "Open menu"} aria-expanded={mobileMenuOpen} aria-controls="mobile-menu" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
             {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
         
         {/* Mobile Menu Dropdown */}
         {mobileMenuOpen && (
-          <div className="md:hidden absolute top-full left-0 w-full bg-white shadow-xl border-t border-slate-100 flex flex-col p-6 gap-6 font-medium text-slate-700">
+          <div id="mobile-menu" className="md:hidden absolute top-full left-0 w-full bg-white shadow-xl border-t border-slate-100 flex flex-col p-6 gap-6 font-medium text-slate-700" role="menu">
             <a href="#solutions" onClick={() => setMobileMenuOpen(false)}>Solutions</a>
             <a href="#technology" onClick={() => setMobileMenuOpen(false)}>Technology & Pedagogy</a>
             <a href="#research" onClick={() => setMobileMenuOpen(false)}>Research</a>

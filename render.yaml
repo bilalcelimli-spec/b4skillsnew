@@ -38,9 +38,50 @@ services:
       - key: CORS_ORIGINS
         sync: false
 
+  # ── Staging (mirrors production, separate DB, auto-deploys from develop branch)
+  - type: web
+    name: linguadapt-staging
+    env: node
+    region: oregon
+    plan: starter
+    branch: develop
+    buildCommand: npm ci && npm run build && npx prisma migrate deploy
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: staging
+      - key: DATABASE_URL
+        fromDatabase:
+          name: linguadapt-staging-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: REFRESH_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+
 databases:
+  # ── Production DB ────────────────────────────────────────────────────────────
   - name: linguadapt-db
     databaseName: linguadapt
     user: linguadapt
+    plan: starter
+    region: oregon
+
+  # ── Staging DB ───────────────────────────────────────────────────────────────
+  - name: linguadapt-staging-db
+    databaseName: linguadapt_staging
+    user: linguadapt_staging
     plan: starter
     region: oregon

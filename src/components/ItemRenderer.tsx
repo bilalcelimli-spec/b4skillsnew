@@ -132,22 +132,38 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
 
     if (passage.startsWith('[Audio:') && passage.endsWith(']')) {
       const audioText = passage.slice(7, -1).trim();
+      // Use content.audioUrl if available, otherwise show a pending-asset notice
+      const audioSrc = content?.audioUrl as string | undefined;
       elements.push(
-        <div key="mock-audio" className="p-8 bg-indigo-50 border border-indigo-100 rounded-2xl flex flex-col items-center gap-4 mb-6">
-          <div className="w-16 h-16 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-200">
-            <Volume2 size={32} />
+        audioSrc ? (
+          <div key="audio-player" className="mb-6">
+            <AudioPlayer
+              src={audioSrc}
+              maxPlays={2}
+              autoPlay={false}
+              showWaveform={true}
+              aria-label="Listening audio for this question"
+            />
           </div>
-          <div className="text-center">
-            <div className="font-bold text-indigo-900">Listening Task</div>
-            <div className="text-sm text-indigo-600 mt-2 italic">{audioText}</div>
+        ) : (
+          <div key="audio-pending" className="p-6 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-center gap-4 mb-6" role="region" aria-label="Audio content">
+            <div className="w-12 h-12 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow shadow-indigo-300 flex-shrink-0" aria-hidden="true">
+              <Volume2 size={24} />
+            </div>
+            <div>
+              <div className="font-bold text-indigo-900 text-sm">Listening Task</div>
+              <div className="text-xs text-indigo-700 mt-1 leading-relaxed">{audioText}</div>
+            </div>
           </div>
-        </div>
+        )
       );
     } else if (passage.startsWith('[Image of') && passage.endsWith(']')) {
+      const imgDescription = passage.slice(1, -1); // strip outer []
       elements.push(
-        <div key="mock-img" className="p-8 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col items-center gap-4 mb-6">
-          <div className="w-full h-48 bg-slate-200 rounded flex items-center justify-center text-slate-500 italic">
-            {passage}
+        <div key="img-placeholder" className="p-6 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col items-center gap-3 mb-6" role="img" aria-label={imgDescription}>
+          <div className="w-full h-40 bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-400">
+            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <span className="text-xs font-medium text-slate-500 text-center px-4">{imgDescription}</span>
           </div>
         </div>
       );

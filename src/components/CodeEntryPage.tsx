@@ -59,8 +59,8 @@ export const CodeEntryPage: React.FC<{ onBack: () => void, onSuccess: (productLi
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8">
-        <button onClick={onBack} className="text-slate-400 hover:text-slate-900 mb-6 transition-colors">
-          <ArrowLeft size={24} />
+        <button onClick={onBack} aria-label="Go back" className="text-slate-400 hover:text-slate-900 mb-6 transition-colors">
+          <ArrowLeft size={24} aria-hidden="true" />
         </button>
         {step === 1 ? (
           <form onSubmit={handleVerifyCode} className="space-y-6">
@@ -73,7 +73,9 @@ export const CodeEntryPage: React.FC<{ onBack: () => void, onSuccess: (productLi
             </div>
             {error && <div className="p-4 bg-red-50 text-red-600 rounded-xl text-sm font-bold text-center">{error}</div>}
             <div>
+              <label htmlFor="exam-code" className="sr-only">Exam code</label>
               <Input
+                id="exam-code"
                 type="text"
                 placeholder="e.g. EXAM-ABCD-1234"
                 className="text-center font-mono text-xl py-6 tracking-widest uppercase"
@@ -81,6 +83,7 @@ export const CodeEntryPage: React.FC<{ onBack: () => void, onSuccess: (productLi
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 disabled={loading}
                 required
+                aria-label="Exam code"
               />
             </div>
             <Button type="submit" className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-lg font-bold" disabled={loading || code.length < 5}>
@@ -97,25 +100,25 @@ export const CodeEntryPage: React.FC<{ onBack: () => void, onSuccess: (productLi
             
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>First Name</Label>
-                <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
+                <Label htmlFor="candidate-name">First Name</Label>
+                <Input id="candidate-name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
               </div>
               <div className="space-y-1">
-                <Label>Last Name</Label>
-                <Input value={formData.surname} onChange={e => setFormData({...formData, surname: e.target.value})} required />
+                <Label htmlFor="candidate-surname">Last Name</Label>
+                <Input id="candidate-surname" value={formData.surname} onChange={e => setFormData({...formData, surname: e.target.value})} required />
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Email Address</Label>
-              <Input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} required />
+              <Label htmlFor="candidate-email">Email Address</Label>
+              <Input id="candidate-email" type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} required />
             </div>
             <div className="space-y-1">
-              <Label>School / Organization</Label>
-              <Input value={formData.school} onChange={e => setFormData({...formData, school: e.target.value})} required />
+              <Label htmlFor="candidate-school">School / Organization</Label>
+              <Input id="candidate-school" value={formData.school} onChange={e => setFormData({...formData, school: e.target.value})} required />
             </div>
             <div className="space-y-1">
-              <Label>Grade / Level</Label>
-              <Input value={formData.grade} onChange={e => setFormData({...formData, grade: e.target.value})} required />
+              <Label htmlFor="candidate-grade">Grade / Level</Label>
+              <Input id="candidate-grade" value={formData.grade} onChange={e => setFormData({...formData, grade: e.target.value})} required />
             </div>
 
             <Button type="submit" className="w-full h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-lg font-bold mt-4" disabled={loading}>

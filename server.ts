@@ -6402,7 +6402,7 @@ async function startServer() {
             id: true,
             theta: true,
             sem: true,
-            subscores: true,   // JSON: { GRAMMAR: {theta, sem}, VOCABULARY: {theta, sem}, ... }
+            metadata: true,   // JSON contains subscores: { GRAMMAR: {theta, sem}, VOCABULARY: {theta, sem}, ... }
           },
           orderBy: { completedAt: "desc" },
           take: MIN_SESS,
@@ -6418,7 +6418,8 @@ async function startServer() {
         // Build per-skill input vectors from session subscores
         const skillMap: Record<string, { thetas: number[]; sems: number[] }> = {};
         for (const sess of sessions) {
-          const sub = sess.subscores as Record<string, { theta: number; sem: number }> | null;
+          const meta = sess.metadata as Record<string, unknown> | null;
+          const sub = (meta?.subscores ?? null) as Record<string, { theta: number; sem: number }> | null;
           if (!sub) continue;
           for (const [skill, vals] of Object.entries(sub)) {
             if (!skillMap[skill]) skillMap[skill] = { thetas: [], sems: [] };
@@ -6436,7 +6437,7 @@ async function startServer() {
 
         if (inputs.length === 0) {
           return res.json({
-            message: "No subscore data found in sessions. Sessions must include a subscores JSON field.",
+            message: "No subscore data found in sessions. Sessions must include a subscores key in the metadata JSON field.",
             sampleSize: sessions.length,
           });
         }

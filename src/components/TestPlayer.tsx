@@ -400,10 +400,11 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       </header>
 
       {/* Section Progress Bar */}
-      <div className="bg-white border-b border-slate-100 px-6 py-2 flex items-center gap-2">
+      <div className="bg-white border-b border-slate-100 px-6 py-2 flex items-center gap-2" role="navigation" aria-label="Test section progress">
         {SECTION_ORDER.map((sec, i) => (
           <div key={sec} className="flex items-center gap-1.5">
             <div
+              aria-current={i === sectionIndex ? "step" : undefined}
               className={cn(
                 "text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full transition-all",
                 i < sectionIndex
@@ -416,7 +417,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
               {SECTION_LABELS[sec]}
             </div>
             {i < SECTION_ORDER.length - 1 && (
-              <ChevronRight size={12} className="text-slate-300" />
+              <ChevronRight size={12} className="text-slate-300" aria-hidden="true" />
             )}
           </div>
         ))}
