@@ -22,8 +22,9 @@
  *   DRY_RUN=1          — print assessments, do NOT write to DB
  *   SKILL=GRAMMAR      — limit to one skill (GRAMMAR|VOCABULARY|READING|LISTENING|WRITING|SPEAKING)
  *   LEVEL=B1           — limit to one CEFR level
- *   BATCH_SIZE=20      — items per Gemini batch window (default 15)
- *   DELAY_MS=2000      — delay between batches in ms (default 2000)
+ *   BATCH_SIZE=30      — items fetched per DB page (default 30)
+ *   CONCURRENCY=8      — parallel Gemini evaluations per batch (default 8)
+ *   DELAY_MS=500       — delay between batches in ms (default 500)
  *   STATUS=ACTIVE      — only evaluate items with this status (default: ACTIVE,DRAFT)
  *
  * Usage:
@@ -42,8 +43,9 @@ import type { CefrLevel } from "../src/lib/cefr/cefr-framework.js";
 const DRY_RUN = process.env.DRY_RUN === "1";
 const SKILL_FILTER = process.env.SKILL?.toUpperCase() ?? null;
 const LEVEL_FILTER = process.env.LEVEL?.toUpperCase() ?? null;
-const BATCH_SIZE = parseInt(process.env.BATCH_SIZE ?? "15", 10);
-const DELAY_MS = parseInt(process.env.DELAY_MS ?? "2000", 10);
+const BATCH_SIZE = parseInt(process.env.BATCH_SIZE ?? "30", 10);
+const CONCURRENCY = parseInt(process.env.CONCURRENCY ?? "8", 10);
+const DELAY_MS = parseInt(process.env.DELAY_MS ?? "500", 10);
 const STATUS_FILTER = (process.env.STATUS ?? "ACTIVE,DRAFT").split(",").map(s => s.trim().toUpperCase());
 
 /** Items with overallScore below this will be moved to REVIEW status */
@@ -274,7 +276,7 @@ async function main() {
 
   const totalCount = await withRetry(() => prisma.item.count({ where }), "count");
   console.log(`  Items to evaluate: ${totalCount} (skills: ${SKILL_FILTER ?? "ALL"}, level: ${LEVEL_FILTER ?? "ALL"}, statuses: ${STATUS_FILTER.join(",")})`);
-  console.log(`  Batch size: ${BATCH_SIZE}, delay: ${DELAY_MS}ms, model: ${MODEL}\n`);
+  console.log(`  Batch size: ${BATCH_SIZE}, concurrency: ${CONCURRENCY}, delay: ${DELAY_MS}ms, model: ${MODEL}\n`);
 
   if (totalCount === 0) {
     console.log("  No items match the filter. Exiting.");
@@ -308,64 +310,65 @@ async function main() {
 
     console.log(`  Processing batch ${Math.floor(skip / BATCH_SIZE) + 1} (items ${skip + 1}–${skip + batch.length} of ${totalCount})...`);
 
-    for (const item of batch) {
-      process.stdout.write(`    [${processed + 1}/${totalCount}] ${item.id} (${item.skill} ${item.cefrLevel}) → `);
+    // Process items in parallel with CONCURRENCY limit
+    const sem = new Array(CONCURRENCY).fill(null);
+    let itemIdx = 0;
+    const itemResults: Array<{ item: typeof batch[0]; globalIdx: number }> = batch.map((item, i) => ({ item, globalIdx: processed + i + 1 }));
 
-      const result = await evaluateItem(item);
-      if (!result) {
-        process.stdout.write("ERROR\n");
-        errors++;
-        processed++;
-        continue;
-      }
+    await Promise.all(sem.map(async () => {
+      while (true) {
+        const slot = itemIdx++;
+        if (slot >= itemResults.length) break;
+        const { item, globalIdx } = itemResults[slot];
 
-      // Print verdict
-      const icon = result.status === "APPROVED" ? "✓" : result.status === "REVIEW" ? "~" : "✗";
-      process.stdout.write(`${icon} ${result.status} (${result.overallScore}/100) CEFR:${result.cefrAlignment} DQ:${result.distractorQuality} CL:${result.clarity}\n`);
+        process.stdout.write(`    [${globalIdx}/${totalCount}] ${item.id} (${item.skill} ${item.cefrLevel}) → `);
 
-      if (result.issues.length > 0) {
-        result.issues.forEach(issue => {
-          console.log(`      [${issue.severity}] ${issue.code}: ${issue.message}`);
-        });
-      }
-      if (DRY_RUN) {
-        console.log(`      Feedback: ${result.feedback}`);
-      }
-
-      // Track stats
-      if (result.status === "APPROVED") approved++;
-      else if (result.status === "REVIEW") review++;
-      else rejected++;
-
-      if (!DRY_RUN) {
-        // Merge into existing metadata
-        const existingMeta = (item.metadata as Record<string, unknown> | null) ?? {};
-        const newMeta = { ...existingMeta, cefrQualityReview: result };
-
-        // Determine new item status
-        let newStatus = item.status;
-        if (result.overallScore < REJECT_THRESHOLD && item.status === "ACTIVE") {
-          newStatus = "REVIEW"; // don't auto-retire ACTIVE items; flag for human review
-          statusChanged++;
-          console.log(`      ↳ Status flagged: ${item.status} → REVIEW (score too low)`);
-        } else if (result.overallScore < REVIEW_THRESHOLD && item.status === "DRAFT") {
-          newStatus = "REVIEW";
-          statusChanged++;
-          console.log(`      ↳ Status changed: DRAFT → REVIEW`);
+        const result = await evaluateItem(item);
+        if (!result) {
+          process.stdout.write("ERROR\n");
+          errors++;
+          continue;
         }
 
-        // Retry DB write on transient connection errors
-        await withRetry(() => prisma.item.update({
-          where: { id: item.id },
-          data: {
-            metadata: newMeta as any,
-            ...(newStatus !== item.status ? { status: newStatus as any } : {}),
-          },
-        }), "update");
-      }
+        const icon = result.status === "APPROVED" ? "✓" : result.status === "REVIEW" ? "~" : "✗";
+        process.stdout.write(`${icon} ${result.status} (${result.overallScore}/100) CEFR:${result.cefrAlignment} DQ:${result.distractorQuality} CL:${result.clarity}\n`);
 
-      processed++;
-    }
+        if (result.issues.length > 0) {
+          result.issues.forEach(issue => {
+            console.log(`      [${issue.severity}] ${issue.code}: ${issue.message}`);
+          });
+        }
+        if (DRY_RUN) console.log(`      Feedback: ${result.feedback}`);
+
+        if (result.status === "APPROVED") approved++;
+        else if (result.status === "REVIEW") review++;
+        else rejected++;
+
+        if (!DRY_RUN) {
+          const existingMeta = (item.metadata as Record<string, unknown> | null) ?? {};
+          const newMeta = { ...existingMeta, cefrQualityReview: result };
+          let newStatus = item.status;
+          if (result.overallScore < REJECT_THRESHOLD && item.status === "ACTIVE") {
+            newStatus = "REVIEW";
+            statusChanged++;
+            console.log(`      ↳ Status flagged: ${item.status} → REVIEW (score too low)`);
+          } else if (result.overallScore < REVIEW_THRESHOLD && item.status === "DRAFT") {
+            newStatus = "REVIEW";
+            statusChanged++;
+            console.log(`      ↳ Status changed: DRAFT → REVIEW`);
+          }
+          await withRetry(() => prisma.item.update({
+            where: { id: item.id },
+            data: {
+              metadata: newMeta as any,
+              ...(newStatus !== item.status ? { status: newStatus as any } : {}),
+            },
+          }), "update");
+        }
+      }
+    }));
+
+    processed += batch.length;
 
     skip += BATCH_SIZE;
 
