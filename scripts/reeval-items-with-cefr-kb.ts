@@ -239,17 +239,26 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function withRetry<T>(fn: () => Promise<T>, label = "DB op"): Promise<T> {
+function isRetriableDbError(err: any): boolean {
   const retryCodes = ["P1017", "P2024", "P1001"];
-  for (let attempt = 0; attempt < 5; attempt++) {
+  if (retryCodes.includes(err?.code)) return true;
+  // PrismaClientInitializationError has no .code — catch by name/message
+  if (err?.name === "PrismaClientInitializationError") return true;
+  if (typeof err?.message === "string" && err.message.includes("Can't reach database server")) return true;
+  return false;
+}
+
+async function withRetry<T>(fn: () => Promise<T>, label = "DB op"): Promise<T> {
+  for (let attempt = 0; attempt < 6; attempt++) {
     try {
       return await fn();
     } catch (err: any) {
-      if (retryCodes.includes(err?.code) && attempt < 4) {
-        const wait = (attempt + 1) * 6000;
-        process.stderr.write(`  [${label} retry ${attempt + 1}/4 in ${wait}ms — ${err.code}]\n`);
+      if (isRetriableDbError(err) && attempt < 5) {
+        const wait = (attempt + 1) * 8000;
+        process.stderr.write(`  [${label} retry ${attempt + 1}/5 in ${wait}ms — ${err?.code ?? err?.name}]\n`);
         await sleep(wait);
         try { await prisma.$disconnect(); } catch {}
+        await sleep(2000);
         try { await prisma.$connect(); } catch {}
       } else {
         throw err;
