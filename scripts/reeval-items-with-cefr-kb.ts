@@ -263,13 +263,13 @@ async function main() {
   }
 
   // Fetch all matching items (paginated by batch)
-  let processed = 0;
+  let processed = parseInt(process.env.START_SKIP ?? "0", 10);
   let approved = 0;
   let review = 0;
   let rejected = 0;
   let errors = 0;
   let statusChanged = 0;
-  let skip = 0;
+  let skip = processed;
 
   while (skip < totalCount) {
     const batch = await prisma.item.findMany({
