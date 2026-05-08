@@ -237,6 +237,26 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function withRetry<T>(fn: () => Promise<T>, label = "DB op"): Promise<T> {
+  const retryCodes = ["P1017", "P2024", "P1001"];
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      if (retryCodes.includes(err?.code) && attempt < 4) {
+        const wait = (attempt + 1) * 6000;
+        process.stderr.write(`  [${label} retry ${attempt + 1}/4 in ${wait}ms — ${err.code}]\n`);
+        await sleep(wait);
+        try { await prisma.$disconnect(); } catch {}
+        try { await prisma.$connect(); } catch {}
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw new Error(`${label}: exhausted retries`);
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -252,7 +272,7 @@ async function main() {
   if (SKILL_FILTER) where.skill = SKILL_FILTER;
   if (LEVEL_FILTER) where.cefrLevel = LEVEL_FILTER;
 
-  const totalCount = await prisma.item.count({ where });
+  const totalCount = await withRetry(() => prisma.item.count({ where }), "count");
   console.log(`  Items to evaluate: ${totalCount} (skills: ${SKILL_FILTER ?? "ALL"}, level: ${LEVEL_FILTER ?? "ALL"}, statuses: ${STATUS_FILTER.join(",")})`);
   console.log(`  Batch size: ${BATCH_SIZE}, delay: ${DELAY_MS}ms, model: ${MODEL}\n`);
 
@@ -272,7 +292,7 @@ async function main() {
   let skip = processed;
 
   while (skip < totalCount) {
-    const batch = await prisma.item.findMany({
+    const batch = await withRetry(() => prisma.item.findMany({
       where,
       select: {
         id: true, skill: true, cefrLevel: true, type: true,
@@ -282,7 +302,7 @@ async function main() {
       skip,
       take: BATCH_SIZE,
       orderBy: { createdAt: "asc" },
-    });
+    }), "findMany");
 
     if (batch.length === 0) break;
 
@@ -334,30 +354,14 @@ async function main() {
           console.log(`      ↳ Status changed: DRAFT → REVIEW`);
         }
 
-        // Retry DB write up to 4 times on connection pool / transient errors
-        for (let attempt = 0; attempt < 4; attempt++) {
-          try {
-            await prisma.item.update({
-              where: { id: item.id },
-              data: {
-                metadata: newMeta as any,
-                ...(newStatus !== item.status ? { status: newStatus as any } : {}),
-              },
-            });
-            break;
-          } catch (dbErr: any) {
-            const retryable = ["P1017", "P2024", "P1001"].includes(dbErr?.code);
-            if (retryable && attempt < 3) {
-              const wait = (attempt + 1) * 5000;
-              process.stdout.write(` [db-retry ${attempt + 1}/3 in ${wait}ms]`);
-              await sleep(wait);
-              await prisma.$disconnect();
-              await prisma.$connect();
-            } else {
-              throw dbErr;
-            }
-          }
-        }
+        // Retry DB write on transient connection errors
+        await withRetry(() => prisma.item.update({
+          where: { id: item.id },
+          data: {
+            metadata: newMeta as any,
+            ...(newStatus !== item.status ? { status: newStatus as any } : {}),
+          },
+        }), "update");
       }
 
       processed++;
