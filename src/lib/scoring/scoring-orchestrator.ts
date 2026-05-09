@@ -1,11 +1,12 @@
-import { AIScore, GeminiScoringService } from "./gemini-scoring-service";
+import { AIScore, GeminiScoringService } from "./gemini-scoring-service.js";
 import {
   assessWritingIntegrity,
   assessSpeakingIntegrity,
   type IntegrityReport,
-} from "./response-integrity";
+} from "./response-integrity.js";
+import { CircuitBreakerOpenError } from "../ai/circuit-breaker.js";
 
-export type ScoreSource = "ai_auto" | "ai_flagged" | "human" | "rejected_integrity";
+export type ScoreSource = "ai_auto" | "ai_flagged" | "human" | "rejected_integrity" | "ai_unavailable";
 
 export interface ScoringPass {
   role: "primary" | "verifier";
@@ -150,6 +151,41 @@ function buildRejectedScore(integrity: IntegrityReport): OrchestratedScore {
   };
 }
 
+/**
+ * Build a placeholder result when the Gemini API is unavailable (circuit open
+ * or all retries exhausted). Score is withheld (null-ish 0.5 mid-band) and the
+ * response is routed to the human review queue automatically.
+ */
+function buildUnavailableScore(
+  error: unknown,
+  integrity?: IntegrityReport
+): OrchestratedScore {
+  const isOpen = error instanceof CircuitBreakerOpenError;
+  const reason = isOpen
+    ? `AI_CIRCUIT_OPEN_UNTIL_${(error as CircuitBreakerOpenError).opensUntil.toISOString()}`
+    : "AI_SERVICE_UNAVAILABLE";
+
+  return {
+    score: 0.5,            // withheld — human reviewer will override
+    requiresHumanReview: true,
+    reviewReasons: [reason],
+    agreementDelta: 0,
+    scoreSource: "ai_unavailable",
+    model: MODEL_NAME,
+    modelVersion: MODEL_NAME,
+    scoringPasses: [],
+    integrity,
+    aiResult: {
+      score: 0.5,
+      cefrLevel: "UNKNOWN",
+      feedback: "AI scoring is temporarily unavailable. This response has been queued for human review.",
+      confidence: 0,
+      rubricScores: { grammar: 0, vocabulary: 0, coherence: 0, taskRelevance: 0 },
+      corrections: [],
+    },
+  };
+}
+
 /** Merge integrity issues into reviewReasons / scoreSource of an AI-scored result. */
 function applyIntegrityToResult(
   result: OrchestratedScore,
@@ -176,12 +212,16 @@ export const ScoringOrchestrator = {
       return buildRejectedScore(integrity);
     }
 
-    const [primary, verifier] = await Promise.all([
-      GeminiScoringService.scoreWriting(text, prompt),
-      GeminiScoringService.verifyWriting(text, prompt)
-    ]);
-
-    return applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
+    try {
+      const [primary, verifier] = await Promise.all([
+        GeminiScoringService.scoreWriting(text, prompt),
+        GeminiScoringService.verifyWriting(text, prompt),
+      ]);
+      return applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
+    } catch (err) {
+      // Circuit open or all retries exhausted → queue for human review
+      return buildUnavailableScore(err, integrity);
+    }
   },
 
   async scoreSpeaking(
@@ -208,10 +248,15 @@ export const ScoringOrchestrator = {
       return buildRejectedScore(audioOnly);
     }
 
-    const [primary, verifier] = await Promise.all([
-      GeminiScoringService.scoreSpeaking(audioBase64, mimeType, prompt),
-      GeminiScoringService.verifySpeaking(audioBase64, mimeType, prompt)
-    ]);
+    let primary: AIScore, verifier: AIScore;
+    try {
+      [primary, verifier] = await Promise.all([
+        GeminiScoringService.scoreSpeaking(audioBase64, mimeType, prompt),
+        GeminiScoringService.verifySpeaking(audioBase64, mimeType, prompt),
+      ]);
+    } catch (err) {
+      return buildUnavailableScore(err, audioOnly);
+    }
 
     const transcript = primary.transcript || verifier.transcript || "";
     const integrity = assessSpeakingIntegrity({
@@ -234,11 +279,14 @@ export const ScoringOrchestrator = {
       return buildRejectedScore(integrity);
     }
 
-    const [primary, verifier] = await Promise.all([
-      GeminiScoringService.scoreWriting(text, prompt),
-      GeminiScoringService.verifyWriting(text, prompt)
-    ]);
-
-    return applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
-  }
+    try {
+      const [primary, verifier] = await Promise.all([
+        GeminiScoringService.scoreWriting(text, prompt),
+        GeminiScoringService.verifyWriting(text, prompt),
+      ]);
+      return applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
+    } catch (err) {
+      return buildUnavailableScore(err, integrity);
+    }
+  },
 };

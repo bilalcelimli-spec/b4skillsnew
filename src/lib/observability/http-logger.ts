@@ -17,9 +17,27 @@ export const httpLogger = pinoHttp({
   },
   customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
   customErrorMessage: (req, res, err) => `${req.method} ${req.url} ${res.statusCode} ${err.message}`,
+  customProps: (req: any) => {
+    // Enrich every log line with session/org context when available.
+    // These are attached to req by auth middleware (server.ts checkAuth).
+    const props: Record<string, unknown> = {};
+    if (req.user?.id) props["userId"] = req.user.id;
+    if (req.user?.organizationId) props["organizationId"] = req.user.organizationId;
+    if (req.user?.role) props["userRole"] = req.user.role;
+    // sessionId may be set by exam session routes
+    if (req.sessionId) props["sessionId"] = req.sessionId;
+    return props;
+  },
   serializers: {
     req(req) {
-      return { id: req.id, method: req.method, url: req.url, remoteAddress: req.remoteAddress };
+      return {
+        id: req.id,
+        method: req.method,
+        url: req.url,
+        remoteAddress: req.remoteAddress,
+        // Redact sensitive paths from URL query strings
+        urlSafe: (req.url || "").replace(/[?&](token|password|secret|key)=[^&]*/gi, "$1=[REDACTED]"),
+      };
     },
     res(res) {
       return { statusCode: res.statusCode };

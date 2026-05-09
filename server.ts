@@ -115,19 +115,53 @@ async function startServer() {
   // --- HEALTH CHECKS ---
   // /healthz — liveness probe: process is alive (no DB required)
   app.get("/healthz", (_req, res) => {
-    res.json({ status: "ok", uptime: process.uptime(), timestamp: new Date().toISOString() });
+    // Include circuit breaker state for observability (non-blocking import)
+    import("./src/lib/ai/circuit-breaker.js")
+      .then(({ allBreakersHealth }) => {
+        const breakers = allBreakersHealth();
+        const anyOpen = breakers.some((b) => b.state === "OPEN");
+        res.json({
+          status: "ok",
+          uptime: process.uptime(),
+          timestamp: new Date().toISOString(),
+          circuitBreakers: breakers,
+          aiDegraded: anyOpen,
+        });
+      })
+      .catch(() => {
+        res.json({ status: "ok", uptime: process.uptime(), timestamp: new Date().toISOString() });
+      });
   });
 
-  // /readyz — readiness probe: DB must be reachable before accepting traffic
+  // /readyz — readiness probe: DB + circuit breaker state check
   app.get("/readyz", async (_req, res) => {
+    let dbOk = true;
+    let dbLatencyMs: number | null = null;
     try {
       if (process.env.DATABASE_URL) {
+        const t0 = Date.now();
         await (prisma as any).$queryRaw`SELECT 1`;
+        dbLatencyMs = Date.now() - t0;
       }
-      res.json({ status: "ready", db: true, uptime: process.uptime(), timestamp: new Date().toISOString() });
-    } catch (err: any) {
-      res.status(503).json({ status: "not_ready", db: false, error: "Database unreachable", timestamp: new Date().toISOString() });
+    } catch {
+      dbOk = false;
     }
+
+    let breakerHealth: unknown[] = [];
+    try {
+      const { allBreakersHealth } = await import("./src/lib/ai/circuit-breaker.js");
+      breakerHealth = allBreakersHealth();
+    } catch { /* non-critical */ }
+
+    const status = dbOk ? "ready" : "not_ready";
+    res.status(dbOk ? 200 : 503).json({
+      status,
+      db: dbOk,
+      dbLatencyMs,
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      circuitBreakers: breakerHealth,
+    });
   });
 
   // /api/health — alias kept for backwards-compatibility; same as /readyz
@@ -174,6 +208,30 @@ async function startServer() {
     standardHeaders: true,
     legacyHeaders: false,
   });
+
+  // Refresh-token endpoint: 10 requests per minute per IP
+  const refreshTokenLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 10,
+    message: { error: 'Too many token refresh attempts. Please try again in a moment.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  // Global API safety net: 500 requests per 15 minutes per IP
+  // Prevents brute-force / enumeration on unprotected endpoints
+  const globalApiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 500,
+    message: { error: 'Too many requests from this IP. Please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => {
+      // Skip health probes — they must never be rate-limited
+      return req.path === "/healthz" || req.path === "/readyz";
+    },
+  });
+  app.use("/api/", globalApiLimiter);
 
   // Returns error details only in non-production environments
   const devDetails = (err: unknown): string | undefined =>
@@ -304,7 +362,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/auth/refresh", async (req, res) => {
+  app.post("/api/auth/refresh", refreshTokenLimiter, async (req, res) => {
     try {
       const rf = req.cookies.refreshToken;
       if (!rf) return res.status(401).json({ error: 'No refresh token' });
@@ -7121,6 +7179,71 @@ async function startServer() {
       res.json(await deleteUserData(req.params.userId, actorId));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
+
+  // --- DATA RETENTION ENFORCEMENT ---
+  // POST /api/admin/data-retention/run — enforce KVKK/GDPR retention schedules:
+  //   - Ses dosyaları (audio_url): 90 gün sonra silinir
+  //   - Sınav oturumları: 5 yıl sonra silinir
+  //   - Teknik günlükler: server rotasyon ile (bu endpoint DB kayıtlarını temizler)
+  // CI cron: .github/workflows/data-retention.yml (haftalık)
+  app.post("/api/admin/data-retention/run",
+    checkRole(["SUPER_ADMIN"]),
+    async (req, res) => {
+      try {
+        const dryRun = req.query.dry === "1" || req.body?.dryRun === true;
+        const now = new Date();
+
+        // 1. Ses dosyası referanslarını temizle (90 gün)
+        const audioExpiry = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        const audioRows = await prisma.$executeRaw`
+          UPDATE "Response"
+          SET "audioUrl" = NULL, "audioDeletedAt" = ${now}
+          WHERE "audioUrl" IS NOT NULL
+            AND "createdAt" < ${audioExpiry}
+            AND "audioDeletedAt" IS NULL
+        `.catch(() => 0);
+
+        // 2. Eski sınav oturumlarını anonimleştir (5 yıl)
+        // metadata.anonymizedAt alanı kullanılır (schema migration gerekmez)
+        const sessionExpiry = new Date(now.getTime() - 5 * 365 * 24 * 60 * 60 * 1000);
+        const expiredSessions = await prisma.session.findMany({
+          where: { createdAt: { lt: sessionExpiry } },
+          select: { id: true, metadata: true },
+        });
+        const toAnonymize = expiredSessions.filter((s) => {
+          const meta = s.metadata as Record<string, unknown> | null;
+          return !meta?.anonymizedAt;
+        });
+        const sessionRows = dryRun ? toAnonymize.length : await Promise.all(
+          toAnonymize.map((s) => {
+            const meta = (s.metadata as Record<string, unknown> | null) ?? {};
+            return prisma.session.update({
+              where: { id: s.id },
+              data: { metadata: { ...meta, anonymizedAt: now.toISOString() } as any },
+            });
+          })
+        ).then((r) => r.length).catch(() => 0);
+
+        const result = {
+          dryRun,
+          runAt: now.toISOString(),
+          audioUrlsCleared: dryRun ? "skipped" : audioRows,
+          sessionsAnonymized: dryRun ? "skipped" : sessionRows,
+          retentionPolicy: {
+            audioFiles: "90 days",
+            examSessions: "5 years (then anonymized)",
+            technicalLogs: "1 year (server log rotation)",
+          },
+        };
+
+        console.info("[DataRetention] run complete", result);
+        res.json(result);
+      } catch (e: any) {
+        console.error("[DataRetention] run failed", e.message);
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
 
   app.post("/api/payments/checkout", async (req, res) => {
     const { userId, organizationId, credits } = req.body;

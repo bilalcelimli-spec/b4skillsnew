@@ -48,6 +48,9 @@ export function buildHelmetMiddleware(): RequestHandler {
     scriptSrc: isProd
       ? ["'self'"]
       : ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+    // require-sri-for: enforce Subresource Integrity on scripts and styles
+    // from external origins (fonts.googleapis.com, cdn.*)
+    requireSriFor: isProd ? ["script", "style"] : null,
     styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
     fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
     imgSrc: ["'self'", "data:", "blob:", "https:"],

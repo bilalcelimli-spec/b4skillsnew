@@ -2,6 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { buildCefrRubricPrompt, type CefrLevel } from "../cefr/cefr-framework.js";
 import { buildCefrScoringKnowledge } from "../cefr/cefr-knowledge-base.js";
 import { buildSkillAwarePromptAddendum, type MacroSkill } from "../language-skills/language-skill-framework.js";
+import { geminiScoringBreaker } from "../ai/circuit-breaker.js";
 
 /**
  * b4skills Gemini Scoring Service
@@ -281,44 +282,37 @@ Return JSON:
 export const GeminiScoringService = {
   /**
    * Transcribe audio and score speaking performance in a single multimodal pass.
-   * This is more efficient and accurate than separate steps.
+   * Wrapped in the global scoring circuit breaker with automatic retry + backoff.
    */
   async scoreSpeaking(audioBase64: string, mimeType: string, prompt: string, targetCefr?: CefrLevel): Promise<AIScore> {
-    try {
-      return await scoreSpeakingInternal(audioBase64, mimeType, prompt, "primary", targetCefr);
-    } catch (error) {
-      console.error("Gemini Speaking Scoring Error:", error);
-      throw new Error("Failed to score speaking response via AI.");
-    }
+    const { data } = await geminiScoringBreaker.execute(() =>
+      scoreSpeakingInternal(audioBase64, mimeType, prompt, "primary", targetCefr)
+    );
+    return data;
   },
 
   async verifySpeaking(audioBase64: string, mimeType: string, prompt: string, targetCefr?: CefrLevel): Promise<AIScore> {
-    try {
-      return await scoreSpeakingInternal(audioBase64, mimeType, prompt, "verifier", targetCefr);
-    } catch (error) {
-      console.error("Gemini Speaking Verification Error:", error);
-      throw new Error("Failed to verify speaking response via AI.");
-    }
+    const { data } = await geminiScoringBreaker.execute(() =>
+      scoreSpeakingInternal(audioBase64, mimeType, prompt, "verifier", targetCefr)
+    );
+    return data;
   },
 
   /**
    * Score a writing response based on CEFR rubrics.
+   * Wrapped in the global scoring circuit breaker with automatic retry + backoff.
    */
   async scoreWriting(text: string, prompt: string, targetCefr?: CefrLevel): Promise<AIScore> {
-    try {
-      return await scoreWritingInternal(text, prompt, "primary", targetCefr);
-    } catch (error) {
-      console.error("Gemini Writing Scoring Error:", error);
-      throw new Error("Failed to score writing response via AI.");
-    }
+    const { data } = await geminiScoringBreaker.execute(() =>
+      scoreWritingInternal(text, prompt, "primary", targetCefr)
+    );
+    return data;
   },
 
   async verifyWriting(text: string, prompt: string, targetCefr?: CefrLevel): Promise<AIScore> {
-    try {
-      return await scoreWritingInternal(text, prompt, "verifier", targetCefr);
-    } catch (error) {
-      console.error("Gemini Writing Verification Error:", error);
-      throw new Error("Failed to verify writing response via AI.");
-    }
-  }
+    const { data } = await geminiScoringBreaker.execute(() =>
+      scoreWritingInternal(text, prompt, "verifier", targetCefr)
+    );
+    return data;
+  },
 };

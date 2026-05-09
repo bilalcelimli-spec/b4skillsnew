@@ -1,0 +1,134 @@
+name: Annual Standard-Setting Review
+
+# Fires every year on September 1st (09:00 UTC) and on manual dispatch.
+# Also fires if item bank turnover threshold is reached (triggered externally
+# via workflow_dispatch with reason="item_bank_turnover").
+on:
+  schedule:
+    - cron: "0 9 1 9 *"   # 01 Sep, 09:00 UTC
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Trigger reason (e.g. item_bank_turnover, pre_panel_study)"
+        required: false
+        default: "annual_scheduled"
+      notify_slack:
+        description: "Post Slack notification?"
+        type: boolean
+        default: true
+
+jobs:
+  review-check:
+    name: Cut-Score Annual Review Check
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run item bank health check
+        id: bank_health
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          echo "Checking item bank turnover and cut-score validity..."
+          # Run the bank report to detect if item turnover exceeds 20%
+          npx tsx scripts/jobs/annual-standard-review-check.ts 2>&1 | tee review-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+
+          # Extract summary line for report
+          SUMMARY=$(grep -i "summary\|turnover\|recommend" review-output.txt | head -5 || echo "No summary found")
+          echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Upload review report
+        uses: actions/upload-artifact@v4
+        with:
+          name: annual-standard-review-${{ github.run_number }}
+          path: review-output.txt
+          retention-days: 365   # Keep for a full year
+
+      - name: Create GitHub Issue if review required
+        if: steps.bank_health.outputs.exit_code == '1'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `🔔 Annual Standard-Setting Review Required — ${new Date().getFullYear()}`;
+            const body = `
+            ## Standard-Setting Review Triggered
+
+            **Date:** ${new Date().toISOString().split('T')[0]}
+            **Reason:** ${{ github.event.inputs.reason || 'annual_scheduled' }}
+            **Workflow run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            ### Action Required
+
+            The item bank has reached the review threshold (≥20% turnover since last standard-setting study)
+            or the annual scheduled review has triggered.
+
+            **Next steps:**
+            1. [ ] Review current cut scores vs. item bank distribution (\`GET /api/items/bank-report\`)
+            2. [ ] Assemble Angoff panelist panel (N ≥ 8 CEFR-certified raters)
+            3. [ ] Run standard-setting study via \`POST /api/psychometrics/standard-setting/studies\`
+            4. [ ] Compute BCa bootstrap CI: \`npx tsx scripts/compute-cut-score-bootstrap.ts\`
+            5. [ ] Review results in \`docs/standard-setting-report.md\`
+            6. [ ] Publish new cut scores: \`POST /api/psychometrics/standard-setting/{studyId}/publish\`
+            7. [ ] Update \`docs/validity-argument.md\` Inference 5
+
+            ### Reference
+            - [Standard Setting Report](docs/standard-setting-report.md)
+            - [Validity Argument](docs/validity-argument.md)
+            - [Cut-Score Bootstrap Module](src/lib/psychometrics/cut-score-bootstrap.ts)
+
+            /cc @bilalcelimli-spec
+            `;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['psychometrics', 'standard-setting', 'annual-review'],
+            });
+
+      - name: Sentry alarm — review required
+        if: steps.bank_health.outputs.exit_code == '1' && env.SENTRY_DSN != ''
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://sentry.io/api/0/organizations/$SENTRY_ORG/projects/$SENTRY_PROJECT/events/" \
+            -d "{
+              \"message\": \"Annual standard-setting review required\",
+              \"level\": \"warning\",
+              \"tags\": {\"workflow\": \"annual-standard-review\", \"reason\": \"${{ github.event.inputs.reason || 'annual_scheduled' }}\"},
+              \"environment\": \"production\"
+            }" || true
+
+      - name: Summary
+        run: |
+          echo "## Annual Standard-Setting Review" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $(date -u +%Y-%m-%d)" >> $GITHUB_STEP_SUMMARY
+          echo "**Reason:** ${{ github.event.inputs.reason || 'annual_scheduled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.bank_health.outputs.exit_code }}" = "1" ]; then
+            echo "⚠️ **Review REQUIRED** — A GitHub Issue has been created." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **No action needed** — Item bank turnover within acceptable range." >> $GITHUB_STEP_SUMMARY
+          fi

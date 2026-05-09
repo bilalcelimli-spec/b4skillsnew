@@ -259,9 +259,33 @@ async function createRedisStore(url: string): Promise<ExposureStore | null> {
       maxRetriesPerRequest: 1,
       lazyConnect: false,
     });
+
+    // Log connection errors so they surface in structured logs / Sentry
+    client.on("error", (err: Error) => {
+      console.error("[ExposureStore:Redis] connection error", {
+        message: err.message,
+        code: (err as NodeJS.ErrnoException).code ?? "UNKNOWN",
+      });
+      // Non-blocking Sentry capture
+      import("@sentry/node")
+        .then(({ captureException }) => captureException(err, {
+          tags: { subsystem: "exposure-store", backend: "redis" },
+          level: "error",
+        }))
+        .catch(() => {/* Sentry unavailable */});
+    });
+
+    client.on("reconnecting", (delay: number) => {
+      console.warn(`[ExposureStore:Redis] reconnecting in ${delay}ms`);
+    });
+
     await client.ping();
+    console.info("[ExposureStore:Redis] connected");
     return new RedisExposureStore(client);
-  } catch {
+  } catch (err) {
+    console.warn("[ExposureStore:Redis] unavailable — falling back to in-memory store", {
+      message: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

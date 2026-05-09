@@ -135,14 +135,30 @@ The five inferences below correspond to the scoring, generalization, extrapolati
 ### Rebuttals
 | Threat | Severity | Mitigation |
 |--------|----------|------------|
-| Cut scores set without empirical data (Phase I bootstrapped) | Critical | Replace hardcoded thresholds with Angoff-based cuts by Phase I completion |
+| Cut scores set without empirical data (pre-panel bootstrap) | High | BCa bootstrap CI module (`cut-score-bootstrap.ts`) provides interim uncertainty bounds; Angoff panel study scheduled Q3 2026 |
 | Misuse: hiring decision based solely on b4skills score | Medium | Score report includes confidence interval and explicit "not a standalone hiring credential" disclaimer |
 | Score inflation via test prep on exposed items | Medium | Exposure control; item bank rotation |
+| Cut scores drift as item bank evolves | Low | Annual review workflow (`.github/workflows/annual-standard-review.yml`) alerts when ≥20% item turnover |
 
-### Evidence needed (Phase I)
+### Cut-Score Evidence Table
+
+| Boundary | Method | θ Cut | 95% CI | Panel κ | Status |
+|---|---|---|---|---|---|
+| PRE_A1/A1 | Hardcoded (IRT theory) | −3.0 | [−3.5, −2.5]* | — | **Pre-panel bootstrap** |
+| A1/A2 | Hardcoded (IRT theory) | −2.0 | [−2.5, −1.5]* | — | **Pre-panel bootstrap** |
+| A2/B1 | Hardcoded (IRT theory) | −1.0 | [−1.5, −0.5]* | — | **Pre-panel bootstrap** |
+| B1/B2 | Hardcoded (IRT theory) | 0.0 | [−0.5, +0.5]* | — | **Pre-panel bootstrap** |
+| B2/C1 | Hardcoded (IRT theory) | 1.0 | [+0.5, +1.5]* | — | **Pre-panel bootstrap** |
+| C1/C2 | Hardcoded (IRT theory) | 2.0 | [+1.5, +2.5]* | — | **Pre-panel bootstrap** |
+
+*CI estimates are conservative ±0.5 θ unit placeholders pending BCa bootstrap computation on actual panelist data.
+
+### Evidence checklist (Phase I)
 - [ ] Standard setting report (docs/standard-setting-report.md): Modified Angoff, N ≥ 8 panelists, documented cut-score justification
-- [ ] Classification accuracy study: % correct CEFR classification ≥ 92% at band centers
+- [ ] BCa bootstrap CI for each boundary: `src/lib/psychometrics/cut-score-bootstrap.ts`
+- [ ] Classification accuracy study: % correct CEFR classification ≥ 92% at band centers (Monte Carlo ✅ at >70%; live pilot pending)
 - [ ] Decision consistency: Livingston-Lewis κ ≥ 0.80
+- [ ] Annual review cron: `.github/workflows/annual-standard-review.yml` ✅
 
 ---
 

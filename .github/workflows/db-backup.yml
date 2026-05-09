@@ -1,0 +1,152 @@
+name: Database Backup
+
+# Her Pazar 02:00 UTC ve manuel tetiklemede çalışır.
+# pg_dump → gzip → GPG şifreleme → GitHub artifact olarak sakla
+on:
+  schedule:
+    - cron: "0 2 * * 0"    # Her Pazar 02:00 UTC
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Backup gerekçesi (örn: pre_migration, pre_deploy)"
+        required: false
+        default: "manual"
+
+jobs:
+  backup:
+    name: PostgreSQL Backup
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client gnupg
+
+      - name: Create backup
+        id: backup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_GPG_KEY_ID: ${{ secrets.BACKUP_GPG_KEY_ID }}
+          BACKUP_GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          BACKUP_FILE="b4skills-backup-${TIMESTAMP}.sql"
+          COMPRESSED_FILE="${BACKUP_FILE}.gz"
+          ENCRYPTED_FILE="${COMPRESSED_FILE}.gpg"
+
+          echo "Creating backup: $BACKUP_FILE"
+
+          # Extract connection details from DATABASE_URL
+          # Format: postgresql://user:pass@host:port/dbname
+          pg_dump "$DATABASE_URL" \
+            --no-password \
+            --format=plain \
+            --exclude-table="_prisma_migrations" \
+            --verbose \
+            > "$BACKUP_FILE" 2>backup-log.txt
+
+          if [ $? -ne 0 ]; then
+            echo "pg_dump failed:"
+            cat backup-log.txt
+            exit 1
+          fi
+
+          # Compress
+          gzip -9 "$BACKUP_FILE"
+          echo "Compressed: $(du -sh $COMPRESSED_FILE | cut -f1)"
+
+          # Encrypt with GPG symmetric passphrase (simpler than key-based for CI)
+          if [ -n "$BACKUP_GPG_PASSPHRASE" ]; then
+            echo "$BACKUP_GPG_PASSPHRASE" | \
+              gpg --batch --yes --passphrase-fd 0 \
+              --symmetric --cipher-algo AES256 \
+              --output "$ENCRYPTED_FILE" \
+              "$COMPRESSED_FILE"
+            rm -f "$COMPRESSED_FILE"
+            echo "backup_file=$ENCRYPTED_FILE" >> $GITHUB_OUTPUT
+            echo "encrypted=true" >> $GITHUB_OUTPUT
+          else
+            echo "backup_file=$COMPRESSED_FILE" >> $GITHUB_OUTPUT
+            echo "encrypted=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No GPG passphrase set — backup is NOT encrypted!"
+          fi
+
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+
+      - name: Verify backup integrity
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          BACKUP_FILE="${{ steps.backup.outputs.backup_file }}"
+          SIZE=$(du -sh "$BACKUP_FILE" | cut -f1)
+          echo "Backup file: $BACKUP_FILE ($SIZE)"
+
+          # Sanity check: file must be > 1KB
+          FILE_SIZE_BYTES=$(stat -c%s "$BACKUP_FILE")
+          if [ "$FILE_SIZE_BYTES" -lt 1024 ]; then
+            echo "ERROR: Backup file too small ($FILE_SIZE_BYTES bytes) — likely empty!"
+            exit 1
+          fi
+
+          echo "✅ Backup integrity check passed ($SIZE)"
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ steps.backup.outputs.timestamp }}
+          path: ${{ steps.backup.outputs.backup_file }}
+          retention-days: 90    # Keep 90 days of backups
+
+      - name: Upload backup log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-log-${{ steps.backup.outputs.timestamp }}
+          path: backup-log.txt
+          retention-days: 30
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Database Backup Failed — ${new Date().toISOString().split('T')[0]}`,
+              body: `
+              ## Database Backup Failure
+
+              **Date:** ${new Date().toISOString()}
+              **Reason:** ${{ github.event.inputs.reason || 'weekly_scheduled' }}
+              **Workflow run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+              ### Immediate Action Required
+
+              1. Check the workflow logs for the root cause
+              2. Verify DATABASE_URL secret is correct
+              3. Ensure the database is accessible from GitHub Actions
+              4. Run a manual backup: \`workflow_dispatch\` this workflow
+
+              This issue must be resolved within 24 hours per OPERATIONS_RUNBOOK.md.
+              `,
+              labels: ['critical', 'database', 'backup'],
+            });
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Database Backup Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Timestamp | ${{ steps.backup.outputs.timestamp }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| File | ${{ steps.backup.outputs.backup_file }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Encrypted | ${{ steps.backup.outputs.encrypted }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Retention | 90 days |" >> $GITHUB_STEP_SUMMARY
+          echo "| Reason | ${{ github.event.inputs.reason || 'weekly_scheduled' }} |" >> $GITHUB_STEP_SUMMARY
