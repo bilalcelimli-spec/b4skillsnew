@@ -171,13 +171,10 @@ async function persistItem(
         cefrLevel: cefrLevel as never,
         status: "ACTIVE",
         content: enrichedContent as never,
-        params: {
-          a: (raw.discrimination as number) ?? 1.2,
-          b: (raw.difficulty as number) ?? 0,
-          c: (raw.guessing as number) ?? 0.25,
-        },
+        discrimination: (raw.discrimination as number) ?? 1.2,
+        difficulty: (raw.difficulty as number) ?? 0,
+        guessing: (raw.guessing as number) ?? 0.25,
         tags: ["toefl-junior", "ets", `toefl-${taskId.toLowerCase().replace(/_/g, "-")}`],
-        productLine: "Junior (11-15)",
       },
     });
     return true;

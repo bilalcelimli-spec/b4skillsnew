@@ -76,7 +76,7 @@ async function main() {
     try {
       await prisma.item.update({
         where: { id: item.id },
-        data: { content: newContent },
+        data: { content: newContent as any },
       });
       migrated++;
     } catch (err: any) {

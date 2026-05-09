@@ -30,6 +30,8 @@
     "dev-dist",
     "scripts/archive",
     "scripts/seed",
-    "**/*.cjs"
+    "**/*.cjs",
+    "playwright.config.ts",
+    "test/e2e/**"
   ]
 }

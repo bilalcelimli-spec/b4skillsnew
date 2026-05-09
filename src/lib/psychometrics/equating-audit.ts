@@ -14,7 +14,7 @@ export interface EquatingResult {
   A: number;
   B: number;
   /** Method used */
-  method: "STOCKING_LORD" | "HAEBARA" | "MEAN_SIGMA" | "MEAN_MEAN";
+  method: "STOCKING_LORD" | "HAEBARA" | "MEAN_SIGMA" | "MEAN_MEAN" | "TUCKER" | "LEVINE";
   /** Common items used */
   commonItemCount: number;
   /** Root mean squared difference in TCC */

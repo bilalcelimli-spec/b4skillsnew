@@ -1,0 +1,53 @@
+{
+  "$schema": "https://stryker-mutator.io/schemas/stryker-schema.json#",
+  "packageManager": "npm",
+  "reporters": ["html", "clear-text", "progress", "dashboard"],
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "vitest.config.ts"
+  },
+
+  "mutate": [
+    "src/lib/assessment-engine/irt.ts",
+    "src/lib/assessment-engine/estimator.ts",
+    "src/lib/assessment-engine/engine.ts",
+    "src/lib/assessment-engine/selector.ts",
+    "src/lib/psychometrics/construct-validity.ts",
+    "src/lib/psychometrics/bank-report.ts",
+    "src/lib/scoring/response-integrity.ts",
+    "src/lib/scoring/ai-human-agreement.ts"
+  ],
+
+  "coverageAnalysis": "perTest",
+
+  "thresholds": {
+    "high": 80,
+    "low": 60,
+    "break": 50
+  },
+
+  "timeoutMS": 60000,
+  "timeoutFactor": 1.5,
+
+  "plugins": ["@stryker-mutator/vitest-runner"],
+
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    "dev-dist",
+    "coverage",
+    "playwright-report",
+    "test/load"
+  ],
+
+  "htmlReporter": {
+    "fileName": "reports/mutation/index.html"
+  },
+
+  "dashboard": {
+    "project": "github.com/b4skills/linguadapt",
+    "version": "main"
+  },
+
+  "comment": "Stryker mutation testing for psychometric core. Install: npm install -D @stryker-mutator/core @stryker-mutator/vitest-runner. Run: npx stryker run"
+}

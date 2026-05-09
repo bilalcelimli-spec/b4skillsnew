@@ -151,13 +151,10 @@ async function persistItem(
         cefrLevel: cefrLevel as never,
         status: "ACTIVE",
         content: enrichedContent as never,
-        params: {
-          a: raw.discrimination ?? 1.2,
-          b: raw.difficulty ?? 0,
-          c: raw.guessing ?? 0.25,
-        },
+        discrimination: raw.discrimination ?? 1.2,
+        difficulty: raw.difficulty ?? 0,
+        guessing: raw.guessing ?? 0.25,
         tags: ["cambridge", exam.toLowerCase(), `cambridge-${exam.toLowerCase()}`],
-        productLine: "Primary (7-10)",
       },
     });
     return true;

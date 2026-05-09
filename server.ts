@@ -1281,6 +1281,55 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // --- ITEM BANK BASELINE REPORT ---
+
+  app.get("/api/items/bank-report", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
+    try {
+      const { buildBankReport } = await import("./src/lib/psychometrics/bank-report.js");
+
+      const rawItems = await prisma.item.findMany({
+        select: {
+          id: true,
+          skill: true,
+          cefrLevel: true,
+          status: true,
+          discrimination: true,
+          difficulty: true,
+          guessing: true,
+        },
+      });
+
+      // Coerce Prisma enum strings to plain strings for the pure module
+      const items = rawItems.map((i) => ({
+        skill: i.skill as string,
+        cefrLevel: i.cefrLevel as string,
+        status: i.status as string,
+        discrimination: i.discrimination,
+        difficulty: i.difficulty,
+        guessing: i.guessing,
+      }));
+
+      // Optional: pull exposure rates from the in-memory store
+      let exposureData: Array<{ itemId: string; rate: number }> | undefined;
+      try {
+        const { getExposureStore } = await import("./src/lib/assessment-engine/exposure-store.js");
+        const store = await getExposureStore();
+        exposureData = rawItems.map((i) => ({
+          itemId: i.id,
+          rate: store.getExposureRateSync(i.id),
+        }));
+      } catch {
+        // exposure store unavailable — omit section
+      }
+
+      const report = buildBankReport(items, exposureData);
+      res.json(report);
+    } catch (error) {
+      console.error("Bank report error:", error);
+      res.status(500).json({ error: "Failed to generate item bank report" });
+    }
+  });
+
   // --- CULTURAL FAIRNESS API ---
 
   app.get("/api/items/cultural-fairness-summary", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
