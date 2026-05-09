@@ -7245,6 +7245,53 @@ async function startServer() {
     }
   );
 
+  // GET /api/admin/slo/report — 30-day rolling SLO compliance report
+  // Returns DB-derived metrics + APM placeholders for uptime/latency SLOs.
+  // Weekly CI: .github/workflows/slo-report.yml
+  app.get(
+    "/api/admin/slo/report",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req, res) => {
+      try {
+        const windowDays = Math.min(
+          90,
+          Math.max(1, parseInt(String(req.query.window ?? "30"), 10) || 30)
+        );
+        const { generateSloReport, sloReportToMarkdown } = await import(
+          "./src/lib/observability/slo-monitor.js"
+        );
+        const report = await generateSloReport(windowDays);
+        const fmt = req.query.format as string | undefined;
+        if (fmt === "markdown") {
+          res.type("text/plain").send(sloReportToMarkdown(report));
+        } else {
+          res.json(report);
+        }
+      } catch (e: any) {
+        console.error("[SloReport] failed", e.message);
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  // GET /api/admin/cut-scores — BCa bootstrap canonical CEFR cut score table
+  // Returns panel metadata + bootstrap CI results for all 4 boundaries.
+  app.get(
+    "/api/admin/cut-scores",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req, res) => {
+      try {
+        const { buildCutScoreApiResponse } = await import(
+          "./src/lib/psychometrics/canonical-cut-scores.js"
+        );
+        res.json(buildCutScoreApiResponse());
+      } catch (e: any) {
+        console.error("[CutScores] failed", e.message);
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
   app.post("/api/payments/checkout", async (req, res) => {
     const { userId, organizationId, credits } = req.body;
     try {
