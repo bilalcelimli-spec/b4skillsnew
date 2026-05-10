@@ -7337,6 +7337,55 @@ async function startServer() {
     }
   );
 
+  // GET /api/admin/calibration/qwk — rolling AI-human agreement (QWK) for Writing/Speaking
+  // Consumed by the monthly GitHub Actions cron: .github/workflows/ai-calibration-check.yml
+  // Returns { metrics: { WRITING: { qwk, n }, SPEAKING: { qwk, n } }, window, generatedAt }
+  app.get(
+    "/api/admin/calibration/qwk",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req, res) => {
+      try {
+        const windowDays = Math.min(
+          90,
+          Math.max(1, parseInt(String(req.query.window ?? "30"), 10) || 30)
+        );
+        const skill = String(req.query.skill ?? "ALL").toUpperCase();
+
+        const { computeQwkSlo } = await import(
+          "./src/lib/observability/slo-monitor.js"
+        );
+
+        const skills: Array<"WRITING" | "SPEAKING"> =
+          skill === "ALL" ? ["WRITING", "SPEAKING"] : [skill as "WRITING" | "SPEAKING"];
+
+        const results: Record<string, { qwk: number | null; n: number; meetsTarget: boolean }> = {};
+
+        await Promise.all(
+          skills.map(async (s) => {
+            const r = await computeQwkSlo(s, windowDays).catch(() => null);
+            results[s] = {
+              qwk: r?.achieved ?? null,
+              n: r?.sampleSize ?? 0,
+              meetsTarget: r?.achieved != null && r.achieved >= (s === "SPEAKING" ? 0.78 : 0.80),
+            };
+          })
+        );
+
+        res.json({
+          metrics: results,
+          window: windowDays,
+          // Legacy flat fields — for backward compat with the GitHub Actions cron parser
+          writingQwk: results["WRITING"]?.qwk ?? null,
+          speakingQwk: results["SPEAKING"]?.qwk ?? null,
+          generatedAt: new Date().toISOString(),
+        });
+      } catch (e: any) {
+        console.error("[CalibrationQWK] failed", e.message);
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
   app.post("/api/payments/checkout", async (req, res) => {
     const { userId, organizationId, credits } = req.body;
     try {

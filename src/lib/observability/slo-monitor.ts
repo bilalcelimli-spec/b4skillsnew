@@ -188,7 +188,7 @@ async function computeAiScoringAvailability(windowDays: number): Promise<{
 }
 
 /** AI-human QWK from the agreement monitor (rolling 30-day). */
-async function computeQwkSlo(
+export async function computeQwkSlo(
   skill: "WRITING" | "SPEAKING",
   windowDays: number
 ): Promise<{ achieved: number | null; sampleSize: number }> {

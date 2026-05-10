@@ -7,6 +7,7 @@
  *  Pass 2  REVIEWER  Gemini 2.5 Flash — independent expert critique
  *  Pass 3  REVISER   Gemini 2.5 Flash — address reviewer issues, produce final version
  *  Pass 4  QA GATE   ItemQualityValidator + ReadabilityEngine — automated final check
+ *  Pass 5  LEXCHECK  VocabularyProfiler — confirm stimulus is at-level (EVP bands + FK)
  *
  * Auto-revision: if QA score < AUTO_REVISION_THRESHOLD, inject specific issues
  * into a new Reviser call (up to MAX_REVISION_ATTEMPTS).
@@ -24,6 +25,7 @@ import {
 } from "./item-writing-framework.js";
 import { validateItem, type QualityReport } from "./item-quality-validator.js";
 import { analyseText } from "./readability-engine.js";
+import { meetsLexicalStandard } from "./vocabulary-profiler.js";
 import type { CefrLevel } from "../cefr/cefr-framework.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +93,8 @@ export interface GeneratedItemWithQuality extends GeneratedItem {
   readabilityScore?: number;
   revisionHistory: RevisionRecord[];
   totalGenerationPasses: number;
+  /** Pass 5 — EVP-band + Flesch-Kincaid lexical conformance check */
+  lexicalCheck?: { passes: boolean; issues: string[] };
 }
 
 export interface GenerationResult {
@@ -464,7 +468,31 @@ export class AIItemGenerator {
       }
     }
 
-    return { ...currentItem, qualityReport, itemReview, readabilityScore, revisionHistory, totalGenerationPasses: totalPasses };
+    // ── Pass 5: Lexical Check (vocabulary profiler) ────────────────────────
+    let lexicalCheck: { passes: boolean; issues: string[] } | undefined;
+    if (currentItem.stimulus && currentItem.stimulus.length > 20) {
+      try {
+        const lexPasses = meetsLexicalStandard(currentItem.stimulus, currentItem.cefrLevel as CefrLevel);
+        if (!lexPasses) {
+          qualityReport.issues.push({
+            code: "LEX-BAND",
+            severity: "MAJOR",
+            category: "writing_guidelines" as const,
+            message: `Stimulus vocabulary does not meet EVP/FK standards for ${currentItem.cefrLevel}`,
+            field: "stimulus",
+            suggestion: "Revise vocabulary to match target CEFR band thresholds (see vocabulary-profiler.ts LEXICAL_CONSTRAINTS)",
+          });
+          if (qualityReport.status === "APPROVED") qualityReport.status = "REVIEW";
+          qualityReport.qualityScore = Math.max(0, qualityReport.qualityScore - 10);
+        }
+        lexicalCheck = { passes: lexPasses, issues: lexPasses ? [] : [`Vocabulary out-of-band for ${currentItem.cefrLevel}`] };
+      } catch (err) {
+        // Lexical check failure is non-fatal
+        console.warn("[AIItemGenerator] Lexical check failed:", String(err));
+      }
+    }
+
+    return { ...currentItem, qualityReport, itemReview, readabilityScore, revisionHistory, totalGenerationPasses: totalPasses, lexicalCheck };
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────

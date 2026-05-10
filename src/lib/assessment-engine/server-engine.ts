@@ -25,6 +25,10 @@ import {
   responseTimeAdjustedScore,
   responseTimeParamsFromItemContent,
 } from "../psychometrics/response-time-irt.js";
+import {
+  classifyCandidate,
+  computeConsistencyReport,
+} from "../psychometrics/classification-consistency.js";
 
 /** Wraps a promise with a hard timeout to prevent indefinite hangs */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -872,6 +876,10 @@ export const AssessmentService = {
       },
     };
 
+    // ── Classification Consistency (Livingston-Lewis) ─────────────────────────
+    const classificationResult = classifyCandidate(theta, sessionSem);
+    const consistencyReport = computeConsistencyReport(theta, sessionSem);
+
     const diagnosticReport = {
       overallTheta: theta,
       overallSem: sessionSem,
@@ -885,6 +893,18 @@ export const AssessmentService = {
       productLine: sessionProductLine,
       mstTrack: sessionMstTrack,
       psychometrics,
+      // Livingston-Lewis decision-consistency & classification accuracy
+      classificationConsistency: {
+        cefrLevel: classificationResult.cefrLevel,
+        isBorderline: classificationResult.isBorderline,
+        borderlineLevels: classificationResult.borderlineLevels,
+        posteriorProbCorrect: classificationResult.posteriorProbCorrect,
+        recommendedAction: classificationResult.recommendedAction,
+        decisionConsistency: consistencyReport.decisionConsistency,
+        classificationAccuracy: consistencyReport.classificationAccuracy,
+        meetsHighStakesThreshold: consistencyReport.decisionConsistency >= 0.80,
+        meetsPlacementThreshold: consistencyReport.decisionConsistency >= 0.70,
+      },
       generatedAt: new Date().toISOString(),
     };
 
