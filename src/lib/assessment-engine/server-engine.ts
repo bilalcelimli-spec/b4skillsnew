@@ -8,6 +8,8 @@ import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstra
 import { prisma } from "../prisma";
 import { ScoringOrchestrator } from "../scoring/scoring-orchestrator";
 import { RatingQueueService } from "../scoring/rating-queue";
+import { getCachedItems, getItemsByIds } from "./item-bank-cache.js";
+import { enqueueScoringJob } from "../scoring/scoring-queue.js";
 import { CalibrationService } from "./calibration-service";
 import { Prisma, SessionStatus, ItemType, CefrLevel } from "@prisma/client";
 import { BillingService } from "../enterprise/billing-service";
@@ -440,7 +442,7 @@ export const AssessmentService = {
       }
     }
 
-    const dbItems = await prisma.item.findMany({ where: whereClause });
+    const dbItems = await getCachedItems(whereClause);
     const itemPool: Item[] = dbItems.map((di) => dbItemToEngineItem(di));
 
     // ── WARM-UP FILTERING ─────────────────────────────────────────────────────
@@ -563,56 +565,20 @@ export const AssessmentService = {
       const option = item.metadata?.options[value];
       score = option && option.isCorrect ? 1 : 0;
     } else {
-      try {
-        const prompt = item.metadata?.prompt || "Please respond to the task.";
-        const itemSkill = String(item.skill).toUpperCase();
-        
-        if (itemSkill === "WRITING") {
-          scoringDecision = await withTimeout(
-            ScoringOrchestrator.scoreWriting(String(value), prompt),
-            30_000,
-            "Writing AI scoring"
-          );
-        } else if (itemSkill === "SPEAKING") {
-          // Check if value is multimodal (audio + mimeType)
-          if (typeof value === "object" && value.audio && value.mimeType) {
-            scoringDecision = await withTimeout(
-              ScoringOrchestrator.scoreSpeaking(value.audio, value.mimeType, prompt),
-              30_000,
-              "Speaking AI scoring"
-            );
-          } else {
-            // Fallback for text-only or simulated speaking
-            scoringDecision = await withTimeout(
-              ScoringOrchestrator.scoreSpeakingFromText(String(value), prompt),
-              30_000,
-              "Speaking (text) AI scoring"
-            );
-          }
-        }
-        
-        if (scoringDecision) {
-          aiResult = scoringDecision.aiResult;
-          score = scoringDecision.score;
-        }
-      } catch (error) {
-        logger.error({ err: error, sessionId, itemId }, "AI scoring failed — enqueuing for human review");
-        // Do NOT use 0.5 — that biases theta upward for every AI failure.
-        // Mark the response as requiring human review; exclude from theta estimation
-        // by setting isPretest=true temporarily until a human scores it.
-        score = 0; // Conservative fallback; overwritten when human review resolves
-        // Flag for human review queue — response will be saved with requiresHumanReview
-        aiResult = { requiresHumanReview: true, failureReason: "ai_scoring_error" };
-      }
+      // WRITING / SPEAKING — use async queue (fire-and-forget).
+      // The response row is saved immediately with score=0 / isPretest=true so
+      // theta estimation is unaffected; the queue updates the row when AI returns.
+      // This prevents 100 × 30 s open HTTP connections under concurrent load.
+      aiResult = { requiresHumanReview: true, pendingAsyncScore: true };
+      score = 0; // Conservative; overwritten by scoring-queue when AI completes
     }
 
     const state = toEngineState(session);
 
     const requiresHumanReview = (aiResult as any)?.requiresHumanReview === true;
 
-    const usedItems = await prisma.item.findMany({
-      where: { id: { in: Array.from(state.usedItemIds) } },
-    });
+    // N+1 fix: use item bank cache instead of a raw findMany per session
+    const usedItems = await getItemsByIds(Array.from(state.usedItemIds));
 
     const itemDict: Record<string, Item> = { [item.id]: item };
     for (const u of usedItems) {
@@ -689,19 +655,21 @@ export const AssessmentService = {
           rtFlag: rtFlag,
           order: session.responses.length + 1,
           metadata: aiResult ? {
-            aiFeedback: aiResult.feedback, 
-            confidence: aiResult.confidence,
-            speakingFeatures: aiResult.speakingFeatures,
-            cefrLevel: aiResult.cefrLevel,
-            rubricScores: aiResult.rubricScores,
-            corrections: aiResult.corrections,
-            transcript: aiResult.transcript,
-            scoreSource: scoringDecision?.scoreSource,
-            reviewReasons: scoringDecision?.reviewReasons,
+            aiFeedback: (aiResult as any).feedback,
+            confidence: (aiResult as any).confidence,
+            speakingFeatures: (aiResult as any).speakingFeatures,
+            cefrLevel: (aiResult as any).cefrLevel,
+            rubricScores: (aiResult as any).rubricScores,
+            corrections: (aiResult as any).corrections,
+            transcript: (aiResult as any).transcript,
+            scoreSource: (aiResult as any).scoreSource ?? scoringDecision?.scoreSource,
+            reviewReasons: (aiResult as any).reviewReasons ?? scoringDecision?.reviewReasons,
             agreementDelta: scoringDecision?.agreementDelta,
             model: scoringDecision?.model,
             modelVersion: scoringDecision?.modelVersion,
-            scoringPasses: scoringDecision?.scoringPasses
+            scoringPasses: scoringDecision?.scoringPasses,
+            // Async scoring marker — updated by scoring-queue when AI returns
+            pendingAsyncScore: (aiResult as any).pendingAsyncScore ?? false,
           } : undefined
         } as any
       }),
@@ -725,29 +693,20 @@ export const AssessmentService = {
       })
     ]);
 
-    // Enqueue for human review if needed
-    if (scoringDecision?.requiresHumanReview) {
-      await RatingQueueService.enqueue({
+    // Async AI scoring: dispatch WRITING / SPEAKING jobs to the queue (fire-and-forget).
+    // The queue updates the response row when Gemini returns; the client polls for the score.
+    const itemSkill = String(item.skill).toUpperCase();
+    if ((itemSkill === "WRITING" || itemSkill === "SPEAKING") && (aiResult as any)?.pendingAsyncScore) {
+      const prompt = item.metadata?.prompt || "Please respond to the task.";
+      enqueueScoringJob({
         sessionId,
+        responseId: savedResponse.id,
         itemId,
-        type: item.skill as any,
-        content: value,
-        aiResult: {
-          ...aiResult,
-          reviewReasons: scoringDecision.reviewReasons,
-          agreementDelta: scoringDecision.agreementDelta,
-          scoreSource: scoringDecision.scoreSource,
-          scoringPasses: scoringDecision.scoringPasses
-        }
+        skill: itemSkill as "WRITING" | "SPEAKING",
+        value: value as string | { audio: string; mimeType: string },
+        prompt,
       });
-    } else if (!aiResult && (item.skill === "WRITING" || item.skill === "SPEAKING")) {
-      // Enqueue if AI failed completely
-      await RatingQueueService.enqueue({
-        sessionId,
-        itemId,
-        type: item.skill as any,
-        content: value
-      });
+      // Do NOT await — fire-and-forget so HTTP response returns immediately
     }
 
     // Online item calibration — fire-and-forget, won't block the response

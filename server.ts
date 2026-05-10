@@ -548,6 +548,11 @@ async function startServer() {
     try {
       const { id } = req.params;
       const next = await AssessmentService.getNextItem(id);
+      // Pino 10% sampling: GET /next is called ~5× per minute per user;
+      // logging every call floods the log pipeline under 100 concurrent users.
+      if (Math.random() < 0.1) {
+        logger.debug({ sessionId: id }, "GET /next sampled log");
+      }
       res.json(next);
     } catch (error: any) {
       const msg = error?.message ?? "Failed to fetch next item";
@@ -555,7 +560,7 @@ async function startServer() {
       if (msg === "Invalid session") {
         return res.status(409).json({ error: msg, stop: false });
       }
-      console.error("[sessions/next]", error);
+      logger.error({ err: error, sessionId: req.params.id }, "[sessions/next] error");
       res.status(500).json({ error: msg });
     }
   });
@@ -7274,6 +7279,46 @@ async function startServer() {
     }
   );
 
+  // GET /api/admin/cache-stats — live item-bank cache + scoring queue metrics
+  app.get(
+    "/api/admin/cache-stats",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (_req, res) => {
+      try {
+        const { getItemCacheStats } = await import(
+          "./src/lib/assessment-engine/item-bank-cache.js"
+        );
+        const { getScoringQueueStats } = await import(
+          "./src/lib/scoring/scoring-queue.js"
+        );
+        res.json({
+          itemBankCache: getItemCacheStats(),
+          scoringQueue: getScoringQueueStats(),
+          generatedAt: new Date().toISOString(),
+        });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  // POST /api/admin/cache/invalidate — flush the item bank cache after bulk item changes
+  app.post(
+    "/api/admin/cache/invalidate",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (_req, res) => {
+      try {
+        const { invalidateItemCache } = await import(
+          "./src/lib/assessment-engine/item-bank-cache.js"
+        );
+        invalidateItemCache();
+        res.json({ ok: true, message: "Item bank cache flushed" });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
   // GET /api/admin/cut-scores — BCa bootstrap canonical CEFR cut score table
   // Returns panel metadata + bootstrap CI results for all 4 boundaries.
   app.get(
@@ -8012,6 +8057,18 @@ async function startServer() {
       },
     }));
 
+    // Hashed asset files (/assets/...) are content-addressed → safe to cache immutably
+    app.use(
+      "/assets",
+      express.static(path.join(distPath, "assets"), {
+        maxAge: "1y",
+        immutable: true,
+        setHeaders(res) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        },
+      })
+    );
+
     app.use(express.static(distPath));
     // SPA fallback only for document routes. If a hashed /assets/* file is missing (stale CDN HTML),
     // do not send index.html — that breaks CSS/JS MIME types in the browser.
@@ -8038,6 +8095,11 @@ async function startServer() {
   const server = app.listen(PORT, "0.0.0.0", () => {
     logger.info({ port: PORT }, `LinguAdapt Server running on http://localhost:${PORT}`);
   });
+
+  // Fix ECONNRESET under load: Render.com load-balancer has a 60 s idle timeout;
+  // Node default is 5 s. Set to 65 s so keep-alives outlast the LB timeout.
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000; // must be > keepAliveTimeout
 
   const shutdown = (signal: string) => {
     logger.info({ signal }, "Shutting down");

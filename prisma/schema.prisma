@@ -395,6 +395,7 @@ model Session {
   @@index([candidateId, status])
   @@index([status])
   @@index([createdAt])
+  @@index([status, updatedAt])       // SLO monitor: rolling-window IN_PROGRESS/COMPLETED lookups
 }
 
 enum SessionStatus {
@@ -439,6 +440,8 @@ model Response {
   @@index([sessionId])
   @@index([itemId])
   @@index([sessionId, order])
+  @@index([sessionId, isPretest])    // submitResponse: resolves usedItemIds filtered by isPretest
+  @@index([createdAt])               // SLO monitor: rolling-window session counts
 }
 
 model RatingTask {
