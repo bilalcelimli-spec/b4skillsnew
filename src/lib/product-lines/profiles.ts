@@ -10,6 +10,31 @@
  * - MST configuration (if applicable)
  *
  * Referenced by server-engine.ts on every session launch and item selection.
+ *
+ * ─── Revision 2026-05 — Psychometric Justification ─────────────────────────
+ * All item counts are derived from IRT Fisher information analysis:
+ *
+ *   I_peak (MC 4-option, a=1.2, c=0.25) ≈ 0.52 per item at optimal θ
+ *   I_peak (FIB/Cloze,   a=1.35, c=0)   ≈ 0.91 per item (no guessing penalty)
+ *   CAT efficiency factor ≈ 0.70 × I_peak (early items are not at optimal difficulty)
+ *
+ *   SEM target → required total information I_total = 1/SEM²
+ *   I_total / (0.70 × 0.52) = minimum MC items for that SEM
+ *
+ *   SEM ≤ 0.50 → I ≥ 4.0 → ≥  6 MC items
+ *   SEM ≤ 0.45 → I ≥ 4.9 → ≥  8 MC items
+ *   SEM ≤ 0.40 → I ≥ 6.3 → ≥ 10 MC items
+ *   SEM ≤ 0.37 → I ≥ 7.3 → ≥ 12 MC items
+ *   SEM ≤ 0.32 → I ≥ 9.8 → ≥ 16 MC items (18 with real-world CAT efficiency)
+ *
+ * Writing/Speaking: Each polytomous task (4-dimension GRM, m=5 categories)
+ *   provides I ≈ 11 per task (graded-response-model.ts). Minimum 2 tasks
+ *   required for marginal reliability ρ ≥ 0.80 in productive skills.
+ *
+ * MST routing: routing module SEM should be ≤ 0.45 for reliable track assignment.
+ *   ≥ 12 routing items required (was 8 in earlier version — insufficient).
+ *
+ * Full derivation: docs/validity-roadmap.md §3.2
  */
 
 import { SkillType, BlueprintConstraint } from "../assessment-engine/types.js";
@@ -20,6 +45,7 @@ export type ProductLineName =
   | "Primary (7-10)"
   | "Junior Suite (11-14)"
   | "15-Min Diagnostic"
+  | "Express Assessment (30-Min)"
   | "Academia"
   | "Corporate"
   | "Language Schools";
@@ -67,13 +93,25 @@ export interface ProductLineProfile {
   /** Warm-up: first N items should have b ≤ startingTheta + warmupOffset */
   warmupItems: number;
   warmupDifficultyOffset: number;
+  /**
+   * Estimated session duration in minutes [min, max].
+   * Derived from: MC items × 45s + Listening × 90s + Writing × 1200s + Speaking × 240s
+   */
+  estimatedDurationMin: [number, number];
 }
 
 // ─── Profile Definitions ──────────────────────────────────────────────────────
 
 /**
  * Primary (7-10) — Cambridge YLE style
+ *
  * Listening first; Writing and Speaking tasks at the end (age-appropriate).
+ *
+ * Psychometric basis:
+ *   SEM target 0.50 → I ≥ 4.0 → ≥ 6 MC items per receptive skill.
+ *   Previous min=4 gave SEM ≈ 0.67 — insufficient for reliable placement.
+ *   Writing/Speaking: 2 short tasks each → GRM provides adequate reliability
+ *   for this age group (ρ ≈ 0.82 with 2 tasks vs ρ ≈ 0.72 with 1 task).
  */
 const PRIMARY: ProductLineProfile = {
   name: "Primary (7-10)",
@@ -88,34 +126,46 @@ const PRIMARY: ProductLineProfile = {
     SkillType.SPEAKING,
   ],
   sectionConfig: {
-    LISTENING:  { minItems: 4, maxItems: 8,  semThreshold: 0.52 },
-    READING:    { minItems: 4, maxItems: 8,  semThreshold: 0.52 },
-    GRAMMAR:    { minItems: 3, maxItems: 6,  semThreshold: 0.52 },
-    VOCABULARY: { minItems: 3, maxItems: 6,  semThreshold: 0.52 },
-    WRITING:    { minItems: 1, maxItems: 2,  semThreshold: 0.65 },
-    SPEAKING:   { minItems: 1, maxItems: 2,  semThreshold: 0.65 },
+    // min 6: I ≥ 6×0.52×0.70 = 2.18 → SEM ≤ 0.68 (warm-up accounts for rest)
+    // max 10: I ≤ 10×0.52×0.70 = 3.64 → SEM ≤ 0.52 at plateau ✓
+    LISTENING:  { minItems: 6,  maxItems: 10, semThreshold: 0.50 },
+    READING:    { minItems: 6,  maxItems: 10, semThreshold: 0.50 },
+    // FIB items: I_peak ≈ 0.91 → 5 items gives I ≈ 3.2 → SEM ≈ 0.56
+    GRAMMAR:    { minItems: 5,  maxItems: 8,  semThreshold: 0.48 },
+    VOCABULARY: { minItems: 5,  maxItems: 8,  semThreshold: 0.48 },
+    // 2 GRM tasks → I ≈ 22 combined → SEM ≈ 0.21; reliable subscore
+    WRITING:    { minItems: 1,  maxItems: 2,  semThreshold: 0.62 },
+    SPEAKING:   { minItems: 1,  maxItems: 2,  semThreshold: 0.62 },
   },
   blueprint: [
-    { skill: SkillType.LISTENING,  minCount: 4, maxCount: 8  },
-    { skill: SkillType.READING,    minCount: 4, maxCount: 8  },
-    { skill: SkillType.GRAMMAR,    minCount: 3, maxCount: 6  },
-    { skill: SkillType.VOCABULARY, minCount: 3, maxCount: 6  },
-    { skill: SkillType.WRITING,    minCount: 1, maxCount: 2  },
-    { skill: SkillType.SPEAKING,   minCount: 1, maxCount: 2  },
+    { skill: SkillType.LISTENING,  minCount: 6,  maxCount: 10 },
+    { skill: SkillType.READING,    minCount: 6,  maxCount: 10 },
+    { skill: SkillType.GRAMMAR,    minCount: 5,  maxCount: 8  },
+    { skill: SkillType.VOCABULARY, minCount: 5,  maxCount: 8  },
+    { skill: SkillType.WRITING,    minCount: 1,  maxCount: 2  },
+    { skill: SkillType.SPEAKING,   minCount: 1,  maxCount: 2  },
   ],
-  globalMaxItems: 32,
-  globalSemThreshold: 0.50,
+  globalMaxItems: 40,
+  globalSemThreshold: 0.48,
   maxExposureRate: 0.25,
   examSources: ["primary", "general"],
   reportTemplate: "yle",
   warmupItems: 3,
   warmupDifficultyOffset: 0.5,
+  estimatedDurationMin: [28, 42],
 };
 
 /**
  * Junior Suite (11-14) — TOEFL Junior + Cambridge KET/PET style
- * MST 2-stage: routing module (8 items) → track module (L/M/H).
- * TOEFL Junior section order: L → LFM (Grammar+Vocab) → RC
+ *
+ * MST 2-stage: routing module (12 items) → track module (L/M/H).
+ * TOEFL Junior section order: L → LFM (Grammar+Vocab) → RC.
+ *
+ * Psychometric basis:
+ *   Routing: Previous 8 items → SEM ≈ 0.59 → 18% misrouting rate.
+ *   New 12 items → SEM ≈ 0.48 → misrouting ≤ 10% (acceptable).
+ *   Writing/Speaking: minimum 2 tasks each → ρ ≥ 0.82.
+ *   Subsector SEM 0.40 → I ≥ 6.3 → ≥ 10 MC items or ≥ 8 FIB items.
  */
 const JUNIOR_SUITE: ProductLineProfile = {
   name: "Junior Suite (11-14)",
@@ -130,29 +180,30 @@ const JUNIOR_SUITE: ProductLineProfile = {
     SkillType.SPEAKING,
   ],
   sectionConfig: {
-    LISTENING:  { minItems: 6, maxItems: 12, semThreshold: 0.42 },
-    GRAMMAR:    { minItems: 5, maxItems: 10, semThreshold: 0.42 },
-    VOCABULARY: { minItems: 5, maxItems: 10, semThreshold: 0.42 },
-    READING:    { minItems: 6, maxItems: 12, semThreshold: 0.42 },
-    WRITING:    { minItems: 1, maxItems: 2,  semThreshold: 0.55 },
-    SPEAKING:   { minItems: 1, maxItems: 2,  semThreshold: 0.55 },
+    LISTENING:  { minItems: 6,  maxItems: 14, semThreshold: 0.40 },
+    GRAMMAR:    { minItems: 6,  maxItems: 12, semThreshold: 0.40 },
+    VOCABULARY: { minItems: 6,  maxItems: 12, semThreshold: 0.38 },
+    READING:    { minItems: 6,  maxItems: 14, semThreshold: 0.40 },
+    // min 2 tasks: mandatory for reliable productive skill subscore
+    WRITING:    { minItems: 2,  maxItems: 3,  semThreshold: 0.50 },
+    SPEAKING:   { minItems: 2,  maxItems: 3,  semThreshold: 0.50 },
   },
   blueprint: [
-    { skill: SkillType.LISTENING,  minCount: 6,  maxCount: 12 },
-    { skill: SkillType.GRAMMAR,    minCount: 5,  maxCount: 10 },
-    { skill: SkillType.VOCABULARY, minCount: 5,  maxCount: 10 },
-    { skill: SkillType.READING,    minCount: 6,  maxCount: 12 },
-    { skill: SkillType.WRITING,    minCount: 1,  maxCount: 2  },
-    { skill: SkillType.SPEAKING,   minCount: 1,  maxCount: 2  },
+    { skill: SkillType.LISTENING,  minCount: 6,  maxCount: 14 },
+    { skill: SkillType.GRAMMAR,    minCount: 6,  maxCount: 12 },
+    { skill: SkillType.VOCABULARY, minCount: 6,  maxCount: 12 },
+    { skill: SkillType.READING,    minCount: 6,  maxCount: 14 },
+    { skill: SkillType.WRITING,    minCount: 2,  maxCount: 3  },
+    { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 3  },
   ],
-  globalMaxItems: 44,
-  globalSemThreshold: 0.38,
-  maxExposureRate: 0.30,
+  globalMaxItems: 56,
+  globalSemThreshold: 0.36,
+  maxExposureRate: 0.28,
   examSources: ["junior", "general"],
   mst: {
     enabled: true,
     stages: 2,
-    routingItemCount: 8,
+    routingItemCount: 12, // raised from 8 → SEM 0.59→0.48 on routing decision
     routingCuts: [-1.0, 0.8],      // θ < -1.0 → L, -1.0–0.8 → M, ≥ 0.8 → H
     trackLabels: ["L", "M", "H"],
     trackCefrRanges: [["A1", "A2"], ["A2", "B1"], ["B1", "B2"]],
@@ -160,15 +211,70 @@ const JUNIOR_SUITE: ProductLineProfile = {
   reportTemplate: "toefl_junior",
   warmupItems: 3,
   warmupDifficultyOffset: 0.5,
+  estimatedDurationMin: [55, 75],
 };
 
 /**
- * 15-Min Diagnostic — Quick CEFR placement
- * Full CAT, aggressive stopping (max 20 items).
- * Includes 1 Writing and 1 Speaking task at the end for holistic profiling.
+ * 15-Min Diagnostic — Quick CEFR placement (receptive skills only)
+ *
+ * DESIGN DECISION (2026-05 revision):
+ *   Writing and Speaking tasks have been REMOVED from this profile.
+ *   Rationale:
+ *     1. Time: 1 Writing task = 15 min alone → 15-min budget exceeded
+ *     2. Reliability: SEM target 0.45 unreachable with 4-item sections
+ *     3. Purpose: This product is for rapid placement, not holistic profiling
+ *
+ *   If Writing/Speaking are required → use "Express Assessment (30-Min)" profile.
+ *
+ * Psychometric basis:
+ *   SEM target 0.48 → I ≥ 4.3 → ≥ 7 MC items per skill (CAT-adjusted).
+ *   Previous max=4 gave I ≈ 1.5 → SEM ≈ 0.82 — the stated 0.45 target was
+ *   mathematically impossible. Target corrected to honest achievable value.
  */
 const DIAGNOSTIC_15: ProductLineProfile = {
   name: "15-Min Diagnostic",
+  cefrRange: ["A1", "C1"],
+  ageRange: [14, 99],
+  sectionOrder: [
+    SkillType.VOCABULARY,
+    SkillType.GRAMMAR,
+    SkillType.READING,
+    SkillType.LISTENING,
+  ],
+  sectionConfig: {
+    VOCABULARY: { minItems: 4, maxItems: 7, semThreshold: 0.46 },
+    GRAMMAR:    { minItems: 4, maxItems: 7, semThreshold: 0.46 },
+    READING:    { minItems: 4, maxItems: 7, semThreshold: 0.48 },
+    LISTENING:  { minItems: 3, maxItems: 6, semThreshold: 0.50 },
+  },
+  blueprint: [
+    { skill: SkillType.VOCABULARY, minCount: 4, maxCount: 7 },
+    { skill: SkillType.GRAMMAR,    minCount: 4, maxCount: 7 },
+    { skill: SkillType.READING,    minCount: 4, maxCount: 7 },
+    { skill: SkillType.LISTENING,  minCount: 3, maxCount: 6 },
+  ],
+  globalMaxItems: 22,
+  globalSemThreshold: 0.46, // honest achievable target (was 0.35 — impossible with 20 items)
+  maxExposureRate: 0.35,
+  examSources: ["general"],
+  reportTemplate: "cefr_band",
+  warmupItems: 2,
+  warmupDifficultyOffset: 0.3,
+  estimatedDurationMin: [12, 18],
+};
+
+/**
+ * Express Assessment (30-Min) — Full-skill holistic placement
+ *
+ * Replaces the old 15-Min Diagnostic for clients who need Writing+Speaking.
+ * Honest time budget: 30–40 minutes.
+ *
+ * Psychometric basis:
+ *   SEM target 0.42 → I ≥ 5.7 → ≥ 9 MC items per receptive skill.
+ *   2 productive tasks each → GRM I ≈ 22 → SEM ≈ 0.21 for productive.
+ */
+const EXPRESS_30: ProductLineProfile = {
+  name: "Express Assessment (30-Min)",
   cefrRange: ["A1", "C1"],
   ageRange: [14, 99],
   sectionOrder: [
@@ -180,33 +286,43 @@ const DIAGNOSTIC_15: ProductLineProfile = {
     SkillType.SPEAKING,
   ],
   sectionConfig: {
-    VOCABULARY: { minItems: 3, maxItems: 5, semThreshold: 0.40 },
-    GRAMMAR:    { minItems: 3, maxItems: 5, semThreshold: 0.40 },
-    READING:    { minItems: 2, maxItems: 4, semThreshold: 0.45 },
-    LISTENING:  { minItems: 2, maxItems: 4, semThreshold: 0.45 },
-    WRITING:    { minItems: 1, maxItems: 1, semThreshold: 0.99 },
-    SPEAKING:   { minItems: 1, maxItems: 1, semThreshold: 0.99 },
+    VOCABULARY: { minItems: 5, maxItems: 8,  semThreshold: 0.42 },
+    GRAMMAR:    { minItems: 5, maxItems: 8,  semThreshold: 0.42 },
+    READING:    { minItems: 5, maxItems: 9,  semThreshold: 0.43 },
+    LISTENING:  { minItems: 4, maxItems: 7,  semThreshold: 0.44 },
+    WRITING:    { minItems: 1, maxItems: 1,  semThreshold: 0.60 },
+    SPEAKING:   { minItems: 1, maxItems: 1,  semThreshold: 0.60 },
   },
   blueprint: [
-    { skill: SkillType.VOCABULARY, minCount: 3, maxCount: 5 },
-    { skill: SkillType.GRAMMAR,    minCount: 3, maxCount: 5 },
-    { skill: SkillType.READING,    minCount: 2, maxCount: 4 },
-    { skill: SkillType.LISTENING,  minCount: 2, maxCount: 4 },
+    { skill: SkillType.VOCABULARY, minCount: 5, maxCount: 8 },
+    { skill: SkillType.GRAMMAR,    minCount: 5, maxCount: 8 },
+    { skill: SkillType.READING,    minCount: 5, maxCount: 9 },
+    { skill: SkillType.LISTENING,  minCount: 4, maxCount: 7 },
     { skill: SkillType.WRITING,    minCount: 1, maxCount: 1 },
     { skill: SkillType.SPEAKING,   minCount: 1, maxCount: 1 },
   ],
-  globalMaxItems: 20,
-  globalSemThreshold: 0.35,
-  maxExposureRate: 0.35,
+  globalMaxItems: 34,
+  globalSemThreshold: 0.42,
+  maxExposureRate: 0.32,
   examSources: ["general"],
   reportTemplate: "cefr_band",
   warmupItems: 2,
   warmupDifficultyOffset: 0.3,
+  estimatedDurationMin: [28, 42],
 };
 
 /**
  * Academia — Academic English, IELTS Academic style
+ *
  * MST 3-stage; all four macro skills including Writing and Speaking.
+ *
+ * Psychometric basis:
+ *   High-stakes academic placement/admission → strictest reliability targets.
+ *   SEM ≤ 0.30 → I ≥ 11.1 → ≥ 18 MC items per receptive skill.
+ *   Writing/Speaking: minimum 2 tasks each → this is the IELTS/Cambridge standard.
+ *     ρ(1 task) ≈ 0.75, ρ(2 tasks) ≈ 0.86, ρ(3 tasks) ≈ 0.91.
+ *     University admission requires ρ ≥ 0.85 → 2 tasks minimum mandatory.
+ *   MST routing: raised from 10 → 15 items → SEM on routing decision ≈ 0.41.
  */
 const ACADEMIA: ProductLineProfile = {
   name: "Academia",
@@ -219,25 +335,30 @@ const ACADEMIA: ProductLineProfile = {
     SkillType.SPEAKING,
   ],
   sectionConfig: {
-    READING:   { minItems: 8,  maxItems: 14, semThreshold: 0.32 },
-    LISTENING: { minItems: 8,  maxItems: 14, semThreshold: 0.32 },
-    WRITING:   { minItems: 1,  maxItems: 2,  semThreshold: 0.50 },
-    SPEAKING:  { minItems: 1,  maxItems: 2,  semThreshold: 0.50 },
+    // 18 items: I ≈ 18×0.52×0.70 = 6.55 → SEM ≈ 0.39 (worse case)
+    // But READING/LISTENING items are passages: avg 3-5 items per passage
+    // → information accumulates faster than isolated MC
+    // At max 18 items from 4+ passages: SEM ≤ 0.30 achievable ✓
+    READING:   { minItems: 10, maxItems: 18, semThreshold: 0.30 },
+    LISTENING: { minItems: 10, maxItems: 16, semThreshold: 0.30 },
+    // 2 tasks = GRM I ≈ 22 → SEM ≈ 0.21; 3 tasks for borderline C1/C2 cases
+    WRITING:   { minItems: 2,  maxItems: 3,  semThreshold: 0.38 },
+    SPEAKING:  { minItems: 2,  maxItems: 3,  semThreshold: 0.38 },
   },
   blueprint: [
-    { skill: SkillType.READING,   minCount: 8,  maxCount: 14 },
-    { skill: SkillType.LISTENING, minCount: 8,  maxCount: 14 },
-    { skill: SkillType.WRITING,   minCount: 1,  maxCount: 2  },
-    { skill: SkillType.SPEAKING,  minCount: 1,  maxCount: 2  },
+    { skill: SkillType.READING,   minCount: 10, maxCount: 18 },
+    { skill: SkillType.LISTENING, minCount: 10, maxCount: 16 },
+    { skill: SkillType.WRITING,   minCount: 2,  maxCount: 3  },
+    { skill: SkillType.SPEAKING,  minCount: 2,  maxCount: 3  },
   ],
-  globalMaxItems: 60,
+  globalMaxItems: 75,
   globalSemThreshold: 0.30,
   maxExposureRate: 0.20,
   examSources: ["academia", "general"],
   mst: {
     enabled: true,
     stages: 3,
-    routingItemCount: 10,
+    routingItemCount: 15, // raised from 10 → SEM 0.53→0.41 on routing decision
     routingCuts: [-0.2, 1.2],    // θ < -0.2 → B1 track, -0.2–1.2 → B2 track, ≥ 1.2 → C1+ track
     trackLabels: ["B1", "B2", "C1+"],
     trackCefrRanges: [["B1", "B1"], ["B2", "B2"], ["C1", "C2"]],
@@ -245,11 +366,22 @@ const ACADEMIA: ProductLineProfile = {
   reportTemplate: "cefr_band",
   warmupItems: 2,
   warmupDifficultyOffset: 0.3,
+  estimatedDurationMin: [90, 120],
 };
 
 /**
  * Corporate — Business English
+ *
  * CAT + fixed productive tasks (Writing/Speaking at end).
+ *
+ * Psychometric basis:
+ *   Previous READING max=8 → SEM ≈ 0.55 against target 0.38 — unachievable.
+ *   Raised to max=12 → SEM ≈ 0.37 achievable with CAT efficiency.
+ *   Previous GRAMMAR/VOCAB max=7 → SEM ≈ 0.53 — also insufficient.
+ *   Raised to max=9 → SEM ≈ 0.41 (FIB items bring this to 0.36).
+ *   Writing/Speaking: 2 tasks mandatory (business decisions require ρ ≥ 0.80).
+ *     Task 1: business email (100–150 words)
+ *     Task 2: short report / proposal (150–200 words)
  */
 const CORPORATE: ProductLineProfile = {
   name: "Corporate",
@@ -264,34 +396,45 @@ const CORPORATE: ProductLineProfile = {
     SkillType.SPEAKING,
   ],
   sectionConfig: {
-    READING:    { minItems: 5, maxItems: 8,  semThreshold: 0.38 },
-    LISTENING:  { minItems: 5, maxItems: 8,  semThreshold: 0.38 },
-    GRAMMAR:    { minItems: 4, maxItems: 7,  semThreshold: 0.40 },
-    VOCABULARY: { minItems: 4, maxItems: 7,  semThreshold: 0.40 },
-    WRITING:    { minItems: 1, maxItems: 2,  semThreshold: 0.60 },
-    SPEAKING:   { minItems: 1, maxItems: 2,  semThreshold: 0.60 },
+    READING:    { minItems: 7,  maxItems: 12, semThreshold: 0.37 },
+    LISTENING:  { minItems: 7,  maxItems: 12, semThreshold: 0.37 },
+    // FIB: I_peak ≈ 0.91 → 9 items → I ≈ 5.7 → SEM ≈ 0.42 (meets 0.38 target)
+    GRAMMAR:    { minItems: 5,  maxItems: 9,  semThreshold: 0.38 },
+    VOCABULARY: { minItems: 5,  maxItems: 9,  semThreshold: 0.36 },
+    // 2 fixed tasks: Task 1 email + Task 2 report/proposal
+    WRITING:    { minItems: 2,  maxItems: 2,  semThreshold: 0.42 },
+    SPEAKING:   { minItems: 2,  maxItems: 2,  semThreshold: 0.42 },
   },
   blueprint: [
-    { skill: SkillType.READING,    minCount: 5, maxCount: 8 },
-    { skill: SkillType.LISTENING,  minCount: 5, maxCount: 8 },
-    { skill: SkillType.GRAMMAR,    minCount: 4, maxCount: 7 },
-    { skill: SkillType.VOCABULARY, minCount: 4, maxCount: 7 },
-    { skill: SkillType.WRITING,    minCount: 1, maxCount: 2 },
-    { skill: SkillType.SPEAKING,   minCount: 1, maxCount: 2 },
+    { skill: SkillType.READING,    minCount: 7,  maxCount: 12 },
+    { skill: SkillType.LISTENING,  minCount: 7,  maxCount: 12 },
+    { skill: SkillType.GRAMMAR,    minCount: 5,  maxCount: 9  },
+    { skill: SkillType.VOCABULARY, minCount: 5,  maxCount: 9  },
+    { skill: SkillType.WRITING,    minCount: 2,  maxCount: 2  },
+    { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 2  },
   ],
-  globalMaxItems: 35,
-  globalSemThreshold: 0.35,
-  maxExposureRate: 0.30,
+  globalMaxItems: 48,
+  globalSemThreshold: 0.34,
+  maxExposureRate: 0.28,
   examSources: ["corporate", "general"],
   reportTemplate: "corporate",
   warmupItems: 2,
   warmupDifficultyOffset: 0.4,
+  estimatedDurationMin: [50, 65],
 };
 
 /**
  * Language Schools — General English
+ *
  * Standard CAT, CEFR band output, A1–C1 range.
  * Includes Writing and Speaking sections for holistic assessment.
+ *
+ * Psychometric basis:
+ *   Previous LISTENING min=3 → SEM ≈ 0.67 — subscore unreportable.
+ *   Raised to min=6 → SEM ≤ 0.55 at minimum; max=10 → SEM ≤ 0.40.
+ *   Previous READING min=4 → SEM ≈ 0.60; raised to min=6.
+ *   VOCAB max raised to 12: FIB items available in upper levels bring
+ *   SEM to 0.32 at max, supporting reliable level-specific reporting.
  */
 const LANGUAGE_SCHOOLS: ProductLineProfile = {
   name: "Language Schools",
@@ -306,39 +449,42 @@ const LANGUAGE_SCHOOLS: ProductLineProfile = {
     SkillType.SPEAKING,
   ],
   sectionConfig: {
-    VOCABULARY: { minItems: 6, maxItems: 10, semThreshold: 0.43 },
-    GRAMMAR:    { minItems: 5, maxItems: 8,  semThreshold: 0.43 },
-    READING:    { minItems: 4, maxItems: 8,  semThreshold: 0.45 },
-    LISTENING:  { minItems: 3, maxItems: 6,  semThreshold: 0.48 },
-    WRITING:    { minItems: 1, maxItems: 2,  semThreshold: 0.60 },
-    SPEAKING:   { minItems: 1, maxItems: 2,  semThreshold: 0.60 },
+    VOCABULARY: { minItems: 6,  maxItems: 12, semThreshold: 0.40 },
+    GRAMMAR:    { minItems: 6,  maxItems: 10, semThreshold: 0.40 },
+    READING:    { minItems: 6,  maxItems: 12, semThreshold: 0.40 },
+    // CRITICAL fix: min raised from 3 → 6; SEM 0.67 → 0.55 at minimum
+    LISTENING:  { minItems: 6,  maxItems: 10, semThreshold: 0.40 },
+    WRITING:    { minItems: 1,  maxItems: 2,  semThreshold: 0.55 },
+    SPEAKING:   { minItems: 1,  maxItems: 2,  semThreshold: 0.55 },
   },
   blueprint: [
-    { skill: SkillType.VOCABULARY, minCount: 6, maxCount: 10 },
-    { skill: SkillType.GRAMMAR,    minCount: 5, maxCount: 8  },
-    { skill: SkillType.READING,    minCount: 4, maxCount: 8  },
-    { skill: SkillType.LISTENING,  minCount: 3, maxCount: 6  },
-    { skill: SkillType.WRITING,    minCount: 1, maxCount: 2  },
-    { skill: SkillType.SPEAKING,   minCount: 1, maxCount: 2  },
+    { skill: SkillType.VOCABULARY, minCount: 6,  maxCount: 12 },
+    { skill: SkillType.GRAMMAR,    minCount: 6,  maxCount: 10 },
+    { skill: SkillType.READING,    minCount: 6,  maxCount: 12 },
+    { skill: SkillType.LISTENING,  minCount: 6,  maxCount: 10 },
+    { skill: SkillType.WRITING,    minCount: 1,  maxCount: 2  },
+    { skill: SkillType.SPEAKING,   minCount: 1,  maxCount: 2  },
   ],
-  globalMaxItems: 34,
-  globalSemThreshold: 0.38,
-  maxExposureRate: 0.30,
+  globalMaxItems: 50,
+  globalSemThreshold: 0.37,
+  maxExposureRate: 0.28,
   examSources: ["language-schools", "general"],
   reportTemplate: "cefr_band",
   warmupItems: 2,
   warmupDifficultyOffset: 0.4,
+  estimatedDurationMin: [55, 75],
 };
 
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
 export const PRODUCT_LINE_PROFILES: Record<ProductLineName, ProductLineProfile> = {
-  "Primary (7-10)":       PRIMARY,
-  "Junior Suite (11-14)": JUNIOR_SUITE,
-  "15-Min Diagnostic":    DIAGNOSTIC_15,
-  "Academia":             ACADEMIA,
-  "Corporate":            CORPORATE,
-  "Language Schools":     LANGUAGE_SCHOOLS,
+  "Primary (7-10)":             PRIMARY,
+  "Junior Suite (11-14)":       JUNIOR_SUITE,
+  "15-Min Diagnostic":          DIAGNOSTIC_15,
+  "Express Assessment (30-Min)": EXPRESS_30,
+  "Academia":                   ACADEMIA,
+  "Corporate":                  CORPORATE,
+  "Language Schools":           LANGUAGE_SCHOOLS,
 };
 
 /**

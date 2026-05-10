@@ -1,0 +1,269 @@
+name: Monthly AI Scoring Calibration Check
+
+# Runs on the 1st of every month at 06:00 UTC.
+# Fetches the last 30 days of AI-scored responses, computes QWK against the
+# most recent human ratings in the anchor set, and creates a GitHub issue
+# if QWK falls below the acceptable threshold (0.75 warning / 0.80 target).
+#
+# See docs/validity-roadmap.md §2.3 for the full calibration protocol.
+
+on:
+  schedule:
+    - cron: "0 6 1 * *"   # 1st of every month, 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      window_days:
+        description: "Look-back window in days (default: 30)"
+        type: number
+        default: 30
+      skill:
+        description: "Skill to check (WRITING / SPEAKING / ALL)"
+        type: choice
+        options: [ALL, WRITING, SPEAKING]
+        default: ALL
+
+jobs:
+  calibration-check:
+    name: QWK Calibration Check
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Fetch calibration report from the live API ────────────────────────
+      - name: Fetch AI calibration metrics
+        id: calibration
+        env:
+          INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
+          APP_URL: ${{ secrets.APP_URL }}
+          WINDOW_DAYS: ${{ github.event.inputs.window_days || '30' }}
+          SKILL: ${{ github.event.inputs.skill || 'ALL' }}
+        run: |
+          echo "Fetching AI calibration metrics (window=${WINDOW_DAYS}d, skill=${SKILL})..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -H "Authorization: Bearer $INTERNAL_API_SECRET" \
+            -H "Accept: application/json" \
+            "${APP_URL:-https://app.b4skills.com}/api/admin/calibration/qwk?window=${WINDOW_DAYS}&skill=${SKILL}")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -1)
+
+          echo "HTTP $HTTP_CODE"
+          echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
+          echo "body<<CALIB_EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "CALIB_EOF" >> $GITHUB_OUTPUT
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Calibration endpoint returned HTTP $HTTP_CODE — may not yet be deployed"
+            # Non-fatal: endpoint may not exist yet in Phase I
+            echo "http_code=SKIP" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Parse QWK values ──────────────────────────────────────────────────
+      - name: Parse QWK metrics
+        id: parse
+        if: steps.calibration.outputs.http_code == '200'
+        run: |
+          BODY='${{ steps.calibration.outputs.body }}'
+
+          # Extract QWK values for WRITING and SPEAKING
+          WRITING_QWK=$(echo "$BODY" | node -e "
+            const chunks = [];
+            process.stdin.on('data', c => chunks.push(c));
+            process.stdin.on('end', () => {
+              try {
+                const r = JSON.parse(chunks.join(''));
+                const w = r.metrics?.WRITING?.qwk ?? r.writingQwk ?? null;
+                console.log(w !== null ? w.toFixed(4) : 'N/A');
+              } catch { console.log('N/A'); }
+            });
+          " 2>/dev/null || echo "N/A")
+
+          SPEAKING_QWK=$(echo "$BODY" | node -e "
+            const chunks = [];
+            process.stdin.on('data', c => chunks.push(c));
+            process.stdin.on('end', () => {
+              try {
+                const r = JSON.parse(chunks.join(''));
+                const s = r.metrics?.SPEAKING?.qwk ?? r.speakingQwk ?? null;
+                console.log(s !== null ? s.toFixed(4) : 'N/A');
+              } catch { console.log('N/A'); }
+            });
+          " 2>/dev/null || echo "N/A")
+
+          echo "writing_qwk=$WRITING_QWK" >> $GITHUB_OUTPUT
+          echo "speaking_qwk=$SPEAKING_QWK" >> $GITHUB_OUTPUT
+          echo "Writing QWK: $WRITING_QWK | Speaking QWK: $SPEAKING_QWK"
+
+          # Determine alert level
+          # Target: ≥ 0.80 | Warning: 0.75–0.79 | Critical: < 0.75
+          ALERT_LEVEL="OK"
+          for QWK in "$WRITING_QWK" "$SPEAKING_QWK"; do
+            if [ "$QWK" != "N/A" ]; then
+              IS_CRITICAL=$(node -e "console.log(parseFloat('$QWK') < 0.75 ? 'true' : 'false')" 2>/dev/null || echo "false")
+              IS_WARNING=$(node -e "console.log(parseFloat('$QWK') < 0.80 ? 'true' : 'false')" 2>/dev/null || echo "false")
+              if [ "$IS_CRITICAL" = "true" ]; then ALERT_LEVEL="CRITICAL"; break; fi
+              if [ "$IS_WARNING" = "true" ] && [ "$ALERT_LEVEL" != "CRITICAL" ]; then ALERT_LEVEL="WARNING"; fi
+            fi
+          done
+          echo "alert_level=$ALERT_LEVEL" >> $GITHUB_OUTPUT
+          echo "Alert level: $ALERT_LEVEL"
+
+      # ── Write GitHub Step Summary ─────────────────────────────────────────
+      - name: Write step summary
+        if: always()
+        run: |
+          echo "## Monthly AI Scoring Calibration — QWK Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $(date -u +%Y-%m-%d)  |  **Window:** ${{ github.event.inputs.window_days || '30' }} days  |  **Skill:** ${{ github.event.inputs.skill || 'ALL' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.calibration.outputs.http_code }}" = "200" ]; then
+            echo "| Metric | Value | Target | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Writing QWK | ${{ steps.parse.outputs.writing_qwk }} | ≥ 0.80 | ${{ steps.parse.outputs.alert_level == 'OK' && '✅' || steps.parse.outputs.alert_level == 'WARNING' && '⚠️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Speaking QWK | ${{ steps.parse.outputs.speaking_qwk }} | ≥ 0.78 | ${{ steps.parse.outputs.alert_level == 'OK' && '✅' || steps.parse.outputs.alert_level == 'WARNING' && '⚠️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.calibration.outputs.http_code }}" = "SKIP" ]; then
+            echo "⚠️ Calibration endpoint not yet deployed — skipped." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> **Action:** Implement \`GET /api/admin/calibration/qwk\` endpoint (see docs/validity-roadmap.md §2.3)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Calibration fetch failed (HTTP ${{ steps.calibration.outputs.http_code }})" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Thresholds (docs/validity-roadmap.md §2.3)" >> $GITHUB_STEP_SUMMARY
+          echo "| QWK Range | Action |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ≥ 0.80 | ✅ Pass — no action required |" >> $GITHUB_STEP_SUMMARY
+          echo "| 0.75–0.79 | ⚠️ Warning — review model version and anchor set |" >> $GITHUB_STEP_SUMMARY
+          echo "| < 0.75 | ❌ Critical — freeze AI scoring; escalate to Assessment Director |" >> $GITHUB_STEP_SUMMARY
+
+      # ── Save raw report as artifact ───────────────────────────────────────
+      - name: Save calibration report artifact
+        if: steps.calibration.outputs.http_code == '200'
+        run: |
+          echo '${{ steps.calibration.outputs.body }}' > calibration-$(date -u +%Y-%m-%d).json
+
+      - uses: actions/upload-artifact@v4
+        if: steps.calibration.outputs.http_code == '200'
+        with:
+          name: calibration-report-${{ github.run_number }}
+          path: calibration-*.json
+          retention-days: 365
+
+      # ── Create issue on WARNING ───────────────────────────────────────────
+      - name: Create issue on QWK warning
+        if: steps.parse.outputs.alert_level == 'WARNING'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const date = new Date().toISOString().split('T')[0];
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `⚠️ AI Scoring QWK Warning — ${date}`,
+              body: `
+            ## AI Scoring Calibration Warning
+
+            **Date:** ${date}
+            **Workflow:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            | Skill | QWK | Target |
+            |-------|-----|--------|
+            | Writing | ${{ steps.parse.outputs.writing_qwk }} | ≥ 0.80 |
+            | Speaking | ${{ steps.parse.outputs.speaking_qwk }} | ≥ 0.78 |
+
+            ### Required Actions
+
+            1. Review AI model version — check for recent Gemini updates
+            2. Expand anchor set: add ≥ 10 human-scored samples per skill × CEFR level
+            3. Run \`POST /api/admin/calibration/recalibrate\` to refresh scoring parameters
+            4. Re-run this workflow manually after adjustments
+
+            ### References
+
+            - [Calibration Protocol](../docs/validity-roadmap.md#23-ai-puanlama-kalibrasyonu--qwk-protokolü)
+            - [QWK Thresholds](../docs/slo-definitions.md)
+
+            /cc @bilalcelimli-spec
+              `,
+              labels: ['calibration', 'ai-scoring', 'validity'],
+            });
+
+      # ── Create issue on CRITICAL ──────────────────────────────────────────
+      - name: Create issue on QWK critical failure
+        if: steps.parse.outputs.alert_level == 'CRITICAL'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const date = new Date().toISOString().split('T')[0];
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🔴 CRITICAL: AI Scoring QWK Below Threshold — ${date}`,
+              body: `
+            ## AI Scoring Calibration CRITICAL Failure
+
+            **Date:** ${date}
+            **Workflow:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            | Skill | QWK | Threshold | Status |
+            |-------|-----|-----------|--------|
+            | Writing | ${{ steps.parse.outputs.writing_qwk }} | ≥ 0.75 | ❌ CRITICAL |
+            | Speaking | ${{ steps.parse.outputs.speaking_qwk }} | ≥ 0.75 | ❌ CRITICAL |
+
+            ### IMMEDIATE Actions Required
+
+            1. **Freeze AI scoring** for Writing/Speaking — route all new responses to human review queue
+            2. Investigate model drift: compare current vs. previous month's anchor set
+            3. Notify Assessment Director within 24 hours
+            4. Do NOT promote new model version until QWK ≥ 0.80 restored
+            5. File incident report (docs/post-mortem-template.md)
+
+            ### Decision Framework
+
+            Per docs/validity-roadmap.md §2.3:
+            > QWK < 0.75 → alarm; model versiyonu beklet
+
+            /cc @bilalcelimli-spec
+              `,
+              labels: ['calibration', 'ai-scoring', 'validity', 'critical'],
+            });
+
+      # ── Create issue on workflow failure ──────────────────────────────────
+      - name: Create issue on workflow failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🔴 AI Calibration Workflow Failed — ${new Date().toISOString().split('T')[0]}`,
+              body: `
+            The monthly AI calibration check workflow failed to complete.
+
+            **Workflow run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            ### Likely causes
+            - \`APP_URL\` or \`INTERNAL_API_SECRET\` secret missing/expired
+            - Calibration API endpoint not deployed
+            - Network connectivity issue
+
+            /cc @bilalcelimli-spec
+              `,
+              labels: ['calibration', 'ops', 'critical'],
+            });
