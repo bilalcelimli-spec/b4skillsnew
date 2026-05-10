@@ -199,4 +199,11 @@ export interface EngineConfig {
    * Organisational prior: SD of theta for this org's candidate pool. Default: 1.
    */
   priorSd?: number;
+  /**
+   * Use REINFORCE RL policy gradient item selector (rl-item-selection.ts) as the
+   * primary selection strategy within the shadow-test candidate set.
+   * Falls back to composite KL/MFI scorer when RL returns null.
+   * Default: false (composite scorer).
+   */
+  useRlSelector?: boolean;
 }

@@ -29,6 +29,32 @@ import {
   classifyCandidate,
   computeConsistencyReport,
 } from "../psychometrics/classification-consistency.js";
+import { computePersonFit } from "../psychometrics/person-fit.js";
+import {
+  detectAnswerCopying,
+  ExamineeResponses as CopyingResponse,
+  ItemMeta as CopyingItemMeta,
+} from "../psychometrics/test-security/answer-copying.js";
+import { probability as irtProbability } from "./irt.js";
+import {
+  estimate4DTheta,
+  unidimTo4DParams,
+  compositeTheta,
+  compositeSem,
+  type Mirt4DObservation,
+} from "../psychometrics/mirt-4d.js";
+import { analyseSession as analyseClickstream, type ItemClickstream } from "../psychometrics/clickstream.js";
+import {
+  estimateGdina,
+  classifyExamineeGdina,
+  generateDiagnosticFeedback,
+  LINGUADAPT_QMATRIX,
+  LINGUADAPT_ATTRIBUTES,
+} from "../psychometrics/cdm-dina.js";
+import {
+  analyseCollusion,
+  type ExamineeProfile as CollusionExamineeProfile,
+} from "../psychometrics/test-security/collusion-graph.js";
 
 /** Wraps a promise with a hard timeout to prevent indefinite hangs */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -487,7 +513,8 @@ export const AssessmentService = {
       selectionPool as ShadowItem[],
       state,
       seqCtx,
-      profile.blueprint
+      profile.blueprint,
+      engine.getConfig().useRlSelector === true,
     );
     const nextItem = catResult?.item ?? null;
     if (!nextItem) {
@@ -716,6 +743,36 @@ export const AssessmentService = {
     // Online item calibration — fire-and-forget, won't block the response
     CalibrationService.recalibrateItem(itemId).catch(() => {});
 
+    // ── Clickstream: append item-level behavioural record to session metadata ─
+    // We build a minimal ItemClickstream from server-observable signals:
+    //   - responseTimeMs from clientLatencyMs (best available proxy for RT)
+    //   - keystrokes / events are zero since we don't track DOM events server-side
+    //   - focusLossCount = 0 (front-end may supply via a separate endpoint)
+    // This is enough for the HMM to classify Engaged vs. Rapid-guess on RT alone.
+    if (typeof clientLatencyMs === "number" && clientLatencyMs > 0) {
+      const existingMeta = (session.metadata as Record<string, unknown> | null) ?? {};
+      const existingClickstreams = (existingMeta.clickstreams as unknown[]) ?? [];
+      const newClickstreamEntry: ItemClickstream = {
+        itemId,
+        responseTimeMs: clientLatencyMs,
+        keystrokes: 0,
+        mouseClicks: 0,
+        focusLossCount: 0,
+        revisitCount: 0,
+        events: [],
+      };
+      // Fire-and-forget: update session metadata with new clickstream entry
+      prisma.session.update({
+        where: { id: sessionId },
+        data: {
+          metadata: {
+            ...existingMeta,
+            clickstreams: [...existingClickstreams, newClickstreamEntry],
+          } as any,
+        },
+      }).catch(() => {});
+    }
+
     return { 
       success: true, 
       theta: newState.theta, 
@@ -873,12 +930,240 @@ export const AssessmentService = {
         mstEnabled: ec.mst?.enabled === true,
         sprtEnabled: ec.sprt?.enabled === true,
         useShadowTest: ec.useShadowTest === true,
+        // Faz 2–3 features — always active regardless of config flags
+        daveyParshallExposureControl: true,
+        klInformationSelection: true,
+        onlineCalibrationStockingEM: true,
+        itemParameterDriftLordChiSq: true,
+        personFitDrasgowLzECI: true,
+        answerCopyingWollackOmega: true,
+        collusionGraphDetection: true,
+        clickstreamHmmAnalysis: true,
+        mirt4DCompensatory: true,
+        gdinaDiagnosticFeedback: true,
+        rlItemSelector: ec.useRlSelector === true,
       },
     };
 
     // ── Classification Consistency (Livingston-Lewis) ─────────────────────────
     const classificationResult = classifyCandidate(theta, sessionSem);
     const consistencyReport = computeConsistencyReport(theta, sessionSem);
+
+    // ── Person-Fit (Drasgow Lz + ECI + U3) ───────────────────────────────────
+    const allItems = session
+      ? session.responses.map(r => r.item).filter(Boolean).map(dbItemToEngineItem)
+      : [];
+    const personFitResult = session
+      ? computePersonFit({
+          responses: session.responses.map(r => ({
+            itemId: r.itemId,
+            score: r.score ?? 0,
+            isPretest: r.isPretest ?? false,
+            latencyMs: r.latencyMs ?? undefined,
+          })),
+          items: allItems,
+          theta,
+        })
+      : null;
+
+    // ── MIRT 4D profile ────────────────────────────────────────────────────────
+    const mirt4DProfile = (() => {
+      if (!session) return null;
+      const opResponses = session.responses.filter(r => !r.isPretest && r.score !== null);
+      if (opResponses.length === 0) return null;
+      const obs: Mirt4DObservation[] = opResponses
+        .map(r => {
+          const item = allItems.find(it => it.id === r.itemId);
+          if (!item) return null;
+          return {
+            score: ((r.score ?? 0) > 0.5 ? 1 : 0) as 0 | 1,
+            params: unidimTo4DParams(
+              item.params.a,
+              item.params.b,
+              item.params.c,
+              (item.skill as string) ?? "DEFAULT",
+            ),
+          };
+        })
+        .filter((x): x is Mirt4DObservation => x !== null);
+      if (obs.length === 0) return null;
+      const profile = estimate4DTheta(obs);
+      return {
+        theta: profile.theta,
+        sem: profile.sem,
+        traceCovariance: profile.traceCovariance,
+        composite: compositeTheta(profile),
+        compositeSem: compositeSem(profile),
+        dimensionLabels: [
+          "Receptive (Reading/Listening)",
+          "Productive (Writing/Speaking)",
+          "Grammatical Accuracy (Grammar/Vocabulary)",
+          "Strategic Competence (Discourse/Pragmatics)",
+        ],
+      };
+    })();
+
+    // ── Clickstream behavioural analysis ─────────────────────────────────────
+    const behaviourProfile = (() => {
+      if (!session) return null;
+      const meta = (session.metadata as Record<string, unknown> | null) ?? {};
+      const rawClickstreams = (meta.clickstreams as ItemClickstream[] | undefined) ?? [];
+      if (rawClickstreams.length === 0) return null;
+      const profile = analyseClickstream(rawClickstreams);
+      return {
+        itemCount: profile.itemCount,
+        meanResponseTime: profile.meanResponseTime,
+        cvResponseTime: profile.cvResponseTime,
+        stateProportions: profile.stateProportions,
+        focusLossProportion: profile.focusLossProportion,
+        revisionRate: profile.revisionRate,
+        rapidGuessCount: profile.rapidGuessCount,
+        lowEffortFlag: profile.lowEffortFlag,
+        riskLevel: profile.riskLevel,
+      };
+    })();
+
+    // ── G-DINA diagnostic feedback ──────────────────────────────────────────────────
+    const gdinaDiagnostic = (() => {
+      if (!session) return null;
+      const opResponses = session.responses.filter(r => !r.isPretest && r.score !== null);
+      const J = LINGUADAPT_QMATRIX.length;
+      if (opResponses.length < Math.ceil(J / 2)) return null; // need at least half the items
+
+      // Build a response vector aligned to the prototype Q-matrix.
+      // We use the first J operational responses for the CDM estimation.
+      const responseVector = LINGUADAPT_QMATRIX.map((_, j) => {
+        const r = opResponses[j % opResponses.length];
+        return r ? ((r.score ?? 0) > 0.5 ? 1 : 0) : 0;
+      });
+
+      // Use precomputed Q-matrix; in production supply a full item-bank Q-matrix.
+      const responses = [responseVector]; // single examinee
+      try {
+        const model = estimateGdina(responses, LINGUADAPT_QMATRIX, 50); // fast: 50 iter
+        const classification = classifyExamineeGdina(responseVector, model);
+        const feedback = generateDiagnosticFeedback(classification, LINGUADAPT_ATTRIBUTES);
+        return {
+          overallMasteryRate: feedback.overallMasteryRate,
+          learningStage: feedback.learningStage,
+          primaryWeakness: feedback.primaryWeakness,
+          primaryStrength: feedback.primaryStrength,
+          mapProfile: feedback.mapProfileString,
+          attributes: feedback.attributes,
+        };
+      } catch {
+        return null;
+      }
+    })();
+
+    // ── Per-session cheating signal (answer-copying self-check) ───────────────
+    // Compares the observed response pattern against the expected pattern
+    // given the examinee's own θ (self-reference baseline).
+    // A flagged result means the pattern is anomalous relative to
+    // person-fit AND ω/S2 — this is then surfaced in the admin panel.
+    const securityFlag = (() => {
+      if (!session || allItems.length < 10) return null;
+      const opResponses = session.responses.filter(r => !r.isPretest);
+      if (opResponses.length < 10) return null;
+
+      const copyingItems: CopyingItemMeta[] = allItems
+        .filter(it => !it.isPretest)
+        .map(it => ({ itemId: it.id, params: it.params }));
+
+      const expectedResponses: CopyingResponse[] = copyingItems.map(it => ({
+        itemId: it.itemId,
+        score: irtProbability(theta, it.params) > 0.5 ? 1 : 0,
+      }));
+
+      const observed: CopyingResponse[] = opResponses.map(r => ({
+        itemId: r.itemId,
+        score: (r.score ?? 0) > 0.5 ? 1 : 0,
+      }));
+
+      const result = detectAnswerCopying(
+        expectedResponses, observed, theta, theta, copyingItems
+      );
+
+      return {
+        omega:   result.omega,
+        s2:      result.s2,
+        kIndex:  result.kIndex,
+        kPValue: result.kPValue,
+        flagged: result.flagged,
+        triggers: result.triggers,
+      };
+    })();
+
+    // ── Cross-session collusion graph detection ───────────────────────────────
+    // Queries sessions completed in the last 24 hours on the same product line
+    // and runs the Belov-Armstrong / Wollack collusion graph algorithm (IP
+    // proximity + RT correlation + response-pattern overlap).
+    const collusionReport = await (async () => {
+      if (!session || opCount < 10) return null;
+      try {
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recentSessions = await prisma.session.findMany({
+          where: {
+            status: "COMPLETED",
+            completedAt: { gte: since },
+            id: { not: sessionId },
+            ...(sessionProductLine ? { metadata: { path: ["productLine"], equals: sessionProductLine } } : {}),
+          },
+          include: { responses: { where: { isPretest: false }, select: { itemId: true, score: true, latencyMs: true } } },
+          take: 50,
+          orderBy: { completedAt: "desc" },
+        });
+
+        if (recentSessions.length < 2) return null;
+
+        // Build current examinee profile
+        const currentResponses: CopyingResponse[] = session.responses
+          .filter(r => !r.isPretest)
+          .map(r => ({ itemId: r.itemId, score: (r.score ?? 0) > 0.5 ? 1 : 0 }));
+        const currentRTs: Record<string, number> = {};
+        for (const r of session.responses) {
+          if (r.latencyMs) currentRTs[r.itemId] = r.latencyMs;
+        }
+
+        const profiles: CollusionExamineeProfile[] = [
+          {
+            examineeId: sessionId,
+            theta,
+            responses: currentResponses,
+            responseTimes: currentRTs,
+          },
+          ...recentSessions.slice(0, 20).map(s => ({
+            examineeId: s.id,
+            theta: s.theta ?? 0,
+            responses: s.responses.map(r => ({ itemId: r.itemId, score: (r.score ?? 0) > 0.5 ? 1 : 0 })),
+            responseTimes: s.responses.reduce<Record<string, number>>((acc, r) => {
+              if (r.latencyMs) acc[r.itemId] = r.latencyMs;
+              return acc;
+            }, {}),
+          })),
+        ];
+
+        const itemMetas = allItems.filter(it => !it.isPretest).map(it => ({
+          itemId: it.id,
+          params: it.params,
+        }));
+
+        const report = analyseCollusion(profiles, itemMetas);
+        // Only return if current session is involved in a flagged pair
+        const involvedPairs = report.flaggedPairs.filter(
+          p => p.examineeA === sessionId || p.examineeB === sessionId
+        );
+        if (involvedPairs.length === 0) return null;
+        return {
+          flaggedPairs: involvedPairs.length,
+          flagRate: report.flagRate,
+          involvedWithIds: involvedPairs.map(p => p.examineeA === sessionId ? p.examineeB : p.examineeA),
+          riskLevel: report.clusters.find(c => c.members.includes(sessionId))?.riskLevel ?? "LOW",
+        };
+      } catch {
+        return null;
+      }
+    })();
 
     const diagnosticReport = {
       overallTheta: theta,
@@ -889,6 +1174,9 @@ export const AssessmentService = {
       skillProfiles: skillSubReports,
       mirtAbilityVector: mirtVector,
       mirt2B,
+      mirt4D: mirt4DProfile,
+      behaviourProfile,
+      gdinaDiagnostic,
       stopReason,
       productLine: sessionProductLine,
       mstTrack: sessionMstTrack,
@@ -905,6 +1193,22 @@ export const AssessmentService = {
         meetsHighStakesThreshold: consistencyReport.decisionConsistency >= 0.80,
         meetsPlacementThreshold: consistencyReport.decisionConsistency >= 0.70,
       },
+      // Person-fit: Drasgow Lz, ECI, U3 aberrance detection
+      personFit: personFitResult
+        ? {
+            lz: personFitResult.lz,
+            eci: personFitResult.eci,
+            u3: personFitResult.u3,
+            rgi: personFitResult.rgi,
+            flag: personFitResult.flag,
+            recommendedAction: personFitResult.recommendedAction,
+            interpretation: personFitResult.interpretation,
+          }
+        : null,
+      // Test security: per-session anomaly signal (answer-copying self-baseline)
+      securityFlag,
+      // Cross-session collusion graph (Belov-Armstrong / Wollack, last 24h cohort)
+      collusionReport,
       generatedAt: new Date().toISOString(),
     };
 

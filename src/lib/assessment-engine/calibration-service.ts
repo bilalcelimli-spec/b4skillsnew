@@ -2,6 +2,8 @@ import { prisma } from "../prisma";
 import { CefrLevel, IrtParameters } from "./types";
 import { probability } from "./irt";
 import { DifAnalysisService } from "../psychometrics/dif-analysis.js";
+import { calibratePretestItem, type PretestObservation } from "../psychometrics/online-calibration.js";
+import { computeItemDrift, type IrtSnapshot } from "../psychometrics/item-parameter-drift.js";
 
 /**
  * Calibration Service
@@ -367,21 +369,22 @@ export class CalibrationService {
   /**
    * Online Item Calibration (fires after each real response once an item
    * has ≥ CALIBRATION_THRESHOLD real answers).
-   * Uses a simplified EM/IRC heuristic: nudge the b-parameter toward the
-   * theta value where P(theta) ≈ observed p-value.
+  /**
+   * Recalibrate a single item using Stocking (1990) concurrent EM.
    *
-   * Safe to call on every response submission (idempotent if not enough data).
+   * Replaces the previous IRC-nudge heuristic with a full Newton-Raphson
+   * M-step update (online-calibration.ts). After a stable update, the
+   * Lord chi-square IPD is computed and stored so the admin dashboard can
+   * surface items with significant parameter drift for review/retirement.
    */
   static async recalibrateItem(itemId: string): Promise<void> {
-    const CALIBRATION_THRESHOLD = 30;
-    const DAMPING = 0.3; // conservative step size per iteration
-
     const item = await prisma.item.findUnique({
       where: { id: itemId },
       include: {
         responses: {
           select: {
             score: true,
+            adjustedScore: true,
             session: { select: { theta: true } }
           }
         }
@@ -389,29 +392,77 @@ export class CalibrationService {
     } as any);
 
     if (!item) return;
-    const responses = (item as any).responses as { score: number; session: { theta: number } }[];
-    if (responses.length < CALIBRATION_THRESHOLD) return;
+    const responses = (item as any).responses as {
+      score: number;
+      adjustedScore: number | null;
+      session: { theta: number };
+    }[];
 
-    const pObserved = responses.reduce((sum, r) => sum + r.score, 0) / responses.length;
-    const meanTheta  = responses.reduce((sum, r) => sum + r.session.theta, 0) / responses.length;
+    // Build PretestObservation array for Stocking EM
+    const observations: PretestObservation[] = responses
+      .filter(r => Number.isFinite(r.session?.theta))
+      .map(r => ({
+        theta: r.session.theta,
+        score: ((r.adjustedScore ?? r.score) > 0.5 ? 1 : 0) as 0 | 1,
+      }));
 
-    const params: IrtParameters = {
+    const currentParams: IrtParameters = {
       a: (item as any).discrimination,
       b: (item as any).difficulty,
-      c: (item as any).guessing
+      c: (item as any).guessing,
     };
 
-    const pExpected = probability(meanTheta, params);
-    // Nudge b toward the theta value that matches the observed proportion correct
-    const bAdjustment = (pExpected - pObserved) * DAMPING;
-    const newDifficulty = Math.max(-4, Math.min(4, (item as any).difficulty + bAdjustment));
+    // ── Stocking (1990) concurrent EM ─────────────────────────────────────
+    const calibResult = calibratePretestItem(currentParams, observations, {
+      minN: 30,          // lower threshold for operational items (not pretest)
+      maxDeltaB: 0.50,
+      nrIterations: 10,
+      nrDampen: 0.5,
+    });
 
+    if (!calibResult.stable) return; // insufficient data or stability gate failed
+
+    // ── Lord χ² item-parameter drift monitoring ───────────────────────────
+    const oldSnapshot: IrtSnapshot = {
+      itemId,
+      window: "previous",
+      a: currentParams.a,
+      b: currentParams.b,
+      c: currentParams.c,
+    };
+    const newSnapshot: IrtSnapshot = {
+      itemId,
+      window: "current",
+      a: calibResult.params.a,
+      b: calibResult.params.b,
+      c: calibResult.params.c,
+    };
+    const driftResult = computeItemDrift(oldSnapshot, newSnapshot);
+
+    // Persist updated parameters and drift metadata
     await prisma.item.update({
       where: { id: itemId },
       data: {
-        difficulty: newDifficulty,
-        exposureCount: { increment: 1 }
-      }
+        discrimination: calibResult.params.a,
+        difficulty:     calibResult.params.b,
+        guessing:       calibResult.params.c,
+        exposureCount:  { increment: 1 },
+        // Retire Class-C items automatically
+        ...(driftResult.action === "RETIRE" ? { status: "RETIRED" as any } : {}),
+        metadata: {
+          ...((item as any).metadata as Record<string, unknown> | null ?? {}),
+          ipd: {
+            driftClass:       driftResult.driftClass,
+            action:           driftResult.action,
+            deltaB:           driftResult.deltaB,
+            lordChiSquareB:   driftResult.lordChiSquareB,
+            lordPValueB:      driftResult.lordPValueB,
+            interpretation:   driftResult.interpretation,
+            calibrationN:     calibResult.n,
+            updatedAt:        new Date().toISOString(),
+          },
+        } as any,
+      },
     });
   }
 }

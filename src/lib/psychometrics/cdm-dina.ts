@@ -540,3 +540,326 @@ export function dinaFit(
 
   return { itemResiduals, meanAbsoluteResidual, proportionMisfitting };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LINGUADAPT SKILL TAXONOMY Q-MATRIX
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// 8 fine-grained cognitive attributes mapped to 6 CEFR skill domains:
+//
+//   Attr 0 · Phonological / orthographic decoding   (Reading, Listening)
+//   Attr 1 · Lexical knowledge                      (all skills)
+//   Attr 2 · Grammatical accuracy                   (Grammar, Writing, Speaking)
+//   Attr 3 · Reading comprehension (global)         (Reading)
+//   Attr 4 · Listening comprehension (global)       (Listening)
+//   Attr 5 · Written production / coherence         (Writing)
+//   Attr 6 · Spoken production / fluency            (Speaking)
+//   Attr 7 · Pragmatic / discourse competence       (Writing, Speaking, Reading adv.)
+//
+// Q-matrix row = item, col = attribute (8 columns).
+// This canonical Q-matrix covers one item per skill; real deployments
+// should supply a full item-bank Q-matrix via `LINGUADAPT_QMATRIX`.
+
+/**
+ * Attribute index → human-readable label.
+ */
+export const LINGUADAPT_ATTRIBUTES: string[] = [
+  "Phonological/Orthographic Decoding",
+  "Lexical Knowledge",
+  "Grammatical Accuracy",
+  "Reading Comprehension",
+  "Listening Comprehension",
+  "Written Production & Coherence",
+  "Spoken Production & Fluency",
+  "Pragmatic & Discourse Competence",
+];
+
+export const LINGUADAPT_K = LINGUADAPT_ATTRIBUTES.length; // 8
+
+/**
+ * Prototype 8-column Q-matrix for the 6 LinguAdapt skills.
+ * Each row corresponds to a representative item type.
+ * Cols: [phon, lex, gram, read, listen, write, speak, pragma]
+ */
+export const LINGUADAPT_QMATRIX: QMatrix = [
+  // Reading items (prototype — 2 rows)
+  [1, 1, 0, 1, 0, 0, 0, 0],   // Basic reading comprehension
+  [0, 1, 0, 1, 0, 0, 0, 1],   // Advanced reading (inference/pragmatics)
+  // Listening items
+  [1, 1, 0, 0, 1, 0, 0, 0],   // Basic listening comprehension
+  [0, 1, 0, 0, 1, 0, 0, 1],   // Advanced listening (implicit meaning)
+  // Grammar items
+  [0, 0, 1, 0, 0, 0, 0, 0],   // Grammar accuracy (isolated)
+  [0, 1, 1, 0, 0, 0, 0, 0],   // Grammar in context (lexicogrammar)
+  // Vocabulary items
+  [0, 1, 0, 0, 0, 0, 0, 0],   // Lexical knowledge (isolated)
+  [0, 1, 1, 0, 0, 0, 0, 0],   // Collocation / lexicogrammar
+  // Writing items
+  [0, 1, 1, 0, 0, 1, 0, 0],   // Short written production
+  [0, 1, 1, 0, 0, 1, 0, 1],   // Extended written production (coherence)
+  // Speaking items
+  [1, 1, 1, 0, 0, 0, 1, 0],   // Spoken production (phonological + grammar)
+  [0, 1, 1, 0, 0, 0, 1, 1],   // Extended spoken production (discourse)
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G-DINA DIAGNOSTIC FEEDBACK REPORT
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type MasteryLevel = "not_mastered" | "developing" | "mastered";
+
+export interface AttributeFeedback {
+  attribute: string;
+  masteryProbability: number;
+  masteryLevel: MasteryLevel;
+  /** One-sentence actionable feedback for learner report */
+  feedback: string;
+  /** Suggested next-step activity type */
+  recommendedActivity: string;
+}
+
+export interface GdinaDiagnosticReport {
+  /** Overall proportion of attributes mastered (MAP ≥ 0.5) */
+  overallMasteryRate: number;
+  attributes: AttributeFeedback[];
+  /** Weakest attribute by mastery probability */
+  primaryWeakness: string;
+  /** Strongest attribute */
+  primaryStrength: string;
+  /** MAP profile as binary string e.g. "10110100" */
+  mapProfileString: string;
+  /** Estimated learning stage based on overall mastery */
+  learningStage: "Foundation" | "Developing" | "Consolidating" | "Proficient";
+}
+
+const MASTERY_THRESHOLD_HIGH = 0.80;  // P ≥ 0.80 → mastered
+const MASTERY_THRESHOLD_LOW  = 0.40;  // P < 0.40 → not mastered
+
+const FEEDBACK_LIBRARY: Record<string, { feedback: string; activity: string }> = {
+  "Phonological/Orthographic Decoding": {
+    feedback: "Focus on sound-spelling correspondences and phoneme awareness exercises.",
+    activity: "Phonics drills & pronunciation practice",
+  },
+  "Lexical Knowledge": {
+    feedback: "Expand your vocabulary through extensive reading and spaced-repetition flashcards.",
+    activity: "Vocabulary builder & collocation exercises",
+  },
+  "Grammatical Accuracy": {
+    feedback: "Review core grammar rules and practise with structured error-correction tasks.",
+    activity: "Grammar accuracy drills",
+  },
+  "Reading Comprehension": {
+    feedback: "Practise skimming and scanning strategies and read authentic texts at your level.",
+    activity: "Graded reader & comprehension questions",
+  },
+  "Listening Comprehension": {
+    feedback: "Increase exposure to authentic spoken English (podcasts, lectures) and practise note-taking.",
+    activity: "Dictation & authentic listening tasks",
+  },
+  "Written Production & Coherence": {
+    feedback: "Practise planning and organising paragraphs; use discourse markers for cohesion.",
+    activity: "Guided writing with feedback",
+  },
+  "Spoken Production & Fluency": {
+    feedback: "Engage in regular speaking practice; record yourself and reflect on fluency and accuracy.",
+    activity: "Spoken production tasks & self-review",
+  },
+  "Pragmatic & Discourse Competence": {
+    feedback: "Study how meaning is conveyed in context; analyse authentic dialogues for implied meaning.",
+    activity: "Pragmatics awareness tasks",
+  },
+};
+
+/**
+ * Generate a structured, student-facing diagnostic report from a G-DINA
+ * classification result and the LinguAdapt attribute taxonomy.
+ *
+ * @param result    Output of `classifyExamineeGdina()` or `classifyExaminee()`
+ * @param attributeLabels  Optional override for attribute names (defaults to LINGUADAPT_ATTRIBUTES)
+ */
+export function generateDiagnosticFeedback(
+  result: CdmClassificationResult,
+  attributeLabels: string[] = LINGUADAPT_ATTRIBUTES,
+): GdinaDiagnosticReport {
+  const K = result.pMastery.length;
+  const attributes: AttributeFeedback[] = result.pMastery.map((p, k) => {
+    const label = attributeLabels[k] ?? `Attribute ${k}`;
+    const level: MasteryLevel =
+      p >= MASTERY_THRESHOLD_HIGH ? "mastered"
+      : p >= MASTERY_THRESHOLD_LOW ? "developing"
+      : "not_mastered";
+    const lib = FEEDBACK_LIBRARY[label];
+    return {
+      attribute: label,
+      masteryProbability: parseFloat(p.toFixed(3)),
+      masteryLevel: level,
+      feedback: lib?.feedback ?? "Continue practising this skill area.",
+      recommendedActivity: lib?.activity ?? "Targeted practice exercises",
+    };
+  });
+
+  const masteredCount = attributes.filter((a) => a.masteryLevel === "mastered").length;
+  const overallMasteryRate = K > 0 ? masteredCount / K : 0;
+
+  let minP = Infinity, maxP = -Infinity;
+  let primaryWeakness = attributeLabels[0] ?? "Unknown";
+  let primaryStrength  = attributeLabels[0] ?? "Unknown";
+  for (let k = 0; k < K; k++) {
+    if (result.pMastery[k]! < minP) { minP = result.pMastery[k]!; primaryWeakness = attributeLabels[k] ?? `Attr ${k}`; }
+    if (result.pMastery[k]! > maxP) { maxP = result.pMastery[k]!; primaryStrength  = attributeLabels[k] ?? `Attr ${k}`; }
+  }
+
+  const mapProfileString = result.mapProfile.join("");
+
+  const learningStage: GdinaDiagnosticReport["learningStage"] =
+    overallMasteryRate >= 0.875 ? "Proficient"
+    : overallMasteryRate >= 0.625 ? "Consolidating"
+    : overallMasteryRate >= 0.375 ? "Developing"
+    : "Foundation";
+
+  return {
+    overallMasteryRate: parseFloat(overallMasteryRate.toFixed(3)),
+    attributes,
+    primaryWeakness,
+    primaryStrength,
+    mapProfileString,
+    learningStage,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATTRIBUTE-LEVEL CAT ITEM SELECTION (G-DINA)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CdmItemPool {
+  id: string;
+  /** Row index into the Q-matrix */
+  qRow: number[];
+}
+
+/**
+ * KL-divergence between two posterior vectors (measured in nats).
+ * KL(P || Q) = Σ P_m · ln(P_m / Q_m)
+ */
+function klDivergence(p: number[], q: number[]): number {
+  let kl = 0;
+  for (let m = 0; m < p.length; m++) {
+    const pm = Math.max(p[m]!, 1e-12);
+    const qm = Math.max(q[m]!, 1e-12);
+    kl += pm * Math.log(pm / qm);
+  }
+  return kl;
+}
+
+/**
+ * Compute expected posterior KL-divergence for item j
+ * (Tatsuoka & Ferguson 2003 attribute-level mutual information).
+ *
+ * EKLD_j = Σ_{u∈{0,1}} P(X_j=u | current posterior) · KL(post_after_u || current_post)
+ */
+function expectedKLD(
+  j: number,
+  currentPosterior: number[],
+  model: GdinaModel,
+): number {
+  const { K, qMatrix, itemParams, classPriors: _p } = model;
+  const allProfiles = generateAllProfiles(K);
+  const M = allProfiles.length;
+
+  // P(X_j = 1) = Σ_m post[m] · P(X_j=1 | alpha_m)
+  let pX1 = 0;
+  for (let m = 0; m < M; m++) {
+    const rIdx = reducedProfile(j, allProfiles[m]!, qMatrix);
+    const pij = itemParams[j]!.deltas[rIdx] ?? 0.5;
+    pX1 += currentPosterior[m]! * pij;
+  }
+  const pX0 = 1 - pX1;
+
+  if (pX1 < 1e-6 || pX0 < 1e-6) return 0; // Item provides no discrimination
+
+  // Posterior after observing X_j=1 and X_j=0
+  const postAfter1 = new Array<number>(M).fill(0);
+  const postAfter0 = new Array<number>(M).fill(0);
+  let sum1 = 0, sum0 = 0;
+  for (let m = 0; m < M; m++) {
+    const rIdx = reducedProfile(j, allProfiles[m]!, qMatrix);
+    const pij = Math.max(0.001, Math.min(0.999, itemParams[j]!.deltas[rIdx] ?? 0.5));
+    postAfter1[m] = currentPosterior[m]! * pij;
+    postAfter0[m] = currentPosterior[m]! * (1 - pij);
+    sum1 += postAfter1[m]!;
+    sum0 += postAfter0[m]!;
+  }
+  if (sum1 > 0) for (let m = 0; m < M; m++) postAfter1[m]! /= sum1;
+  if (sum0 > 0) for (let m = 0; m < M; m++) postAfter0[m]! /= sum0;
+
+  return pX1 * klDivergence(postAfter1, currentPosterior)
+       + pX0 * klDivergence(postAfter0, currentPosterior);
+}
+
+/**
+ * Select the next item from the pool that maximises expected KL-divergence
+ * (attribute-level Fisher information in CDM terms).
+ *
+ * @param pool         Available items with their Q-matrix rows.
+ * @param model        Fitted G-DINA model (same K and Q-structure).
+ * @param posterior    Current examinee posterior over 2^K classes.
+ * @param used         Set of item IDs already administered.
+ */
+export function selectNextCdmItem(
+  pool: CdmItemPool[],
+  model: GdinaModel,
+  posterior: number[],
+  used: Set<string>,
+): CdmItemPool | null {
+  const { J, qMatrix } = model;
+  const available = pool.filter((it) => !used.has(it.id));
+  if (available.length === 0) return null;
+
+  let bestItem: CdmItemPool = available[0]!;
+  let bestEKLD = -Infinity;
+
+  for (const item of available) {
+    // Map item's qRow to an item index j in the model's Q-matrix.
+    // If qRow matches a row in qMatrix exactly, use that item's G-DINA params.
+    let j = 0;
+    for (let jj = 0; jj < J; jj++) {
+      if (qMatrix[jj]!.length === item.qRow.length &&
+          qMatrix[jj]!.every((v, k) => v === item.qRow[k])) {
+        j = jj;
+        break;
+      }
+    }
+    const ekld = expectedKLD(j, posterior, model);
+    if (ekld > bestEKLD) {
+      bestEKLD = ekld;
+      bestItem = item;
+    }
+  }
+  return bestItem;
+}
+
+/**
+ * Compute attribute-level standard error (posterior SD) for each attribute.
+ * SEM_k = sqrt( P_k · (1 − P_k) ) — Bernoulli variance of marginal mastery.
+ */
+export function computeAttributeSem(pMastery: number[]): number[] {
+  return pMastery.map((p) => Math.sqrt(Math.max(0, p * (1 - p))));
+}
+
+/**
+ * Mastery stopping rule: stop when all SEM_k < threshold AND n ≥ minItems.
+ */
+export function cdmStoppingRule(
+  pMastery: number[],
+  nAdministered: number,
+  semThreshold = 0.20,
+  minItems = 8,
+): { stop: boolean; reason?: string } {
+  if (nAdministered < minItems) return { stop: false };
+  const sems = computeAttributeSem(pMastery);
+  const maxSem = Math.max(...sems);
+  if (maxSem < semThreshold) {
+    return { stop: true, reason: `All attribute SEMs < ${semThreshold} after ${nAdministered} items` };
+  }
+  return { stop: false };
+}

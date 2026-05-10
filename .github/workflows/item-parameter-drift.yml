@@ -1,0 +1,345 @@
+name: Monthly Item Parameter Drift (IPD) Check
+
+# Runs on the 5th of every month at 07:00 UTC (after the QWK calibration on 1st).
+# Fetches the last two calibration snapshots from the API, computes Lord chi-square
+# and robust z-scores for each item, and:
+#   - Creates a GitHub issue for Class-B items (moderate drift)
+#   - Creates a CRITICAL issue + triggers retire for Class-C items (severe drift)
+#
+# References:
+#   - docs/world-class-roadmap.md §Phase 1 Month 5-6
+#   - docs/validity-roadmap.md §2.4 Item Parameter Stability
+#   - Lord (1980) Applications of IRT; DeMars (2004) APM
+
+on:
+  schedule:
+    - cron: "0 7 5 * *"   # 5th of every month, 07:00 UTC
+  workflow_dispatch:
+    inputs:
+      window_months:
+        description: "Compare last N months of calibration snapshots"
+        type: number
+        default: 1
+      skill:
+        description: "Skill to check (READING / WRITING / ALL)"
+        type: choice
+        options: [ALL, READING, LISTENING, GRAMMAR, VOCABULARY, WRITING, SPEAKING]
+        default: ALL
+      dry_run:
+        description: "Dry run — report only, do not create issues or retire items"
+        type: boolean
+        default: false
+
+jobs:
+  ipd-check:
+    name: IPD Analysis
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Fetch calibration snapshots ───────────────────────────────────────
+      - name: Fetch current calibration snapshot
+        id: snapshot_new
+        env:
+          INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
+          APP_URL: ${{ secrets.APP_URL }}
+          SKILL: ${{ github.event.inputs.skill || 'ALL' }}
+        run: |
+          echo "Fetching current calibration snapshot (skill=${SKILL})..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -H "Authorization: Bearer $INTERNAL_API_SECRET" \
+            -H "Accept: application/json" \
+            "${APP_URL:-https://app.b4skills.com}/api/admin/calibration/snapshots?window=current&skill=${SKILL}")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -1)
+
+          echo "HTTP $HTTP_CODE"
+          echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "$BODY" > snapshot_new.json
+            echo "Saved new snapshot ($(echo "$BODY" | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); console.log((d.items||[]).length)" 2>/dev/null || echo "?") items)"
+          else
+            echo "http_code=SKIP" >> $GITHUB_OUTPUT
+            echo "Snapshot endpoint returned $HTTP_CODE — may not be deployed yet"
+          fi
+
+      - name: Fetch previous calibration snapshot
+        id: snapshot_old
+        if: steps.snapshot_new.outputs.http_code == '200'
+        env:
+          INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
+          APP_URL: ${{ secrets.APP_URL }}
+          WINDOW_MONTHS: ${{ github.event.inputs.window_months || '1' }}
+          SKILL: ${{ github.event.inputs.skill || 'ALL' }}
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -H "Authorization: Bearer $INTERNAL_API_SECRET" \
+            -H "Accept: application/json" \
+            "${APP_URL:-https://app.b4skills.com}/api/admin/calibration/snapshots?window=previous&months=${WINDOW_MONTHS}&skill=${SKILL}")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -1)
+
+          echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "$BODY" > snapshot_old.json
+          fi
+
+      # ── Run IPD analysis ──────────────────────────────────────────────────
+      - name: Run IPD analysis
+        id: ipd
+        if: steps.snapshot_new.outputs.http_code == '200' && steps.snapshot_old.outputs.http_code == '200'
+        run: |
+          node --input-type=module << 'EOF'
+          import { readFileSync } from "fs";
+          import { writeFileSync } from "fs";
+
+          const newSnap = JSON.parse(readFileSync("snapshot_new.json", "utf8"));
+          const oldSnap = JSON.parse(readFileSync("snapshot_old.json", "utf8"));
+
+          const oldItems = oldSnap.items ?? [];
+          const newItems = newSnap.items ?? [];
+
+          const oldMap = new Map(oldItems.map(i => [i.itemId, i]));
+
+          let classA = 0, classB = 0, classC = 0;
+          const flagged = [], retired = [];
+
+          for (const curr of newItems) {
+            const old = oldMap.get(curr.itemId);
+            if (!old) continue;
+
+            const deltaB = curr.b - old.b;
+            const se1 = old.seB ?? 0.15;
+            const se2 = curr.seB ?? 0.15;
+            const pooledSE = Math.sqrt(se1*se1 + se2*se2);
+            const zB = pooledSE > 0 ? deltaB / pooledSE : 0;
+            const chiSq = pooledSE > 0 ? (deltaB * deltaB) / (se1*se1 + se2*se2) : 0;
+
+            const absZ = Math.abs(zB);
+            let cls;
+            if (absZ >= 3.0 || chiSq >= 6.635) cls = "C";
+            else if (absZ >= 2.0 || chiSq >= 3.841) cls = "B";
+            else cls = "A";
+
+            if (cls === "A") classA++;
+            else if (cls === "B") { classB++; flagged.push({ itemId: curr.itemId, deltaB: deltaB.toFixed(3), zB: zB.toFixed(2), cls }); }
+            else { classC++; retired.push({ itemId: curr.itemId, deltaB: deltaB.toFixed(3), zB: zB.toFixed(2), chiSq: chiSq.toFixed(2), cls }); }
+          }
+
+          const total = classA + classB + classC;
+          const meanDeltaB = newItems.map(i => {
+            const o = oldMap.get(i.itemId);
+            return o ? i.b - o.b : null;
+          }).filter(v => v !== null).reduce((s,v,_,a) => s + v/a.length, 0);
+
+          const summary = { total, classA, classB, classC, flagged, retired, meanDeltaB: meanDeltaB.toFixed(4) };
+          writeFileSync("ipd-summary.json", JSON.stringify(summary, null, 2));
+
+          // Write to GitHub output
+          const fs = await import("fs");
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `total=${total}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `class_a=${classA}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `class_b=${classB}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `class_c=${classC}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `has_moderate=${classB > 0 ? 'true' : 'false'}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `has_severe=${classC > 0 ? 'true' : 'false'}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `mean_delta_b=${meanDeltaB.toFixed(4)}\n`);
+
+          console.log(`IPD: ${total} items | A:${classA} B:${classB} C:${classC} | meanΔb=${meanDeltaB.toFixed(4)}`);
+          if (retired.length > 0) console.log("RETIRE:", retired.map(r=>r.itemId).join(", "));
+          EOF
+
+      # ── Write Step Summary ────────────────────────────────────────────────
+      - name: Write step summary
+        if: always()
+        run: |
+          echo "## Monthly Item Parameter Drift (IPD) Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $(date -u +%Y-%m-%d)  |  **Skill:** ${{ github.event.inputs.skill || 'ALL' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.snapshot_new.outputs.http_code }}" = "200" ] && [ -f ipd-summary.json ]; then
+            echo "| Class | Count | Action |" >> $GITHUB_STEP_SUMMARY
+            echo "|-------|-------|--------|" >> $GITHUB_STEP_SUMMARY
+            echo "| A — Negligible | ${{ steps.ipd.outputs.class_a }} | ✅ No action |" >> $GITHUB_STEP_SUMMARY
+            echo "| B — Moderate   | ${{ steps.ipd.outputs.class_b }} | ⚠️ Review |" >> $GITHUB_STEP_SUMMARY
+            echo "| C — Severe     | ${{ steps.ipd.outputs.class_c }} | 🔴 RETIRE |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Mean Δb:** ${{ steps.ipd.outputs.mean_delta_b }} logits" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.snapshot_new.outputs.http_code }}" = "SKIP" ]; then
+            echo "⚠️ Calibration snapshot endpoint not deployed — skipped." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> **Action:** Implement \`GET /api/admin/calibration/snapshots\` endpoint" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### IPD Thresholds (Lord 1980 / DeMars 2004)" >> $GITHUB_STEP_SUMMARY
+          echo "| Class | Criterion | Action |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| A | \\|z\\| < 2.0, χ² < 3.84 | No action |" >> $GITHUB_STEP_SUMMARY
+          echo "| B | 2.0 ≤ \\|z\\| < 3.0 | Flag for review |" >> $GITHUB_STEP_SUMMARY
+          echo "| C | \\|z\\| ≥ 3.0 or χ² ≥ 6.64 | **Retire item immediately** |" >> $GITHUB_STEP_SUMMARY
+
+      # ── Save artifact ─────────────────────────────────────────────────────
+      - name: Save IPD artifact
+        if: steps.ipd.outputs.total != ''
+        run: |
+          cp ipd-summary.json ipd-report-$(date -u +%Y-%m-%d).json
+
+      - uses: actions/upload-artifact@v4
+        if: steps.ipd.outputs.total != ''
+        with:
+          name: ipd-report-${{ github.run_number }}
+          path: ipd-report-*.json
+          retention-days: 365
+
+      # ── Issue on moderate drift ───────────────────────────────────────────
+      - name: Create issue for Class-B drift
+        if: steps.ipd.outputs.has_moderate == 'true' && github.event.inputs.dry_run != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const date = new Date().toISOString().split('T')[0];
+            const fs = require("fs");
+            let flaggedList = "";
+            try {
+              const s = JSON.parse(fs.readFileSync("ipd-summary.json", "utf8"));
+              flaggedList = s.flagged.map(i => `| ${i.itemId} | ${i.deltaB} | ${i.zB} |`).join("\n");
+            } catch {}
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `⚠️ IPD Warning: ${${{ steps.ipd.outputs.class_b }}} items with moderate drift — ${date}`,
+              body: `
+            ## Item Parameter Drift — Moderate (Class B)
+
+            **Date:** ${date}
+            **Workflow:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            | Item ID | Δb | z_b |
+            |---------|-----|-----|
+            ${flaggedList}
+
+            ### Required Actions
+
+            1. Review each flagged item for content changes or cohort bias
+            2. Check if anchor items are stable (possible equating drift)
+            3. Re-run calibration with expanded N if n < 200
+            4. If drift persists next month → promote to Class C (retire)
+
+            ### References
+            - [IPD Protocol](../docs/world-class-roadmap.md)
+            - [Validity Roadmap](../docs/validity-roadmap.md)
+
+            /cc @bilalcelimli-spec
+              `,
+              labels: ["item-parameter-drift", "validity", "psychometrics"],
+            });
+
+      # ── Issue on severe drift ─────────────────────────────────────────────
+      - name: Create issue for Class-C drift
+        if: steps.ipd.outputs.has_severe == 'true' && github.event.inputs.dry_run != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const date = new Date().toISOString().split('T')[0];
+            const fs = require("fs");
+            let retireList = "";
+            try {
+              const s = JSON.parse(fs.readFileSync("ipd-summary.json", "utf8"));
+              retireList = s.retired.map(i => `| ${i.itemId} | ${i.deltaB} | ${i.zB} | ${i.chiSq} |`).join("\n");
+            } catch {}
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🔴 CRITICAL IPD: ${${{ steps.ipd.outputs.class_c }}} items must be RETIRED — ${date}`,
+              body: `
+            ## Item Parameter Drift — SEVERE (Class C)
+
+            **Date:** ${date}
+            **Workflow:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            | Item ID | Δb | z_b | Lord χ² |
+            |---------|-----|-----|---------|
+            ${retireList}
+
+            ### IMMEDIATE Actions Required
+
+            1. **Retire all Class-C items** from operational bank (set status = RETIRED)
+            2. Replace retired items from pretest pool before next test window
+            3. Recalibrate with current cohort data (n ≥ 300 per item)
+            4. Audit anchor set for correlated drift — may require re-equating
+            5. File parameter drift incident in post-mortem log
+
+            ### Impact
+            - Scores computed while drifted items were operational may be biased
+            - Re-score flagged sessions if drift exceeds 0.30 θ units (|Δb| > 0.30)
+
+            /cc @bilalcelimli-spec
+              `,
+              labels: ["item-parameter-drift", "validity", "critical", "psychometrics"],
+            });
+
+      # ── Trigger item retirement via API ──────────────────────────────────
+      - name: Retire Class-C items via API
+        if: steps.ipd.outputs.has_severe == 'true' && github.event.inputs.dry_run != 'true'
+        env:
+          INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          if [ -f ipd-summary.json ]; then
+            RETIRE_IDS=$(node -e "
+              const s = JSON.parse(require('fs').readFileSync('ipd-summary.json','utf8'));
+              console.log(JSON.stringify(s.retired.map(i => i.itemId)));
+            " 2>/dev/null || echo "[]")
+
+            echo "Retiring items: $RETIRE_IDS"
+
+            curl -s -X POST \
+              -H "Authorization: Bearer $INTERNAL_API_SECRET" \
+              -H "Content-Type: application/json" \
+              -d "{\"itemIds\": $RETIRE_IDS, \"reason\": \"IPD Class-C drift detected by CI\"}" \
+              "${APP_URL:-https://app.b4skills.com}/api/admin/items/retire" \
+              | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); console.log('Retired:', JSON.stringify(d));" 2>/dev/null || echo "Retire endpoint not yet deployed (non-fatal)"
+          fi
+
+      # ── Failure issue ─────────────────────────────────────────────────────
+      - name: Create issue on workflow failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🔴 IPD Workflow Failed — ${new Date().toISOString().split('T')[0]}`,
+              body: `
+            The monthly IPD check workflow failed.
+
+            **Workflow run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            **Likely causes:**
+            - \`APP_URL\` or \`INTERNAL_API_SECRET\` missing/expired
+            - \`/api/admin/calibration/snapshots\` endpoint not deployed
+            - JSON parse error in IPD script
+
+            /cc @bilalcelimli-spec
+              `,
+              labels: ["item-parameter-drift", "ops", "critical"],
+            });
