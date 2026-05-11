@@ -328,6 +328,7 @@ export const UNIVERSAL_ITEM_WRITING_GUIDELINES: ItemWritingGuideline[] = [
   { id: "OPT-03", category: "options", severity: "major", rule: "Options must be approximately equal in length. A consistently longer correct answer is a test-wiseness cue." },
   { id: "OPT-04", category: "options", severity: "critical", rule: "Avoid 'All of the above' and 'None of the above' — they rarely measure the intended construct and introduce scoring complications." },
   { id: "OPT-05", category: "options", severity: "minor", rule: "Arrange options in a logical order (alphabetical, numerical, or conceptual) unless content requires otherwise." },
+  { id: "OPT-06", category: "options", severity: "critical", rule: "The correct answer MUST be placed at a varied position across items. Do NOT default to position A. Across a set of items, correct answers should be approximately equally distributed among A, B, C, and D. Placing the correct answer at the same position (e.g., always A or always C) introduces position bias that inflates scores for test-wise candidates and violates item bank psychometric standards.", example: { bad: "Five consecutive items all have correctAnswer: 'A'.", good: "Across five items, correctAnswer is distributed: A, C, B, D, A." } },
   // DISTRACTOR guidelines
   { id: "DIST-01", category: "distractors", severity: "critical", rule: "Each distractor must be plausible to a candidate who lacks the target knowledge.", example: { bad: "Distractor: 'The moon is made of cheese' (obviously incorrect).", good: "Distractor borrows vocabulary from the text but represents a common misconception." } },
   { id: "DIST-02", category: "distractors", severity: "major", rule: "Distractors should represent common error types or partial knowledge, not random impossibilities." },
@@ -646,12 +647,17 @@ Return an ARRAY of ${quantity} item object(s) with EXACTLY these fields:
     "subSkill": "one of the recognised sub-skills for ${skill}",
     "stimulus": "The reading/listening text or writing/speaking prompt",
     "question": "The question stem (if applicable — null for writing/speaking tasks)",
-    "options": ["A", "B", "C", "D"],       // null for constructed-response
-    "correctAnswer": "A",                  // null for holistic scoring tasks
-    "acceptableAnswers": ["A", "a"],        // for open gap-fill variants
+    "options": [
+      { "id": "A", "text": "First option text" },
+      { "id": "B", "text": "Second option text" },
+      { "id": "C", "text": "Third option text" },
+      { "id": "D", "text": "Fourth option text" }
+    ],
+    "correctAnswer": "B",
+    "acceptableAnswers": ["answer"],        // for open gap-fill variants — null otherwise
     "answerKey": "Explanation of why the correct answer is correct",
     "distractorRationale": {
-      "B": "Why this is plausible but incorrect — which error type it exploits",
+      "A": "Why this is plausible but incorrect — which error type it exploits",
       "C": "...",
       "D": "..."
     },
@@ -664,6 +670,13 @@ Return an ARRAY of ${quantity} item object(s) with EXACTLY these fields:
     "writingNotes": "Any item-writer notes about difficulty, adaptation source, or calibration guidance"
   }
 ]
+
+CRITICAL — ANSWER POSITION RULE: The "correctAnswer" field MUST NOT default to "A" for every item.
+Distribute correct answers across A, B, C, and D. Each position should appear roughly equally
+across a batch of items. Systematically using the same position (e.g., always "A" or always "C")
+is a psychometric flaw that enables test-taking strategies unrelated to language proficiency.
+Choose the correct answer position deliberately based on which option text is most natural for
+that position — do NOT anchor the correct answer to any single letter.
 
 IMPORTANT: Return ONLY the JSON array. No preamble, no explanation, no markdown code fences.
 `.trim();

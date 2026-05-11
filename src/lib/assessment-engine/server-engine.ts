@@ -64,6 +64,67 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   return Promise.race([promise, timeout]);
 }
 
+// ── OPTION SHUFFLING ──────────────────────────────────────────────────────────
+/**
+ * Seeded LCG PRNG (not cryptographic — used only for deterministic option
+ * ordering so the server can reproduce the same shuffle at scoring time
+ * without persisting extra state).
+ */
+function seededRng(seed: string): () => number {
+  // FNV-1a 32-bit hash to convert string seed to numeric
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return () => {
+    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+    return h / 0x100000000;
+  };
+}
+
+function seededFisherYates<T>(arr: T[], seed: string): T[] {
+  const result = [...arr];
+  const rng = seededRng(seed);
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+/**
+ * Shuffles MCQ options for a (sessionId, itemId) pair and returns:
+ * - shuffledOptions: options array with re-labelled positional ids (A/B/C/D)
+ * - newCorrectAnswer: the letter the correct option received after shuffle
+ *
+ * Returns null for non-MCQ items or items without the expected format.
+ */
+function shuffleMcqOptions(
+  options: unknown[],
+  correctAnswer: string,
+  sessionId: string,
+  itemId: string,
+): { shuffledOptions: { id: string; text: string }[]; newCorrectAnswer: string } | null {
+  if (!Array.isArray(options) || options.length === 0) return null;
+  if (!/^[A-Da-d]$/.test(correctAnswer)) return null;
+  const hasIdText = options.every(
+    (o) => typeof o === "object" && o !== null && typeof (o as any).id === "string" && typeof (o as any).text === "string",
+  );
+  if (!hasIdText) return null;
+
+  const seed = `${sessionId}:${itemId}`;
+  const shuffled = seededFisherYates(options as { id: string; text: string }[], seed);
+  const LABELS = ["A", "B", "C", "D"];
+  const originalCorrectId = correctAnswer.toUpperCase();
+  const newCorrectIndex = shuffled.findIndex((o) => o.id.toUpperCase() === originalCorrectId);
+  if (newCorrectIndex === -1) return null;
+
+  const shuffledOptions = shuffled.map((o, i) => ({ ...o, id: LABELS[i] }));
+  return { shuffledOptions, newCorrectAnswer: LABELS[newCorrectIndex] };
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function dbItemToEngineItem(u: {
   id: string;
   itemCode?: string | null;
@@ -545,6 +606,24 @@ export const AssessmentService = {
     // Strip sensitive answer/rubric fields before sending to client.
     // Scoring always happens server-side; the client never receives the key.
     const safeContent = { ...(nextItem.metadata || {}) };
+
+    // Shuffle MCQ options deterministically per (session, item) to prevent
+    // position bias (all-A / all-C patterns) from being exploited by candidates.
+    // The shuffle is re-derived at scoring time from the same seed so no extra
+    // DB state is required.
+    const mcqShuffleResult = shuffleMcqOptions(
+      safeContent.options,
+      safeContent.correctAnswer,
+      sessionId,
+      nextItem.id,
+    );
+    if (mcqShuffleResult) {
+      safeContent.options = mcqShuffleResult.shuffledOptions;
+      // Keep a hash of the shuffled answer for server-side scoring — stored
+      // transiently in safeContent only so it is available in submitResponse
+      // via the same shuffle function (no need to embed it in the payload).
+    }
+
     delete (safeContent as any).correctAnswer;
     delete (safeContent as any).correctOptionIndex;
     delete (safeContent as any).rubric;
@@ -590,8 +669,23 @@ export const AssessmentService = {
     if (item.metadata?.correctIndex !== undefined) {
       score = value === item.metadata?.correctIndex ? 1 : 0;
     } else if (item.metadata?.correctAnswer !== undefined && typeof value === 'string') {
-      // FILL_IN_BLANKS: compare text answers case-insensitively
-      score = value.trim().toLowerCase() === String(item.metadata.correctAnswer).trim().toLowerCase() ? 1 : 0;
+      const storedCorrect = String(item.metadata.correctAnswer).trim().toUpperCase();
+      const candidateAnswer = value.trim().toUpperCase();
+
+      // For MCQ letter answers (A/B/C/D) re-derive the shuffled position
+      if (/^[A-D]$/.test(storedCorrect) && /^[A-D]$/.test(candidateAnswer)) {
+        const shuffleResult = shuffleMcqOptions(
+          item.metadata?.options,
+          storedCorrect,
+          sessionId,
+          itemId,
+        );
+        const effectiveCorrect = shuffleResult ? shuffleResult.newCorrectAnswer : storedCorrect;
+        score = candidateAnswer === effectiveCorrect ? 1 : 0;
+      } else {
+        // FILL_IN_BLANKS: compare text answers case-insensitively
+        score = value.trim().toLowerCase() === String(item.metadata.correctAnswer).trim().toLowerCase() ? 1 : 0;
+      }
     } else if (item.metadata?.options && Array.isArray(item.metadata?.options) && typeof value === 'number') {
       const option = item.metadata?.options[value];
       score = option && option.isCorrect ? 1 : 0;
