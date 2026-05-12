@@ -379,29 +379,31 @@ export class LiveMetricsEngine {
       },
     });
 
+    // Compute average promotion time: days from item creation to first ACTIVE status.
+    // Items promoted this week have updatedAt within the last 7 days and status ACTIVE.
+    const recentlyPromoted = await prisma.item.findMany({
+      where: {
+        organizationId,
+        status: "ACTIVE",
+        updatedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+      },
+      select: { createdAt: true, updatedAt: true },
+    });
+    const avgPromotionTime = recentlyPromoted.length > 0
+      ? recentlyPromoted.reduce(
+          (a, i) => a + (i.updatedAt.getTime() - i.createdAt.getTime()),
+          0
+        ) /
+        recentlyPromoted.length /
+        (24 * 60 * 60 * 1000) // convert ms → days
+      : 0;
+
     return {
       totalPretestItems: pretestItems.length,
       readyForCalibration: readyForCalibration.filter((x) => x).length,
       readyForPromotion: readyForPromotion.filter((x) => x).length,
       promotedThisWeek,
-      // Compute average promotion time: days from item creation to first ACTIVE status.
-      // Items promoted this week have updatedAt within the last 7 days and status ACTIVE.
-      const recentlyPromoted = await prisma.item.findMany({
-        where: {
-          organizationId,
-          status: "ACTIVE",
-          updatedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-        },
-        select: { createdAt: true, updatedAt: true },
-      });
-      const avgPromotionTime = recentlyPromoted.length > 0
-        ? recentlyPromoted.reduce(
-            (a, i) => a + (i.updatedAt.getTime() - i.createdAt.getTime()),
-            0
-          ) /
-          recentlyPromoted.length /
-          (24 * 60 * 60 * 1000) // convert ms → days
-        : 0;
+      avgPromotionTime,
     };
   }
 
