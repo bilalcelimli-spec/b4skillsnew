@@ -108,15 +108,20 @@ export class CATSelector {
 
     // ── RL selector (optional) ───────────────────────────────────────────────
     if (useRlSelector) {
+      // Resolve the store once up-front so real per-stratum exposure rates can
+      // be fed into the RL feature vector (previously hard-coded to 0).
+      const rlStore = await getExposureStore();
+      const rlStratum = thetaToStratum(theta);
+      const rlStratumN = rlStore.getStratumTotalSync(rlStratum);
+      const rlUseConditional = rlStratumN >= DEFAULT_MIN_STRATUM_N;
+
       const rlPool: RlItem[] = shadowTest.map((it) => ({
         id: it.id,
         params: it.params,
         skill: it.skill as string,
-        exposureRate: (() => {
-          const store_ref = getExposureStore();
-          // Sync approximation — full async is not worth the overhead here
-          return 0; // will be refined in next calibration cycle
-        })(),
+        exposureRate: rlUseConditional
+          ? rlStore.getConditionalExposureRateSync(it.id, rlStratum)
+          : rlStore.getExposureRateSync(it.id),
       }));
       const responseSummary = [...usedItemIds].map((id) => {
         const it = pool.find((i) => i.id === id);
@@ -126,8 +131,7 @@ export class CATSelector {
       const rlItem = selectItemRL(rlState, rlPool, usedItemIds);
       if (rlItem) {
         const engineItem = shadowTest.find((it) => it.id === rlItem.id)!;
-        const store = await getExposureStore();
-        await store.recordExposure(engineItem.id, state.theta);
+        await rlStore.recordExposure(engineItem.id, state.theta);
         return {
           item: engineItem,
           shadowTestSize: shadowTest.length,

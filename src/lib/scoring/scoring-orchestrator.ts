@@ -5,6 +5,8 @@ import {
   type IntegrityReport,
 } from "./response-integrity.js";
 import { CircuitBreakerOpenError } from "../ai/circuit-breaker.js";
+import { ProsodicAnalyzer } from "./prosodic-analyzer.js";
+import { ArgumentQualityAnalyzer } from "./argument-quality-analyzer.js";
 
 export type ScoreSource = "ai_auto" | "ai_flagged" | "human" | "rejected_integrity" | "ai_unavailable";
 
@@ -217,7 +219,31 @@ export const ScoringOrchestrator = {
         GeminiScoringService.scoreWriting(text, prompt),
         GeminiScoringService.verifyWriting(text, prompt),
       ]);
-      return applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
+      const orchestrated = applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
+
+      // Enrich with objective discourse analysis
+      const aqProfile = ArgumentQualityAnalyzer.analyse(text, prompt);
+      (orchestrated.aiResult as any).argumentQualityProfile = aqProfile;
+
+      // If discourse quality diverges strongly from Gemini's coherence score, flag for review
+      const geminiCoherence = orchestrated.aiResult.rubricScores.coherence ?? orchestrated.aiResult.score;
+      const aqAgreement = ArgumentQualityAnalyzer.raterAgreementKappa(geminiCoherence, aqProfile.discourseQualityScore);
+      (orchestrated.aiResult as any).argumentQualityAgreement = aqAgreement;
+
+      if (aqAgreement.agreement === "POOR") {
+        orchestrated.requiresHumanReview = true;
+        orchestrated.reviewReasons.push("DISCOURSE_AI_DISAGREEMENT");
+        if (orchestrated.scoreSource === "ai_auto") {
+          orchestrated.scoreSource = "ai_flagged";
+        }
+      }
+
+      // Surface critical discourse flags for reviewers
+      if (aqProfile.flags.includes("UNSUPPORTED_CLAIMS") || aqProfile.flags.includes("NO_CLAIM_DETECTED")) {
+        orchestrated.reviewReasons.push("WEAK_ARGUMENT_STRUCTURE");
+      }
+
+      return orchestrated;
     } catch (err) {
       // Circuit open or all retries exhausted → queue for human review
       return buildUnavailableScore(err, integrity);
@@ -270,7 +296,34 @@ export const ScoringOrchestrator = {
       return buildRejectedScore(integrity);
     }
 
-    return applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
+    const orchestrated = applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
+
+    // Enrich with prosodic analysis when Gemini returns speaking features
+    const geminiFeatures = orchestrated.aiResult.speakingFeatures;
+    if (geminiFeatures) {
+      const prosodicProfile = ProsodicAnalyzer.analyse(
+        geminiFeatures,
+        transcript || undefined,
+        audioMetadata?.audioDurationSec
+      );
+      const kappa = ProsodicAnalyzer.raterAgreementKappa(
+        orchestrated.aiResult.rubricScores.fluency ?? orchestrated.aiResult.score * 10,
+        prosodicProfile.fluencyScore
+      );
+      // If prosodic kappa is POOR, flag for human review
+      if (kappa.agreement === "POOR") {
+        orchestrated.requiresHumanReview = true;
+        orchestrated.reviewReasons.push("PROSODIC_AI_DISAGREEMENT");
+        if (orchestrated.scoreSource === "ai_auto") {
+          orchestrated.scoreSource = "ai_flagged";
+        }
+      }
+      // Attach prosodic profile to metadata in aiResult
+      (orchestrated.aiResult as any).prosodicProfile = prosodicProfile;
+      (orchestrated.aiResult as any).prosodicKappa = kappa;
+    }
+
+    return orchestrated;
   },
 
   async scoreSpeakingFromText(text: string, prompt: string): Promise<OrchestratedScore> {

@@ -236,7 +236,20 @@ export async function computeQwkSlo(
 // ─── Main report generator ────────────────────────────────────────────────────
 
 /** Generate a full SLO report for the given rolling window. */
-export async function generateSloReport(windowDays = 30): Promise<SloReport> {
+export interface LatencySnapshot {
+  /** 95th-percentile latency in ms (from in-process ring buffer) */
+  p95Ms: number;
+  /** 99th-percentile latency in ms */
+  p99Ms: number;
+  /** Proportion of /api/* requests where latency ≤ 300ms (for next_item_p95 SLO) */
+  fractionBelow300Ms: number;
+  /** 5xx error rate (0–1) */
+  errorRate5xx: number;
+  /** Ring buffer sample size */
+  sampleSize: number;
+}
+
+export async function generateSloReport(windowDays = 30, latency?: LatencySnapshot): Promise<SloReport> {
   const now = new Date();
   const windowStart = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
@@ -352,17 +365,32 @@ export async function generateSloReport(windowDays = 30): Promise<SloReport> {
       };
     })(),
 
-    // Latency p95 — APM required
-    {
-      sloName: "next_item_p95",
-      target: 0.95,
-      achieved: null,
-      compliant: null,
-      errorBudgetConsumedPct: null,
-      windowDays,
-      apmRequired: true,
-      note: "Requires Pino log aggregation to Grafana/Loki — not yet configured",
-    },
+    // Latency p95 — filled from in-process ring buffer if available, else APM required
+    (() => {
+      if (latency && latency.sampleSize >= 10) {
+        const achieved = latency.fractionBelow300Ms;
+        const compliant = achieved >= 0.95;
+        return {
+          sloName: "next_item_p95",
+          target: 0.95,
+          achieved: Number(achieved.toFixed(4)),
+          compliant,
+          errorBudgetConsumedPct: errorBudgetConsumedPct(0.95, achieved, windowDays),
+          windowDays,
+          note: `In-process ring buffer: p95=${latency.p95Ms}ms, p99=${latency.p99Ms}ms, n=${latency.sampleSize}; 5xx rate=${(latency.errorRate5xx * 100).toFixed(2)}%`,
+        };
+      }
+      return {
+        sloName: "next_item_p95",
+        target: 0.95,
+        achieved: null,
+        compliant: null,
+        errorBudgetConsumedPct: null,
+        windowDays,
+        apmRequired: true,
+        note: "Requires Pino log aggregation to Grafana/Loki — not yet configured",
+      };
+    })(),
   ];
 
   // Summary

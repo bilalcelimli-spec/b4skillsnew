@@ -7,7 +7,15 @@
  *  - Native Language (L1)
  *  - Age Group
  *
- * Uses existing DifAnalysisService for Mantel-Haenszel test + logistic regression.
+ * Uses DifAnalysisService for proper stratified Mantel-Haenszel test with
+ * ability matching via session theta, plus logistic regression DIF.
+ * 
+ * MH procedure (Holland & Thayer, 1988):
+ *   1. Stratify all respondents by ability (session theta → K quantile strata)
+ *   2. Within each stratum, build 2×2 table: group (R/F) × score (correct/incorrect)
+ *   3. Pool across strata to get common odds ratio and chi-squared statistic
+ *   4. Compute ETS delta: Δ = −2.35 × ln(OR)
+ *   5. Classify: |Δ|<1.0 → A, 1.0≤|Δ|<1.5 → B, |Δ|≥1.5 → C
  */
 
 import { prisma } from "../prisma.js";
@@ -235,7 +243,13 @@ export class BatchDifDetectionService {
   }
 
   /**
-   * Analyze item for a specific demographic variable.
+   * Analyze item for a specific demographic variable using proper stratified
+   * Mantel-Haenszel analysis (ability-matched via session theta).
+   *
+   * DifAnalysisService.analyzeItemDif() stratifies candidates into K theta
+   * quantile strata, builds 2×2 contingency tables per stratum, and computes
+   * the Holland-Thayer MH chi-squared, odds ratio, delta (ETS scale), and
+   * logistic regression DIF coefficients.
    */
   private static async analyzeByVariable(
     itemId: string,
@@ -245,95 +259,60 @@ export class BatchDifDetectionService {
       session: { candidate: { candidateProfile: { gender: string | null; nativeLanguage: string | null } | null } };
     }>,
     variable: "gender" | "nativeLanguage" | "ageGroup",
-    groupExtractor: (
-      r: (typeof responses)[0]
-    ) => string
+    groupExtractor: (r: (typeof responses)[0]) => string
   ): Promise<DifTestResult[]> {
     const results: DifTestResult[] = [];
 
-    // Group responses by demographic value
-    const grouped = new Map<string, typeof responses>();
-
+    // Tally group sizes to identify reference group (largest N)
+    const groupCounts = new Map<string, number>();
     for (const response of responses) {
-      const groupKey = groupExtractor(response);
-      if (!grouped.has(groupKey)) {
-        grouped.set(groupKey, []);
-      }
-      grouped.get(groupKey)!.push(response);
+      const key = groupExtractor(response);
+      groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
     }
 
-    // Remove small groups (< 10 responses)
-    const validGroups = Array.from(grouped.entries())
-      .filter(([_, resps]) => resps.length >= 10)
-      .map(([key, resps]) => ({ key, responses: resps }));
+    // Require ≥10 responses per group
+    const validGroups = Array.from(groupCounts.entries())
+      .filter(([, n]) => n >= 10)
+      .map(([key]) => key);
 
-    if (validGroups.length < 2) {
-      return results; // Need at least 2 groups for comparison
-    }
+    if (validGroups.length < 2) return results;
 
-    // Identify reference group (largest N)
-    const referenceGroup = validGroups.reduce((prev, current) =>
-      current.responses.length > prev.responses.length ? current : prev
+    // Largest group is reference (maximises power)
+    const referenceGroup = validGroups.reduce((prev, cur) =>
+      (groupCounts.get(cur) ?? 0) > (groupCounts.get(prev) ?? 0) ? cur : prev
     );
 
-    // Run Mantel-Haenszel test against all focal groups
+    // Run proper ability-stratified MH for each focal group
     for (const focalGroup of validGroups) {
-      if (focalGroup.key === referenceGroup.key) continue;
+      if (focalGroup === referenceGroup) continue;
 
       try {
-        // Use DifAnalysisService.analyzeItemDif() if available
-        // For now, compute basic statistics
-        const refCorrect = referenceGroup.responses.filter(
-          (r) => r.isCorrect || (r.score ?? 0) > 0.5
-        ).length;
-        const refTotal = referenceGroup.responses.length;
-        const refProportion = refCorrect / refTotal;
-
-        const focalCorrect = focalGroup.responses.filter(
-          (r) => r.isCorrect || (r.score ?? 0) > 0.5
-        ).length;
-        const focalTotal = focalGroup.responses.length;
-        const focalProportion = focalCorrect / focalTotal;
-
-        // Simple odds ratio (basic MH approximation)
-        const refOdds = refProportion / (1 - refProportion);
-        const focalOdds = focalProportion / (1 - focalProportion);
-        const oddsRatio = focalOdds / refOdds;
-
-        // MH Delta (log odds ratio normalized)
-        const mhDelta = Math.log(oddsRatio);
-
-        // Classification: ETS standard
-        // A: |delta| < 0.43 or p > 0.05
-        // B: 0.43 ≤ |delta| < 1.55 and p ≤ 0.05
-        // C: |delta| ≥ 1.55 and p ≤ 0.01
-        let classification: "A" | "B" | "C" = "A";
-        let pValue = 0.5; // Placeholder; would be computed from χ²
-
-        if (Math.abs(mhDelta) >= 1.55 && pValue <= 0.01) {
-          classification = "C";
-        } else if (Math.abs(mhDelta) >= 0.43 && pValue <= 0.05) {
-          classification = "B";
-        }
+        const difResult = await DifAnalysisService.analyzeItemDif(
+          itemId,
+          variable,
+          referenceGroup,
+          focalGroup,
+          5  // 5 theta-quantile strata (standard for CAT DIF)
+        );
 
         results.push({
           itemId,
           variable,
-          referenceGroup: referenceGroup.key,
-          focalGroup: focalGroup.key,
-          referenceN: refTotal,
-          focalN: focalTotal,
-          mhOddsRatio: oddsRatio,
-          mhDelta,
-          chiSquared: 0, // Placeholder
-          pValue,
-          classification,
-          logisticUniformDif: 0, // Placeholder
-          logisticNonUniformDif: 0, // Placeholder
+          referenceGroup,
+          focalGroup,
+          referenceN: difResult.referenceN,
+          focalN: difResult.focalN,
+          mhOddsRatio: difResult.mhOddsRatio,
+          mhDelta: difResult.mhDelta,
+          chiSquared: difResult.chiSquared,
+          pValue: difResult.pValue,
+          classification: difResult.classification,
+          logisticUniformDif: difResult.logisticUniformDif,
+          logisticNonUniformDif: difResult.logisticNonUniformDif,
         });
       } catch (err) {
         logger.warn(
-          { itemId, variable, groups: `${referenceGroup.key} vs ${focalGroup.key}` },
+          { itemId, variable, referenceGroup, focalGroup },
           "dif.test.failed"
         );
       }

@@ -188,6 +188,27 @@ export class LiveMetricsEngine {
         "C2" as CefrLevel,
       ];
 
+      // Fetch skill-specific response scores for this org's sessions in one query
+      const sessionIds = sessions.map((s) => s.id);
+      const skillResponses = sessionIds.length > 0
+        ? await prisma.response.findMany({
+            where: { sessionId: { in: sessionIds }, item: { skill } },
+            select: { sessionId: true, score: true },
+          })
+        : [];
+      // Map sessionId → mean score for this skill
+      const scoreBySession = new Map<string, number>();
+      const scoresBySession = new Map<string, number[]>();
+      for (const r of skillResponses) {
+        if (r.score !== null) {
+          if (!scoresBySession.has(r.sessionId)) scoresBySession.set(r.sessionId, []);
+          scoresBySession.get(r.sessionId)!.push(r.score);
+        }
+      }
+      for (const [sid, scores] of scoresBySession) {
+        scoreBySession.set(sid, scores.reduce((a, b) => a + b, 0) / scores.length);
+      }
+
       for (const cefr of cefrLevels) {
         const cefrSessions = sessions.filter((s) => s.cefrLevel === cefr);
         if (cefrSessions.length > 0) {
@@ -198,10 +219,17 @@ export class LiveMetricsEngine {
             })
             .filter((t) => Number.isFinite(t));
 
+          const cefrScores = cefrSessions
+            .map((s) => scoreBySession.get(s.id))
+            .filter((v): v is number => v !== undefined);
+          const avgScore = cefrScores.length > 0
+            ? cefrScores.reduce((a, b) => a + b, 0) / cefrScores.length
+            : 0;
+
           byCefr[cefr] = {
             count: cefrSessions.length,
             avgTheta: cefrThetas.reduce((a, b) => a + b, 0) / cefrThetas.length,
-            avgScore: 0.5, // Placeholder: would compute from Response scores
+            avgScore,
           };
         }
       }
@@ -356,7 +384,24 @@ export class LiveMetricsEngine {
       readyForCalibration: readyForCalibration.filter((x) => x).length,
       readyForPromotion: readyForPromotion.filter((x) => x).length,
       promotedThisWeek,
-      avgPromotionTime: 0, // TODO: Compute from audit logs
+      // Compute average promotion time: days from item creation to first ACTIVE status.
+      // Items promoted this week have updatedAt within the last 7 days and status ACTIVE.
+      const recentlyPromoted = await prisma.item.findMany({
+        where: {
+          organizationId,
+          status: "ACTIVE",
+          updatedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        },
+        select: { createdAt: true, updatedAt: true },
+      });
+      const avgPromotionTime = recentlyPromoted.length > 0
+        ? recentlyPromoted.reduce(
+            (a, i) => a + (i.updatedAt.getTime() - i.createdAt.getTime()),
+            0
+          ) /
+          recentlyPromoted.length /
+          (24 * 60 * 60 * 1000) // convert ms → days
+        : 0;
     };
   }
 

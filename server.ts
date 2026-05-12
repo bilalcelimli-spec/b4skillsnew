@@ -17,6 +17,8 @@ import { logger, httpLogger, captureException, Sentry } from "./src/lib/observab
 import { buildCorsMiddleware, buildHelmetMiddleware, assertProductionSecrets } from "./src/lib/security/http-security.js";
 import { validate } from "./src/lib/security/validate.js";
 import * as Schemas from "./src/lib/security/schemas/index.js";
+import { ProgressTracker } from "./src/lib/analytics/progress-tracker.js";
+import { ConcurrentValidityService } from "./src/lib/psychometrics/concurrent-validity.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -109,6 +111,38 @@ async function startServer() {
         return res.status(403).json({ error: "CSRF check failed: invalid referer" });
       }
     }
+    next();
+  });
+
+  // --- LATENCY TRACKING MIDDLEWARE ---
+  // Records per-route response time in a sliding window ring buffer.
+  // P50/P95/P99 are computed on-demand from the buffer for the SLO dashboard.
+  // No external APM required — fully in-process.
+  const LATENCY_RING_SIZE = 10_000;
+  type LatencyEntry = { route: string; method: string; statusCode: number; ms: number; ts: number };
+  const _latencyRing: LatencyEntry[] = [];
+  let _latencyHead = 0;
+  (app as any)._latencyRing = _latencyRing;
+
+  app.use((req, res, next) => {
+    const start = process.hrtime.bigint();
+    res.on("finish", () => {
+      const ms = Number(process.hrtime.bigint() - start) / 1e6;
+      // Normalise route: strip UUIDs and numeric IDs from path segments
+      const route = req.path
+        .replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "/:id")
+        .replace(/\/\d+(?=\/|$)/g, "/:n")
+        .substring(0, 80);
+      const entry: LatencyEntry = {
+        route,
+        method: req.method,
+        statusCode: res.statusCode,
+        ms: Math.round(ms * 10) / 10,
+        ts: Date.now(),
+      };
+      _latencyRing[_latencyHead % LATENCY_RING_SIZE] = entry;
+      _latencyHead++;
+    });
     next();
   });
 
@@ -4312,6 +4346,141 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // --- ONLINE CALIBRATION RUN API ---
+  // Triggers a concurrent EM calibration cycle for pretest items with ≥ minN responses.
+  // Updates item parameters in the DB for items that pass stability gates.
+  app.post("/api/calibration/online-run", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    try {
+      const { calibratePretestItem } = await import("./src/lib/psychometrics/online-calibration.js");
+      const { minN = 200, dryRun = false } = req.body as { minN?: number; dryRun?: boolean };
+
+      // Clamp minN to reasonable range
+      const effectiveMinN = Math.max(10, Math.min(2000, Number(minN)));
+
+      // Fetch all pretest items with their responses
+      const pretestItems = await prisma.item.findMany({
+        where: { status: "PRETEST" },
+        select: {
+          id: true,
+          skill: true,
+          cefrLevel: true,
+          discrimination: true,
+          difficulty: true,
+          guessing: true,
+          responses: {
+            where: { session: { status: "COMPLETED" } },
+            select: {
+              isCorrect: true,
+              session: { select: { theta: true } },
+            },
+          },
+          _count: { select: { responses: true } },
+        },
+      });
+
+      const results: Array<{
+        itemId: string;
+        skill: string;
+        cefrLevel: string;
+        nResponses: number;
+        stable: boolean;
+        deltaB: number;
+        deltaA: number;
+        oldB: number;
+        newB: number;
+        oldA: number;
+        newA: number;
+        logLikelihood: number;
+        rejectionReason?: string;
+        updated: boolean;
+      }> = [];
+
+      let updatedCount = 0;
+
+      for (const item of pretestItems) {
+        const responses = (item.responses as any[])
+          .filter((r) => r.isCorrect !== null && r.session?.theta !== null)
+          .map((r) => ({
+            theta: r.session.theta as number,
+            score: (r.isCorrect ? 1 : 0) as 0 | 1,
+          }));
+
+        const currentParams = {
+          a: item.discrimination ?? 1.0,
+          b: item.difficulty ?? 0.0,
+          c: item.guessing ?? 0.25,
+        };
+
+        const result = calibratePretestItem(currentParams, responses, {
+          minN: effectiveMinN,
+        });
+
+        const updated = result.stable && !dryRun;
+        if (updated) {
+          // Save previous params as a calibration history snapshot for IPD drift tracking
+          const existingMeta = (item as any).metadata as any ?? {};
+          const history: any[] = existingMeta.calibrationHistory ?? [];
+          const windowLabel = new Date().toISOString().substring(0, 7);
+          // Only push a new snapshot if last window label differs (avoid duplicates within same month)
+          if (history.length === 0 || history[history.length - 1]?.window !== windowLabel) {
+            history.push({
+              window: windowLabel,
+              calibratedAt: new Date().toISOString(),
+              a: item.discrimination ?? 1.0,
+              b: item.difficulty ?? 0.0,
+              c: item.guessing ?? 0.25,
+              source: "online-calibration",
+            });
+          }
+
+          await prisma.item.update({
+            where: { id: item.id },
+            data: {
+              discrimination: result.params.a,
+              difficulty: result.params.b,
+              guessing: result.params.c,
+              metadata: { ...existingMeta, calibrationHistory: history },
+            },
+          });
+          updatedCount++;
+        }
+
+        results.push({
+          itemId: item.id,
+          skill: item.skill,
+          cefrLevel: item.cefrLevel,
+          nResponses: responses.length,
+          stable: result.stable,
+          deltaB: Number(result.deltaB.toFixed(4)),
+          deltaA: Number(result.deltaA.toFixed(4)),
+          oldB: Number(currentParams.b.toFixed(4)),
+          newB: Number(result.params.b.toFixed(4)),
+          oldA: Number(currentParams.a.toFixed(4)),
+          newA: Number(result.params.a.toFixed(4)),
+          logLikelihood: Number(result.logLikelihood.toFixed(4)),
+          rejectionReason: result.rejectionReason,
+          updated,
+        });
+      }
+
+      const stableCount = results.filter((r) => r.stable).length;
+      const skippedCount = results.filter((r) => !r.stable && (r.nResponses < effectiveMinN)).length;
+      const rejectedCount = results.filter((r) => !r.stable && r.nResponses >= effectiveMinN).length;
+
+      res.json({
+        totalPretestItems: pretestItems.length,
+        itemsCalibrated: stableCount,
+        itemsUpdated: updatedCount,
+        itemsSkipped: skippedCount,
+        itemsRejected: rejectedCount,
+        dryRun,
+        effectiveMinN,
+        results,
+        computedAt: new Date().toISOString(),
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // --- DIFFERENTIAL STEP FUNCTIONING API ---
   app.get("/api/psychometrics/dsf-analysis", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
     try {
@@ -6967,8 +7136,156 @@ async function startServer() {
     }
   });
 
-  // --- SUBSCORE RELIABILITY API ---
-  app.get("/api/psychometrics/subscore-reliability", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+  // --- CLICKSTREAM / PROCESS-DATA API ---
+
+  /**
+   * POST /api/sessions/:sessionId/behavioural-events
+   * Accepts a batch of raw DOM events (clicks, keydowns, focus-loss, etc.) for a single item
+   * and runs the HMM-based behavioural analysis. The resulting profile is persisted into
+   * session metadata for later retrieval and security review.
+   *
+   * Body: {
+   *   itemId: string,
+   *   presentedAt: number (ms epoch),
+   *   submittedAt: number (ms epoch),
+   *   events: RawEventLog[],
+   *   audioPlayCount?: number
+   * }
+   * Auth: candidate (own session only) or admin.
+   */
+  app.post("/api/sessions/:sessionId/behavioural-events", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const { sessionId } = req.params;
+      const user = (req as any).user;
+      const { itemId, presentedAt, submittedAt, events, audioPlayCount } = req.body;
+
+      if (!itemId || typeof presentedAt !== "number" || typeof submittedAt !== "number" || !Array.isArray(events)) {
+        return res.status(400).json({ error: "itemId, presentedAt, submittedAt, and events[] are required" });
+      }
+
+      // Only candidate-owner or admin/assessor roles may post events
+      const session = await prisma.testSession.findUnique({
+        where: { id: sessionId },
+        select: { userId: true, metadata: true },
+      });
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      if (user.role === "CANDIDATE" && session.userId !== user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const { parseEventLog, extractItemFeatures, viterbiDecode } = await import("./src/lib/psychometrics/clickstream.js");
+
+      const itemStream = parseEventLog(itemId, presentedAt, submittedAt, events, audioPlayCount ?? 0);
+      const features = extractItemFeatures(itemStream);
+      const [hmmState] = viterbiDecode([features]);
+
+      // Merge into session metadata.behaviouralLog
+      const meta = (session.metadata as any) ?? {};
+      const behaviouralLog: Record<string, any> = meta.behaviouralLog ?? {};
+      behaviouralLog[itemId] = {
+        features,
+        hmmState: hmmState ?? null,
+        recordedAt: new Date().toISOString(),
+      };
+
+      await prisma.testSession.update({
+        where: { id: sessionId },
+        data: { metadata: { ...meta, behaviouralLog } },
+      });
+
+      res.json({ itemId, features, hmmState: hmmState ?? null });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  /**
+   * GET /api/sessions/:sessionId/behavioural-profile
+   * Returns the full session-level behavioural risk profile generated from
+   * stored item-level clickstream data.
+   *
+   * Auth: candidate (own session), TEACHER, admin roles.
+   */
+  app.get("/api/sessions/:sessionId/behavioural-profile", authMiddleware, checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "TEACHER", "PROCTOR", "CANDIDATE"]), async (req: express.Request, res: express.Response) => {
+    try {
+      const { sessionId } = req.params;
+      const user = (req as any).user;
+
+      const session = await prisma.testSession.findUnique({
+        where: { id: sessionId },
+        select: { userId: true, metadata: true, theta: true, cefrLevel: true },
+      });
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      if (user.role === "CANDIDATE" && session.userId !== user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const meta = (session.metadata as any) ?? {};
+      const behaviouralLog: Record<string, any> = meta.behaviouralLog ?? {};
+      const itemFeatureList = Object.values(behaviouralLog).map((entry: any) => entry.features).filter(Boolean);
+
+      if (itemFeatureList.length === 0) {
+        return res.json({ message: "No behavioural data recorded for this session yet", sessionId });
+      }
+
+      const { analyseSession } = await import("./src/lib/psychometrics/clickstream.js");
+
+      // Reconstruct ItemClickstream stubs from stored features for session-level analysis
+      // analyseSession expects ItemFeatures[] and the HMM sequence is already available
+      const hmmSequence = Object.values(behaviouralLog)
+        .map((entry: any) => entry.hmmState)
+        .filter(Boolean);
+
+      const rapidGuessCount = itemFeatureList.filter((f: any) => f.normalisedSpeed < 0.10).length;
+      const focusLossCount = itemFeatureList.filter((f: any) => f.focusLossTime > 3000).length;
+      const meanResponseTime = itemFeatureList.reduce((s: number, f: any) => s + f.responseTime, 0) / itemFeatureList.length;
+      const meanActiveTime = itemFeatureList.reduce((s: number, f: any) => s + f.activeTime, 0) / itemFeatureList.length;
+      const rapidGuessFraction = rapidGuessCount / itemFeatureList.length;
+      const focusLossFraction = focusLossCount / itemFeatureList.length;
+      const lowEffortFlag = rapidGuessFraction >= 0.25 || focusLossFraction >= 0.15;
+      const riskLevel = lowEffortFlag
+        ? (rapidGuessFraction >= 0.40 || focusLossFraction >= 0.30 ? "HIGH" : "MEDIUM")
+        : "LOW";
+
+      // State distribution from stored HMM sequence
+      const stateDist = { engaged: 0, hesitant: 0, rapid_guess: 0 };
+      for (const state of hmmSequence) {
+        if (state?.state && state.state in stateDist) {
+          (stateDist as any)[state.state]++;
+        }
+      }
+
+      res.json({
+        sessionId,
+        itemCount: itemFeatureList.length,
+        meanResponseTimeMs: Math.round(meanResponseTime),
+        meanActiveTimeMs: Math.round(meanActiveTime),
+        rapidGuessCount,
+        rapidGuessFraction: Number(rapidGuessFraction.toFixed(3)),
+        focusLossCount,
+        focusLossFraction: Number(focusLossFraction.toFixed(3)),
+        lowEffortFlag,
+        riskLevel,
+        stateDistribution: {
+          engaged: Number((stateDist.engaged / Math.max(1, hmmSequence.length)).toFixed(3)),
+          hesitant: Number((stateDist.hesitant / Math.max(1, hmmSequence.length)).toFixed(3)),
+          rapidGuess: Number((stateDist.rapid_guess / Math.max(1, hmmSequence.length)).toFixed(3)),
+        },
+        itemDetails: Object.entries(behaviouralLog).map(([id, entry]: [string, any]) => ({
+          itemId: id,
+          hmmState: entry.hmmState?.state ?? null,
+          responseTimeMs: entry.features?.responseTime ?? null,
+          activeTimeMs: entry.features?.activeTime ?? null,
+          normalisedSpeed: entry.features?.normalisedSpeed ?? null,
+          focusLossTimeMs: entry.features?.focusLossTime ?? null,
+        })),
+        computedAt: new Date().toISOString(),
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // --- SKILL-PROFILE RELIABILITY API ---
+  // Reads from session.metadata.skillProfile (simple marginal reliability per skill).
+  // For full Haberman added-value analysis see GET /api/psychometrics/subscore-reliability (above).
+  app.get("/api/psychometrics/skill-profile-reliability", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
     try {
       const { marginalReliability, classificationConsistency } = await import("./src/lib/psychometrics/reliability-metrics.js");
       const orgId = (req as any).user?.organizationId as string | undefined;
@@ -7031,7 +7348,143 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // --- BAYESIAN CALIBRATION API ---
+  // --- WRITING ARGUMENT QUALITY ANALYTICS ---
+  // Aggregates ArgumentQualityProfile data stored in response metadata to give
+  // content admins visibility into discourse feature distributions across CEFR levels.
+  app.get("/api/psychometrics/writing-argument-analysis", authMiddleware, checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
+    try {
+      const orgId = (req as any).user?.organizationId as string | undefined;
+      const cefrFilter = req.query.cefrLevel as string | undefined;
+      const limit = Math.min(2000, parseInt(req.query.limit as string || "500", 10));
+
+      // Fetch completed Writing responses that have argumentQualityProfile in metadata
+      const responses = await prisma.response.findMany({
+        where: {
+          item: { skill: "WRITING" },
+          session: {
+            status: "COMPLETED",
+            ...(orgId ? { organizationId: orgId } : {}),
+          },
+          ...(cefrFilter ? { item: { cefrLevel: cefrFilter, skill: "WRITING" } } : {}),
+          metadata: { not: undefined },
+        },
+        select: {
+          aiScore: true,
+          humanScore: true,
+          metadata: true,
+          item: { select: { cefrLevel: true } },
+          session: { select: { cefrLevel: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+      });
+
+      // Extract only responses that have an argumentQualityProfile
+      const profiledResponses = responses.filter((r) => {
+        const meta = r.metadata as any;
+        return meta?.argumentQualityProfile != null;
+      });
+
+      if (profiledResponses.length < 5) {
+        return res.json({
+          message: "Insufficient data — argumentQualityProfile not yet recorded on responses",
+          totalResponses: responses.length,
+          profiledResponses: profiledResponses.length,
+        });
+      }
+
+      // ── Aggregate by CEFR level ────────────────────────────────────────────
+      const byCefr = new Map<string, {
+        count: number;
+        argumentDepthSum: number;
+        discourseQualitySum: number;
+        flagCounts: Record<string, number>;
+        cefrPredictionMatch: number;
+      }>();
+
+      let totalFlagCounts: Record<string, number> = {};
+      let argumentDepthValues: number[] = [];
+      let discourseQualityValues: number[] = [];
+      let cefrPredictionMatchCount = 0;
+
+      for (const r of profiledResponses) {
+        const profile = (r.metadata as any).argumentQualityProfile;
+        const responseCefr = r.item.cefrLevel || r.session.cefrLevel || "UNKNOWN";
+        const normCefr = responseCefr.replace("PRE_A1", "A1");
+
+        if (!byCefr.has(normCefr)) {
+          byCefr.set(normCefr, { count: 0, argumentDepthSum: 0, discourseQualitySum: 0, flagCounts: {}, cefrPredictionMatch: 0 });
+        }
+        const bucket = byCefr.get(normCefr)!;
+        bucket.count++;
+        bucket.argumentDepthSum += profile.argumentDepthScore ?? 0;
+        bucket.discourseQualitySum += profile.discourseQualityScore ?? 0;
+
+        argumentDepthValues.push(profile.argumentDepthScore ?? 0);
+        discourseQualityValues.push(profile.discourseQualityScore ?? 0);
+
+        // Flag distribution
+        for (const flag of (profile.flags ?? [])) {
+          bucket.flagCounts[flag] = (bucket.flagCounts[flag] ?? 0) + 1;
+          totalFlagCounts[flag] = (totalFlagCounts[flag] ?? 0) + 1;
+        }
+
+        // CEFR prediction accuracy
+        if (profile.cefrPrediction === normCefr) {
+          bucket.cefrPredictionMatch++;
+          cefrPredictionMatchCount++;
+        }
+      }
+
+      const cefrOrder = ["A1", "A2", "B1", "B2", "C1", "C2"];
+      const byLevel = cefrOrder
+        .filter((c) => byCefr.has(c))
+        .map((c) => {
+          const b = byCefr.get(c)!;
+          return {
+            cefrLevel: c,
+            count: b.count,
+            meanArgumentDepthScore: Number((b.argumentDepthSum / b.count).toFixed(2)),
+            meanDiscourseQualityScore: Number((b.discourseQualitySum / b.count).toFixed(2)),
+            cefrPredictionAccuracy: Number((b.cefrPredictionMatch / b.count).toFixed(3)),
+            topFlags: Object.entries(b.flagCounts)
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 5)
+              .map(([flag, count]) => ({ flag, count, pct: Number((count / b.count * 100).toFixed(1)) })),
+          };
+        });
+
+      // ── Overall summary stats ──────────────────────────────────────────────
+      const mean = (arr: number[]) => arr.reduce((s, v) => s + v, 0) / arr.length;
+      const stddev = (arr: number[], m: number) =>
+        Math.sqrt(arr.reduce((s, v) => s + (v - m) ** 2, 0) / arr.length);
+
+      const argMean = mean(argumentDepthValues);
+      const dqMean = mean(discourseQualityValues);
+
+      res.json({
+        sampleSize: profiledResponses.length,
+        totalResponsesScanned: responses.length,
+        overall: {
+          meanArgumentDepthScore: Number(argMean.toFixed(2)),
+          stdArgumentDepthScore: Number(stddev(argumentDepthValues, argMean).toFixed(2)),
+          meanDiscourseQualityScore: Number(dqMean.toFixed(2)),
+          stdDiscourseQualityScore: Number(stddev(discourseQualityValues, dqMean).toFixed(2)),
+          cefrPredictionAccuracy: Number((cefrPredictionMatchCount / profiledResponses.length).toFixed(3)),
+          topFlags: Object.entries(totalFlagCounts)
+            .sort(([, a], [, b]) => b - a)
+            .map(([flag, count]) => ({
+              flag,
+              count,
+              pct: Number((count / profiledResponses.length * 100).toFixed(1)),
+            })),
+        },
+        byLevel,
+        cefrFilter: cefrFilter ?? null,
+        computedAt: new Date().toISOString(),
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
   app.post("/api/psychometrics/bayesian-calibration/run", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
     try {
       const { runBatchBayesianCalibration } = await import("./src/lib/psychometrics/bayesian-calibration.js");
@@ -7049,6 +7502,182 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // --- A/B ITEM VARIANT TESTING API ---
+  // Runs a Bayesian Thompson-sampling experiment on response data for items
+  // that have variants stored in metadata (variantGroup field).
+
+  /**
+   * GET /api/ab-tests/item-variants
+   * List all experiments derived from response data grouped by variantGroup tag.
+   */
+  app.get("/api/ab-tests/item-variants", authMiddleware, checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
+    try {
+      const {
+        initVariants, updateVariantBatch, evaluateExperiment,
+      } = await import("./src/lib/psychometrics/ab-test-variants.js");
+
+      const orgId = (req as any).user?.organizationId as string | undefined;
+      const minNPerVariant = parseInt(req.query.minN as string || "30", 10);
+      const maxN = parseInt(req.query.maxN as string || "2000", 10);
+      const stoppingThreshold = parseFloat(req.query.threshold as string || "0.05");
+
+      // Fetch ACTIVE items that have a variantGroup in their metadata
+      const items = await prisma.item.findMany({
+        where: { status: { in: ["ACTIVE", "PRETEST"] } },
+        select: {
+          id: true,
+          skill: true,
+          cefrLevel: true,
+          difficulty: true,
+          discrimination: true,
+          guessing: true,
+          metadata: true,
+          responses: {
+            where: {
+              session: {
+                status: "COMPLETED",
+                ...(orgId ? { organizationId: orgId } : {}),
+              },
+            },
+            select: {
+              isCorrect: true,
+              session: { select: { theta: true } },
+            },
+            take: 500,
+          },
+        },
+      });
+
+      // Group items by variantGroup
+      const experimentGroups = new Map<string, typeof items>();
+      for (const item of items) {
+        const meta = item.metadata as any;
+        const group: string | undefined = meta?.variantGroup;
+        if (!group) continue;
+        if (!experimentGroups.has(group)) experimentGroups.set(group, []);
+        experimentGroups.get(group)!.push(item);
+      }
+
+      if (experimentGroups.size === 0) {
+        return res.json({
+          message: "No variant groups found. Tag items with metadata.variantGroup to enable A/B testing.",
+          totalItems: items.length,
+          experiments: [],
+        });
+      }
+
+      const experiments = [];
+
+      for (const [group, groupItems] of experimentGroups) {
+        const variantDefs = groupItems.map((item) => ({
+          variantId: item.id,
+          params: {
+            a: item.discrimination ?? 1.0,
+            b: item.difficulty ?? 0.0,
+            c: item.guessing ?? 0.25,
+          },
+        }));
+
+        let states = initVariants(variantDefs, {
+          minNPerVariant, maxN, stoppingThreshold,
+          priorAlpha: 1.0, priorBeta: 1.0,
+        });
+
+        // Feed observations into each variant's state
+        for (let i = 0; i < groupItems.length; i++) {
+          const item = groupItems[i]!;
+          const observations = (item.responses as any[])
+            .filter((r) => r.isCorrect !== null && r.session?.theta !== null)
+            .map((r) => ({
+              theta: r.session.theta as number,
+              score: (r.isCorrect ? 1 : 0) as 0 | 1,
+            }));
+          if (observations.length > 0) {
+            states[i] = updateVariantBatch(states[i]!, observations);
+          }
+        }
+
+        const result = evaluateExperiment(group, groupItems[0]!.id, states, {
+          minNPerVariant, maxN, stoppingThreshold,
+        });
+
+        // Enrich with skill/CEFR info
+        const variantsWithMeta = result.variants.map((v) => {
+          const item = groupItems.find((it) => it.id === v.variantId);
+          return { ...v, skill: item?.skill, cefrLevel: item?.cefrLevel };
+        });
+
+        experiments.push({ ...result, variants: variantsWithMeta, variantGroup: group });
+      }
+
+      res.json({
+        totalExperiments: experiments.length,
+        activeExperiments: experiments.filter((e) => !e.shouldStop).length,
+        concludedExperiments: experiments.filter((e) => e.shouldStop).length,
+        experiments,
+        computedAt: new Date().toISOString(),
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  /**
+   * GET /api/ab-tests/item-variants/:group
+   * Get the A/B experiment result for a specific variant group.
+   */
+  app.get("/api/ab-tests/item-variants/:group", authMiddleware, checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
+    try {
+      const {
+        initVariants, updateVariantBatch, evaluateExperiment, thompsonSelect,
+      } = await import("./src/lib/psychometrics/ab-test-variants.js");
+
+      const orgId = (req as any).user?.organizationId as string | undefined;
+      const group = req.params.group;
+
+      const items = await prisma.item.findMany({
+        where: {
+          metadata: { path: ["variantGroup"], equals: group },
+          status: { in: ["ACTIVE", "PRETEST"] },
+        },
+        select: {
+          id: true, skill: true, cefrLevel: true,
+          difficulty: true, discrimination: true, guessing: true,
+          responses: {
+            where: {
+              session: { status: "COMPLETED", ...(orgId ? { organizationId: orgId } : {}) },
+            },
+            select: { isCorrect: true, session: { select: { theta: true } } },
+          },
+        },
+      });
+
+      if (items.length === 0) {
+        return res.status(404).json({ error: `No items found for variant group: ${group}` });
+      }
+
+      const variantDefs = items.map((item) => ({
+        variantId: item.id,
+        params: { a: item.discrimination ?? 1.0, b: item.difficulty ?? 0.0, c: item.guessing ?? 0.25 },
+      }));
+      let states = initVariants(variantDefs);
+      for (let i = 0; i < items.length; i++) {
+        const obs = (items[i]!.responses as any[])
+          .filter((r) => r.isCorrect !== null && r.session?.theta !== null)
+          .map((r) => ({ theta: r.session.theta as number, score: (r.isCorrect ? 1 : 0) as 0 | 1 }));
+        if (obs.length > 0) states[i] = updateVariantBatch(states[i]!, obs);
+      }
+
+      const result = evaluateExperiment(group, items[0]!.id, states);
+      const nextVariant = thompsonSelect(states);
+
+      res.json({
+        ...result,
+        variantGroup: group,
+        recommendedNextVariantId: nextVariant.variantId,
+        computedAt: new Date().toISOString(),
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // --- AIG QUALITY METRICS ---
   app.get("/api/aig/quality", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
     try {
@@ -7057,6 +7686,911 @@ async function startServer() {
       res.json(await AigQualityMetrics.getReport(orgId));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
+
+  // --- ITEM BANK HEALTH DASHBOARD ---
+  // Comprehensive psychometric health report for the entire item bank.
+  // Flags items with p-value out of range, poor discrimination, excessive exposure,
+  // low response count, and parameter drift.
+  app.get("/api/psychometrics/item-bank-health", authMiddleware, checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
+    try {
+      const orgId = (req as any).user?.organizationId as string | undefined;
+      const skill = req.query.skill as string | undefined;
+      const cefrLevel = req.query.cefrLevel as string | undefined;
+      const flaggedOnly = req.query.flaggedOnly === "true";
+
+      // Fetch items with response counts and parameter metadata
+      const items = await prisma.item.findMany({
+        where: {
+          status: { in: ["ACTIVE", "PRETEST", "RETIRED"] },
+          ...(skill ? { skill } : {}),
+          ...(cefrLevel ? { cefrLevel } : {}),
+        },
+        select: {
+          id: true,
+          skill: true,
+          cefrLevel: true,
+          status: true,
+          difficulty: true,
+          discrimination: true,
+          guessing: true,
+          createdAt: true,
+          updatedAt: true,
+          tags: true,
+          _count: { select: { responses: true } },
+          responses: {
+            where: {
+              session: {
+                status: "COMPLETED",
+                ...(orgId ? { organizationId: orgId } : {}),
+              },
+              isCorrect: { not: null },
+            },
+            select: {
+              isCorrect: true,
+              session: { select: { theta: true, completedAt: true } },
+            },
+            take: 1000,
+            orderBy: { createdAt: "desc" },
+          },
+        },
+        orderBy: { difficulty: "asc" },
+      });
+
+      // IRT-based thresholds for item quality
+      const THRESHOLDS = {
+        minDiscrimination: 0.30,  // a < 0.30 → poor discriminator
+        maxDiscrimination: 3.00,
+        minDifficulty: -3.5,      // b out of this range → extreme (floor/ceiling)
+        maxDifficulty: 3.5,
+        maxGuessing: 0.35,
+        minPValue: 0.20,          // empirical p-value < 0.20 → too hard
+        maxPValue: 0.90,          // empirical p-value > 0.90 → too easy
+        minResponses: 30,         // need ≥30 for meaningful statistics
+        maxExposureRate: 0.20,    // proportion of sessions item has appeared in
+      };
+
+      // Count total sessions for exposure rate calculation
+      const totalSessions = await prisma.testSession.count({
+        where: {
+          status: "COMPLETED",
+          ...(orgId ? { organizationId: orgId } : {}),
+        },
+      });
+
+      const itemReports = items.map((item) => {
+        const responses = item.responses as any[];
+        const n = responses.length;
+        const correct = responses.filter((r) => r.isCorrect).length;
+        const pValue = n > 0 ? correct / n : null;
+
+        // Exposure rate: sessions this item appeared in ÷ total sessions
+        const exposureRate = totalSessions > 0 ? n / totalSessions : null;
+
+        // Point-biserial via theta correlation (proxy discrimination check)
+        const thetaValues = responses
+          .filter((r) => r.session?.theta != null)
+          .map((r) => ({ theta: r.session.theta as number, correct: r.isCorrect ? 1 : 0 }));
+
+        let pointBiserial: number | null = null;
+        if (thetaValues.length >= 10) {
+          const meanTheta = thetaValues.reduce((s, v) => s + v.theta, 0) / thetaValues.length;
+          const meanCorrect = thetaValues.reduce((s, v) => s + v.correct, 0) / thetaValues.length;
+          const cov = thetaValues.reduce((s, v) => s + (v.theta - meanTheta) * (v.correct - meanCorrect), 0) / thetaValues.length;
+          const sdTheta = Math.sqrt(thetaValues.reduce((s, v) => s + (v.theta - meanTheta) ** 2, 0) / thetaValues.length);
+          const sdCorrect = Math.sqrt(meanCorrect * (1 - meanCorrect));
+          pointBiserial = sdTheta > 0 && sdCorrect > 0 ? cov / (sdTheta * sdCorrect) : null;
+        }
+
+        // Flag logic
+        const flags: string[] = [];
+        const b = item.difficulty ?? null;
+        const a = item.discrimination ?? null;
+        const c = item.guessing ?? null;
+
+        if (a !== null && a < THRESHOLDS.minDiscrimination) flags.push("LOW_DISCRIMINATION");
+        if (a !== null && a > THRESHOLDS.maxDiscrimination) flags.push("HIGH_DISCRIMINATION");
+        if (b !== null && b < THRESHOLDS.minDifficulty) flags.push("FLOOR_DIFFICULTY");
+        if (b !== null && b > THRESHOLDS.maxDifficulty) flags.push("CEILING_DIFFICULTY");
+        if (c !== null && c > THRESHOLDS.maxGuessing) flags.push("HIGH_GUESSING");
+        if (pValue !== null && pValue < THRESHOLDS.minPValue) flags.push("TOO_HARD");
+        if (pValue !== null && pValue > THRESHOLDS.maxPValue) flags.push("TOO_EASY");
+        if (n < THRESHOLDS.minResponses) flags.push("INSUFFICIENT_DATA");
+        if (exposureRate !== null && exposureRate > THRESHOLDS.maxExposureRate) flags.push("OVEREXPOSED");
+        if (pointBiserial !== null && pointBiserial < 0.10) flags.push("NEGATIVE_DISCRIMINATION");
+        if (item.status === "PRETEST" && n >= 200) flags.push("READY_FOR_CALIBRATION");
+
+        return {
+          itemId: item.id,
+          skill: item.skill,
+          cefrLevel: item.cefrLevel,
+          status: item.status,
+          params: { a, b, c },
+          n,
+          pValue: pValue !== null ? Number(pValue.toFixed(3)) : null,
+          pointBiserial: pointBiserial !== null ? Number(pointBiserial.toFixed(3)) : null,
+          exposureRate: exposureRate !== null ? Number(exposureRate.toFixed(4)) : null,
+          flags,
+          healthy: flags.length === 0 || (flags.length === 1 && flags[0] === "READY_FOR_CALIBRATION"),
+          tags: item.tags,
+        };
+      });
+
+      const filtered = flaggedOnly ? itemReports.filter((r) => !r.healthy) : itemReports;
+
+      // ── Summary statistics ─────────────────────────────────────────────────
+      const flagCounts: Record<string, number> = {};
+      for (const r of itemReports) {
+        for (const f of r.flags) flagCounts[f] = (flagCounts[f] ?? 0) + 1;
+      }
+
+      const byStatus = {
+        ACTIVE: itemReports.filter((r) => r.status === "ACTIVE").length,
+        PRETEST: itemReports.filter((r) => r.status === "PRETEST").length,
+        RETIRED: itemReports.filter((r) => r.status === "RETIRED").length,
+      };
+
+      const healthyCount = itemReports.filter((r) => r.healthy).length;
+      const readyForCalibrationCount = itemReports.filter((r) => r.flags.includes("READY_FOR_CALIBRATION")).length;
+
+      const byCefrLevel: Record<string, { total: number; healthy: number; flagged: number }> = {};
+      for (const r of itemReports) {
+        const key = r.cefrLevel || "UNKNOWN";
+        if (!byCefrLevel[key]) byCefrLevel[key] = { total: 0, healthy: 0, flagged: 0 };
+        byCefrLevel[key].total++;
+        if (r.healthy) byCefrLevel[key].healthy++;
+        else byCefrLevel[key].flagged++;
+      }
+
+      res.json({
+        summary: {
+          totalItems: itemReports.length,
+          healthyItems: healthyCount,
+          flaggedItems: itemReports.length - healthyCount,
+          readyForCalibration: readyForCalibrationCount,
+          healthScore: Number((healthyCount / Math.max(1, itemReports.length) * 100).toFixed(1)),
+          byStatus,
+          byCefrLevel,
+          topFlags: Object.entries(flagCounts)
+            .sort(([, a], [, b]) => b - a)
+            .map(([flag, count]) => ({ flag, count })),
+          thresholds: THRESHOLDS,
+        },
+        items: filtered,
+        filters: { skill: skill ?? null, cefrLevel: cefrLevel ?? null, flaggedOnly },
+        computedAt: new Date().toISOString(),
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── CLASSIFICATION CONSISTENCY API ──────────────────────────────────────
+  // GET /api/psychometrics/classification-consistency
+  //   Computes pa (overall agreement), pc (chance agreement), κ (Cohen's κ),
+  //   and conditional correct-classification rates at each CEFR boundary,
+  //   using the SEM-based replication method (Livingston & Lewis, 1995).
+  // ─────────────────────────────────────────────────────────────────────────
+
+  app.get(
+    "/api/psychometrics/classification-consistency",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { computeConsistencyReport, aggregateConsistency } = await import(
+          "./src/lib/psychometrics/classification-consistency.js"
+        );
+
+        const windowDays = Math.min(365, Math.max(7, parseInt(String(req.query.window ?? "90"), 10)));
+        const cutoff = new Date(Date.now() - windowDays * 86400 * 1000);
+
+        const sessions = await prisma.testSession.findMany({
+          where: { status: "COMPLETED", completedAt: { gte: cutoff }, theta: { not: null } },
+          select: { id: true, theta: true, sem: true, cefrLevel: true },
+          take: 5000,
+        });
+
+        if (sessions.length < 30) {
+          return res.json({
+            message: `Insufficient completed sessions (${sessions.length}) in window. Need ≥30.`,
+            windowDays,
+          });
+        }
+
+        const reports = sessions.map((s) => computeConsistencyReport(s.theta!, s.sem ?? 0.3));
+        const aggregate = aggregateConsistency(reports.map((r) => ({ theta: r.theta, sem: r.sem })));
+
+        res.json({
+          ...aggregate,
+          sampleSize: sessions.length,
+          windowDays,
+          computedAt: new Date().toISOString(),
+        });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // ─── RESPONSE-TIME ABERRANCE API ─────────────────────────────────────────
+  // GET /api/psychometrics/response-time-aberrance
+  //   Runs the RT-IRT lognormal model (van der Linden, 2007) on completed
+  //   sessions to flag examinees showing speededness (plodding or guessing).
+  //   Returns per-session Z_T scores and a cohort-level aberrance rate.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  app.get(
+    "/api/psychometrics/response-time-aberrance",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { detectAberrantResponseTime, estimateSpeed } = await import(
+          "./src/lib/psychometrics/response-time-irt.js"
+        );
+
+        const windowDays = Math.min(90, Math.max(7, parseInt(String(req.query.window ?? "30"), 10)));
+        const cutoff = new Date(Date.now() - windowDays * 86400 * 1000);
+
+        const sessions = await prisma.testSession.findMany({
+          where: { status: "COMPLETED", completedAt: { gte: cutoff } },
+          select: {
+            id: true,
+            userId: true,
+            theta: true,
+            responses: {
+              select: {
+                itemId: true,
+                responseTime: true,
+                item: { select: { difficulty: true, discrimination: true, metadata: true } },
+              },
+            },
+          },
+          take: 1000,
+        });
+
+        const flaggedSessions: Array<{
+          sessionId: string;
+          userId: string;
+          speedEstimate: number | null;
+          aberrantItems: number;
+          totalItems: number;
+          aberranceRate: number;
+          riskLevel: "LOW" | "MEDIUM" | "HIGH";
+        }> = [];
+
+        let totalAberrant = 0;
+
+        for (const s of sessions) {
+          const rtData = (s.responses as any[])
+            .filter((r) => r.responseTime != null && r.responseTime > 0)
+            .map((r) => ({
+              itemId: r.itemId,
+              responseTimeMs: r.responseTime as number,
+              params: {
+                alpha: (r.item.metadata as any)?.rtAlpha ?? 1.0,
+                beta: (r.item.metadata as any)?.rtBeta ?? Math.log(60) - 0.3 * (r.item.difficulty ?? 0),
+                gamma: (r.item.metadata as any)?.rtGamma ?? 0,
+              },
+            }));
+
+          if (rtData.length < 5) continue;
+
+          // Estimate person speed from response times
+          const speedResponses = rtData.map((r) => ({
+            timeSeconds: r.responseTimeMs / 1000,
+            params: r.params,
+          }));
+          const personSpeed = estimateSpeed(speedResponses);
+
+          // Detect aberrant response times per item
+          const flags = rtData.map((r) =>
+            detectAberrantResponseTime(r.responseTimeMs, personSpeed.tau, r.params, r.itemId)
+          );
+
+          const aberrantCount = flags.filter((f) => f.flag !== "NORMAL").length;
+          const aberranceRate = aberrantCount / rtData.length;
+
+          const riskLevel = aberranceRate >= 0.4 ? "HIGH" : aberranceRate >= 0.2 ? "MEDIUM" : "LOW";
+
+          if (riskLevel !== "LOW") {
+            totalAberrant++;
+            flaggedSessions.push({
+              sessionId: s.id,
+              userId: s.userId,
+              speedEstimate: personSpeed.tau,
+              aberrantItems: aberrantCount,
+              totalItems: rtData.length,
+              aberranceRate: Number(aberranceRate.toFixed(3)),
+              riskLevel,
+            });
+          }
+        }
+
+        res.json({
+          windowDays,
+          totalSessionsAnalysed: sessions.length,
+          flaggedSessionCount: flaggedSessions.length,
+          aberranceRate: sessions.length > 0 ? Number((totalAberrant / sessions.length).toFixed(3)) : 0,
+          flaggedSessions: flaggedSessions.sort((a, b) => b.aberranceRate - a.aberranceRate),
+          computedAt: new Date().toISOString(),
+        });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // ─── CUT-SCORE BOOTSTRAP CI API ──────────────────────────────────────────
+  // POST /api/psychometrics/cut-score-bootstrap
+  //   Runs bootstrap resampling (B=1000) on Angoff panelist ratings to produce
+  //   95% CIs for each CEFR boundary cut score on the θ scale.
+  //   Body: { ratings: PanelistRatings[], options?: BootstrapOptions }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  app.post(
+    "/api/psychometrics/cut-score-bootstrap",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { bootstrapAllBoundaries } = await import(
+          "./src/lib/psychometrics/cut-score-bootstrap.js"
+        );
+
+        const { ratings, options } = req.body as { ratings: any[]; options?: any };
+
+        if (!Array.isArray(ratings) || ratings.length < 3) {
+          return res.status(400).json({ error: "ratings array with ≥3 panelists is required" });
+        }
+
+        const result = bootstrapAllBoundaries(ratings, options ?? { B: 1000, alpha: 0.05 });
+
+        res.json({
+          boundaries: result,
+          panelistCount: ratings.length,
+          options: options ?? { B: 1000, alpha: 0.05 },
+          computedAt: new Date().toISOString(),
+        });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // --- TEST SECURITY: COLLUSION & ANSWER-COPYING DETECTION ---
+
+  /**
+   * POST /api/security/collusion-analysis
+   * Runs pairwise Wollack-ω, K-index, IP proximity, and RT-correlation analysis
+   * on a cohort of sessions (same exam window / org). Returns flagged pairs,
+   * collusion clusters, and a flag-rate summary.
+   *
+   * Body: { windowHours?: number (default 72), orgId?: string, minSharedItems?: number }
+   * Role: SUPER_ADMIN or ASSESSMENT_DIRECTOR only (sensitive data).
+   */
+  app.post("/api/security/collusion-analysis", authMiddleware, checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    try {
+      const { analyseCollusion } = await import("./src/lib/psychometrics/test-security/collusion-graph.js");
+      const user = (req as any).user;
+      const orgId: string = req.body.orgId ?? user.organizationId;
+      const windowHours: number = Math.min(720, Math.max(1, Number(req.body.windowHours ?? 72)));
+      const minSharedItems: number = Math.max(5, Number(req.body.minSharedItems ?? 10));
+      const windowStart = new Date(Date.now() - windowHours * 3600 * 1000);
+
+      // Fetch completed sessions in the time window with their responses
+      const sessions = await prisma.testSession.findMany({
+        where: {
+          status: "COMPLETED",
+          organizationId: orgId,
+          completedAt: { gte: windowStart },
+        },
+        select: {
+          id: true,
+          userId: true,
+          theta: true,
+          metadata: true,
+          responses: {
+            select: {
+              itemId: true,
+              isCorrect: true,
+              responseTime: true,
+              item: {
+                select: {
+                  id: true,
+                  difficulty: true,
+                  discrimination: true,
+                  guessing: true,
+                },
+              },
+            },
+          },
+        },
+        take: 200, // cap at 200 for O(N²) pairwise performance
+      });
+
+      if (sessions.length < 2) {
+        return res.json({
+          message: "Fewer than 2 sessions in the requested window — no pairs to analyse",
+          windowHours,
+          sessionsFound: sessions.length,
+        });
+      }
+
+      // Build ExamineeProfile array
+      const examinees = sessions.map((s) => ({
+        examineeId: s.id,
+        ipAddress: (s.metadata as any)?.ipAddress as string | undefined,
+        theta: s.theta ?? 0,
+        responses: (s.responses as any[]).map((r) => ({
+          itemId: r.itemId,
+          score: (r.isCorrect ? 1 : 0) as 0 | 1,
+        })),
+        responseTimes: Object.fromEntries(
+          (s.responses as any[])
+            .filter((r) => r.responseTime != null)
+            .map((r) => [r.itemId, r.responseTime as number])
+        ),
+      }));
+
+      // Build ItemMeta array (deduplicated)
+      const itemMap = new Map<string, { itemId: string; params: { a: number; b: number; c: number } }>();
+      for (const s of sessions) {
+        for (const r of s.responses as any[]) {
+          if (!itemMap.has(r.itemId)) {
+            itemMap.set(r.itemId, {
+              itemId: r.itemId,
+              params: {
+                a: r.item.discrimination ?? 1.0,
+                b: r.item.difficulty ?? 0.0,
+                c: r.item.guessing ?? 0.25,
+              },
+            });
+          }
+        }
+      }
+      const items = Array.from(itemMap.values());
+
+      const report = analyseCollusion(examinees, items);
+
+      // Enrich pairs with user IDs (map session → user)
+      const sessionUserMap = new Map(sessions.map((s) => [s.id, s.userId]));
+      const enrichedPairs = report.flaggedPairs.map((p) => ({
+        ...p,
+        userIdA: sessionUserMap.get(p.examineeA),
+        userIdB: sessionUserMap.get(p.examineeB),
+      }));
+
+      res.json({
+        windowHours,
+        windowStart: windowStart.toISOString(),
+        orgId,
+        totalSessions: sessions.length,
+        totalPairsAnalyzed: report.totalPairsAnalyzed,
+        flaggedPairCount: report.flaggedPairs.length,
+        flagRate: report.flagRate,
+        clusterCount: report.clusters.length,
+        highRiskClusters: report.clusters.filter((c) => c.riskLevel === "HIGH").length,
+        clusters: report.clusters,
+        flaggedPairs: enrichedPairs,
+        computedAt: new Date().toISOString(),
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── ITEM PARAMETER DRIFT API ─────────────────────────────────────────────
+  //
+  // GET /api/psychometrics/item-parameter-drift
+  //   Compares current live IRT parameters against a prior calibration snapshot
+  //   stored in item.metadata.calibrationHistory[].
+  //   Returns an IpdSummary with per-item drift classification (A/B/C),
+  //   recommended actions (NONE / FLAG_FOR_REVIEW / RETIRE), and optional
+  //   Markdown-formatted report.
+  //
+  // POST /api/psychometrics/item-parameter-drift/compare
+  //   Accepts two explicit IrtSnapshot[] arrays (old / new) and runs the analysis.
+  //   Useful for comparing two named calibration windows ("2025-Q4" vs "2026-Q1").
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  app.get(
+    "/api/psychometrics/item-parameter-drift",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { batchDriftAnalysis, summariseDriftResults, formatDriftReport } = await import(
+          "./src/lib/psychometrics/item-parameter-drift.js"
+        );
+
+        const format = req.query.format as string | undefined;
+        const skillFilter = req.query.skill as string | undefined;
+        const minClass = (req.query.minClass as string | undefined)?.toUpperCase() as "A" | "B" | "C" | undefined;
+
+        // Pull all non-retired items with their current IRT params
+        const items = await prisma.item.findMany({
+          where: {
+            retired: false,
+            ...(skillFilter ? { skill: skillFilter as any } : {}),
+          },
+          select: {
+            id: true,
+            difficulty: true,
+            discrimination: true,
+            guessing: true,
+            metadata: true,
+            updatedAt: true,
+          },
+        });
+
+        // Build "new" snapshots from current live parameters
+        const nowLabel = new Date().toISOString().substring(0, 7); // "YYYY-MM"
+        const newSnaps = items.map((it) => ({
+          itemId: it.id,
+          window: nowLabel,
+          calibratedAt: it.updatedAt.toISOString(),
+          a: it.discrimination,
+          b: it.difficulty,
+          c: it.guessing,
+        }));
+
+        // Build "old" snapshots from metadata.calibrationHistory (latest prior entry)
+        const oldSnaps = items
+          .filter((it) => {
+            const hist = (it.metadata as any)?.calibrationHistory;
+            return Array.isArray(hist) && hist.length > 0;
+          })
+          .map((it) => {
+            const hist = (it.metadata as any).calibrationHistory as any[];
+            // Pick the most-recent prior snapshot (last entry before current)
+            const prior = hist[hist.length - 1];
+            return {
+              itemId: it.id,
+              window: prior.window ?? "prior",
+              calibratedAt: prior.calibratedAt ?? prior.updatedAt ?? new Date(0).toISOString(),
+              a: prior.discrimination ?? prior.a ?? it.discrimination,
+              b: prior.difficulty ?? prior.b ?? it.difficulty,
+              c: prior.guessing ?? prior.c ?? it.guessing,
+              seA: prior.seA,
+              seB: prior.seB,
+              seC: prior.seC,
+              n: prior.n,
+            };
+          });
+
+        if (oldSnaps.length === 0) {
+          return res.json({
+            message: "No prior calibration snapshots found in item metadata. Run at least two calibration cycles to enable drift detection.",
+            totalItems: items.length,
+            snapshotsFound: 0,
+          });
+        }
+
+        const results = batchDriftAnalysis(oldSnaps, newSnaps);
+        const filtered = minClass
+          ? results.filter((r) => r.driftClass >= minClass)
+          : results;
+        const summary = summariseDriftResults(filtered);
+
+        if (format === "markdown") {
+          return res.type("text/plain").send(formatDriftReport(summary));
+        }
+
+        res.json({
+          ...summary,
+          itemsAnalysed: results.length,
+          itemsFiltered: filtered.length,
+          filter: { skill: skillFilter ?? null, minClass: minClass ?? null },
+        });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  app.post(
+    "/api/psychometrics/item-parameter-drift/compare",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { batchDriftAnalysis, summariseDriftResults, formatDriftReport } = await import(
+          "./src/lib/psychometrics/item-parameter-drift.js"
+        );
+
+        const { oldSnapshots, newSnapshots, format } = req.body as {
+          oldSnapshots: any[];
+          newSnapshots: any[];
+          format?: string;
+        };
+
+        if (!Array.isArray(oldSnapshots) || !Array.isArray(newSnapshots)) {
+          return res.status(400).json({ error: "oldSnapshots and newSnapshots arrays are required" });
+        }
+        if (oldSnapshots.length === 0 || newSnapshots.length === 0) {
+          return res.status(400).json({ error: "Both snapshot arrays must be non-empty" });
+        }
+
+        const results = batchDriftAnalysis(oldSnapshots, newSnapshots);
+        const summary = summariseDriftResults(results);
+
+        if (format === "markdown") {
+          return res.type("text/plain").send(formatDriftReport(summary));
+        }
+
+        // Automatically retire Class-C items if autoRetire flag is set
+        const autoRetire = req.body.autoRetire === true;
+        if (autoRetire && summary.retireItems.length > 0) {
+          const retireIds = summary.retireItems.map((r) => r.itemId);
+          await prisma.item.updateMany({
+            where: { id: { in: retireIds } },
+            data: { retired: true, retirementReason: "Item parameter drift — Class C (severe)" },
+          });
+        }
+
+        res.json({
+          ...summary,
+          autoRetired: autoRetire ? summary.retireItems.map((r) => r.itemId) : [],
+        });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // ─── VERTICAL LINKING API ─────────────────────────────────────────────────
+  //
+  // POST /api/psychometrics/vertical-linking/compute
+  //   Accepts an array of anchor items with paramsOld + paramsNew and returns
+  //   Stocking-Lord or Haebara (A, B) linking constants.
+  //
+  // POST /api/psychometrics/vertical-linking/apply
+  //   Applies computed (A, B) to an array of items to convert their params
+  //   from the old scale to the reference scale and optionally persists them.
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  app.post(
+    "/api/psychometrics/vertical-linking/compute",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { computeLinkingConstants } = await import(
+          "./src/lib/psychometrics/vertical-linking.js"
+        );
+
+        const { anchors, method = "STOCKING_LORD" } = req.body as {
+          anchors: Array<{ itemId: string; paramsOld: any; paramsNew: any }>;
+          method?: "STOCKING_LORD" | "HAEBARA";
+        };
+
+        if (!Array.isArray(anchors) || anchors.length < 3) {
+          return res.status(400).json({ error: "anchors array with ≥3 items is required" });
+        }
+        if (!["STOCKING_LORD", "HAEBARA"].includes(method)) {
+          return res.status(400).json({ error: "method must be STOCKING_LORD or HAEBARA" });
+        }
+
+        const result = computeLinkingConstants(anchors, method);
+        res.json({
+          ...result,
+          interpretation: {
+            scale: `θ_ref = ${result.A.toFixed(4)} · θ_old + (${result.B >= 0 ? "+" : ""}${result.B.toFixed(4)})`,
+            rmsd: result.diagnostics.rmsd < 0.01 ? "Excellent fit" : result.diagnostics.rmsd < 0.05 ? "Good fit" : "Poor fit — review anchor items",
+            recommendation: result.diagnostics.rmsd > 0.05 ? "High RMSD detected. Consider removing outlier anchor items." : "Linking constants stable.",
+          },
+          computedAt: new Date().toISOString(),
+        });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  app.post(
+    "/api/psychometrics/vertical-linking/apply",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { linkItemBank } = await import(
+          "./src/lib/psychometrics/vertical-linking.js"
+        );
+
+        const { A, B, itemIds, persist = false } = req.body as {
+          A: number;
+          B: number;
+          itemIds?: string[];
+          persist?: boolean;
+        };
+
+        if (typeof A !== "number" || typeof B !== "number") {
+          return res.status(400).json({ error: "A and B linking constants are required numbers" });
+        }
+
+        // Fetch items from DB (filtered if itemIds provided, else all non-retired)
+        const items = await prisma.item.findMany({
+          where: {
+            retired: false,
+            ...(Array.isArray(itemIds) && itemIds.length > 0 ? { id: { in: itemIds } } : {}),
+          },
+          select: { id: true, discrimination: true, difficulty: true, guessing: true, metadata: true },
+        });
+
+        const itemsForLinking = items.map((it) => ({
+          itemId: it.id,
+          params: { a: it.discrimination, b: it.difficulty, c: it.guessing },
+        }));
+
+        const linked = linkItemBank(itemsForLinking, A, B);
+
+        if (persist) {
+          // Persist linked params back to DB, saving old params in metadata.calibrationHistory
+          const now = new Date().toISOString();
+          const windowLabel = now.substring(0, 7);
+          for (const it of linked) {
+            const original = items.find((i) => i.id === it.itemId)!;
+            const meta = (original.metadata as any) ?? {};
+            const history = meta.calibrationHistory ?? [];
+            history.push({
+              window: windowLabel,
+              calibratedAt: now,
+              a: original.discrimination,
+              b: original.difficulty,
+              c: original.guessing,
+              source: "vertical-linking",
+              A,
+              B,
+            });
+            await prisma.item.update({
+              where: { id: it.itemId },
+              data: {
+                discrimination: Number(it.linkedParams.a.toFixed(4)),
+                difficulty: Number(it.linkedParams.b.toFixed(4)),
+                guessing: Number(it.linkedParams.c.toFixed(4)),
+                metadata: { ...meta, calibrationHistory: history },
+              },
+            });
+          }
+        }
+
+        res.json({
+          A,
+          B,
+          itemsProcessed: linked.length,
+          persisted: persist,
+          preview: linked.slice(0, 10).map((it) => ({
+            itemId: it.itemId,
+            oldParams: it.params,
+            linkedParams: it.linkedParams,
+          })),
+          computedAt: new Date().toISOString(),
+        });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // ─── CINEG EQUATING API ───────────────────────────────────────────────────
+  //
+  // POST /api/psychometrics/cineg-equating
+  //   Runs Tucker + Levine CINEG equating given score distributions from
+  //   two non-equivalent groups and a common anchor. Returns Tucker, Levine,
+  //   and a data-driven recommendation, plus anchor-item drift diagnostics.
+  //
+  // GET /api/psychometrics/cineg-equating/from-db
+  //   Automatically pulls score data from two date-bounded session cohorts
+  //   and shared anchor items, then runs CINEG equating — no manual data entry.
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  app.post(
+    "/api/psychometrics/cineg-equating",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { runCinegEquating } = await import(
+          "./src/lib/psychometrics/equating-cineg.js"
+        );
+
+        const { oldFormScores, oldAnchorScores, newFormScores, newAnchorScores, n1, n2, anchorItems, w1 } = req.body;
+
+        if (
+          !Array.isArray(oldFormScores) || !Array.isArray(newFormScores) ||
+          !Array.isArray(oldAnchorScores) || !Array.isArray(newAnchorScores)
+        ) {
+          return res.status(400).json({ error: "oldFormScores, newFormScores, oldAnchorScores, newAnchorScores arrays are required" });
+        }
+        if (oldFormScores.length < 30 || newFormScores.length < 30) {
+          return res.status(400).json({ error: "Minimum 30 observations per group required for stable equating" });
+        }
+
+        const result = runCinegEquating({
+          oldFormScores,
+          oldAnchorScores,
+          newFormScores,
+          newAnchorScores,
+          n1: n1 ?? oldFormScores.length - oldAnchorScores.length,
+          n2: n2 ?? newFormScores.length - newAnchorScores.length,
+          anchorItems: anchorItems ?? [],
+          w1: w1 ?? 0.5,
+        });
+
+        res.json({ ...result, computedAt: new Date().toISOString() });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  app.get(
+    "/api/psychometrics/cineg-equating/from-db",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { runCinegEquating } = await import(
+          "./src/lib/psychometrics/equating-cineg.js"
+        );
+
+        // Two date windows — default: split last 6 months in half
+        const now = Date.now();
+        const sixMonthsAgo = new Date(now - 182 * 86400 * 1000);
+        const threeMonthsAgo = new Date(now - 91 * 86400 * 1000);
+
+        const oldFrom = req.query.oldFrom ? new Date(req.query.oldFrom as string) : sixMonthsAgo;
+        const oldTo   = req.query.oldTo   ? new Date(req.query.oldTo as string)   : threeMonthsAgo;
+        const newFrom = req.query.newFrom  ? new Date(req.query.newFrom as string) : threeMonthsAgo;
+        const newTo   = req.query.newTo    ? new Date(req.query.newTo as string)   : new Date();
+
+        // Fetch anchor items (items that appear in both cohorts)
+        const [oldSessions, newSessions] = await Promise.all([
+          prisma.testSession.findMany({
+            where: { completedAt: { gte: oldFrom, lte: oldTo }, status: "COMPLETED" },
+            select: {
+              responses: { select: { itemId: true, isCorrect: true, item: { select: { discrimination: true, difficulty: true, guessing: true, metadata: true } } } },
+            },
+          }),
+          prisma.testSession.findMany({
+            where: { completedAt: { gte: newFrom, lte: newTo }, status: "COMPLETED" },
+            select: {
+              responses: { select: { itemId: true, isCorrect: true, item: { select: { discrimination: true, difficulty: true, guessing: true, metadata: true } } } },
+            },
+          }),
+        ]);
+
+        if (oldSessions.length < 30 || newSessions.length < 30) {
+          return res.json({
+            message: "Insufficient data for CINEG equating. Need ≥30 sessions per cohort.",
+            oldCohortSize: oldSessions.length,
+            newCohortSize: newSessions.length,
+          });
+        }
+
+        // Find anchor items (items that appear in both cohorts)
+        const oldItemIds = new Set(oldSessions.flatMap((s) => s.responses.map((r) => r.itemId)));
+        const newItemIds = new Set(newSessions.flatMap((s) => s.responses.map((r) => r.itemId)));
+        const anchorItemIds = [...oldItemIds].filter((id) => newItemIds.has(id));
+
+        // Build score vectors: total correct per session
+        const oldFormScores = oldSessions.map((s) => s.responses.filter((r) => r.isCorrect).length);
+        const oldAnchorScores = oldSessions.map((s) =>
+          s.responses.filter((r) => anchorItemIds.includes(r.itemId) && r.isCorrect).length
+        );
+        const newFormScores = newSessions.map((s) => s.responses.filter((r) => r.isCorrect).length);
+        const newAnchorScores = newSessions.map((s) =>
+          s.responses.filter((r) => anchorItemIds.includes(r.itemId) && r.isCorrect).length
+        );
+
+        // Build anchor item params for drift analysis (use first occurrence per item)
+        const anchorItemMap = new Map<string, { paramsOld: any; paramsNew: any }>();
+        for (const s of oldSessions) {
+          for (const r of s.responses) {
+            if (anchorItemIds.includes(r.itemId) && !anchorItemMap.has(r.itemId)) {
+              anchorItemMap.set(r.itemId, {
+                paramsOld: { a: r.item.discrimination, b: r.item.difficulty, c: r.item.guessing },
+                paramsNew: { a: r.item.discrimination, b: r.item.difficulty, c: r.item.guessing },
+              });
+            }
+          }
+        }
+        const anchorItems = [...anchorItemMap.entries()].map(([itemId, p]) => ({ itemId, ...p }));
+
+        const n1 = Math.max(1, (oldFormScores[0] ?? 0) - (oldAnchorScores[0] ?? 0));
+        const n2 = Math.max(1, (newFormScores[0] ?? 0) - (newAnchorScores[0] ?? 0));
+
+        const result = runCinegEquating({
+          oldFormScores, oldAnchorScores, newFormScores, newAnchorScores,
+          n1, n2, anchorItems,
+        });
+
+        res.json({
+          ...result,
+          diagnostics: {
+            oldCohortSize: oldSessions.length,
+            newCohortSize: newSessions.length,
+            anchorItemCount: anchorItemIds.length,
+            oldWindow: `${oldFrom.toISOString().substring(0, 10)} → ${oldTo.toISOString().substring(0, 10)}`,
+            newWindow: `${newFrom.toISOString().substring(0, 10)} → ${newTo.toISOString().substring(0, 10)}`,
+          },
+          computedAt: new Date().toISOString(),
+        });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
 
   // --- BIAS REVIEW API ---
   app.post("/api/items/:itemId/bias-review", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
@@ -7265,7 +8799,26 @@ async function startServer() {
         const { generateSloReport, sloReportToMarkdown } = await import(
           "./src/lib/observability/slo-monitor.js"
         );
-        const report = await generateSloReport(windowDays);
+
+        // Build latency snapshot from ring buffer (last windowDays worth of data)
+        const cutoffMs = Date.now() - windowDays * 24 * 60 * 60 * 1000;
+        const ring: Array<{ route: string; method: string; statusCode: number; ms: number; ts: number }> = (app as any)._latencyRing ?? [];
+        const ringEntries = ring.filter((e) => e && e.ts >= cutoffMs);
+        let latencySnapshot: import("./src/lib/observability/slo-monitor.js").LatencySnapshot | undefined;
+        if (ringEntries.length >= 10) {
+          const apiMs = ringEntries.filter((e) => e.route.startsWith("/api/")).map((e) => e.ms).sort((a, b) => a - b);
+          const pct = (arr: number[], p: number) => arr[Math.ceil(arr.length * p / 100) - 1] ?? 0;
+          const errors5xx = ringEntries.filter((e) => e.statusCode >= 500).length;
+          latencySnapshot = {
+            p95Ms: apiMs.length > 0 ? pct(apiMs, 95) : 0,
+            p99Ms: apiMs.length > 0 ? pct(apiMs, 99) : 0,
+            fractionBelow300Ms: apiMs.length > 0 ? apiMs.filter((ms) => ms <= 300).length / apiMs.length : 0,
+            errorRate5xx: ringEntries.length > 0 ? errors5xx / ringEntries.length : 0,
+            sampleSize: ringEntries.length,
+          };
+        }
+
+        const report = await generateSloReport(windowDays, latencySnapshot);
         const fmt = req.query.format as string | undefined;
         if (fmt === "markdown") {
           res.type("text/plain").send(sloReportToMarkdown(report));
@@ -7276,6 +8829,77 @@ async function startServer() {
         console.error("[SloReport] failed", e.message);
         res.status(500).json({ error: e.message });
       }
+    }
+  );
+
+  // GET /api/admin/latency-report — in-process p50/p95/p99 latency from ring buffer
+  // Fills the "APM required" gap in the SLO monitor for API latency SLOs.
+  app.get(
+    "/api/admin/latency-report",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    (req, res) => {
+      try {
+        const windowMinutes = Math.min(1440, Math.max(1, parseInt(String(req.query.window ?? "60"), 10)));
+        const cutoff = Date.now() - windowMinutes * 60 * 1000;
+        const ring: Array<{ route: string; method: string; statusCode: number; ms: number; ts: number }> = (app as any)._latencyRing ?? [];
+        const entries = ring.filter((e) => e && e.ts >= cutoff);
+
+        if (entries.length === 0) {
+          return res.json({ message: "No latency data in window", windowMinutes, sampleSize: 0 });
+        }
+
+        // Overall percentiles
+        const allMs = entries.map((e) => e.ms).sort((a, b) => a - b);
+        const pct = (arr: number[], p: number) => arr[Math.ceil(arr.length * p / 100) - 1] ?? 0;
+
+        // Error rate (5xx)
+        const errors5xx = entries.filter((e) => e.statusCode >= 500).length;
+
+        // Per-route top-10 slowest (p95)
+        const byRoute = new Map<string, number[]>();
+        for (const e of entries) {
+          const key = `${e.method} ${e.route}`;
+          if (!byRoute.has(key)) byRoute.set(key, []);
+          byRoute.get(key)!.push(e.ms);
+        }
+        const routeStats = Array.from(byRoute.entries()).map(([route, mss]) => {
+          const sorted = mss.sort((a, b) => a - b);
+          return {
+            route,
+            count: sorted.length,
+            p50: pct(sorted, 50),
+            p95: pct(sorted, 95),
+            p99: pct(sorted, 99),
+          };
+        }).sort((a, b) => b.p95 - a.p95).slice(0, 20);
+
+        // SLO compliance check: p95 ≤ 500ms for /api/* routes
+        const apiEntries = entries.filter((e) => e.route.startsWith("/api/"));
+        const apiMs = apiEntries.map((e) => e.ms).sort((a, b) => a - b);
+        const apiP95 = apiMs.length > 0 ? pct(apiMs, 95) : null;
+        const sloTarget = 500; // ms
+        const sloCompliant = apiP95 !== null ? apiP95 <= sloTarget : null;
+
+        res.json({
+          windowMinutes,
+          sampleSize: entries.length,
+          overall: {
+            p50: pct(allMs, 50),
+            p95: pct(allMs, 95),
+            p99: pct(allMs, 99),
+            max: allMs[allMs.length - 1] ?? 0,
+          },
+          apiRoutes: {
+            sampleSize: apiEntries.length,
+            p95: apiP95,
+            sloTargetMs: sloTarget,
+            sloCompliant,
+          },
+          errorRate5xx: entries.length > 0 ? Number((errors5xx / entries.length).toFixed(4)) : 0,
+          slowestRoutes: routeStats,
+          computedAt: new Date().toISOString(),
+        });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
     }
   );
 
@@ -7299,6 +8923,492 @@ async function startServer() {
       } catch (e: any) {
         res.status(500).json({ error: e.message });
       }
+    }
+  );
+
+  // GET /api/admin/cat-diagnostics — CAT engine quality report
+  // Analyses α-stratification coverage and KL/MFI method selection distribution
+  // across recent sessions to ensure the item selection pipeline is healthy.
+  app.get(
+    "/api/admin/cat-diagnostics",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { buildAlphaStrata, computeStratumUsage } = await import(
+          "./src/lib/psychometrics/alpha-stratification.js"
+        );
+        const { selectMethod } = await import(
+          "./src/lib/psychometrics/kl-information.js"
+        );
+
+        const windowDays = Math.min(90, Math.max(7, parseInt(String(req.query.window ?? "30"), 10)));
+        const cutoff = new Date(Date.now() - windowDays * 86400 * 1000);
+        const nStrata = Math.min(8, Math.max(2, parseInt(String(req.query.strata ?? "4"), 10)));
+
+        // Fetch all active items with IRT params for stratification
+        const allItems = await prisma.item.findMany({
+          where: { retired: false, status: { not: "DRAFT" } },
+          select: { id: true, discrimination: true, difficulty: true, guessing: true, skill: true, cefrLevel: true },
+        });
+
+        if (allItems.length === 0) {
+          return res.json({ message: "No active items in bank.", windowDays });
+        }
+
+        // Build α-strata on discrimination parameter
+        const itemsForStrata = allItems.map((it) => ({
+          id: it.id,
+          params: { a: it.discrimination ?? 1.0, b: it.difficulty ?? 0.0, c: it.guessing ?? 0.25 },
+        }));
+        const strata = buildAlphaStrata(itemsForStrata, nStrata);
+
+        // Fetch recent completed sessions and their administered items
+        const recentSessions = await prisma.testSession.findMany({
+          where: { status: "COMPLETED", completedAt: { gte: cutoff }, theta: { not: null }, sem: { not: null } },
+          select: {
+            id: true,
+            theta: true,
+            sem: true,
+            responses: { select: { itemId: true } },
+          },
+          take: 2000,
+          orderBy: { completedAt: "desc" },
+        });
+
+        // Session-level α-stratum usage
+        const allAdministeredIds = recentSessions.flatMap((s) => s.responses.map((r) => r.itemId));
+        const stratumUsage = computeStratumUsage(allAdministeredIds, strata);
+
+        // KL-vs-MFI method selection distribution: for each session, check if
+        // the SEM was in the "KL range" (SEM > KL_SEM_THRESHOLD) at termination
+        const { KL_SEM_THRESHOLD } = await import("./src/lib/psychometrics/kl-information.js");
+        let klCount = 0;
+        let mfiCount = 0;
+        for (const s of recentSessions) {
+          const method = selectMethod(s.sem!);
+          if (method === "KL") klCount++;
+          else mfiCount++;
+        }
+
+        // Per-stratum coverage: how evenly is the bank being used?
+        const overallCoverage = stratumUsage.map((su) => ({
+          stratum: su.stratumIndex,
+          totalItemsInStratum: su.totalItems,
+          uniqueItemsAdministered: su.usedItems,
+          coverageRate: Number(su.usageRate.toFixed(3)),
+          status: su.usageRate > 0.8 ? "OVERUSED" : su.usageRate < 0.1 ? "UNDERUSED" : "OK",
+        }));
+
+        // Test length distribution
+        const lengths = recentSessions.map((s) => s.responses.length);
+        const avgLength = lengths.reduce((a, b) => a + b, 0) / (lengths.length || 1);
+        const minLength = Math.min(...lengths);
+        const maxLength = Math.max(...lengths);
+
+        // Mean SEM at termination (quality metric: should be ≤ 0.35 for high-stakes)
+        const sems = recentSessions.map((s) => s.sem!);
+        const meanSem = sems.reduce((a, b) => a + b, 0) / (sems.length || 1);
+        const pctBelowTarget = sems.filter((s) => s <= 0.35).length / (sems.length || 1);
+
+        res.json({
+          windowDays,
+          sessionsSampled: recentSessions.length,
+          nStrata,
+          alphaStratification: {
+            strata: overallCoverage,
+            overusedCount: overallCoverage.filter((s) => s.status === "OVERUSED").length,
+            underusedCount: overallCoverage.filter((s) => s.status === "UNDERUSED").length,
+          },
+          itemSelectionMethod: {
+            klCount,
+            mfiCount,
+            total: klCount + mfiCount,
+            klFraction: Number(((klCount / Math.max(1, klCount + mfiCount))).toFixed(3)),
+            klSemThreshold: KL_SEM_THRESHOLD,
+            note: "KL used when SEM > threshold (early CAT); MFI when SEM ≤ threshold (precision phase)",
+          },
+          testLengthStats: {
+            mean: Number(avgLength.toFixed(1)),
+            min: minLength,
+            max: maxLength,
+          },
+          semAtTermination: {
+            mean: Number(meanSem.toFixed(4)),
+            target: 0.35,
+            fractionMeetingTarget: Number(pctBelowTarget.toFixed(3)),
+            compliant: meanSem <= 0.35,
+          },
+          itemBankSize: allItems.length,
+          computedAt: new Date().toISOString(),
+        });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CAMBRIDGE ASSESSMENT ENGLISH — Framework & Scoring Endpoints
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // GET /api/cambridge/exams — list all Cambridge exams with metadata
+  app.get("/api/cambridge/exams", async (_req, res) => {
+    try {
+      const { CAMBRIDGE_EXAM_META, CAMBRIDGE_GRADE_THRESHOLDS } = await import(
+        "./src/lib/cambridge/cambridge-framework.js"
+      );
+      res.json({ exams: CAMBRIDGE_EXAM_META, gradeThresholds: CAMBRIDGE_GRADE_THRESHOLDS });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /api/cambridge/exams/:exam/tasks — task specifications for a Cambridge exam
+  app.get("/api/cambridge/exams/:exam/tasks", async (req, res) => {
+    try {
+      const { getTasksForExam } = await import("./src/lib/cambridge/cambridge-framework.js");
+      const exam = req.params.exam.toUpperCase();
+      const tasks = getTasksForExam(exam as any);
+      if (!tasks.length) return res.status(404).json({ error: `No tasks found for exam: ${exam}` });
+      res.json({ exam, tasks });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /api/cambridge/marking-criteria/:skill — Cambridge 0-5 band descriptors
+  app.get("/api/cambridge/marking-criteria/:skill", async (req, res) => {
+    try {
+      const { CAMBRIDGE_WRITING_CRITERIA, CAMBRIDGE_SPEAKING_CRITERIA } = await import(
+        "./src/lib/cambridge/cambridge-marking-criteria.js"
+      );
+      const skill = req.params.skill.toUpperCase();
+      if (skill === "WRITING") return res.json({ skill, criteria: CAMBRIDGE_WRITING_CRITERIA });
+      if (skill === "SPEAKING") return res.json({ skill, criteria: CAMBRIDGE_SPEAKING_CRITERIA });
+      res.status(400).json({ error: "skill must be WRITING or SPEAKING" });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/cambridge/score/writing — compute writing mark scheme from 4 criterion bands
+  app.post(
+    "/api/cambridge/score/writing",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN", "RATER"]),
+    async (req, res) => {
+      try {
+        const { computeWritingMarkScheme } = await import(
+          "./src/lib/cambridge/cambridge-marking-criteria.js"
+        );
+        const { content, communicativeAchievement, organisation, language } = req.body;
+        if ([content, communicativeAchievement, organisation, language].some((b) => b === undefined)) {
+          return res.status(400).json({ error: "Required: content, communicativeAchievement, organisation, language (0-5 each)" });
+        }
+        const result = computeWritingMarkScheme({
+          content: Number(content),
+          communicativeAchievement: Number(communicativeAchievement),
+          organisation: Number(organisation),
+          language: Number(language),
+        });
+        res.json(result);
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // POST /api/cambridge/score/speaking — compute speaking mark scheme from 5 criterion bands
+  app.post(
+    "/api/cambridge/score/speaking",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN", "RATER"]),
+    async (req, res) => {
+      try {
+        const { computeSpeakingMarkScheme } = await import(
+          "./src/lib/cambridge/cambridge-marking-criteria.js"
+        );
+        const { grammarVocabulary, discourseManagement, pronunciation, interactiveCommunication, globalAchievement } = req.body;
+        if ([grammarVocabulary, discourseManagement, pronunciation, interactiveCommunication, globalAchievement].some((b) => b === undefined)) {
+          return res.status(400).json({ error: "Required: grammarVocabulary, discourseManagement, pronunciation, interactiveCommunication, globalAchievement (0-5 each)" });
+        }
+        const result = computeSpeakingMarkScheme({
+          grammarVocabulary: Number(grammarVocabulary),
+          discourseManagement: Number(discourseManagement),
+          pronunciation: Number(pronunciation),
+          interactiveCommunication: Number(interactiveCommunication),
+          globalAchievement: Number(globalAchievement),
+        });
+        res.json(result);
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // OXFORD TEST OF ENGLISH — Framework Endpoints
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // GET /api/oxford/framework — OTE score bands, grammar profile, vocabulary profiles
+  app.get("/api/oxford/framework", async (_req, res) => {
+    try {
+      const { OXFORD_SCORE_BANDS, OXFORD_TASKS, OXFORD_GRAMMAR_PROFILE, OXFORD_VOCABULARY_PROFILES } = await import(
+        "./src/lib/oxford/oxford-framework.js"
+      );
+      res.json({ scoreBands: OXFORD_SCORE_BANDS, tasks: OXFORD_TASKS, grammarProfile: OXFORD_GRAMMAR_PROFILE, vocabularyProfiles: OXFORD_VOCABULARY_PROFILES });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /api/oxford/grammar-profile/:level — grammar constructs for a CEFR level
+  app.get("/api/oxford/grammar-profile/:level", async (req, res) => {
+    try {
+      const { getGrammarConstructs, getGrammarConstructsUpTo } = await import(
+        "./src/lib/oxford/oxford-framework.js"
+      );
+      const level = req.params.level.toUpperCase() as any;
+      const cumulative = req.query.cumulative === "true";
+      const constructs = cumulative ? getGrammarConstructsUpTo(level) : getGrammarConstructs(level);
+      res.json({ level, cumulative, constructs });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/oxford/score/ote — compute OTE overall score from skill subscores
+  app.post(
+    "/api/oxford/score/ote",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN", "TEACHER"]),
+    async (req, res) => {
+      try {
+        const { computeOTEOverallScore } = await import("./src/lib/oxford/oxford-framework.js");
+        const { reading, listening, writing, speaking, useOfEnglish } = req.body;
+        const result = computeOTEOverallScore({ reading, listening, writing, speaking, useOfEnglish });
+        res.json(result);
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PEARSON GSE / PTE ACADEMIC — Framework Endpoints
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // GET /api/pearson/gse-bands — full GSE band table with multi-scale equivalencies
+  app.get("/api/pearson/gse-bands", async (_req, res) => {
+    try {
+      const { GSE_BANDS, PTE_ITEM_SPECS, PTE_ESSAY_CRITERIA } = await import(
+        "./src/lib/psychometrics/pearson-gse-alignment.js"
+      );
+      res.json({ gseBands: GSE_BANDS, pteItemSpecs: PTE_ITEM_SPECS, pteEssayCriteria: PTE_ESSAY_CRITERIA });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/pearson/score-profile — multi-scale score profile from theta + SEM
+  app.post(
+    "/api/pearson/score-profile",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN", "TEACHER"]),
+    async (req, res) => {
+      try {
+        const { buildPearsonScoreProfile } = await import(
+          "./src/lib/psychometrics/pearson-gse-alignment.js"
+        );
+        const { theta, sem } = req.body;
+        if (theta === undefined || sem === undefined) {
+          return res.status(400).json({ error: "Required: theta (number), sem (number)" });
+        }
+        res.json(buildPearsonScoreProfile(Number(theta), Number(sem)));
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // GET /api/pearson/gse-objectives/:skill/:level — GSE learning objectives for item tagging
+  app.get("/api/pearson/gse-objectives/:skill/:level", async (req, res) => {
+    try {
+      const { getGSEObjectives } = await import("./src/lib/psychometrics/pearson-gse-alignment.js");
+      const skill = req.params.skill.toUpperCase() as any;
+      const level = req.params.level.toUpperCase() as any;
+      const objectives = getGSEObjectives(skill, level);
+      res.json({ skill, level, count: objectives.length, objectives });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CLASSICAL ITEM STATISTICS (CTT) — Quality Control Endpoints
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // GET /api/admin/item-statistics/:itemId — CTT analysis for a single item
+  app.get(
+    "/api/admin/item-statistics/:itemId",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req, res) => {
+      try {
+        const { analyseItem, CAMBRIDGE_CTT_THRESHOLDS, PEARSON_CTT_THRESHOLDS } = await import(
+          "./src/lib/item-analysis/ctt-item-statistics.js"
+        );
+
+        const itemId = req.params.itemId;
+        const thresholdSource = String(req.query.thresholds ?? "cambridge");
+        const thresholds = thresholdSource === "pearson" ? PEARSON_CTT_THRESHOLDS : CAMBRIDGE_CTT_THRESHOLDS;
+
+        // Fetch item responses
+        const responses = await prisma.itemResponse.findMany({
+          where: { itemId },
+          select: {
+            selectedOption: true,
+            isCorrect: true,
+            session: { select: { theta: true } },
+          },
+          take: 5000,
+        });
+
+        if (responses.length < 30) {
+          return res.status(422).json({ error: "Insufficient responses for CTT analysis (need ≥30)", sampleSize: responses.length });
+        }
+
+        const item = await prisma.item.findUnique({
+          where: { id: itemId },
+          select: { id: true, options: true, correctAnswer: true },
+        });
+        if (!item) return res.status(404).json({ error: "Item not found" });
+
+        const options: string[] = Array.isArray(item.options) ? item.options.map((o: any) => String(o)) : [];
+        const keyOption = String(item.correctAnswer ?? "");
+        const thetaValues = responses.map((r) => Number(r.session?.theta ?? 0));
+        const responseStrings = responses.map((r) => String(r.selectedOption ?? ""));
+
+        // Use binary correctness as total-score proxy
+        const totalScores = responses.map((r) => (r.isCorrect ? 1 : 0));
+
+        const report = analyseItem({
+          itemId,
+          options,
+          keyOption,
+          responses: responseStrings,
+          thetaValues,
+          totalScores,
+        }, thresholds);
+
+        res.json({ ...report, thresholdsApplied: thresholds.source });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // GET /api/admin/item-bank-health — CTT health summary across active item bank
+  app.get(
+    "/api/admin/item-bank-health",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req, res) => {
+      try {
+        const { analyseItem, buildItemBankHealthSummary, CAMBRIDGE_CTT_THRESHOLDS, PEARSON_CTT_THRESHOLDS } = await import(
+          "./src/lib/item-analysis/ctt-item-statistics.js"
+        );
+
+        const thresholdSource = String(req.query.thresholds ?? "cambridge");
+        const thresholds = thresholdSource === "pearson" ? PEARSON_CTT_THRESHOLDS : CAMBRIDGE_CTT_THRESHOLDS;
+        const minSampleSize = Math.max(30, parseInt(String(req.query.minSample ?? "30"), 10));
+
+        // Aggregate response data per item
+        const itemStats = await prisma.itemResponse.groupBy({
+          by: ["itemId"],
+          _count: { id: true },
+          where: { session: { status: "COMPLETED" } },
+          having: { id: { _count: { gte: minSampleSize } } },
+        });
+
+        const reports: any[] = [];
+        for (const stat of itemStats.slice(0, 200)) {
+          const responses = await prisma.itemResponse.findMany({
+            where: { itemId: stat.itemId },
+            select: { selectedOption: true, isCorrect: true, session: { select: { theta: true } } },
+            take: 2000,
+          });
+          const item = await prisma.item.findUnique({
+            where: { id: stat.itemId },
+            select: { options: true, correctAnswer: true },
+          });
+          if (!item) continue;
+          const options: string[] = Array.isArray(item.options) ? item.options.map((o: any) => String(o)) : [];
+          const keyOption = String(item.correctAnswer ?? "");
+          const report = analyseItem({
+            itemId: stat.itemId,
+            options,
+            keyOption,
+            responses: responses.map((r) => String(r.selectedOption ?? "")),
+            thetaValues: responses.map((r) => Number(r.session?.theta ?? 0)),
+            totalScores: responses.map((r) => (r.isCorrect ? 1 : 0)),
+          }, thresholds);
+          reports.push(report);
+        }
+
+        const summary = buildItemBankHealthSummary(reports, thresholds);
+        res.json({ ...summary, itemsAnalysed: reports.length, computedAt: new Date().toISOString() });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CONTENT BLUEPRINT & Q-MATRIX COVERAGE
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // GET /api/content/blueprints — list all exam blueprints
+  app.get(
+    "/api/content/blueprints",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (_req, res) => {
+      try {
+        const { ALL_BLUEPRINTS, blueprintSummary } = await import(
+          "./src/lib/content/content-blueprint.js"
+        );
+        res.json({ blueprints: ALL_BLUEPRINTS.map(blueprintSummary) });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // GET /api/content/blueprints/:code — full blueprint for a specific exam code
+  app.get(
+    "/api/content/blueprints/:code",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req, res) => {
+      try {
+        const { ALL_BLUEPRINTS } = await import("./src/lib/content/content-blueprint.js");
+        const code = req.params.code.toUpperCase();
+        const blueprint = ALL_BLUEPRINTS.find((b) => b.examCode === code);
+        if (!blueprint) return res.status(404).json({ error: `Blueprint not found: ${code}` });
+        res.json(blueprint);
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // GET /api/content/coverage-report/:blueprintCode — Q-matrix coverage analysis
+  app.get(
+    "/api/content/coverage-report/:blueprintCode",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req, res) => {
+      try {
+        const { ALL_BLUEPRINTS, buildQMatrix, computeCoverage, identifyGaps } = await import(
+          "./src/lib/content/content-blueprint.js"
+        );
+
+        const code = req.params.blueprintCode.toUpperCase();
+        const blueprint = ALL_BLUEPRINTS.find((b) => b.examCode === code);
+        if (!blueprint) return res.status(404).json({ error: `Blueprint not found: ${code}` });
+
+        // Fetch item metadata for Q-matrix construction
+        const items = await prisma.item.findMany({
+          where: { retired: false, status: { not: "DRAFT" } },
+          select: {
+            id: true,
+            cefrLevel: true,
+            skill: true,
+            itemFormat: true,
+            grammarConstruct: true,
+            vocabularyDomain: true,
+            cognitiveProcess: true,
+            gseCode: true,
+          },
+        });
+
+        const qEntries = items.map((it: any) => ({
+          itemId: it.id,
+          cefrLevel: it.cefrLevel,
+          skill: it.skill,
+          grammarConstruct: it.grammarConstruct ?? undefined,
+          vocabularyDomain: it.vocabularyDomain ?? undefined,
+          cognitiveProcess: (it.cognitiveProcess ?? "UNDERSTAND") as any,
+          itemFormat: it.itemFormat ?? "UNKNOWN",
+          gseCode: it.gseCode ?? undefined,
+        }));
+
+        const qMatrix = buildQMatrix(qEntries);
+        const coverage = computeCoverage(qMatrix, blueprint);
+        const gaps = identifyGaps(coverage, blueprint);
+
+        res.json({ blueprint: blueprint.examName, coverage, gaps });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
     }
   );
 
@@ -7547,6 +9657,144 @@ async function startServer() {
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch session insights" });
     }
+  });
+
+  // GET /api/sessions/:id/report.html — Printable score report (CEFR certificate style)
+  // Auth: candidate (own session) or TEACHER/ADMIN. Returns styled HTML; browsers can
+  // File > Print → Save as PDF for a no-dependency PDF solution.
+  // Optional query ?lang=tr for Turkish headings.
+  app.get("/api/sessions/:id/report.html", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const { id } = req.params;
+      const user = (req as any).user;
+      const lang = (req.query.lang as string) === "tr" ? "tr" : "en";
+
+      const session = await prisma.session.findUnique({
+        where: { id },
+        include: {
+          scoreReport: true,
+          candidate: { select: { name: true, email: true } },
+        },
+      }) as any;
+
+      if (!session) return res.status(404).json({ error: "Session not found" });
+
+      // Access control: CANDIDATE can only see own session
+      if (user.role === "CANDIDATE" && session.candidate?.id !== user.id && session.userId !== user.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      const sr = session.scoreReport;
+      const cefr: string = sr?.overallCefr ?? session.cefrLevel ?? "B1";
+      const theta: number = session.theta ?? session.currentTheta ?? 0;
+      const score: number = sr?.overallScore ?? Math.round((theta + 4) / 8 * 100);
+      const candName: string = session.candidate?.name ?? "Candidate";
+      const completedAt: string = session.completedAt
+        ? new Date(session.completedAt).toLocaleDateString("en-GB", { year: "numeric", month: "long", day: "numeric" })
+        : new Date().toLocaleDateString("en-GB", { year: "numeric", month: "long", day: "numeric" });
+
+      const t = lang === "tr" ? {
+        title: "İngilizce Yeterlik Sınav Raporu",
+        candidateLabel: "Aday",
+        dateLabel: "Tarih",
+        cefrLabel: "CEFR Seviyesi",
+        scoreLabel: "Genel Puan",
+        readingLabel: "Okuma",
+        listeningLabel: "Dinleme",
+        speakingLabel: "Konuşma",
+        writingLabel: "Yazma",
+        certifiedBy: "LinguAdapt Adaptif Değerlendirme Platformu tarafından onaylanmıştır.",
+        footer: "Bu rapor, CAT motoru ve GEM modeli kullanılarak oluşturulmuştur.",
+      } : {
+        title: "English Proficiency Assessment Report",
+        candidateLabel: "Candidate",
+        dateLabel: "Date",
+        cefrLabel: "CEFR Level",
+        scoreLabel: "Overall Score",
+        readingLabel: "Reading",
+        listeningLabel: "Listening",
+        speakingLabel: "Speaking",
+        writingLabel: "Writing",
+        certifiedBy: "Certified by the LinguAdapt Adaptive Assessment Platform.",
+        footer: "Report generated using Computerised Adaptive Testing (CAT) with 3PL-IRT and Bayesian EAP ability estimation.",
+      };
+
+      const cefrColour: Record<string, string> = {
+        PRE_A1: "#9E9E9E", A1: "#9E9E9E", A2: "#78909C",
+        B1: "#42A5F5", B2: "#1565C0",
+        C1: "#2E7D32", C2: "#1B5E20",
+      };
+      const bandColour = cefrColour[cefr] ?? "#1565C0";
+
+      const skillRow = (label: string, val: number | null) => val != null
+        ? `<tr><td>${label}</td><td>${val}</td><td style="width:180px"><div style="background:#e0e0e0;border-radius:4px;height:10px;overflow:hidden"><div style="background:${bandColour};height:10px;width:${Math.min(100, val)}%"></div></div></td></tr>`
+        : "";
+
+      const html = `<!DOCTYPE html>
+<html lang="${lang}">
+<head>
+<meta charset="UTF-8"/>
+<title>${t.title}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Inter, system-ui, sans-serif; background: #fafafa; color: #212121; }
+  .page { max-width: 760px; margin: 32px auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,.08); overflow: hidden; }
+  .header { background: ${bandColour}; color: #fff; padding: 36px 40px 28px; }
+  .header h1 { font-size: 22px; font-weight: 700; letter-spacing: .5px; margin-bottom: 4px; }
+  .header p { font-size: 13px; opacity: .85; }
+  .badge { display: inline-block; background: rgba(255,255,255,.2); border: 2px solid rgba(255,255,255,.7); border-radius: 8px; padding: 10px 24px; margin: 16px 0 0; }
+  .badge .level { font-size: 52px; font-weight: 700; line-height: 1; }
+  .badge .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: .85; }
+  .body { padding: 32px 40px; }
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px; }
+  .meta-item label { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: #757575; }
+  .meta-item p { font-size: 16px; font-weight: 600; color: #212121; }
+  .score-big { font-size: 56px; font-weight: 700; color: ${bandColour}; line-height: 1; }
+  .score-sub { font-size: 13px; color: #757575; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  td { padding: 8px 6px; font-size: 14px; }
+  td:first-child { font-weight: 500; }
+  td:nth-child(2) { text-align: right; width: 40px; font-weight: 600; color: ${bandColour}; }
+  .section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #757575; margin: 24px 0 10px; border-bottom: 1px solid #e0e0e0; padding-bottom: 6px; }
+  .footer { background: #f5f5f5; border-top: 1px solid #e0e0e0; padding: 18px 40px; font-size: 11px; color: #9e9e9e; line-height: 1.6; }
+  @media print { body{background:#fff} .page{box-shadow:none;margin:0;border-radius:0} }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <h1>${t.title}</h1>
+    <p>LinguAdapt · Session ID: ${id}</p>
+    <div class="badge">
+      <div class="level">${cefr.replace("_", " ")}</div>
+      <div class="label">${t.cefrLabel}</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="meta">
+      <div class="meta-item"><label>${t.candidateLabel}</label><p>${candName.replace(/</g, "&lt;")}</p></div>
+      <div class="meta-item"><label>${t.dateLabel}</label><p>${completedAt}</p></div>
+      <div class="meta-item"><label>${t.scoreLabel}</label><p class="score-big">${score}</p><p class="score-sub">/ 100</p></div>
+      <div class="meta-item"><label>θ (IRT)</label><p>${theta.toFixed(3)}</p><p class="score-sub">SEM: ${(session.sem ?? session.standardError ?? 0.3).toFixed(3)}</p></div>
+    </div>
+    <div class="section-title">Skill Scores</div>
+    <table>
+      ${skillRow(t.readingLabel, sr?.readingScore ?? null)}
+      ${skillRow(t.listeningLabel, sr?.listeningScore ?? null)}
+      ${skillRow(t.speakingLabel, sr?.speakingScore ?? null)}
+      ${skillRow(t.writingLabel, sr?.writingScore ?? null)}
+    </table>
+    <div class="section-title">Certification</div>
+    <p style="font-size:14px;line-height:1.7;color:#424242">${t.certifiedBy}</p>
+  </div>
+  <div class="footer">${t.footer}<br>Report ID: ${id} · Generated: ${new Date().toISOString()}</div>
+</div>
+</body>
+</html>`;
+
+      res.type("text/html").send(html);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   // --- PHASE 8: ENTERPRISE & GLOBAL ---
@@ -8132,6 +10380,358 @@ async function startServer() {
   }
 
   Sentry.setupExpressErrorHandler(app);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // LONGITUDINAL PROGRESS TRACKING
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * GET /api/candidates/:candidateId/detailed-feedback/:sessionId
+   * Returns personalised diagnostic feedback for a completed test session.
+   * Includes skill-specific recommendations based on discourse analysis, prosodic profile, and error patterns.
+   * Teachers, admins, and the candidate themselves can access.
+   */
+  app.get(
+    "/api/candidates/:candidateId/detailed-feedback/:sessionId",
+    authMiddleware,
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "TEACHER", "CANDIDATE"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { candidateId, sessionId } = req.params;
+        const user = (req as any).user;
+
+        if (user.role === "CANDIDATE" && user.id !== candidateId) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+
+        const session = await prisma.testSession.findFirst({
+          where: {
+            id: sessionId,
+            userId: candidateId,
+            status: "COMPLETED",
+          },
+          select: {
+            id: true,
+            theta: true,
+            cefrLevel: true,
+            userId: true,
+            responses: {
+              select: {
+                aiScore: true,
+                humanScore: true,
+                isCorrect: true,
+                metadata: true,
+                item: {
+                  select: {
+                    skill: true,
+                    cefrLevel: true,
+                    tags: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (!session) {
+          return res.status(404).json({ error: "Completed session not found" });
+        }
+
+        const { generateSessionFeedback } = await import("./src/lib/analytics/diagnostic-feedback-engine.js");
+
+        const report = generateSessionFeedback({
+          candidateId,
+          sessionId,
+          theta: session.theta ?? 0,
+          cefrLevel: session.cefrLevel ?? "B1",
+          responses: (session.responses as any[]).map((r) => ({
+            skill: r.item.skill,
+            aiScore: r.aiScore,
+            humanScore: r.humanScore,
+            isCorrect: r.isCorrect,
+            metadata: r.metadata,
+            item: r.item,
+          })),
+        });
+
+        res.json(report);
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  /**
+   * GET /api/candidates/:candidateId/progress
+   * Returns longitudinal progress report for a candidate.
+   * Teachers, admins, and the candidate themselves can access.
+   */
+  app.get(
+    "/api/candidates/:candidateId/progress",
+    authMiddleware,
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "TEACHER", "CANDIDATE"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { candidateId } = req.params;
+        const user = (req as any).user;
+        const organizationId: string = user.organizationId;
+
+        // Candidates can only access their own progress
+        if (user.role === "CANDIDATE" && user.id !== candidateId) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+
+        const limit = Math.min(50, parseInt(req.query.limit as string || "20", 10));
+        const report = await ProgressTracker.getProgressReport(candidateId, organizationId, limit);
+        res.json(report);
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  /**
+   * GET /api/analytics/cohort-growth
+   * Returns cohort-level growth summary for an org over a date window.
+   * Role: ASSESSMENT_DIRECTOR and above.
+   */
+  app.get(
+    "/api/analytics/cohort-growth",
+    authMiddleware,
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const user = (req as any).user;
+        const organizationId: string = user.organizationId;
+        const fromDate = req.query.from ? new Date(req.query.from as string) : new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+        const toDate = req.query.to ? new Date(req.query.to as string) : new Date();
+
+        if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+          return res.status(400).json({ error: "Invalid date range" });
+        }
+
+        const summary = await ProgressTracker.getCohortGrowthSummary(organizationId, fromDate, toDate);
+        res.json(summary);
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CONCURRENT VALIDITY STUDY
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * POST /api/validity/external-scores
+   * Submit a candidate's external test score linked to a LinguAdapt session.
+   * Candidates submit their own; admins can submit on behalf of candidates.
+   */
+  app.post(
+    "/api/validity/external-scores",
+    authMiddleware,
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const user = (req as any).user;
+        const {
+          candidateId,
+          sessionId,
+          externalTest,
+          rawScore,
+          externalCefrLevel,
+          externalTestDate,
+          dataSource,
+        } = req.body;
+
+        // Validate required fields
+        if (!sessionId || !externalTest || typeof rawScore !== "number" || !externalTestDate) {
+          return res.status(400).json({ error: "sessionId, externalTest, rawScore, and externalTestDate are required" });
+        }
+
+        // Candidates can only submit for themselves; admins for any candidate in org
+        const targetCandidateId: string = candidateId || user.id;
+        if (user.role === "CANDIDATE" && targetCandidateId !== user.id) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+
+        const result = await ConcurrentValidityService.submitExternalScore({
+          candidateId: targetCandidateId,
+          organizationId: user.organizationId,
+          sessionId,
+          externalTest,
+          rawScore,
+          externalCefrLevel,
+          externalTestDate: new Date(externalTestDate),
+          dataSource: dataSource || "SELF_REPORT",
+        });
+
+        res.status(201).json(result);
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  /**
+   * GET /api/validity/analysis/:externalTest
+   * Run concurrent validity analysis for a specific external test.
+   * Role: ASSESSMENT_DIRECTOR and above.
+   */
+  app.get(
+    "/api/validity/analysis/:externalTest",
+    authMiddleware,
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const user = (req as any).user;
+        const { externalTest } = req.params;
+        const maxDays = parseInt(req.query.maxDaysBetweenTests as string || "30", 10);
+        const verifiedOnly = req.query.verifiedOnly === "true";
+
+        const analysis = await ConcurrentValidityService.runAnalysis(
+          user.organizationId,
+          externalTest as any,
+          { maxDaysBetweenTests: maxDays, verifiedOnly }
+        );
+        res.json(analysis);
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  /**
+   * GET /api/validity/summary
+   * Cross-test concurrent validity summary (Pearson r, CEFR agreement, etc.)
+   * for all external tests with sufficient data.
+   */
+  app.get(
+    "/api/validity/summary",
+    authMiddleware,
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const user = (req as any).user;
+        const summary = await ConcurrentValidityService.getSummary(user.organizationId);
+        res.json(summary);
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // AI–HUMAN SCORING AGREEMENT MONITOR
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * GET /api/psychometrics/ai-human-agreement
+   *
+   * Returns QWK, MAE, RMSE, Pearson r between AI scores and human rater scores
+   * for the last N response pairs (default N=200). Also returns:
+   *  - per-skill breakdown (WRITING, SPEAKING)
+   *  - 7-day rolling windows for trend tracking
+   *  - drift report: latest window vs 90-day baseline
+   *
+   * Query params:
+   *  ?skill=WRITING|SPEAKING        filter to specific skill
+   *  ?windowSize=200                 max pairs for overall metrics (default 200)
+   *  ?windowDays=7                   rolling window width in days (default 7)
+   */
+  app.get(
+    "/api/psychometrics/ai-human-agreement",
+    authMiddleware,
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const {
+          computeAgreement,
+          rollingAgreement,
+          detectDrift,
+        } = await import("./src/lib/scoring/ai-human-agreement.js");
+
+        const orgId = (req as any).user?.organizationId as string | undefined;
+        const skillFilter = req.query.skill as string | undefined;
+        const windowSize = Math.min(2000, Math.max(10, parseInt(req.query.windowSize as string || "200", 10)));
+        const windowDays = Math.max(1, parseInt(req.query.windowDays as string || "7", 10));
+
+        // Fetch responses with both AI and human scores
+        const rows = await prisma.response.findMany({
+          where: {
+            aiScore: { not: null },
+            humanScore: { not: null },
+            ...(orgId ? { session: { organizationId: orgId } } : {}),
+            ...(skillFilter ? { item: { skill: skillFilter as any } } : {}),
+          },
+          select: {
+            id: true,
+            aiScore: true,
+            humanScore: true,
+            createdAt: true,
+            item: { select: { skill: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: windowSize,
+        });
+
+        if (rows.length === 0) {
+          return res.json({
+            sampleSize: 0,
+            overall: { n: 0, qwk: 0, mae: 0, rmse: 0, pearsonR: 0, meanDelta: 0, meetsHighStakesThreshold: false },
+            bySkill: [],
+            rollingWindows: [],
+            driftReport: null,
+            thresholds: { qwk: 0.80, mae: 0.08, pearsonR: 0.85 },
+          });
+        }
+
+        const pairs = rows.map((r) => ({
+          aiScore: r.aiScore!,
+          humanScore: r.humanScore!,
+          scoredAt: r.createdAt,
+          skill: (r.item as any)?.skill as string | undefined,
+        }));
+
+        // Overall metrics on the most recent windowSize pairs
+        const overall = computeAgreement(pairs);
+
+        // Per-skill breakdown
+        const skillGroups = new Map<string, typeof pairs>();
+        for (const p of pairs) {
+          if (!p.skill) continue;
+          if (!skillGroups.has(p.skill)) skillGroups.set(p.skill, []);
+          skillGroups.get(p.skill)!.push(p);
+        }
+        const bySkill = Array.from(skillGroups.entries()).map(([skill, sp]) => ({
+          skill,
+          ...computeAgreement(sp),
+        }));
+
+        // Rolling windows (for trend charts)
+        const windows = rollingAgreement(pairs, windowDays);
+        const rollingWindows = windows.map((w) => ({
+          start: w.start.toISOString(),
+          end: w.end.toISOString(),
+          ...w.metrics,
+        }));
+
+        // Drift detection: latest window vs all earlier windows as baseline
+        const driftReport = windows.length >= 2 ? detectDrift(windows) : null;
+
+        res.json({
+          sampleSize: rows.length,
+          overall,
+          bySkill,
+          rollingWindows,
+          driftReport,
+          thresholds: { qwk: 0.80, mae: 0.08, pearsonR: 0.85 },
+          computedAt: new Date().toISOString(),
+        });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
 
   app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
     const reqId = (res.getHeader("x-request-id") as string) || undefined;
