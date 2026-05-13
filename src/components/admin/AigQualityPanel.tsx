@@ -14,41 +14,33 @@ interface AigFunnelStats {
   pretest: number;
   active: number;
   retired: number;
-  totalGenerated: number;
-  survivalDraftToActive: number;   // ratio
-  survivalPretestToActive: number; // ratio
-}
-
-interface CefrAlignmentPoint {
-  cefrLevel: string;
-  predictedB: number;
-  empiricalB: number;
-  itemCount: number;
-  delta: number;
+  pretestSurvivalRate: number | null;
+  calibrationSurvivalRate: number | null;
 }
 
 interface CefrAlignmentStats {
-  pearsonR: number;
-  mae: number;
-  rmse: number;
-  byLevel: CefrAlignmentPoint[];
+  n: number;
+  pearsonR: number | null;
+  mae: number | null;
+  rmse: number | null;
+  byLevel: Record<string, { n: number; predictedBMean: number; empiricalBMean: number; mae: number }>;
 }
 
 interface LargeDeviation {
   itemId: string;
+  skill: string;
   cefrLevel: string;
   predictedB: number;
   empiricalB: number;
-  delta: number;
+  deltaB: number;
+  flagged: boolean;
 }
 
 interface AigQualityReport {
   funnel: AigFunnelStats;
   cefrAlignment: CefrAlignmentStats;
   largeDeviations: LargeDeviation[];
-  computedAt: string;
-  totalActive: number;
-  totalItems: number;
+  generatedAt: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,11 +80,12 @@ function HorizontalBar({
 }
 
 // Mini scatter plot for CEFR alignment
-function AlignmentScatter({ points }: { points: CefrAlignmentPoint[] }) {
+function AlignmentScatter({ byLevel }: { byLevel: Record<string, { n: number; predictedBMean: number; empiricalBMean: number; mae: number }> }) {
+  const points = Object.entries(byLevel).map(([cefrLevel, s]) => ({ cefrLevel, ...s }));
   if (points.length === 0) return null;
 
-  const xs = points.map((p) => p.predictedB);
-  const ys = points.map((p) => p.empiricalB);
+  const xs = points.map((p) => p.predictedBMean);
+  const ys = points.map((p) => p.empiricalBMean);
   const allVals = [...xs, ...ys];
   const minVal = Math.min(...allVals) - 0.5;
   const maxVal = Math.max(...allVals) + 0.5;
@@ -132,17 +125,17 @@ function AlignmentScatter({ points }: { points: CefrAlignmentPoint[] }) {
       {points.map((p) => (
         <g key={p.cefrLevel}>
           <circle
-            cx={toSvgX(p.predictedB)}
-            cy={toSvgY(p.empiricalB)}
-            r={Math.max(5, Math.min(14, Math.sqrt(p.itemCount) * 1.5))}
+            cx={toSvgX(p.predictedBMean)}
+            cy={toSvgY(p.empiricalBMean)}
+            r={Math.max(5, Math.min(14, Math.sqrt(p.n) * 1.5))}
             fill={CEFR_COLORS[p.cefrLevel] ?? "#94a3b8"}
             fillOpacity={0.75}
             stroke="white"
             strokeWidth={1.5}
           />
           <text
-            x={toSvgX(p.predictedB)}
-            y={toSvgY(p.empiricalB) - 9}
+            x={toSvgX(p.predictedBMean)}
+            y={toSvgY(p.empiricalBMean) - 9}
             textAnchor="middle"
             fontSize={9}
             fill="#475569"
@@ -223,30 +216,35 @@ export function AigQualityPanel() {
       {report && (
         <>
           {/* KPI row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard
-              label="Total Generated"
-              value={report.funnel.totalGenerated.toString()}
-              icon={<Activity size={16} className="text-indigo-500" />}
-            />
-            <StatCard
-              label="Active Items"
-              value={report.totalActive.toString()}
-              icon={<CheckCircle2 size={16} className="text-emerald-500" />}
-            />
-            <StatCard
-              label="Draft→Active"
-              value={pct(report.funnel.survivalDraftToActive)}
-              icon={<TrendingUp size={16} className="text-blue-500" />}
-              sub="survival rate"
-            />
-            <StatCard
-              label="Pretest→Active"
-              value={pct(report.funnel.survivalPretestToActive)}
-              icon={<TrendingUp size={16} className="text-violet-500" />}
-              sub="survival rate"
-            />
-          </div>
+          {(() => {
+            const totalGenerated = report.funnel.draft + report.funnel.review + report.funnel.pretest + report.funnel.active + report.funnel.retired;
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <StatCard
+                  label="Total Generated"
+                  value={totalGenerated.toString()}
+                  icon={<Activity size={16} className="text-indigo-500" />}
+                />
+                <StatCard
+                  label="Active Items"
+                  value={report.funnel.active.toString()}
+                  icon={<CheckCircle2 size={16} className="text-emerald-500" />}
+                />
+                <StatCard
+                  label="Pretest→Calibrated"
+                  value={report.funnel.pretestSurvivalRate != null ? pct(report.funnel.pretestSurvivalRate) : "—"}
+                  icon={<TrendingUp size={16} className="text-blue-500" />}
+                  sub="survival rate"
+                />
+                <StatCard
+                  label="Calibrated→Active"
+                  value={report.funnel.calibrationSurvivalRate != null ? pct(report.funnel.calibrationSurvivalRate) : "—"}
+                  icon={<TrendingUp size={16} className="text-violet-500" />}
+                  sub="survival rate"
+                />
+              </div>
+            );
+          })()}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* Funnel chart */}
@@ -266,7 +264,7 @@ export function AigQualityPanel() {
                     key={row.label}
                     label={row.label}
                     value={row.value}
-                    max={report.funnel.totalGenerated}
+                    max={report.funnel.draft + report.funnel.review + report.funnel.pretest + report.funnel.active + report.funnel.retired}
                     colorClass={row.color}
                   />
                 ))}
@@ -278,16 +276,16 @@ export function AigQualityPanel() {
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-slate-700">CEFR Difficulty Alignment</span>
-                  <span className="text-xs text-slate-400">r = {round2(report.cefrAlignment.pearsonR)}</span>
+                  <span className="text-xs text-slate-400">r = {report.cefrAlignment.pearsonR != null ? round2(report.cefrAlignment.pearsonR) : "—"}</span>
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="flex gap-6 items-start flex-wrap">
-                  <AlignmentScatter points={report.cefrAlignment.byLevel} />
+                  <AlignmentScatter byLevel={report.cefrAlignment.byLevel} />
                   <div className="space-y-1.5 text-xs text-slate-600">
-                    <MetricRow label="Pearson r" value={round2(report.cefrAlignment.pearsonR)} good={report.cefrAlignment.pearsonR >= 0.85} />
-                    <MetricRow label="MAE (logits)" value={round2(report.cefrAlignment.mae)} good={report.cefrAlignment.mae <= 0.5} invert />
-                    <MetricRow label="RMSE (logits)" value={round2(report.cefrAlignment.rmse)} good={report.cefrAlignment.rmse <= 0.7} invert />
+                    <MetricRow label="Pearson r" value={report.cefrAlignment.pearsonR != null ? round2(report.cefrAlignment.pearsonR) : "—"} good={(report.cefrAlignment.pearsonR ?? 0) >= 0.85} />
+                    <MetricRow label="MAE (logits)" value={report.cefrAlignment.mae != null ? round2(report.cefrAlignment.mae) : "—"} good={(report.cefrAlignment.mae ?? 1) <= 0.5} invert />
+                    <MetricRow label="RMSE (logits)" value={report.cefrAlignment.rmse != null ? round2(report.cefrAlignment.rmse) : "—"} good={(report.cefrAlignment.rmse ?? 1) <= 0.7} invert />
                   </div>
                 </div>
               </CardContent>
@@ -310,14 +308,14 @@ export function AigQualityPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {report.cefrAlignment.byLevel.map((row) => (
-                      <tr key={row.cefrLevel} className="border-b border-slate-50 hover:bg-slate-50">
-                        <td className="py-1.5 pr-4 font-semibold text-slate-700">{row.cefrLevel}</td>
-                        <td className="py-1.5 pr-4 text-slate-500">{row.itemCount}</td>
-                        <td className="py-1.5 pr-4 font-mono">{round2(row.predictedB)}</td>
-                        <td className="py-1.5 pr-4 font-mono">{round2(row.empiricalB)}</td>
-                        <td className={cn("py-1.5 pr-4 font-mono", Math.abs(row.delta) > 1 ? "text-red-600" : Math.abs(row.delta) > 0.5 ? "text-amber-600" : "text-emerald-600")}>
-                          {row.delta >= 0 ? "+" : ""}{round2(row.delta)}
+                    {Object.entries(report.cefrAlignment.byLevel).map(([level, row]) => (
+                      <tr key={level} className="border-b border-slate-50 hover:bg-slate-50">
+                        <td className="py-1.5 pr-4 font-semibold text-slate-700">{level}</td>
+                        <td className="py-1.5 pr-4 text-slate-500">{row.n}</td>
+                        <td className="py-1.5 pr-4 font-mono">{round2(row.predictedBMean)}</td>
+                        <td className="py-1.5 pr-4 font-mono">{round2(row.empiricalBMean)}</td>
+                        <td className={cn("py-1.5 pr-4 font-mono", row.mae > 1 ? "text-red-600" : row.mae > 0.5 ? "text-amber-600" : "text-emerald-600")}>
+                          {round2(row.mae)}
                         </td>
                       </tr>
                     ))}
@@ -356,7 +354,7 @@ export function AigQualityPanel() {
                           <td className="py-1.5 pr-4 font-mono">{round2(d.predictedB)}</td>
                           <td className="py-1.5 pr-4 font-mono">{round2(d.empiricalB)}</td>
                           <td className="py-1.5 pr-4 font-mono text-red-600 font-semibold">
-                            {d.delta >= 0 ? "+" : ""}{round2(d.delta)}
+                            {d.deltaB >= 0 ? "+" : ""}{round2(d.deltaB)}
                           </td>
                         </tr>
                       ))}
@@ -368,7 +366,7 @@ export function AigQualityPanel() {
           )}
 
           <p className="text-xs text-slate-400 text-right">
-            Computed at {new Date(report.computedAt).toLocaleString()}
+            Generated at {new Date(report.generatedAt).toLocaleString()}
           </p>
         </>
       )}
