@@ -8,6 +8,7 @@ export const SystemConfigPayloadSchema = z
   .object({
     useRtIrt: z.boolean().optional(),
     useGrmProductive: z.boolean().optional(),
+    useRlSelector: z.boolean().optional(),
     useMirt2B: z.boolean().optional(),
     useMirt: z.boolean().optional(),
     useShadowTest: z.boolean().optional(),

@@ -14,7 +14,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { RefreshCw, CheckCircle2, XCircle, ChevronRight, TrendingUp, BarChart2 } from "lucide-react";
+import { RefreshCw, CheckCircle2, XCircle, ChevronRight, TrendingUp, BarChart2, ListChecks } from "lucide-react";
+import { getCanDo, type CanDoDescriptor } from "../lib/cefr/cefr-framework";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
   ResponsiveContainer, Area, AreaChart, Legend,
@@ -121,7 +122,7 @@ interface Props {
 export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
   const [report, setReport] = useState<AdaptiveReport | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"overview" | "items" | "trajectory">("overview");
+  const [tab, setTab] = useState<"overview" | "items" | "trajectory" | "cando">("overview");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   useEffect(() => {
@@ -149,6 +150,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
     { id: "overview"   as const, label: "Overview" },
     { id: "items"      as const, label: `Items (${report.totalItems})` },
     { id: "trajectory" as const, label: "θ Trajectory" },
+    { id: "cando"      as const, label: "Can-Do" },
   ];
 
   // Build theta trajectory dataset for recharts
@@ -452,6 +454,71 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
           </div>
         </motion.div>
       )}
+
+      {/* ── CAN-DO ──────────────────────────────────────────────────────── */}
+      {tab === "cando" && (() => {
+        // Collect can-dos for the achieved level (plus one below for context)
+        const CEFR_ORDER = ["PRE_A1","A1","A2","B1","B2","C1","C2"];
+        const cefrIdx = CEFR_ORDER.indexOf(report.cefrLevel);
+        const levelsToShow = cefrIdx > 0
+          ? [CEFR_ORDER[cefrIdx - 1], report.cefrLevel]
+          : [report.cefrLevel];
+        const DOMAINS: Array<{ id: "reading"|"listening"|"writing"|"speaking"; label: string; color: string }> = [
+          { id: "reading",   label: "Reading",   color: "text-blue-600   bg-blue-50   border-blue-100" },
+          { id: "listening", label: "Listening",  color: "text-cyan-600   bg-cyan-50   border-cyan-100" },
+          { id: "writing",   label: "Writing",    color: "text-emerald-600 bg-emerald-50 border-emerald-100" },
+          { id: "speaking",  label: "Speaking",   color: "text-amber-600  bg-amber-50  border-amber-100" },
+        ];
+        return (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+            <div className="flex items-center gap-2 px-1">
+              <ListChecks className="w-4 h-4 text-indigo-500" />
+              <span className="text-sm font-semibold text-slate-700">
+                CEFR Can-Do Descriptors — {report.cefrLevel.replace("_"," ")}
+              </span>
+              <span className="ml-auto text-xs text-slate-400">Showing achieved level + one below</span>
+            </div>
+            {DOMAINS.map((domain) => (
+              <div key={domain.id} className={`border rounded-xl p-4 space-y-3 ${domain.color.split(" ").slice(1).join(" ")}`}>
+                <h3 className={`text-xs font-black uppercase tracking-widest ${domain.color.split(" ")[0]}`}>
+                  {domain.label}
+                </h3>
+                {levelsToShow.map((lvl) => {
+                  const descriptors = getCanDo(lvl as any, domain.id);
+                  if (!descriptors.length) return null;
+                  const isAchieved = lvl === report.cefrLevel;
+                  return (
+                    <div key={lvl}>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                            isAchieved
+                              ? "bg-indigo-600 text-white"
+                              : "bg-slate-200 text-slate-500"
+                          }`}
+                        >
+                          {lvl.replace("_"," ")}
+                        </span>
+                        {isAchieved && <CheckCircle2 className="w-3 h-3 text-indigo-500" />}
+                      </div>
+                      <ul className="space-y-1">
+                        {descriptors.flatMap((d: CanDoDescriptor) =>
+                          d.descriptors.map((desc, di) => (
+                            <li key={di} className="flex items-start gap-2 text-xs text-slate-700 leading-relaxed">
+                              <span className={`mt-0.5 flex-shrink-0 ${isAchieved ? "text-indigo-400" : "text-slate-300"}`}>✓</span>
+                              <span>{desc}</span>
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </motion.div>
+        );
+      })()}
     </div>
   );
 }

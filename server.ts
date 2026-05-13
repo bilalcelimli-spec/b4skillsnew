@@ -19,6 +19,7 @@ import { validate } from "./src/lib/security/validate.js";
 import * as Schemas from "./src/lib/security/schemas/index.js";
 import { ProgressTracker } from "./src/lib/analytics/progress-tracker.js";
 import { ConcurrentValidityService } from "./src/lib/psychometrics/concurrent-validity.js";
+import { startScheduledJobs } from "./src/lib/jobs/scheduled-jobs.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -10793,6 +10794,8 @@ async function startServer() {
 
   const server = app.listen(PORT, "0.0.0.0", () => {
     logger.info({ port: PORT }, `LinguAdapt Server running on http://localhost:${PORT}`);
+    // Start background scheduled jobs (DIF detection, item retirement) after server is up
+    startScheduledJobs();
   });
 
   // Fix ECONNRESET under load: Render.com load-balancer has a 60 s idle timeout;

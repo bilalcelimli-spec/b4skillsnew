@@ -262,7 +262,8 @@ const DEFAULT_CONFIG: EngineConfig = {
   blueprint: DEFAULT_BLUEPRINT,
   useMirt: true,
   useRtIrt: false,             // Faz4 RT-IRT; enable via SystemConfig
-  useGrmProductive: false,     // Faz5 GRM for W/S; enable via SystemConfig
+  useGrmProductive: process.env.USE_GRM_PRODUCTIVE === "true",  // Faz5 GRM for W/S
+  useRlSelector:   process.env.USE_RL_SELECTOR   === "true",   // RL policy item selection
   useShadowTest: false,        // Shadow test off by default; enable via SystemConfig
   classificationConfidenceThreshold: 0.90,
   cefrThresholds: {
@@ -300,7 +301,8 @@ export async function getEngine(): Promise<AssessmentEngine> {
       const useMirt2B = (config as { useMirt2B?: boolean }).useMirt2B === true;
       const sprt = (config as { sprt?: EngineConfig["sprt"] }).sprt;
       const useRtIrt = (config as { useRtIrt?: boolean }).useRtIrt === true;
-      const useGrmProductive = (config as { useGrmProductive?: boolean }).useGrmProductive === true;
+      const useGrmProductive = (config as { useGrmProductive?: boolean }).useGrmProductive ?? DEFAULT_CONFIG.useGrmProductive;
+      const useRlSelector   = (config as { useRlSelector?:   boolean }).useRlSelector   ?? DEFAULT_CONFIG.useRlSelector;
       engineInstance = new AssessmentEngine({
         ...DEFAULT_CONFIG,
         cefrThresholds,
@@ -310,6 +312,7 @@ export async function getEngine(): Promise<AssessmentEngine> {
         useMirt: useMirt2B ? false : (config as { useMirt?: boolean }).useMirt ?? DEFAULT_CONFIG.useMirt,
         useRtIrt,
         useGrmProductive,
+        useRlSelector,
         ...(sprt?.enabled ? { sprt } : {}),
         ...(mst?.enabled && mst.moduleSizes?.length ? { mst } : {}),
       });
