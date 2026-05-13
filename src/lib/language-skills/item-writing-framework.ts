@@ -459,6 +459,10 @@ export interface IrtParameterNorm {
 }
 
 export const IRT_PARAMETER_NORMS: IrtParameterNorm[] = [
+  // PRE_A1: very easy items — b target −3.5 logits; high p-value (≥0.75)
+  // Basis: extending the A1 anchor point by −1.0 logit per Council of Europe
+  // Can-Do descriptor shift between Pre-A1 and A1 (Linacre, 2012)
+  { level: "PRE_A1", a: { min: 0.3, target: 0.9, max: 2.0 }, b: { min: -5.0, target: -3.5, max: -2.5 }, c: { min: 0.0, target: 0.20, max: 0.33 }, pValue: { min: 0.65, target: 0.80, max: 0.95 }, pointBiserial: { min: 0.20, target: 0.35, max: 0.65 } },
   { level: "A1", a: { min: 0.3, target: 1.0, max: 2.5 }, b: { min: -4.0, target: -2.5, max: -1.5 }, c: { min: 0.0, target: 0.20, max: 0.33 }, pValue: { min: 0.55, target: 0.72, max: 0.90 }, pointBiserial: { min: 0.25, target: 0.40, max: 0.70 } },
   { level: "A2", a: { min: 0.3, target: 1.0, max: 2.5 }, b: { min: -2.5, target: -1.25, max: -0.5 }, c: { min: 0.0, target: 0.20, max: 0.33 }, pValue: { min: 0.50, target: 0.65, max: 0.85 }, pointBiserial: { min: 0.25, target: 0.40, max: 0.70 } },
   { level: "B1", a: { min: 0.3, target: 1.1, max: 2.5 }, b: { min: -1.0, target: 0.0, max: 0.5 }, c: { min: 0.0, target: 0.20, max: 0.30 }, pValue: { min: 0.45, target: 0.58, max: 0.80 }, pointBiserial: { min: 0.25, target: 0.40, max: 0.70 } },

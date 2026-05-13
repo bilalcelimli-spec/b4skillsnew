@@ -47,7 +47,7 @@ import type { ItemGenerationSpec } from "../src/lib/language-skills/item-writing
 const DRY_RUN = process.env.DRY_RUN === "1";
 const FILTER_SKILL = process.env.SKILL?.toUpperCase();
 const FILTER_LEVEL = process.env.LEVEL?.toUpperCase();
-const BATCH_SIZE = Math.min(5, Math.max(1, parseInt(process.env.BATCH_SIZE ?? "3", 10)));
+const BATCH_SIZE = Math.min(5, Math.max(1, parseInt(process.env.BATCH_SIZE ?? "4", 10)));
 const DELAY_MS = parseInt(process.env.DELAY_MS ?? "1500", 10);
 const MIN_QA_SCORE = parseInt(process.env.MIN_QA_SCORE ?? "55", 10);
 
@@ -92,11 +92,12 @@ const CEFR_IRT_TARGETS: Record<string, { b: number; aMin: number; aMax: number; 
 //   - GRAMMAR/VOCABULARY: ≥ 130 per level for stable CAT selection (content blueprint)
 //   - READING/LISTENING: ≥ 70 per level minimum; ≥ 100 for B1-B2 high-traffic
 //   - SPEAKING/WRITING: ≥ 40 per level (holistic scoring; lower pool acceptable)
+// 2026-05 gap analysis: WRITING A1/A2 and LISTENING PRE_A1/A1/A2 are critical gaps.
 // Total target: ~4,700 items (>2× current 2,234)
 const EXPANSION_TARGETS: Record<string, Record<string, number>> = {
   SPEAKING:   { PRE_A1: 40, A1: 50, A2: 50, B1: 60, B2: 70, C1: 70, C2: 35 },
-  WRITING:    { PRE_A1: 40, A1: 50, A2: 50, B1: 60, B2: 70, C1: 70, C2: 35 },
-  LISTENING:  { PRE_A1: 45, A1: 55, A2: 115, B1: 165, B2: 125, C1: 115, C2: 40 },
+  WRITING:    { PRE_A1: 40, A1: 60, A2: 60, B1: 60, B2: 70, C1: 70, C2: 35 },
+  LISTENING:  { PRE_A1: 50, A1: 60, A2: 115, B1: 165, B2: 125, C1: 115, C2: 40 },
   READING:    { PRE_A1: 25, A1: 65, A2: 105, B1: 130, B2: 155, C1: 135, C2: 90 },
   VOCABULARY: { PRE_A1: 65, A1: 185, A2: 200, B1: 225, B2: 205, C1: 190, C2: 100 },
   GRAMMAR:    { PRE_A1: 100, A1: 200, A2: 210, B1: 300, B2: 230, C1: 225, C2: 150 },
