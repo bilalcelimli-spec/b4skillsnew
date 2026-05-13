@@ -26,6 +26,7 @@ import { cn } from "../lib/utils";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { CandidateFeedback } from "./CandidateFeedback";
 import { PracticeMode } from "./PracticeMode";
+import { FaceCapture } from "./FaceCapture";
 import { useTranslation } from "react-i18next";
 import "../lib/i18n/config";
 
@@ -51,6 +52,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'analyzing' | 'success' | 'error'>('idle');
   const [showPractice, setShowPractice] = useState(true);
+  const [showFaceCapture, setShowFaceCapture] = useState(true);
   const [sectionTransition, setSectionTransition] = useState<{ completedSection: string; nextSection: string; sectionIndex: number; totalSections: number } | null>(null);
   const [currentSection, setCurrentSection] = useState<string>('VOCABULARY');
   const [sectionIndex, setSectionIndex] = useState<number>(0);
@@ -363,6 +365,16 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
           Try Reconnecting
         </Button>
       </div>
+    );
+  }
+
+  // Face capture (identity verification) before practice mode
+  if (showFaceCapture) {
+    return (
+      <FaceCapture
+        sessionId={sessionId ?? "pre-session"}
+        onCaptureDone={() => setShowFaceCapture(false)}
+      />
     );
   }
 

@@ -14,8 +14,49 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
   const [warning, setWarning] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // ── 0. Request fullscreen on mount ──────────────────────────────────────
+  useEffect(() => {
+    const el = document.documentElement;
+    if (el.requestFullscreen && !document.fullscreenElement) {
+      el.requestFullscreen().catch(() => {
+        // Browser may refuse (e.g. in iframe) — log but do not block
+        onEvent(ProctoringEventType.FULLSCREEN_EXIT, "LOW", { reason: "fullscreen_request_denied" });
+      });
+    }
+  }, []);
+
+  // ── 0.5. Right-click & DevTools shortcut block ───────────────────────────
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      setWarning("Right-clicking is disabled during the assessment.");
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const blocked =
+        e.key === "F12" ||
+        (e.ctrlKey && e.shiftKey && (e.key === "I" || e.key === "J" || e.key === "C")) ||
+        (e.metaKey && e.altKey && (e.key === "I" || e.key === "J" || e.key === "C")) ||
+        (e.ctrlKey && e.key === "U") ||
+        (e.metaKey && e.key === "U");
+      if (blocked) {
+        e.preventDefault();
+        onEvent(ProctoringEventType.COPY_PASTE, "MEDIUM", { key: e.key, reason: "devtools_shortcut" });
+        setWarning("Developer tools shortcuts are disabled during the assessment.");
+      }
+    };
+
+    document.addEventListener("contextmenu", handleContextMenu);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("contextmenu", handleContextMenu);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [sessionId]);
 
   // 1. Browser Focus & Tab Switching
   useEffect(() => {
@@ -61,12 +102,27 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
     };
   }, [sessionId, tabSwitchCount]);
 
-  // 1.5 Screenshot Simulation
-  const captureScreenshot = (reason: string) => {
-    if (!videoRef.current) return;
-    // In a real app, we'd draw the video frame to a canvas and upload it
-    console.log(`[Proctoring] Screenshot captured for: ${reason}`);
+  // 1.5 Screenshot Capture — draws video frame to canvas and uploads to server
+  const captureScreenshot = async (reason: string) => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = 320;
+    canvas.height = 240;
+    const ctx = canvas.getContext("2d");
+    if (!ctx || video.readyState < 2) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
     onEvent(ProctoringEventType.SCREENSHOT, "LOW", { reason, timestamp: new Date().toISOString() });
+    try {
+      await fetch("/api/proctoring/screenshot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, reason, frame: dataUrl }),
+      });
+    } catch {
+      // Non-blocking — silently ignore network errors during upload
+    }
   };
 
   // 2. Camera Monitoring (Mock Face Detection)
@@ -170,6 +226,8 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
             playsInline 
             className="w-full h-full object-cover opacity-80"
           />
+          {/* Hidden canvas used for frame capture */}
+          <canvas ref={canvasRef} className="hidden" />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent pointer-events-none" />
           
           <div className="absolute bottom-2 left-2 flex items-center gap-2">

@@ -16,6 +16,7 @@ import { AdminDashboard } from "./components/AdminDashboard";
 import { RatingDashboard } from "./components/RatingDashboard";
 import { InstitutionalDashboard } from "./components/InstitutionalDashboard";
 import { CertificateView } from "./components/CertificateView";
+import { VerificationPage } from "./components/VerificationPage";
 import { TestPlayer } from "./components/TestPlayer";
 import { LandingPage } from "./components/LandingPage";
 import { ItemBankManager } from "./components/ItemBankManager";
@@ -146,6 +147,12 @@ export default function App() {
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
       </div>
     );
+  }
+
+  // Public certificate verification page (no auth required)
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has("verify") || urlParams.get("id")) {
+    return <VerificationPage />;
   }
 
   if (showCodeEntry) {

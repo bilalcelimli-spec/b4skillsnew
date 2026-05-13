@@ -43,6 +43,7 @@ import {
 } from "recharts";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
+import { SubScoreRadar } from "../SubScoreRadar";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,22 @@ interface AnalysisData {
     latencyMs: number;
     rtZScore: number | null;
     rtFlag: string | null;
+    transcript?: string;
+    rubricScores?: {
+      grammar?: number;
+      vocabulary?: number;
+      coherence?: number;
+      taskRelevance?: number;
+      fluency?: number;
+    };
+    speakingFeatures?: {
+      pronunciationClarity?: number;
+      lexicalDiversity?: number;
+      grammaticalAccuracy?: number;
+      discourseStructure?: number;
+      speechRate?: number;
+      pauseDuration?: number;
+    };
     item: {
       id: string;
       itemCode: string | null;
@@ -297,13 +314,35 @@ const QuestionDrawer: React.FC<{
             </div>
           )}
 
-          {/* Written / Speaking response */}
-          {options.length === 0 && response.value && (
+          {/* Transcript (Speaking) */}
+          {response.transcript && (
             <div>
-              <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Candidate Response</div>
+              <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Transkript</div>
+              <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-700 leading-relaxed border border-slate-100 italic">
+                {response.transcript}
+              </div>
+            </div>
+          )}
+
+          {/* Written response */}
+          {options.length === 0 && response.value && !response.transcript && (
+            <div>
+              <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Yanıt</div>
               <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-700 leading-relaxed border border-slate-100">
                 {response.value}
               </div>
+            </div>
+          )}
+
+          {/* AI Sub-scores (Writing / Speaking) */}
+          {(response.rubricScores || response.speakingFeatures) && (
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+              <SubScoreRadar
+                rubricScores={response.rubricScores}
+                speakingFeatures={response.speakingFeatures}
+                skill={response.item.skill}
+                size="sm"
+              />
             </div>
           )}
 

@@ -52,6 +52,7 @@ interface ResponseEntry {
 
 interface AdaptiveReport {
   sessionId: string;
+  candidateId?: string;
   candidateName?: string;
   completedAt: string;
   finalTheta: number;
@@ -122,14 +123,29 @@ interface Props {
 export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
   const [report, setReport] = useState<AdaptiveReport | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"overview" | "items" | "trajectory" | "cando">("overview");
+  const [tab, setTab] = useState<"overview" | "items" | "trajectory" | "cando" | "growth">("overview");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [sessionHistory, setSessionHistory] = useState<any[]>([]);
+  const [growthFromId, setGrowthFromId] = useState<string>("");
+  const [growthData, setGrowthData] = useState<any | null>(null);
+  const [growthLoading, setGrowthLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
     fetch(`/api/sessions/${sessionId}/adaptive-report`, { credentials: "include" })
       .then((r) => r.ok ? r.json() : null)
-      .then((d) => { if (d) setReport(d); })
+      .then((d) => {
+        if (d) {
+          setReport(d);
+          // If candidateId is known, pre-fetch history for growth tab
+          if (d.candidateId) {
+            fetch(`/api/candidates/${d.candidateId}/history`, { credentials: "include" })
+              .then((r) => r.ok ? r.json() : [])
+              .then((hist: any[]) => setSessionHistory(hist.filter((s: any) => s.id !== sessionId && s.completedAt)))
+              .catch(() => {});
+          }
+        }
+      })
       .finally(() => setLoading(false));
   }, [sessionId]);
 
@@ -151,6 +167,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
     { id: "items"      as const, label: `Items (${report.totalItems})` },
     { id: "trajectory" as const, label: "θ Trajectory" },
     { id: "cando"      as const, label: "Can-Do" },
+    { id: "growth"     as const, label: "Büyüme" },
   ];
 
   // Build theta trajectory dataset for recharts
@@ -519,6 +536,122 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
           </motion.div>
         );
       })()}
+
+      {/* ─── Growth Tab ──────────────────────────────────────────────── */}
+      {tab === "growth" && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
+          <div className="flex items-center gap-2 px-1">
+            <TrendingUp className="w-4 h-4 text-indigo-500" />
+            <span className="text-sm font-semibold text-slate-700">Büyüme Raporu</span>
+            <span className="ml-auto text-xs text-slate-400">Growth Report</span>
+          </div>
+
+          {/* Session picker */}
+          {sessionHistory.length === 0 ? (
+            <p className="text-center py-8 text-slate-400 text-sm">
+              Bu adaya ait karşılaştırılabilecek başka oturum bulunamadı.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
+                  Karşılaştırılacak Önceki Oturum
+                </label>
+                <select
+                  value={growthFromId}
+                  onChange={(e) => {
+                    setGrowthFromId(e.target.value);
+                    setGrowthData(null);
+                  }}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                >
+                  <option value="">-- Oturum Seçin --</option>
+                  {sessionHistory.map((s: any) => (
+                    <option key={s.id} value={s.id}>
+                      {new Date(s.completedAt).toLocaleDateString("tr-TR")} — {s.cefrLevel ?? "?"} (θ={s.theta?.toFixed(2) ?? "?"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                disabled={!growthFromId || growthLoading}
+                onClick={async () => {
+                  if (!growthFromId || !report.candidateId) return;
+                  setGrowthLoading(true);
+                  try {
+                    const res = await fetch(
+                      `/api/candidates/${report.candidateId}/growth?fromSession=${growthFromId}&toSession=${sessionId}`,
+                      { credentials: "include" }
+                    );
+                    if (res.ok) setGrowthData(await res.json());
+                  } finally {
+                    setGrowthLoading(false);
+                  }
+                }}
+                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm disabled:opacity-50 transition"
+              >
+                {growthLoading ? "Hesaplanıyor…" : "Karşılaştır"}
+              </button>
+            </div>
+          )}
+
+          {/* Growth result */}
+          {growthData && (
+            <div className={`rounded-2xl border p-5 space-y-4 ${growthData.significantGrowth ? "bg-emerald-50 border-emerald-200" : growthData.thetaDelta >= 0 ? "bg-blue-50 border-blue-200" : "bg-red-50 border-red-200"}`}>
+              <div className="flex items-center gap-3">
+                <TrendingUp size={20} className={growthData.thetaDelta >= 0 ? "text-emerald-600" : "text-red-500"} />
+                <div>
+                  <div className="font-black text-slate-900 text-sm">
+                    {growthData.significantGrowth
+                      ? "İstatistiksel Olarak Anlamlı Büyüme"
+                      : growthData.thetaDelta > 0
+                      ? "Pozitif Gelişim (CI Üst Üste)"
+                      : growthData.thetaDelta === 0
+                      ? "Değişim Yok"
+                      : "Gerileme"}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {new Date(growthData.fromDate).toLocaleDateString("tr-TR")} →{" "}
+                    {new Date(growthData.toDate).toLocaleDateString("tr-TR")}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-white rounded-xl p-3 border border-slate-100 text-center">
+                  <div className="text-[9px] font-black uppercase tracking-widest text-slate-400">Θ Farkı</div>
+                  <div className={`text-xl font-black mt-1 ${growthData.thetaDelta >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                    {growthData.thetaDelta > 0 ? "+" : ""}{growthData.thetaDelta.toFixed(3)}
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl p-3 border border-slate-100 text-center">
+                  <div className="text-[9px] font-black uppercase tracking-widest text-slate-400">CEFR</div>
+                  <div className="text-sm font-black mt-1 text-slate-800">
+                    {growthData.cefrFrom} → {growthData.cefrTo}
+                  </div>
+                  {growthData.cefrChange && <div className="text-[9px] text-emerald-600 font-bold">Seviye Atladı 🎉</div>}
+                </div>
+                <div className="bg-white rounded-xl p-3 border border-slate-100 text-center">
+                  <div className="text-[9px] font-black uppercase tracking-widest text-slate-400">CI Çakışma</div>
+                  <div className={`text-sm font-black mt-1 ${growthData.ciOverlap ? "text-amber-600" : "text-emerald-600"}`}>
+                    {growthData.ciOverlap ? "Evet" : "Hayır"}
+                  </div>
+                  <div className="text-[9px] text-slate-400">{growthData.ciOverlap ? "Belirsiz" : "Kesin Büyüme"}</div>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 leading-relaxed">
+                {growthData.significantGrowth
+                  ? "95% güven aralıkları çakışmıyor — büyüme istatistiksel olarak anlamlı."
+                  : growthData.ciOverlap
+                  ? "95% güven aralıkları üst üste geliyor; büyüme gerçek olmakla birlikte ölçüm belirsizliği içinde kalıyor."
+                  : "Gerileme gözlemlenmiş; motivasyon ve çalışma düzenini gözden geçirin."}
+              </p>
+            </div>
+          )}
+        </motion.div>
+      )}
     </div>
   );
 }

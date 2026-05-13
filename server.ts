@@ -1645,7 +1645,9 @@ async function startServer() {
         // Extract AI rubric scores from metadata (stored by scoring-orchestrator)
         const aiResult = meta?.aiFeedback ?? meta?.reviewQueue?.aiResult ?? null;
         const rubricScores = aiResult?.rubricScores ?? meta?.rubricScores ?? undefined;
-        const aiFeedback: string | undefined = aiResult?.feedback ?? meta?.aiFeedback ?? undefined;
+        const speakingFeatures = aiResult?.speakingFeatures ?? meta?.speakingFeatures ?? undefined;
+        const transcript = aiResult?.transcript ?? meta?.transcript ?? undefined;
+        const aiFeedback: string | undefined = aiResult?.feedback ?? meta?.aiFeedbackText ?? undefined;
         return {
           itemId: r["itemId"] as string,
           skill: (r["item"] as any)?.skill ?? "UNKNOWN",
@@ -1655,8 +1657,10 @@ async function startServer() {
           thetaAfter: (r["thetaAfter"] as number | undefined) ?? session.theta,
           semAfter: (r["semAfter"] as number | undefined) ?? session.sem,
           latencyMs: (r["latencyMs"] as number | undefined) ?? 0,
-          ...(rubricScores ? { rubricScores } : {}),
-          ...(aiFeedback   ? { aiFeedback }   : {}),
+          ...(rubricScores     ? { rubricScores }     : {}),
+          ...(speakingFeatures ? { speakingFeatures } : {}),
+          ...(transcript       ? { transcript }       : {}),
+          ...(aiFeedback       ? { aiFeedback }       : {}),
         };
       });
       // Build 6D skill scores from mirtAbilityVector if present
@@ -7177,6 +7181,54 @@ async function startServer() {
     }
   });
 
+  /**
+   * POST /api/proctoring/screenshot
+   * Stores a base64-encoded video frame in the session's proctoring metadata.
+   * Frame is stored as a truncated data URL (first 8 KB retained for storage efficiency).
+   */
+  app.post("/api/proctoring/screenshot", authMiddleware, async (req, res) => {
+    try {
+      const { sessionId, reason, frame } = req.body as {
+        sessionId?: string;
+        reason?: string;
+        frame?: string;
+      };
+      if (!sessionId || !frame) {
+        return res.status(400).json({ error: "sessionId and frame are required" });
+      }
+      // Validate: must be a data URL with JPEG or PNG content
+      if (!/^data:image\/(jpeg|png);base64,/.test(frame)) {
+        return res.status(400).json({ error: "frame must be a JPEG or PNG data URL" });
+      }
+      // Limit stored size to prevent DB bloat (first 8 KB of data URL)
+      const safeFrame = frame.slice(0, 8192);
+      const ts = new Date().toISOString();
+      // Append the snapshot to session metadata.proctoringFrames array
+      const session = await prisma.testSession.findUnique({
+        where: { id: sessionId },
+        select: { metadata: true, userId: true },
+      });
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      const requestUserId = (req as any).user?.id;
+      const requestRole   = (req as any).user?.role;
+      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ORG_ADMIN", "INST_ADMIN"].includes(requestRole);
+      if (!isAdmin && session.userId !== requestUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const meta = ((session.metadata as Record<string, any>) ?? {}) as Record<string, any>;
+      const frames: any[] = Array.isArray(meta.proctoringFrames) ? meta.proctoringFrames : [];
+      // Cap frames array to 20 entries to avoid unbounded growth
+      if (frames.length < 20) frames.push({ ts, reason: reason ?? "unknown", frame: safeFrame });
+      await prisma.testSession.update({
+        where: { id: sessionId },
+        data: { metadata: { ...meta, proctoringFrames: frames } },
+      });
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to store screenshot" });
+    }
+  });
+
   app.get("/api/proctoring/report/:sessionId", async (req, res) => {
     try {
       const { sessionId } = req.params;
@@ -7184,6 +7236,47 @@ async function startServer() {
       res.json(report);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch trust report" });
+    }
+  });
+
+  /**
+   * POST /api/sessions/:id/identity-snapshot
+   * Stores the pre-test face snapshot in session metadata for proctoring review.
+   */
+  app.post("/api/sessions/:id/identity-snapshot", authMiddleware, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { frame } = req.body as { frame?: string };
+      if (!frame) return res.status(400).json({ error: "frame is required" });
+      if (!/^data:image\/(jpeg|png);base64,/.test(frame)) {
+        return res.status(400).json({ error: "frame must be a JPEG or PNG data URL" });
+      }
+      const session = await prisma.testSession.findUnique({
+        where: { id },
+        select: { metadata: true, userId: true },
+      });
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      const requestUserId = (req as any).user?.id;
+      if (session.userId !== requestUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const meta = ((session.metadata as Record<string, any>) ?? {}) as Record<string, any>;
+      // Store only the first 12 KB of the data URL
+      await prisma.testSession.update({
+        where: { id },
+        data: {
+          metadata: {
+            ...meta,
+            identitySnapshot: {
+              capturedAt: new Date().toISOString(),
+              frame: frame.slice(0, 12288),
+            },
+          },
+        },
+      });
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to store identity snapshot" });
     }
   });
 
@@ -9791,19 +9884,29 @@ async function startServer() {
           },
           candidate: session.candidate,
           scoreReport: session.scoreReport,
-          responses: responses.map((r: any) => ({
-            id: r.id,
-            order: r.order,
-            value: r.value,
-            isCorrect: r.isCorrect,
-            score: r.score,
-            aiScore: r.aiScore,
-            humanScore: r.humanScore,
-            latencyMs: r.latencyMs,
-            rtZScore: r.rtZScore,
-            rtFlag: r.rtFlag,
-            item: r.item,
-          })),
+          responses: responses.map((r: any) => {
+            const rMeta = (r.metadata as Record<string, any>) ?? {};
+            const rAiResult = rMeta?.aiFeedback ?? rMeta?.reviewQueue?.aiResult ?? null;
+            const rubricScores = rAiResult?.rubricScores ?? rMeta?.rubricScores ?? undefined;
+            const speakingFeatures = rAiResult?.speakingFeatures ?? rMeta?.speakingFeatures ?? undefined;
+            const transcript = rAiResult?.transcript ?? rMeta?.transcript ?? undefined;
+            return {
+              id: r.id,
+              order: r.order,
+              value: r.value,
+              isCorrect: r.isCorrect,
+              score: r.score,
+              aiScore: r.aiScore,
+              humanScore: r.humanScore,
+              latencyMs: r.latencyMs,
+              rtZScore: r.rtZScore,
+              rtFlag: r.rtFlag,
+              item: r.item,
+              ...(rubricScores     ? { rubricScores }     : {}),
+              ...(speakingFeatures ? { speakingFeatures } : {}),
+              ...(transcript       ? { transcript }       : {}),
+            };
+          }),
           personFit,
           stats: {
             totalItems,
@@ -10348,6 +10451,77 @@ async function startServer() {
     }
   });
 
+  /**
+   * GET /api/candidates/:id/growth
+   * Returns a growth comparison between two sessions for the same candidate.
+   * Both sessions must belong to the given candidate.
+   *
+   * Query params:
+   *   fromSession  — earlier session ID
+   *   toSession    — later   session ID
+   *
+   * Response:
+   *   thetaDelta, semFrom, semTo, ciOverlap (boolean), cefrFrom, cefrTo, cefrChange (boolean)
+   */
+  app.get(
+    "/api/candidates/:id/growth",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "TEACHER", "CANDIDATE"]),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { fromSession, toSession } = req.query as { fromSession?: string; toSession?: string };
+
+        if (!fromSession || !toSession) {
+          return res.status(400).json({ error: "fromSession and toSession query params are required" });
+        }
+
+        const [from, to] = await Promise.all([
+          prisma.session.findUnique({ where: { id: fromSession }, select: { id: true, candidateId: true, theta: true, sem: true, cefrLevel: true, completedAt: true } }),
+          prisma.session.findUnique({ where: { id: toSession },   select: { id: true, candidateId: true, theta: true, sem: true, cefrLevel: true, completedAt: true } }),
+        ]);
+
+        if (!from || !to) return res.status(404).json({ error: "One or both sessions not found" });
+        if (from.candidateId !== id || to.candidateId !== id) {
+          return res.status(403).json({ error: "Sessions do not belong to this candidate" });
+        }
+
+        const thetaDelta    = (to.theta ?? 0) - (from.theta ?? 0);
+        const semFrom       = from.sem ?? 0.3;
+        const semTo         = to.sem   ?? 0.3;
+        // 95% CI overlap: [θ - 1.96σ, θ + 1.96σ]
+        const fromLo = (from.theta ?? 0) - 1.96 * semFrom;
+        const fromHi = (from.theta ?? 0) + 1.96 * semFrom;
+        const toLo   = (to.theta   ?? 0) - 1.96 * semTo;
+        const toHi   = (to.theta   ?? 0) + 1.96 * semTo;
+        const ciOverlap = fromLo <= toHi && toLo <= fromHi;
+
+        const CEFR_ORDER = ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"];
+        const fromIdx     = CEFR_ORDER.indexOf(from.cefrLevel ?? "B1");
+        const toIdx       = CEFR_ORDER.indexOf(to.cefrLevel   ?? "B1");
+        const cefrChange  = toIdx > fromIdx;
+
+        res.json({
+          fromSessionId:  from.id,
+          toSessionId:    to.id,
+          fromDate:       from.completedAt,
+          toDate:         to.completedAt,
+          thetaFrom:      from.theta,
+          thetaTo:        to.theta,
+          thetaDelta:     Math.round(thetaDelta * 1000) / 1000,
+          semFrom,
+          semTo,
+          ciOverlap,
+          cefrFrom:       from.cefrLevel,
+          cefrTo:         to.cefrLevel,
+          cefrChange,
+          significantGrowth: !ciOverlap && thetaDelta > 0,
+        });
+      } catch (err: any) {
+        res.status(500).json({ error: "Failed to compute growth" });
+      }
+    }
+  );
+
   // --- CERTIFICATION API ---
   const { CertificateService } = await import("./src/lib/certification/certificate-service.js");
 
@@ -10369,6 +10543,51 @@ async function startServer() {
       res.json(cert);
     } catch (error) {
       res.status(500).json({ error: "Failed to verify certificate" });
+    }
+  });
+
+  /**
+   * GET /api/verify/:certificateId
+   * Public (unauthenticated) certificate verification endpoint.
+   * Returns a safe, minimal subset of certificate data for third-party institutional checks.
+   * Rate-limited to 20 requests / IP / minute via a simple in-memory sliding window.
+   */
+  const verifyRateMap = new Map<string, number[]>();
+  app.get("/api/verify/:certificateId", async (req, res) => {
+    try {
+      // Rate limit: 20 req / IP / 60 s
+      const ip = req.ip ?? req.socket.remoteAddress ?? "unknown";
+      const now = Date.now();
+      const window = 60_000;
+      const limit  = 20;
+      const hits = (verifyRateMap.get(ip) ?? []).filter((t) => now - t < window);
+      hits.push(now);
+      verifyRateMap.set(ip, hits);
+      if (hits.length > limit) {
+        return res.status(429).json({ error: "Too many verification requests. Please try again later." });
+      }
+
+      const { certificateId } = req.params;
+      if (!/^[a-zA-Z0-9_-]{1,64}$/.test(certificateId)) {
+        return res.status(400).json({ error: "Invalid certificate ID format" });
+      }
+
+      const cert = await CertificateService.verifyCertificate(certificateId);
+      if (!cert) return res.status(404).json({ valid: false, error: "Certificate not found" });
+
+      // Return only publicly shareable fields — no internal IDs except cert ID
+      res.json({
+        valid: true,
+        certificateId: cert.id,
+        candidateName: cert.candidateName,
+        cefrLevel: cert.cefrLevel,
+        issuedAt: cert.issuedAt,
+        expiresAt: cert.expiresAt,
+        organization: cert.organizationName,
+        expired: cert.expiresAt ? new Date(cert.expiresAt) < new Date() : false,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Verification failed" });
     }
   });
 
