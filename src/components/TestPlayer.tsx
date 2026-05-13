@@ -18,7 +18,8 @@ import {
   Headphones,
   Pen,
   Mic as MicIcon,
-  BookMarked
+  BookMarked,
+  TrendingUp
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
@@ -55,6 +56,8 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   const [sectionIndex, setSectionIndex] = useState<number>(0);
   // Track how many items have been answered per section (local, resets on reload)
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({});
+  // Theta trajectory for the real-time adaptivity ladder
+  const [thetaHistory, setThetaHistory] = useState<Array<{ n: number; theta: number; cefr: string }>>([]);
   const responseStartTime = React.useRef<number>(Date.now());
 
   const SECTION_ORDER = ['VOCABULARY', 'GRAMMAR', 'LISTENING', 'READING'];
@@ -229,9 +232,23 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       if (showInsights) {
         const insightsRes = await fetch(`/api/sessions/${sid}/insights`);
         const insightsData = await insightsRes.json();
-        setStatus({ ...data, ...insightsData });
+        const merged = { ...data, ...insightsData };
+        setStatus(merged);
+        // Append theta snapshot to history for the adaptivity ladder
+        if (typeof merged.theta === "number" && merged.cefrLevel) {
+          setThetaHistory(prev => {
+            const n = prev.length + 1;
+            return [...prev, { n, theta: merged.theta, cefr: merged.cefrLevel }];
+          });
+        }
       } else {
         setStatus(data);
+        if (typeof data.theta === "number" && data.cefrLevel) {
+          setThetaHistory(prev => {
+            const n = prev.length + 1;
+            return [...prev, { n, theta: data.theta, cefr: data.cefrLevel }];
+          });
+        }
       }
     } catch (err) {}
   };
@@ -456,6 +473,56 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
                         Estimated: {status.cefrLevel}
                       </div>
                     </div>
+
+                    {/* Theta Adaptivity Ladder */}
+                    {thetaHistory.length > 0 && (
+                      <div className="mb-4">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-2">
+                          <TrendingUp size={11} />
+                          Ability Estimate (adapts after each response)
+                        </div>
+                        {/* CEFR ladder: columns = levels, dots = theta snapshots */}
+                        <div className="bg-white rounded-2xl p-3 border border-indigo-100">
+                          {(() => {
+                            const CEFR_LEVELS = ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"];
+                            const CEFR_LABELS: Record<string, string> = { PRE_A1: "Pre-A1", A1: "A1", A2: "A2", B1: "B1", B2: "B2", C1: "C1", C2: "C2" };
+                            const CEFR_COLORS: Record<string, string> = {
+                              PRE_A1: "bg-slate-300", A1: "bg-sky-400", A2: "bg-blue-400",
+                              B1: "bg-violet-400", B2: "bg-purple-500", C1: "bg-amber-500", C2: "bg-rose-500"
+                            };
+                            const currentLevel = thetaHistory[thetaHistory.length - 1]?.cefr ?? "";
+                            return (
+                              <div className="flex items-end gap-1">
+                                {CEFR_LEVELS.map((lvl) => {
+                                  const visits = thetaHistory.filter(h => h.cefr === lvl).length;
+                                  const isCurrent = lvl === currentLevel;
+                                  return (
+                                    <div key={lvl} className="flex-1 flex flex-col items-center gap-1">
+                                      {/* Bar height proportional to time spent at this level */}
+                                      <div className={cn(
+                                        "w-full rounded-t-lg transition-all duration-500",
+                                        CEFR_COLORS[lvl],
+                                        isCurrent ? "opacity-100 ring-2 ring-indigo-400 ring-offset-1" : "opacity-30"
+                                      )} style={{ height: `${Math.max(4, visits * 8)}px` }} />
+                                      <span className={cn(
+                                        "text-[9px] font-black",
+                                        isCurrent ? "text-indigo-600" : "text-slate-400"
+                                      )}>
+                                        {CEFR_LABELS[lvl]}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                        <p className="text-[9px] text-indigo-400 mt-1 text-center">
+                          The test adjusts difficulty based on your responses.
+                        </p>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       {["Reading", "Listening", "Writing", "Speaking"].map((skill) => (
                         <div key={skill} className="bg-white p-3 rounded-2xl border border-indigo-100/50">
@@ -463,7 +530,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
                           <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
                             <div 
                               className="h-full bg-indigo-500" 
-                              style={{ width: `${Math.random() * 60 + 20}%` }} // Simulated skill progress
+                              style={{ width: `${Math.round((sectionCounts[skill.toUpperCase()] ?? 0) / 10 * 100)}%` }}
                             />
                           </div>
                         </div>

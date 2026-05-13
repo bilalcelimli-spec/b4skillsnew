@@ -9616,14 +9616,62 @@ async function startServer() {
   app.post("/api/sessions/:id/complete", async (req, res) => {
     const { id } = req.params;
     try {
-      await prisma.session.update({
+      // 1. Mark session completed
+      const session = await prisma.session.update({
         where: { id },
         data: { status: "COMPLETED", completedAt: new Date() },
+        include: {
+          responses: {
+            include: { item: { select: { id: true, params: true, type: true, status: true } } },
+            orderBy: { createdAt: "asc" },
+          },
+        },
       });
-      
+
+      // 2. Person-fit analysis (non-blocking — runs after response is sent)
+      setImmediate(async () => {
+        try {
+          const { computePersonFit } = await import("./src/lib/psychometrics/person-fit.js");
+          const responses = session.responses.map((r: any) => ({
+            itemId: r.itemId,
+            score: r.isCorrect === true ? 1 : 0,
+            latencyMs: r.latencyMs ?? undefined,
+            isPretest: r.item?.status === "PRETEST",
+          }));
+          const items = session.responses
+            .map((r: any) => r.item)
+            .filter(Boolean)
+            .filter((item: any, idx: number, arr: any[]) => arr.findIndex((i: any) => i.id === item.id) === idx);
+
+          const theta = session.theta ?? 0;
+          const personFitResult = computePersonFit({ responses, items, theta });
+
+          // Persist to session metadata and optionally mark session FLAGGED
+          const existingMeta = (session.metadata as Record<string, unknown>) ?? {};
+          const updateData: Record<string, unknown> = {
+            metadata: { ...existingMeta, personFit: personFitResult },
+          };
+          if (personFitResult.recommendedAction === "INVALIDATE") {
+            updateData.status = "FLAGGED";
+          }
+
+          await prisma.session.update({ where: { id }, data: updateData });
+
+          if (personFitResult.recommendedAction !== "ACCEPT") {
+            logger.warn(
+              { sessionId: id, flag: personFitResult.flag, lz: personFitResult.lz, rgi: personFitResult.rgi },
+              "person-fit: session flagged"
+            );
+          }
+        } catch (pfErr) {
+          logger.error({ err: pfErr, sessionId: id }, "person-fit computation failed");
+        }
+      });
+
+      // 3. Dispatch webhook
       const { WebhookService } = await import("./src/lib/ecosystem/webhook-service.js");
       await WebhookService.dispatchTestCompleted(id);
-      
+
       res.json({ status: "ok" });
     } catch (err) {
       res.status(500).json({ error: "Failed to complete session" });
