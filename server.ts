@@ -9705,6 +9705,124 @@ async function startServer() {
     }
   });
 
+  // ─── Participant Full Analysis ─────────────────────────────────────────────
+  // Returns all data needed for the ParticipantAnalysisPanel in one request.
+  app.get(
+    "/api/sessions/:id/full-analysis",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "TEACHER", "PROCTOR"]),
+    async (req, res) => {
+      const { id } = req.params;
+      try {
+        const session = await prisma.session.findUnique({
+          where: { id },
+          include: {
+            candidate: { select: { id: true, name: true, email: true } },
+            scoreReport: true,
+            responses: {
+              include: {
+                item: {
+                  select: {
+                    id: true, itemCode: true, type: true, skill: true,
+                    cefrLevel: true, difficulty: true, discrimination: true,
+                    guessing: true, content: true,
+                  },
+                },
+              },
+              orderBy: { order: "asc" },
+            },
+          },
+        });
+
+        if (!session) return res.status(404).json({ error: "Session not found" });
+
+        // ── Aggregate stats ────────────────────────────────────────────────
+        const responses = session.responses as any[];
+        const totalItems  = responses.length;
+        const totalCorrect = responses.filter((r) => r.isCorrect === true).length;
+        const latencies   = responses.map((r) => r.latencyMs ?? 0);
+        const avgLatencyMs = latencies.length
+          ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
+          : 0;
+        const sorted = [...latencies].sort((a, b) => a - b);
+        const medianLatencyMs = sorted.length
+          ? sorted[Math.floor(sorted.length / 2)]
+          : 0;
+        const durationMs = session.startedAt && session.completedAt
+          ? new Date(session.completedAt).getTime() - new Date(session.startedAt).getTime()
+          : null;
+
+        // Per-skill breakdown
+        const SKILLS = ["READING", "LISTENING", "WRITING", "SPEAKING", "GRAMMAR", "VOCABULARY"] as const;
+        const skillBreakdown: Record<string, { total: number; correct: number; avgLatency: number }> = {};
+        for (const skill of SKILLS) {
+          const items = responses.filter((r) => r.item?.skill === skill);
+          const correct = items.filter((r) => r.isCorrect === true).length;
+          const avgLat = items.length
+            ? Math.round(items.reduce((a: number, r: any) => a + (r.latencyMs ?? 0), 0) / items.length)
+            : 0;
+          if (items.length > 0) skillBreakdown[skill] = { total: items.length, correct, avgLatency: avgLat };
+        }
+
+        // Per-CEFR breakdown
+        const CEFRS = ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"] as const;
+        const cefrBreakdown: Record<string, { total: number; correct: number }> = {};
+        for (const level of CEFRS) {
+          const items = responses.filter((r) => r.item?.cefrLevel === level);
+          if (items.length > 0) {
+            cefrBreakdown[level] = {
+              total: items.length,
+              correct: items.filter((r: any) => r.isCorrect === true).length,
+            };
+          }
+        }
+
+        const personFit = (session.metadata as any)?.personFit ?? null;
+
+        res.json({
+          session: {
+            id: session.id,
+            status: session.status,
+            theta: session.theta,
+            sem: session.sem,
+            cefrLevel: session.cefrLevel,
+            startedAt: session.startedAt,
+            completedAt: session.completedAt,
+            responsesCount: session.responsesCount,
+          },
+          candidate: session.candidate,
+          scoreReport: session.scoreReport,
+          responses: responses.map((r: any) => ({
+            id: r.id,
+            order: r.order,
+            value: r.value,
+            isCorrect: r.isCorrect,
+            score: r.score,
+            aiScore: r.aiScore,
+            humanScore: r.humanScore,
+            latencyMs: r.latencyMs,
+            rtZScore: r.rtZScore,
+            rtFlag: r.rtFlag,
+            item: r.item,
+          })),
+          personFit,
+          stats: {
+            totalItems,
+            totalCorrect,
+            pctCorrect: totalItems ? Math.round((totalCorrect / totalItems) * 100) : 0,
+            avgLatencyMs,
+            medianLatencyMs,
+            durationMs,
+            skillBreakdown,
+            cefrBreakdown,
+          },
+        });
+      } catch (err) {
+        logger.error({ err, sessionId: id }, "full-analysis failed");
+        res.status(500).json({ error: "Failed to fetch full analysis" });
+      }
+    }
+  );
+
   app.post("/api/ai/generate-item", async (req, res) => {
     const { skill, level, type } = req.body;
     try {

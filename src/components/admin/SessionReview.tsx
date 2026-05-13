@@ -6,11 +6,13 @@ import {
   Mic, 
   FileText,
   ChevronRight,
-  BarChart3
+  BarChart3,
+  LineChart
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
 import { SpeakingAnalysisDetails } from "./SpeakingAnalysisDetails";
+import { ParticipantAnalysisPanel } from "./ParticipantAnalysisPanel";
 
 interface SessionReviewProps {
   sessionId: string;
@@ -21,6 +23,7 @@ export const SessionReview: React.FC<SessionReviewProps> = ({ sessionId, onBack 
   const [responses, setResponses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedResponse, setSelectedResponse] = useState<any>(null);
+  const [showFullAnalysis, setShowFullAnalysis] = useState(false);
 
   useEffect(() => {
     fetchResponses();
@@ -42,14 +45,33 @@ export const SessionReview: React.FC<SessionReviewProps> = ({ sessionId, onBack 
 
   return (
     <div className="space-y-8">
+      {/* Show full analysis panel as overlay */}
+      {showFullAnalysis && (
+        <ParticipantAnalysisPanel
+          sessionId={sessionId}
+          onBack={() => setShowFullAnalysis(false)}
+        />
+      )}
+
+      {!showFullAnalysis && (
+      <div className="space-y-8">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={onBack} className="rounded-xl">
           <ArrowLeft size={20} />
         </Button>
-        <div>
+        <div className="flex-1">
           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Session Review</h2>
           <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">ID: {sessionId}</div>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowFullAnalysis(true)}
+          className="h-9 text-[10px] font-black uppercase tracking-widest rounded-xl gap-2"
+        >
+          <LineChart size={13} />
+          Detaylı Analiz
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
@@ -167,6 +189,8 @@ export const SessionReview: React.FC<SessionReviewProps> = ({ sessionId, onBack 
           </AnimatePresence>
         </div>
       </div>
+      </div>
+      )}
     </div>
   );
 };

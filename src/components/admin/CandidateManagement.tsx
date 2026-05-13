@@ -12,12 +12,17 @@ import { Key,
   UserPlus,
   RefreshCw,
   Trash2,
-  CheckCircle2
+  CheckCircle2,
+  BarChart2
 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/src/lib/utils";
 
-export const CandidateManagement: React.FC<{ orgId: string, onGenerateCodes?: () => void }> = ({ orgId, onGenerateCodes }) => {
+export const CandidateManagement: React.FC<{
+  orgId: string;
+  onGenerateCodes?: () => void;
+  onViewAnalysis?: (sessionId: string) => void;
+}> = ({ orgId, onGenerateCodes, onViewAnalysis }) => {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -48,7 +53,8 @@ export const CandidateManagement: React.FC<{ orgId: string, onGenerateCodes?: ()
         name: c.name || c.email,
         email: c.email,
         status: c.sessions?.[0]?.status || "REGISTERED",
-        lastActive: c.sessions?.[0]?.completedAt || c.createdAt || null
+        lastActive: c.sessions?.[0]?.completedAt || c.createdAt || null,
+        lastSessionId: c.sessions?.[0]?.id || null,
       }));
       setCandidates(normalized);
     } catch (err) {
@@ -136,6 +142,17 @@ export const CandidateManagement: React.FC<{ orgId: string, onGenerateCodes?: ()
                       </td>
                       <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {cand.lastSessionId && onViewAnalysis && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-slate-400 hover:text-indigo-600"
+                              title="Detaylı Analiz"
+                              onClick={() => onViewAnalysis(cand.lastSessionId)}
+                            >
+                              <BarChart2 size={16} />
+                            </Button>
+                          )}
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-indigo-600">
                             <Mail size={16} />
                           </Button>
