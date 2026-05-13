@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Play, Pause, Volume2, VolumeX, RotateCcw } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX, RotateCcw, Gauge } from "lucide-react";
 import { cn } from "../lib/utils";
 import { motion } from "motion/react";
 
@@ -48,6 +48,10 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1);
   const [audioLoadError, setAudioLoadError] = useState(false);
+  const [speed, setSpeed] = useState<number>(() => {
+    const saved = localStorage.getItem("linguadapt_audio_speed");
+    return saved ? parseFloat(saved) : 1;
+  });
 
   const playsRemaining = maxPlays > 0 ? maxPlays - playCount : Infinity;
   const canPlay = !disabled && playsRemaining > 0;
@@ -174,6 +178,18 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     audioRef.current.pause();
     setIsPlaying(false);
   };
+
+  const handleSpeedChange = (newSpeed: number) => {
+    setSpeed(newSpeed);
+    localStorage.setItem("linguadapt_audio_speed", String(newSpeed));
+    if (audioRef.current) audioRef.current.playbackRate = newSpeed;
+  };
+
+  // Reapply playbackRate after src changes (e.g. new item)
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = speed;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
 
   const handleEnded = () => {
     setIsPlaying(false);
@@ -348,11 +364,31 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           </button>
         </div>
 
-        {/* Time + plays remaining */}
-        <div className="flex items-center gap-4">
+        {/* Time + plays remaining + speed */}
+        <div className="flex items-center gap-3 flex-wrap justify-end">
           <span className="text-sm font-mono text-slate-600">
             {formatTime(currentTime)} / {formatTime(duration)}
           </span>
+          {/* Speed selector */}
+          <div className="flex items-center gap-1" aria-label="Playback speed">
+            <Gauge size={12} className="text-slate-400" aria-hidden="true" />
+            {([0.75, 1, 1.25] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => handleSpeedChange(s)}
+                className={cn(
+                  "px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors",
+                  speed === s
+                    ? "bg-indigo-600 text-white"
+                    : "bg-white text-slate-500 border border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
+                )}
+                aria-label={`Speed ${s}x`}
+                aria-pressed={speed === s}
+              >
+                {s}×
+              </button>
+            ))}
+          </div>
           {maxPlays > 0 && (
             <span className={cn(
               "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider",

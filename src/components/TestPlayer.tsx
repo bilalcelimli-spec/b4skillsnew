@@ -53,6 +53,8 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   const [sectionTransition, setSectionTransition] = useState<{ completedSection: string; nextSection: string; sectionIndex: number; totalSections: number } | null>(null);
   const [currentSection, setCurrentSection] = useState<string>('VOCABULARY');
   const [sectionIndex, setSectionIndex] = useState<number>(0);
+  // Track how many items have been answered per section (local, resets on reload)
+  const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({});
   const responseStartTime = React.useRef<number>(Date.now());
 
   const SECTION_ORDER = ['VOCABULARY', 'GRAMMAR', 'LISTENING', 'READING'];
@@ -314,6 +316,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         setItemFeedback({ error: submitData?.error || "Failed to submit response. Please try again." });
         setUploadStatus('error');
       } else {
+        setSectionCounts(prev => ({ ...prev, [currentSection]: (prev[currentSection] ?? 0) + 1 }));
         fetchNextItem(sessionId);
       }
     } catch (err) {
@@ -406,7 +409,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
             <div
               aria-current={i === sectionIndex ? "step" : undefined}
               className={cn(
-                "text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full transition-all",
+                "flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full transition-all",
                 i < sectionIndex
                   ? `${SECTION_COLORS[sec]} text-white opacity-70`
                   : i === sectionIndex
@@ -415,6 +418,14 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
               )}
             >
               {SECTION_LABELS[sec]}
+              {sectionCounts[sec] ? (
+                <span className={cn(
+                  "ml-1 px-1 rounded text-[9px] font-black leading-none",
+                  i <= sectionIndex ? "bg-white/30" : "bg-slate-200 text-slate-500"
+                )}>
+                  {sectionCounts[sec]}
+                </span>
+              ) : null}
             </div>
             {i < SECTION_ORDER.length - 1 && (
               <ChevronRight size={12} className="text-slate-300" aria-hidden="true" />

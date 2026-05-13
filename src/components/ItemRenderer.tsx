@@ -288,6 +288,97 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
         }
       }
 
+      // READING — sticky question panel: passage scrolls, question stays anchored
+      const isReadingWithPassage = itemSkill === "READING" && !!displayPassage;
+
+      const optionButtons = (
+        <div className="grid grid-cols-1 gap-3" role="radiogroup" aria-labelledby="item-prompt">
+          {content.options?.map((option: any, index: number) => {
+            const optionText = typeof option === "string" ? option : option.text;
+            return (
+              <button
+                key={index}
+                role="radio"
+                aria-checked={selectedOption === index ? "true" : "false"}
+                disabled={disabled}
+                onClick={() => setSelectedOption(index)}
+                className={cn(
+                  "w-full text-left p-5 rounded-2xl border-2 transition-all group focus:ring-4 focus:ring-indigo-100 outline-none",
+                  selectedOption === index
+                    ? "border-indigo-500 bg-indigo-50"
+                    : "border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/50",
+                  "disabled:opacity-50 disabled:cursor-not-allowed"
+                )}
+                aria-label={`Option ${String.fromCharCode(65 + index)}: ${optionText}`}
+              >
+                <div className="flex items-center gap-4">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs transition-colors border",
+                    selectedOption === index
+                      ? "bg-indigo-600 text-white border-indigo-600"
+                      : "bg-slate-50 text-slate-400 group-hover:bg-white group-hover:text-indigo-600 border-slate-100"
+                  )}>
+                    {String.fromCharCode(65 + index)}
+                  </div>
+                  <span className="font-bold text-slate-700 uppercase tracking-tight text-sm">{optionText}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      );
+
+      const confirmBtn = (
+        <div className="pt-4">
+          <button
+            disabled={selectedOption === null || disabled}
+            onClick={() => {
+              if (selectedOption !== null) {
+                const opt = content.options[selectedOption];
+                const answer = (opt && typeof opt === "object" && opt.id) ? opt.id : selectedOption;
+                onResponse(answer);
+                setSelectedOption(null);
+              }
+            }}
+            className={cn(
+              "w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all",
+              selectedOption !== null && !disabled
+                ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100"
+                : "bg-slate-100 text-slate-400 cursor-not-allowed"
+            )}
+          >
+            Confirm Answer
+          </button>
+        </div>
+      );
+
+      if (isReadingWithPassage) {
+        // Split layout: scrollable passage on top, sticky question panel below
+        return (
+          <div className="flex flex-col gap-0" role="form" aria-labelledby="item-prompt">
+            {/* Scrollable passage */}
+            <div
+              className="overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm"
+              style={{ maxHeight: "320px" }}
+              aria-label="Reading passage"
+              tabIndex={0}
+            >
+              <div className="p-6 leading-relaxed text-slate-700">
+                {displayPassage}
+              </div>
+            </div>
+            {/* Sticky question panel */}
+            <div className="sticky bottom-0 bg-white/95 backdrop-blur-sm border border-t-0 border-slate-200 rounded-b-2xl px-6 py-4 space-y-4 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+              <legend id="item-prompt" className="text-base font-black text-slate-900 uppercase tracking-tight">
+                {displayPrompt}
+              </legend>
+              {optionButtons}
+              {confirmBtn}
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="space-y-6" role="form" aria-labelledby="item-prompt">
           {renderPassage(displayPassage)}
@@ -295,60 +386,8 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
             <legend id="item-prompt" className="text-xl font-black text-slate-900 uppercase tracking-tight mb-4">
               {displayPrompt}
             </legend>
-            <div className="grid grid-cols-1 gap-3" role="radiogroup" aria-labelledby="item-prompt">
-              {content.options?.map((option: any, index: number) => {
-                const optionText = typeof option === "string" ? option : option.text;
-                return (
-                <button
-                  key={index}
-                  role="radio"
-                  aria-checked={selectedOption === index ? "true" : "false"}
-                  disabled={disabled}
-                  onClick={() => setSelectedOption(index)}
-                  className={cn(
-                    "w-full text-left p-5 rounded-2xl border-2 transition-all group focus:ring-4 focus:ring-indigo-100 outline-none",
-                    selectedOption === index
-                      ? "border-indigo-500 bg-indigo-50"
-                      : "border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/50",
-                    "disabled:opacity-50 disabled:cursor-not-allowed"
-                  )}
-                  aria-label={`Option ${String.fromCharCode(65 + index)}: ${optionText}`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={cn(
-                      "w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs transition-colors border",
-                      selectedOption === index
-                        ? "bg-indigo-600 text-white border-indigo-600"
-                        : "bg-slate-50 text-slate-400 group-hover:bg-white group-hover:text-indigo-600 border-slate-100"
-                    )}>
-                      {String.fromCharCode(65 + index)}
-                    </div>
-                    <span className="font-bold text-slate-700 uppercase tracking-tight text-sm">{optionText}</span>
-                  </div>
-                </button>
-              )})}
-            </div>
-            <div className="pt-4">
-              <button
-                disabled={selectedOption === null || disabled}
-                onClick={() => {
-                  if (selectedOption !== null) {
-                    const opt = content.options[selectedOption];
-                    const answer = (opt && typeof opt === "object" && opt.id) ? opt.id : selectedOption;
-                    onResponse(answer);
-                    setSelectedOption(null);
-                  }
-                }}
-                className={cn(
-                  "w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all",
-                  selectedOption !== null && !disabled
-                    ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100"
-                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
-                )}
-              >
-                Confirm Answer
-              </button>
-            </div>
+            {optionButtons}
+            {confirmBtn}
           </fieldset>
         </div>
       );
