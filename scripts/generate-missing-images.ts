@@ -209,10 +209,62 @@ function detectVisual(skill: string, c: Record<string, any>): { isVisual: boolea
       "picture 1", "picture 2", "picture a", "picture b", "[image",
     ];
     if (!patterns.some(p => lower.includes(p))) return { isVisual: false, imageDescription: "" };
-    // Extract inline description if present: "It shows people travelling on a train"
-    const descMatch = prompt.match(/(?:shows?|depicts?|of)\s+([^.!?\n]{10,80})/i)
-                   ?? prompt.match(/(?:picture|image)[:\s]+([^.!?\n]{10,80})/i);
-    const imageDescription = descMatch ? descMatch[1].trim() : prompt.slice(0, 100);
+
+    let imageDescription = "";
+
+    // 1. Explicit DESCRIPTION: ... block (highest quality)
+    const explicitBlock = prompt.match(/DESCRIPTION:\s*([^\n]{15,150})/i);
+    if (explicitBlock) {
+      imageDescription = explicitBlock[1].trim();
+    }
+
+    // 2. "Picture 1 shows X, Picture 2 shows Y" — extract Picture 1 subject
+    if (!imageDescription) {
+      const pic1Match = prompt.match(/[Pp]icture\s+(?:1|A|One)\s+shows?\s+([^,.\n]{10,80})/);
+      if (pic1Match) imageDescription = pic1Match[1].trim();
+    }
+
+    // 3. "[image: description]" placeholder
+    if (!imageDescription) {
+      const bracketImg = prompt.match(/\[image[:\s]+([^\]]{5,80})\]/i);
+      if (bracketImg) imageDescription = bracketImg[1].trim();
+    }
+
+    // 4. "shows/depicts/of <subject>" — but skip trailing clause connectors
+    if (!imageDescription) {
+      const showsMatch = prompt.match(/(?:shows?|depicts?)\s+((?:a |an |the )?[a-zA-Z][^,.!?\n]{8,70}?)(?:\s*[,.]|\s+(?:and|then|who|that|which)\b)/i)
+                      ?? prompt.match(/(?:shows?|depicts?)\s+((?:a |an |the )?[a-zA-Z][^.!?\n]{8,70})/i);
+      if (showsMatch) {
+        const cand = showsMatch[1].trim();
+        // Reject if it looks like a question fragment (e.g. "what team was it")
+        if (!/\b(?:what|who|where|when|how|why|which)\b/i.test(cand)) {
+          imageDescription = cand;
+        }
+      }
+    }
+
+    // 5. Subject line immediately after the picture instruction
+    if (!imageDescription) {
+      const lines = prompt.split(/\n+/).map(l => l.trim()).filter(l => l.length > 5);
+      // Find first line that reads like a visual scene description (starts with A/An/The + noun)
+      const sceneLine = lines.find(l =>
+        /^(?:A|An|The|Two|Three|Four|Several|Some|One)\s+[A-Z]/.test(l) &&
+        l.length > 15 && l.length < 130
+      );
+      if (sceneLine) imageDescription = sceneLine.slice(0, 120);
+    }
+
+    // 6. Last resort: first non-instruction line
+    if (!imageDescription) {
+      const firstMeaningful = prompt.split(/\n+/)
+        .map(l => l.trim())
+        .find(l =>
+          l.length > 15 &&
+          !/^(?:look at|describe|tell me|what|answer|please|task|part)/i.test(l)
+        );
+      imageDescription = firstMeaningful?.slice(0, 100) ?? prompt.slice(0, 80);
+    }
+
     return { isVisual: true, imageDescription };
   }
 
@@ -313,8 +365,9 @@ async function main() {
       const c = (item.content ?? {}) as Record<string, any>;
       const { isVisual, imageDescription } = detectVisual(item.skill, c);
       if (!isVisual && !FORCE) return null;
+      const FAKE_URL_PATTERNS = ["placeholder", "example.com", "example_reading_image", "lorem", "your-image", "undefined", "null"];
       const hasUrl = typeof c.imageUrl === "string" && c.imageUrl.trim().length > 0
-        && !c.imageUrl.includes("placeholder") && !c.imageUrl.includes("example.com");
+        && !FAKE_URL_PATTERNS.some(p => c.imageUrl.includes(p));
       if (hasUrl && !FORCE) return null;
       return { ...item, imageDescription };
     })
