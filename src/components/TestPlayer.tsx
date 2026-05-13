@@ -156,51 +156,56 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       // Section transition: show interstitial AND pre-fetch the next item in parallel.
       // The transition screen stays until BOTH the minimum display time (2.5s) AND the
       // next item fetch have completed — eliminating the stale-closure setTimeout bug.
+      // MAX_TRANSITION_DEPTH prevents infinite loops if the server is stuck returning
+      // cascading sectionTransitions (e.g. item bank empty for all remaining sections).
       if (data.sectionTransition) {
-        setSectionTransition({
-          completedSection: data.completedSection,
-          nextSection: data.nextSection,
-          sectionIndex: data.sectionIndex,
-          totalSections: data.totalSections,
-        });
-        setCurrentSection(data.nextSection);
-        setSectionIndex(data.sectionIndex);
-        setLoading(false);
+        const MAX_TRANSITION_DEPTH = 8; // more than the max number of sections in any profile
+        let transitionData = data;
+        let depth = 0;
 
-        const MIN_DISPLAY_MS = 2500;
-        const t0 = Date.now();
-        try {
-          const nextRes = await fetch(`/api/sessions/${sid}/next`);
-          const nextData = await nextRes.json();
-          // Wait for minimum display time
-          const elapsed = Date.now() - t0;
-          if (elapsed < MIN_DISPLAY_MS) {
-            await new Promise<void>(r => setTimeout(r, MIN_DISPLAY_MS - elapsed));
-          }
-          setSectionTransition(null);
-          if (nextData.stop) {
-            setFinished(true);
-            onComplete(nextData.finalTheta, sid);
-          } else if (nextData.sectionTransition) {
-            // Empty section — show briefly then continue
-            setSectionTransition({
-              completedSection: nextData.completedSection,
-              nextSection: nextData.nextSection,
-              sectionIndex: nextData.sectionIndex,
-              totalSections: nextData.totalSections,
-            });
-            setCurrentSection(nextData.nextSection);
-            setSectionIndex(nextData.sectionIndex);
-            await new Promise<void>(r => setTimeout(r, 1500));
+        while (transitionData.sectionTransition && depth < MAX_TRANSITION_DEPTH) {
+          setSectionTransition({
+            completedSection: transitionData.completedSection,
+            nextSection: transitionData.nextSection,
+            sectionIndex: transitionData.sectionIndex,
+            totalSections: transitionData.totalSections,
+          });
+          setCurrentSection(transitionData.nextSection);
+          setSectionIndex(transitionData.sectionIndex);
+          setLoading(false);
+
+          const MIN_DISPLAY_MS = depth === 0 ? 2500 : 1200;
+          const t0 = Date.now();
+          try {
+            const nextRes = await fetch(`/api/sessions/${sid}/next`);
+            const nextData = await nextRes.json();
+            const elapsed = Date.now() - t0;
+            if (elapsed < MIN_DISPLAY_MS) {
+              await new Promise<void>(r => setTimeout(r, MIN_DISPLAY_MS - elapsed));
+            }
             setSectionTransition(null);
-            fetchNextItem(sid);
-          } else {
-            applyNextData(nextData, sid);
+
+            if (nextData.stop) {
+              setFinished(true);
+              onComplete(nextData.finalTheta, sid);
+              return;
+            }
+
+            transitionData = nextData;
+            depth++;
+          } catch {
+            setSectionTransition(null);
+            setError("Failed to fetch next item after section transition.");
+            return;
           }
-        } catch {
-          setSectionTransition(null);
-          setError("Failed to fetch next item after section transition.");
         }
+
+        if (depth >= MAX_TRANSITION_DEPTH) {
+          setError("Assessment encountered an unexpected error (too many consecutive section transitions). Please contact support.");
+          return;
+        }
+
+        applyNextData(transitionData, sid);
         return;
       }
 

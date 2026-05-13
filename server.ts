@@ -1224,6 +1224,40 @@ async function startServer() {
     }
   });
 
+  // --- ITEM BANK COVERAGE (per profile) ---
+  // Returns pass/fail coverage for every product-line profile so admins can
+  // diagnose "exam only shows LISTENING then finishes" — caused by empty sections.
+  app.get("/api/admin/item-bank-coverage", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
+    try {
+      const { PRODUCT_LINE_PROFILES } = await import("./src/lib/product-lines/profiles.js");
+      const { SECTION_CONFIG } = await import("./src/lib/assessment-engine/server-engine.js");
+
+      const coverage: Record<string, { sections: { skill: string; count: number; minRequired: number; sufficient: boolean }[]; allSufficient: boolean }> = {};
+
+      for (const [profileName, profile] of Object.entries(PRODUCT_LINE_PROFILES)) {
+        const sections = await Promise.all(
+          profile.sectionOrder.map(async (skill: string) => {
+            const count = await prisma.item.count({
+              where: { skill: skill as any, status: { in: ["ACTIVE", "PRETEST"] } },
+            });
+            const cfg = (profile.sectionConfig as any)[skill] ?? (SECTION_CONFIG as any)[skill];
+            const minRequired: number = cfg?.minItems ?? 1;
+            return { skill, count, minRequired, sufficient: count >= minRequired };
+          })
+        );
+        coverage[profileName] = {
+          sections,
+          allSufficient: sections.every((s) => s.sufficient),
+        };
+      }
+
+      res.json({ coverage, checkedAt: new Date().toISOString() });
+    } catch (error) {
+      console.error("Item bank coverage error:", error);
+      res.status(500).json({ error: "Failed to check item bank coverage" });
+    }
+  });
+
   // --- ANCHOR SET API ---
   app.get("/api/psychometrics/anchor-set/summary", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
     try {

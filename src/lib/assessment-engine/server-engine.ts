@@ -234,7 +234,7 @@ export const SECTION_ORDER: SkillType[] = [
 // Per-section stopping config.
 // semThreshold: SEM value that triggers early stop (requires minItems already answered).
 // Values are calibrated for typical IRT items with a ≈ 1.0–1.5.
-const SECTION_CONFIG: Record<string, { minItems: number; maxItems: number; semThreshold: number }> = {
+export const SECTION_CONFIG: Record<string, { minItems: number; maxItems: number; semThreshold: number }> = {
   VOCABULARY: { minItems: 6, maxItems: 10, semThreshold: 0.45 },
   GRAMMAR:    { minItems: 5, maxItems: 8,  semThreshold: 0.45 },
   LISTENING:  { minItems: 4, maxItems: 6,  semThreshold: 0.50 },
@@ -360,6 +360,37 @@ export const AssessmentService = {
 
     const initialState = engine.initializeSession();
 
+    // ── ITEM BANK PRE-FLIGHT CHECK ────────────────────────────────────────────
+    // Verify the item bank has at least minItems for every section in the profile
+    // before creating the session. This prevents silent empty-section cascades
+    // where the exam skips sections because the item pool is empty.
+    const profile = getProfile(productLine);
+    const itemCountsBySkill = await Promise.all(
+      profile.sectionOrder.map(async (skill) => {
+        const count = await prisma.item.count({
+          where: { skill: skill as any, status: { in: ["ACTIVE", "PRETEST"] } },
+        });
+        const cfg = profile.sectionConfig[skill as string] ?? SECTION_CONFIG[skill as string];
+        const minRequired = cfg?.minItems ?? 1;
+        return { skill, count, minRequired, sufficient: count >= minRequired };
+      })
+    );
+    const insufficientSections = itemCountsBySkill.filter((s) => !s.sufficient);
+    if (insufficientSections.length > 0) {
+      logger.error(
+        { profileName: profile.name, insufficientSections },
+        "Item bank coverage check failed — session launch blocked"
+      );
+      throw new Error(
+        `Item bank is insufficient for profile "${profile.name}". ` +
+        `The following sections need more ACTIVE/PRETEST items: ` +
+        insufficientSections
+          .map((s) => `${s.skill} (has ${s.count}, needs ${s.minRequired})`)
+          .join(", ") +
+        ". Please add items via the admin console or expand the item bank before launching sessions."
+      );
+    }
+
     const session = await prisma.session.create({
       data: {
         candidateId,
@@ -427,6 +458,36 @@ export const AssessmentService = {
     const currentSkill = activeSectionOrder[sectionIndex];
     const sectionCfg = activeSectionConfig[currentSkill as string] ?? SECTION_CONFIG[currentSkill as string];
 
+    // Guard: if no sectionConfig exists for this skill, skip the section rather than
+    // crashing with a TypeError on sectionCfg.minItems. This can happen when a
+    // product-line profile is missing a config entry for a skill in its sectionOrder.
+    if (!sectionCfg) {
+      logger.error(
+        { sessionId, skill: currentSkill, profileName: profile.name, sectionIndex },
+        "No sectionConfig found for skill — skipping section to prevent TypeError"
+      );
+      const newSectionIndex = sectionIndex + 1;
+      if (newSectionIndex >= activeSectionOrder.length) {
+        await this.finalizeSession(sessionId, session.theta, { stopReason: "ALL_SECTIONS_COMPLETE" });
+        return { stop: true, reason: "ALL_SECTIONS_COMPLETE", finalTheta: session.theta };
+      }
+      const nextSkill = activeSectionOrder[newSectionIndex];
+      await prisma.session.update({
+        where: { id: sessionId },
+        data: { metadata: { ...meta, sectionIndex: newSectionIndex } }
+      });
+      return {
+        stop: false,
+        sectionTransition: true,
+        completedSection: currentSkill as string,
+        nextSection: nextSkill as string,
+        sectionIndex: newSectionIndex,
+        totalSections: activeSectionOrder.length,
+        sectionProgress: 0,
+        reason: "MISSING_SECTION_CONFIG",
+      };
+    }
+
     // Count non-pretest responses for the current skill
     const sectionResponses = session.responses.filter(
       (r) => !r.isPretest && r.item?.skill === (currentSkill as string)
@@ -442,6 +503,10 @@ export const AssessmentService = {
       (skillSem <= sectionCfg.semThreshold || sectionCount >= sectionCfg.maxItems);
 
     if (sectionDone) {
+      logger.info(
+        { sessionId, completedSkill: currentSkill, sectionCount, skillSem, sectionIndex, profileName: profile.name },
+        "Section complete — advancing to next section"
+      );
       const newSectionIndex = sectionIndex + 1;
 
       if (newSectionIndex >= activeSectionOrder.length) {
@@ -583,6 +648,18 @@ export const AssessmentService = {
     const nextItem = catResult?.item ?? null;
     if (!nextItem) {
       // No more items in this section — force advance
+      logger.warn(
+        {
+          sessionId,
+          skill: currentSkill,
+          profileName: profile.name,
+          sectionIndex,
+          sectionCount,
+          usedItemCount: state.usedItemIds.size,
+        },
+        "NO_ITEMS_LEFT_IN_SECTION: item bank exhausted or empty for this skill — force-advancing. " +
+        "Check item bank coverage for this profile and ensure sufficient ACTIVE items exist per section."
+      );
       const newSectionIndex = sectionIndex + 1;
       if (newSectionIndex >= activeSectionOrder.length) {
         await this.finalizeSession(sessionId, session.theta, { stopReason: "ALL_SECTIONS_COMPLETE" });
@@ -847,8 +924,6 @@ export const AssessmentService = {
     //   - focusLossCount = 0 (front-end may supply via a separate endpoint)
     // This is enough for the HMM to classify Engaged vs. Rapid-guess on RT alone.
     if (typeof clientLatencyMs === "number" && clientLatencyMs > 0) {
-      const existingMeta = (session.metadata as Record<string, unknown> | null) ?? {};
-      const existingClickstreams = (existingMeta.clickstreams as unknown[]) ?? [];
       const newClickstreamEntry: ItemClickstream = {
         itemId,
         responseTimeMs: clientLatencyMs,
@@ -858,16 +933,18 @@ export const AssessmentService = {
         revisitCount: 0,
         events: [],
       };
-      // Fire-and-forget: update session metadata with new clickstream entry
-      prisma.session.update({
-        where: { id: sessionId },
-        data: {
-          metadata: {
-            ...existingMeta,
-            clickstreams: [...existingClickstreams, newClickstreamEntry],
-          } as any,
-        },
-      }).catch(() => {});
+      // Fire-and-forget: append ONLY the clickstreams array via jsonb_set so this
+      // write never overwrites concurrently-updated fields (e.g. sectionIndex set
+      // by getNextItem that is already in flight when this promise resolves).
+      prisma.$executeRaw`
+        UPDATE "Session"
+        SET metadata = jsonb_set(
+          COALESCE(metadata, '{}'),
+          '{clickstreams}',
+          COALESCE(metadata->'clickstreams', '[]') || ${JSON.stringify([newClickstreamEntry])}::jsonb
+        )
+        WHERE id = ${sessionId}
+      `.catch(() => {});
     }
 
     return { 
