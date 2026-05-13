@@ -44,9 +44,11 @@ const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
 const UNSPLASH_KEY  = process.env.UNSPLASH_ACCESS_KEY ?? "";
 const DRY_RUN       = process.env.DRY_RUN   === "1";
 const FORCE         = process.env.FORCE     === "1";
-const SKILL_FILTER  = process.env.SKILL?.toUpperCase();
+const SKILL_FILTER  = process.env.SKILL?.toUpperCase();  // set to ALL to process every skill
 const LEVEL_FILTER  = process.env.LEVEL?.toUpperCase();
 const DELAY_MS      = parseInt(process.env.DELAY_MS ?? "800", 10);
+// BATCH_SIZE limits DB fetch to avoid OOM on large banks
+const BATCH_SIZE    = parseInt(process.env.BATCH_SIZE ?? "500", 10);
 
 const LOG_DIR = path.resolve("logs");
 if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -184,18 +186,81 @@ async function unsplashSearch(keywords: string[]): Promise<string | null> {
 // Visual item heuristic (same as audit script)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Per-skill visual detection — mirrors audit-missing-images.ts logic.
+ * Returns { isVisual, imageDescription } where imageDescription is a
+ * human-readable hint for the search query (extracted from the prompt).
+ */
+function detectVisual(skill: string, c: Record<string, any>): { isVisual: boolean; imageDescription: string } {
+  const prompt: string = (c.prompt ?? c.question ?? c.stem ?? c.stimulus ?? "").toString();
+  const lower = prompt.toLowerCase();
+
+  // Already has a valid URL → skip (FORCE overrides this at call site)
+  const existing = (c.imageUrl ?? "").toString().trim();
+  if (existing.length > 0 && !existing.includes("placeholder") && !existing.includes("example.com")) {
+    return { isVisual: false, imageDescription: "" };
+  }
+
+  if (skill === "SPEAKING") {
+    const patterns = [
+      "look at the picture", "look at these", "look at this picture",
+      "describe what you see", "describe the picture", "describe the image",
+      "describe the photo", "the picture shows", "the image shows",
+      "picture 1", "picture 2", "picture a", "picture b", "[image",
+    ];
+    if (!patterns.some(p => lower.includes(p))) return { isVisual: false, imageDescription: "" };
+    // Extract inline description if present: "It shows people travelling on a train"
+    const descMatch = prompt.match(/(?:shows?|depicts?|of)\s+([^.!?\n]{10,80})/i)
+                   ?? prompt.match(/(?:picture|image)[:\s]+([^.!?\n]{10,80})/i);
+    const imageDescription = descMatch ? descMatch[1].trim() : prompt.slice(0, 100);
+    return { isVisual: true, imageDescription };
+  }
+
+  if (skill === "WRITING") {
+    const dataPatterns = [
+      "the chart", "the graph", "the diagram", "the figure",
+      "the table", "the bar chart", "the pie chart", "the line graph",
+      "the infographic", "the map shows", "the plan shows",
+    ];
+    const matched = dataPatterns.find(p => lower.includes(p));
+    if (!matched) return { isVisual: false, imageDescription: "" };
+    const descMatch = prompt.match(/(?:chart|graph|diagram|figure|table)\s+(?:shows?|depicts?)\s+([^.!?\n]{10,80})/i);
+    return { isVisual: true, imageDescription: descMatch ? descMatch[1].trim() : matched.replace("the ", "") };
+  }
+
+  if (skill === "READING" || skill === "LISTENING") {
+    // Only flag explicit [image:] placeholders
+    if (lower.includes("[image:") || lower.includes("[chart:") || lower.includes("[graph:")) {
+      const m = prompt.match(/\[(?:image|chart|graph):([^\]]{5,60})\]/i);
+      return { isVisual: true, imageDescription: m ? m[1].trim() : "visual stimulus" };
+    }
+    if (lower.includes("look at the picture") || lower.includes("look at this image")) {
+      return { isVisual: true, imageDescription: prompt.slice(0, 80) };
+    }
+    return { isVisual: false, imageDescription: "" };
+  }
+
+  // VOCABULARY / GRAMMAR — original logic
+  if (
+    lower.includes("picture") || lower.includes("photo") ||
+    lower.includes("look at") || lower.includes("chart") ||
+    lower.includes("graph")  || lower.includes("diagram") ||
+    lower.includes("figure") || c.imageUrl !== undefined
+  ) {
+    return { isVisual: true, imageDescription: prompt.slice(0, 100) };
+  }
+  return { isVisual: false, imageDescription: "" };
+}
+
+/** Legacy wrapper used by old filter predicate below */
 function isVisualItem(c: Record<string, any>): boolean {
   const prompt: string = c.prompt ?? c.question ?? c.stem ?? "";
   const lower = prompt.toLowerCase();
   return (
-    lower.includes("picture") ||
-    lower.includes("image") ||
-    lower.includes("photo") ||
-    lower.includes("look at") ||
-    lower.includes("chart") ||
-    lower.includes("graph") ||
-    lower.includes("diagram") ||
-    lower.includes("figure") ||
+    lower.includes("picture") || lower.includes("image") ||
+    lower.includes("photo")   || lower.includes("look at") ||
+    lower.includes("chart")   || lower.includes("graph") ||
+    lower.includes("diagram") || lower.includes("figure") ||
     c.imageUrl !== undefined
   );
 }
@@ -226,8 +291,11 @@ async function main() {
   if (LEVEL_FILTER) console.log(`  Level:    ${LEVEL_FILTER}`);
   console.log(`  Log:      ${logPath}\n`);
 
-  const skillFilter = SKILL_FILTER
-    ? [SKILL_FILTER]
+  // ALL = every skill; default = only VOCABULARY + GRAMMAR (original behaviour)
+  const ALL_SKILLS = ["VOCABULARY", "GRAMMAR", "SPEAKING", "WRITING", "READING", "LISTENING"];
+  const skillFilter: string[] =
+    SKILL_FILTER === "ALL" ? ALL_SKILLS
+    : SKILL_FILTER          ? [SKILL_FILTER]
     : ["VOCABULARY", "GRAMMAR"];
 
   const where: Record<string, any> = { skill: { in: skillFilter } };
@@ -236,19 +304,24 @@ async function main() {
   const items = await prisma.item.findMany({
     where,
     select: { id: true, skill: true, cefrLevel: true, content: true },
+    take: BATCH_SIZE,
   });
 
-  // Filter to visual items that need imageUrl
-  const needsImage = items.filter(item => {
-    const c = (item.content ?? {}) as Record<string, any>;
-    if (!isVisualItem(c)) return false;
-    const hasUrl = typeof c.imageUrl === "string" && c.imageUrl.trim().length > 0
-      && !c.imageUrl.includes("placeholder") && !c.imageUrl.includes("example.com");
-    return !hasUrl || FORCE;
-  });
+  // Filter to visual items that genuinely need an imageUrl
+  const needsImage = items
+    .map(item => {
+      const c = (item.content ?? {}) as Record<string, any>;
+      const { isVisual, imageDescription } = detectVisual(item.skill, c);
+      if (!isVisual && !FORCE) return null;
+      const hasUrl = typeof c.imageUrl === "string" && c.imageUrl.trim().length > 0
+        && !c.imageUrl.includes("placeholder") && !c.imageUrl.includes("example.com");
+      if (hasUrl && !FORCE) return null;
+      return { ...item, imageDescription };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
 
-  console.log(`  Total VOCAB/GRAMMAR items:  ${items.length}`);
-  console.log(`  Visual items needing image: ${needsImage.length}\n`);
+  console.log(`  Total items in scope (${skillFilter.join("/")}): ${items.length}`);
+  console.log(`  Visual items needing image:                  ${needsImage.length}\n`);
 
   if (needsImage.length === 0) {
     console.log("  All visual items already have image URLs.\n");
@@ -265,19 +338,21 @@ async function main() {
   for (let i = 0; i < needsImage.length; i++) {
     const item = needsImage[i];
     const c    = (item.content ?? {}) as Record<string, any>;
-    const prompt = c.prompt ?? c.question ?? c.stem ?? "";
+    const prompt = (c.prompt ?? c.question ?? c.stem ?? c.stimulus ?? "").toString();
 
     process.stdout.write(`  [${i + 1}/${needsImage.length}] ${item.id} [${item.skill}/${item.cefrLevel}] ... `);
 
     if (DRY_RUN) {
-      console.log(`DRY_RUN — prompt: "${prompt.slice(0, 60)}"`);
+      console.log(`DRY_RUN — desc: "${(item.imageDescription || prompt).slice(0, 60)}"`);
       patched++;
       continue;
     }
 
     try {
-      // 1. Extract keywords via Gemini
-      const keywords = await extractKeywords(prompt);
+      // 1. Build search hint: prefer per-skill extracted description over raw prompt
+      const searchHint = item.imageDescription || prompt;
+      // 2. Extract keywords via Gemini (pass the richer hint for SPEAKING/WRITING)
+      const keywords = await extractKeywords(searchHint);
 
       // 2. Try Unsplash live search first
       let imageUrl: string | null = null;
