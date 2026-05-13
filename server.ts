@@ -914,6 +914,47 @@ async function startServer() {
     }
   });
 
+  app.post("/api/rating/tasks/:id/claim-second", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { raterId } = req.body;
+      if (!raterId) return res.status(400).json({ error: "raterId required" });
+      const task = await RatingQueueService.claimSecondRating(id, raterId);
+      res.json(task);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message ?? "Failed to claim second rating" });
+    }
+  });
+
+  app.post("/api/rating/tasks/:id/submit-second", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { score, feedback } = req.body;
+      const task = await RatingQueueService.submitSecondRating(id, score, feedback);
+      res.json(task);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message ?? "Failed to submit second rating" });
+    }
+  });
+
+  app.get("/api/rating/stats", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
+    try {
+      const [pending, claimed, completed, flagged] = await Promise.all([
+        prisma.ratingTask.count({ where: { status: "PENDING" } }),
+        prisma.ratingTask.count({ where: { status: "CLAIMED" } }),
+        prisma.ratingTask.count({ where: { status: "COMPLETED" } }),
+        prisma.ratingTask.count({ where: { status: "FLAGGED" } }),
+      ]);
+      const avgQwk = await prisma.ratingTask.aggregate({
+        _avg: { qwk: true },
+        where: { status: "COMPLETED", qwk: { not: null } },
+      });
+      res.json({ pending, claimed, completed, flagged, avgQwk: avgQwk._avg.qwk ?? null });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch rating stats" });
+    }
+  });
+
   // --- BRANDING & ANALYTICS API ---
   const { BrandingService } = await import("./src/lib/tenant/branding-service.js");
   const { AnalyticsService } = await import("./src/lib/analytics/analytics-service.js");
@@ -1598,16 +1639,25 @@ async function startServer() {
       }
       // Build response history with theta trajectory
       const rawResponses = (session as any).responses as Array<Record<string, unknown>>;
-      const responses = rawResponses.map((r) => ({
-        itemId: r["itemId"] as string,
-        skill: (r["item"] as any)?.skill ?? "UNKNOWN",
-        cefrLevel: (r["item"] as any)?.cefrLevel ?? "B1",
-        isCorrect: r["isCorrect"] as boolean | null,
-        score: r["score"] as number | null,
-        thetaAfter: (r["thetaAfter"] as number | undefined) ?? session.theta,
-        semAfter: (r["semAfter"] as number | undefined) ?? session.sem,
-        latencyMs: (r["latencyMs"] as number | undefined) ?? 0,
-      }));
+      const responses = rawResponses.map((r) => {
+        const meta = (r["metadata"] as Record<string, any>) ?? {};
+        // Extract AI rubric scores from metadata (stored by scoring-orchestrator)
+        const aiResult = meta?.aiFeedback ?? meta?.reviewQueue?.aiResult ?? null;
+        const rubricScores = aiResult?.rubricScores ?? meta?.rubricScores ?? undefined;
+        const aiFeedback: string | undefined = aiResult?.feedback ?? meta?.aiFeedback ?? undefined;
+        return {
+          itemId: r["itemId"] as string,
+          skill: (r["item"] as any)?.skill ?? "UNKNOWN",
+          cefrLevel: (r["item"] as any)?.cefrLevel ?? "B1",
+          isCorrect: r["isCorrect"] as boolean | null,
+          score: r["score"] as number | null,
+          thetaAfter: (r["thetaAfter"] as number | undefined) ?? session.theta,
+          semAfter: (r["semAfter"] as number | undefined) ?? session.sem,
+          latencyMs: (r["latencyMs"] as number | undefined) ?? 0,
+          ...(rubricScores ? { rubricScores } : {}),
+          ...(aiFeedback   ? { aiFeedback }   : {}),
+        };
+      });
       // Build 6D skill scores from mirtAbilityVector if present
       const SKILLS = ["READING","LISTENING","WRITING","SPEAKING","GRAMMAR","VOCABULARY"];
       const CEFR_MAP = (t: number) => t > 2.0 ? "C2" : t > 1.0 ? "C1" : t > 0.0 ? "B2" : t > -1.0 ? "B1" : t > -2.0 ? "A2" : "A1";

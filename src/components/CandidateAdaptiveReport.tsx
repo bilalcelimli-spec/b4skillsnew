@@ -14,7 +14,11 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { RefreshCw, CheckCircle2, XCircle, ChevronRight, TrendingUp } from "lucide-react";
+import { RefreshCw, CheckCircle2, XCircle, ChevronRight, TrendingUp, BarChart2 } from "lucide-react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
+  ResponsiveContainer, Area, AreaChart, Legend,
+} from "recharts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +26,14 @@ interface SkillScore {
   skill: string;
   theta: number;
   cefrLevel: string;
+}
+
+interface RubricScores {
+  grammar?: number;
+  vocabulary?: number;
+  coherence?: number;
+  taskRelevance?: number;
+  fluency?: number;
 }
 
 interface ResponseEntry {
@@ -33,6 +45,8 @@ interface ResponseEntry {
   thetaAfter: number;
   semAfter: number;
   latencyMs: number;
+  rubricScores?: RubricScores;
+  aiFeedback?: string;
 }
 
 interface AdaptiveReport {
@@ -56,6 +70,20 @@ const CEFR_COLORS: Record<string, string> = {
 };
 
 const SKILL_COLORS = ["#4f46e5","#0891b2","#059669","#d97706","#7c3aed","#db2777"];
+const SKILL_LABELS: Record<string, string> = {
+  READING: "Reading", LISTENING: "Listening", WRITING: "Writing",
+  SPEAKING: "Speaking", GRAMMAR: "Grammar", VOCABULARY: "Vocabulary",
+};
+
+// CEFR theta thresholds for reference lines on trajectory chart
+const CEFR_LINES = [
+  { theta: -2.5, label: "A1", color: "#64748b" },
+  { theta: -1.5, label: "A2", color: "#0284c7" },
+  { theta: -0.5, label: "B1", color: "#0891b2" },
+  { theta:  0.5, label: "B2", color: "#059669" },
+  { theta:  1.5, label: "C1", color: "#7c3aed" },
+  { theta:  2.5, label: "C2", color: "#db2777" },
+];
 
 function ThetaBar({ theta, sem, color }: { theta: number; sem: number; color: string }) {
   const pct = Math.max(0, Math.min(100, ((theta + 3) / 6) * 100));
@@ -94,6 +122,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
   const [report, setReport] = useState<AdaptiveReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"overview" | "items" | "trajectory">("overview");
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -122,8 +151,15 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
     { id: "trajectory" as const, label: "θ Trajectory" },
   ];
 
-  // Build theta trajectory from responses
-  const trajectory = report.responses.map((r, i) => ({ i: i + 1, theta: r.thetaAfter, sem: r.semAfter }));
+  // Build theta trajectory dataset for recharts
+  const trajectory = report.responses.map((r, i) => ({
+    item: i + 1,
+    theta: parseFloat(r.thetaAfter.toFixed(3)),
+    upper: parseFloat((r.thetaAfter + r.semAfter).toFixed(3)),
+    lower: parseFloat((r.thetaAfter - r.semAfter).toFixed(3)),
+    skill: r.skill,
+    cefr: r.cefrLevel,
+  }));
 
   return (
     <div className="space-y-5">
@@ -247,35 +283,71 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
                     <th className="text-right px-3 py-2.5 font-medium">θ after</th>
                     <th className="text-right px-3 py-2.5 font-medium">SEM</th>
                     <th className="text-right px-3 py-2.5 font-medium">Latency</th>
+                    <th className="text-center px-3 py-2.5 font-medium">Rubric</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {report.responses.map((r, i) => (
-                    <tr key={r.itemId + i} className="hover:bg-slate-50">
-                      <td className="px-3 py-2 text-center text-slate-400">{i + 1}</td>
-                      <td className="px-3 py-2 text-slate-600">{r.skill}</td>
-                      <td className="px-3 py-2">
-                        <span className="px-1.5 py-0.5 rounded text-xs font-medium"
-                          style={{ backgroundColor: `${CEFR_COLORS[r.cefrLevel] ?? "#94a3b8"}20`, color: CEFR_COLORS[r.cefrLevel] ?? "#64748b" }}>
-                          {r.cefrLevel.replace("_", " ")}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        {r.isCorrect === true || (r.score ?? 0) >= 0.5
-                          ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" />
-                          : <XCircle className="w-4 h-4 text-red-400 mx-auto" />
-                        }
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-700">
-                        {r.thetaAfter >= 0 ? "+" : ""}{r.thetaAfter.toFixed(3)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-500">
-                        {r.semAfter.toFixed(3)}
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-500">
-                        {r.latencyMs > 0 ? `${(r.latencyMs / 1000).toFixed(1)}s` : "—"}
-                      </td>
-                    </tr>
+                    <>
+                      <tr
+                        key={r.itemId + i}
+                        className="hover:bg-slate-50 cursor-pointer"
+                        onClick={() => setExpandedRow(expandedRow === r.itemId + i ? null : r.itemId + i)}
+                      >
+                        <td className="px-3 py-2 text-center text-slate-400">{i + 1}</td>
+                        <td className="px-3 py-2 text-slate-600">{SKILL_LABELS[r.skill] ?? r.skill}</td>
+                        <td className="px-3 py-2">
+                          <span className="px-1.5 py-0.5 rounded text-xs font-medium"
+                            style={{ backgroundColor: `${CEFR_COLORS[r.cefrLevel] ?? "#94a3b8"}20`, color: CEFR_COLORS[r.cefrLevel] ?? "#64748b" }}>
+                            {r.cefrLevel.replace("_", " ")}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {r.isCorrect === true || (r.score ?? 0) >= 0.5
+                            ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" />
+                            : <XCircle className="w-4 h-4 text-red-400 mx-auto" />
+                          }
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-slate-700">
+                          {r.thetaAfter >= 0 ? "+" : ""}{r.thetaAfter.toFixed(3)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-slate-500">
+                          {r.semAfter.toFixed(3)}
+                        </td>
+                        <td className="px-3 py-2 text-right text-slate-500">
+                          {r.latencyMs > 0 ? `${(r.latencyMs / 1000).toFixed(1)}s` : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {r.rubricScores ? (
+                            <BarChart2 className="w-3.5 h-3.5 text-indigo-400 mx-auto" />
+                          ) : <span className="text-slate-200">—</span>}
+                        </td>
+                      </tr>
+                      {/* Expanded rubric row */}
+                      {expandedRow === r.itemId + i && r.rubricScores && (
+                        <tr key={`${r.itemId}${i}-rubric`} className="bg-indigo-50/60">
+                          <td colSpan={8} className="px-5 py-3">
+                            <div className="space-y-1.5">
+                              {Object.entries(r.rubricScores).map(([dim, val]) => val != null && (
+                                <div key={dim} className="flex items-center gap-3">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 w-24">{dim}</span>
+                                  <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full transition-all"
+                                      style={{ width: `${(val as number) * 10}%`, backgroundColor: cefrColor }}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] font-mono text-slate-600 w-6 text-right">{(val as number).toFixed(1)}</span>
+                                </div>
+                              ))}
+                              {r.aiFeedback && (
+                                <p className="text-xs text-indigo-700 italic mt-2 border-t border-indigo-100 pt-2">"{r.aiFeedback}"</p>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   ))}
                 </tbody>
               </table>
@@ -286,52 +358,97 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
 
       {/* ── TRAJECTORY ───────────────────────────────────────────────────── */}
       {tab === "trajectory" && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <div className="border border-slate-200 rounded-xl p-4 bg-white">
-            <p className="text-sm font-medium text-slate-700 mb-4">θ Convergence Trajectory</p>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+          <div className="border border-slate-200 rounded-xl p-5 bg-white">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm font-semibold text-slate-700">θ Convergence Trajectory</p>
+              <p className="text-xs text-slate-400">Band = ±1 SEM · narrower = higher precision</p>
+            </div>
             {trajectory.length < 2 ? (
-              <p className="text-xs text-slate-400 text-center py-6">Need at least 2 items for trajectory.</p>
+              <p className="text-xs text-slate-400 text-center py-8">Need at least 2 items.</p>
             ) : (
-              <div className="relative h-40 bg-slate-50 rounded-lg overflow-hidden px-4 py-2">
-                <svg viewBox={`0 0 ${trajectory.length * 20} 100`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full">
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={trajectory} margin={{ top: 8, right: 24, bottom: 0, left: -10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis
+                    dataKey="item"
+                    tick={{ fontSize: 11, fill: "#94a3b8" }}
+                    label={{ value: "Item #", position: "insideBottom", offset: -2, fontSize: 11, fill: "#94a3b8" }}
+                  />
+                  <YAxis
+                    domain={[-3.5, 3.5]}
+                    tick={{ fontSize: 11, fill: "#94a3b8", fontFamily: "monospace" }}
+                    tickFormatter={(v: number) => v >= 0 ? `+${v.toFixed(1)}` : v.toFixed(1)}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0].payload as typeof trajectory[number];
+                      return (
+                        <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-lg text-xs">
+                          <p className="font-bold text-slate-700">Item {d.item} · {d.skill}</p>
+                          <p className="font-mono" style={{ color: cefrColor }}>θ = {d.theta >= 0 ? "+" : ""}{d.theta.toFixed(3)}</p>
+                          <p className="text-slate-400">SEM band [{d.lower.toFixed(2)}, {d.upper.toFixed(2)}]</p>
+                          <p className="text-slate-500">{d.cefr.replace("_", " ")}</p>
+                        </div>
+                      );
+                    }}
+                  />
+                  {/* CEFR reference lines */}
+                  {CEFR_LINES.map((cl) => (
+                    <ReferenceLine
+                      key={cl.label}
+                      y={cl.theta}
+                      stroke={cl.color}
+                      strokeDasharray="4 4"
+                      strokeOpacity={0.5}
+                      label={{ value: cl.label, position: "right", fontSize: 10, fill: cl.color }}
+                    />
+                  ))}
                   {/* SEM band */}
-                  <path
-                    d={[
-                      ...trajectory.map((p, i) => `${i === 0 ? "M" : "L"} ${i * 20 + 10} ${50 - ((p.theta + p.sem + 3) / 6) * 80}`),
-                      ...trajectory.map((p, i) => `${i === 0 ? "L" : "L"} ${(trajectory.length - 1 - i) * 20 + 10} ${50 - ((trajectory[trajectory.length - 1 - i].theta - trajectory[trajectory.length - 1 - i].sem + 3) / 6) * 80}`),
-                      "Z"
-                    ].join(" ")}
+                  <Area
+                    type="monotone"
+                    dataKey="upper"
+                    stroke="none"
                     fill={cefrColor}
-                    fillOpacity="0.1"
+                    fillOpacity={0.08}
+                    legendType="none"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="lower"
+                    stroke="none"
+                    fill="white"
+                    fillOpacity={1}
+                    legendType="none"
                   />
                   {/* Theta line */}
-                  <polyline
-                    points={trajectory.map((p, i) => `${i * 20 + 10},${50 - ((p.theta + 3) / 6) * 80}`).join(" ")}
-                    fill="none"
+                  <Line
+                    type="monotone"
+                    dataKey="theta"
                     stroke={cefrColor}
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    dot={(props: any) => {
+                      const { cx, cy, payload } = props;
+                      const skillIdx = ["READING","LISTENING","WRITING","SPEAKING","GRAMMAR","VOCABULARY"].indexOf(payload.skill);
+                      const dotColor = skillIdx >= 0 ? SKILL_COLORS[skillIdx] : cefrColor;
+                      return <circle key={payload.item} cx={cx} cy={cy} r={3.5} fill={dotColor} stroke="white" strokeWidth={1.5} />;
+                    }}
+                    activeDot={{ r: 5, stroke: cefrColor, strokeWidth: 2 }}
+                    name="θ estimate"
                   />
-                  {/* Final point */}
-                  <circle
-                    cx={(trajectory.length - 1) * 20 + 10}
-                    cy={50 - ((trajectory[trajectory.length - 1].theta + 3) / 6) * 80}
-                    r="3"
-                    fill={cefrColor}
-                  />
-                </svg>
-                {/* Y axis labels */}
-                <div className="absolute inset-y-2 left-0 flex flex-col justify-between text-xs text-slate-400 font-mono">
-                  <span>+3</span>
-                  <span>0</span>
-                  <span>−3</span>
-                </div>
-              </div>
+                </AreaChart>
+              </ResponsiveContainer>
             )}
-            <p className="text-xs text-slate-400 mt-2">
-              Band = ±1 SEM. Line converges as more items are administered — narrower band indicates higher measurement precision.
-            </p>
+          </div>
+          {/* Skill colour legend */}
+          <div className="flex flex-wrap gap-3 px-1">
+            {["READING","LISTENING","WRITING","SPEAKING","GRAMMAR","VOCABULARY"].map((sk, i) => (
+              <div key={sk} className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: SKILL_COLORS[i] }} />
+                <span className="text-xs text-slate-500">{SKILL_LABELS[sk]}</span>
+              </div>
+            ))}
           </div>
         </motion.div>
       )}
