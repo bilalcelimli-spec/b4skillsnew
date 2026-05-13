@@ -31,6 +31,7 @@ jobs:
       BASE_URL: ${{ secrets.APP_URL }}
       AUTH_EMAIL: ${{ secrets.AUTH_SMOKE_EMAIL }}
       AUTH_PASSWORD: ${{ secrets.AUTH_SMOKE_PASSWORD }}
+      DEPLOY_ALERT_WEBHOOK_URL: ${{ secrets.DEPLOY_ALERT_WEBHOOK_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -43,7 +44,7 @@ jobs:
       - name: Run auth smoke test
         run: npm run smoke:auth
       - name: Optional failure webhook
-        if: failure() && secrets.DEPLOY_ALERT_WEBHOOK_URL != ''
+        if: failure() && env.DEPLOY_ALERT_WEBHOOK_URL != ''
         run: |
           curl -fsSL -X POST "${{ secrets.DEPLOY_ALERT_WEBHOOK_URL }}" \
             -H "Content-Type: application/json" \
