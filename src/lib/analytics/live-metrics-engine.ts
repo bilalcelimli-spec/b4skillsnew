@@ -8,6 +8,11 @@
  * - Pretest pipeline health
  * - Retirement flags
  * - MIRT dimension tracking
+ *
+ * Performance notes (Sprint 2 refactor):
+ *   - computeSkillMetrics: 6 identical session scans → 1 query + 1 aggregate
+ *   - computeItemDifficultyDistribution: 7 CEFR-filtered queries → 1 groupBy
+ *   - computePretestPipelineMetrics: N+N response.count loops → 1 groupBy
  */
 
 import { prisma } from "../prisma.js";
@@ -121,11 +126,14 @@ export class LiveMetricsEngine {
 
   /**
    * Per-skill ability distribution with CEFR breakdown.
+   *
+   * Refactored (Sprint 2): was 6 identical session.findMany() + 6 response.findMany()
+   * calls inside a skill loop. Now: 1 session fetch + 1 response groupBy aggregate.
    */
   private static async computeSkillMetrics(
     organizationId: string
   ): Promise<SkillMetrics[]> {
-    const skills: SkillType[] = [
+    const skillOrder: SkillType[] = [
       "READING",
       "LISTENING",
       "WRITING",
@@ -134,109 +142,124 @@ export class LiveMetricsEngine {
       "VOCABULARY",
     ];
 
+    // ── 1 query: all sessions for this org ──────────────────────────────────
+    const allSessions = await prisma.session.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        theta: true,
+        cefrLevel: true,
+        responsesCount: true,
+        metadata: true, // contains skillProfiles
+      },
+    });
+
+    if (allSessions.length === 0) {
+      return skillOrder.map((skill) => ({
+        skill,
+        candidates: 0,
+        avgTheta: 0,
+        stdTheta: 0,
+        avgResponses: 0,
+        byCSfR: {},
+      }));
+    }
+
+    // ── 1 query: skill-tagged response scores for all sessions ───────────────
+    const sessionIds = allSessions.map((s) => s.id);
+    const allSkillResponses = await prisma.response.findMany({
+      where: { sessionId: { in: sessionIds } },
+      select: {
+        sessionId: true,
+        score: true,
+        item: { select: { skill: true } },
+      },
+    });
+
+    // Pre-group responses by skill then by sessionId for O(1) look-up
+    const responsesBySkill = new Map<SkillType, Map<string, number[]>>();
+    for (const r of allSkillResponses) {
+      const skill = r.item?.skill as SkillType | undefined;
+      if (!skill || r.score === null) continue;
+      if (!responsesBySkill.has(skill)) responsesBySkill.set(skill, new Map());
+      const bySession = responsesBySkill.get(skill)!;
+      if (!bySession.has(r.sessionId)) bySession.set(r.sessionId, []);
+      bySession.get(r.sessionId)!.push(r.score);
+    }
+
+    const cefrLevels: CefrLevel[] = [
+      "PRE_A1" as CefrLevel,
+      "A1" as CefrLevel,
+      "A2" as CefrLevel,
+      "B1" as CefrLevel,
+      "B2" as CefrLevel,
+      "C1" as CefrLevel,
+      "C2" as CefrLevel,
+    ];
+
+    // ── Process each skill in JS (no additional DB calls) ───────────────────
     const metrics: SkillMetrics[] = [];
 
-    for (const skill of skills) {
-      const sessions = await prisma.session.findMany({
-        where: { organizationId },
-        select: {
-          id: true,
-          theta: true,
-          cefrLevel: true,
-          responsesCount: true,
-          metadata: true, // Contains skillProfiles
-        },
-      });
+    for (const skill of skillOrder) {
+      const skillResponsesBySession = responsesBySkill.get(skill) ?? new Map<string, number[]>();
 
-      if (sessions.length === 0) {
-        metrics.push({
-          skill,
-          candidates: 0,
-          avgTheta: 0,
-          stdTheta: 0,
-          avgResponses: 0,
-          byCSfR: {},
-        });
-        continue;
-      }
-
-      // Extract skill-specific thetas from session metadata
-      const skillThetas = sessions
-        .map((s) => {
-          const profiles = (s.metadata as any)?.skillProfiles || {};
-          return profiles[skill] || s.theta;
-        })
-        .filter((t) => Number.isFinite(t));
-
-      const avgTheta = skillThetas.reduce((a, b) => a + b, 0) / skillThetas.length;
-      const variance =
-        skillThetas.reduce((a, t) => a + (t - avgTheta) ** 2, 0) / skillThetas.length;
-      const stdTheta = Math.sqrt(variance);
-
-      const avgResponses =
-        sessions.reduce((a, s) => a + s.responsesCount, 0) / sessions.length;
-
-      // By CEFR
-      const byCefr: Record<string, { count: number; avgTheta: number; avgScore: number }> = {};
-      const cefrLevels: CefrLevel[] = [
-        "PRE_A1" as CefrLevel,
-        "A1" as CefrLevel,
-        "A2" as CefrLevel,
-        "B1" as CefrLevel,
-        "B2" as CefrLevel,
-        "C1" as CefrLevel,
-        "C2" as CefrLevel,
-      ];
-
-      // Fetch skill-specific response scores for this org's sessions in one query
-      const sessionIds = sessions.map((s) => s.id);
-      const skillResponses = sessionIds.length > 0
-        ? await prisma.response.findMany({
-            where: { sessionId: { in: sessionIds }, item: { skill } },
-            select: { sessionId: true, score: true },
-          })
-        : [];
-      // Map sessionId → mean score for this skill
+      // Mean session score per sessionId for this skill
       const scoreBySession = new Map<string, number>();
-      const scoresBySession = new Map<string, number[]>();
-      for (const r of skillResponses) {
-        if (r.score !== null) {
-          if (!scoresBySession.has(r.sessionId)) scoresBySession.set(r.sessionId, []);
-          scoresBySession.get(r.sessionId)!.push(r.score);
-        }
-      }
-      for (const [sid, scores] of scoresBySession) {
+      for (const [sid, scores] of skillResponsesBySession) {
         scoreBySession.set(sid, scores.reduce((a, b) => a + b, 0) / scores.length);
       }
 
+      // Extract skill-specific thetas from session metadata
+      const skillThetas = allSessions
+        .map((s) => {
+          const profiles = (s.metadata as any)?.skillProfiles || {};
+          return profiles[skill] ?? s.theta;
+        })
+        .filter((t) => Number.isFinite(t));
+
+      const avgTheta = skillThetas.length > 0
+        ? skillThetas.reduce((a, b) => a + b, 0) / skillThetas.length
+        : 0;
+      const variance = skillThetas.length > 0
+        ? skillThetas.reduce((a, t) => a + (t - avgTheta) ** 2, 0) / skillThetas.length
+        : 0;
+      const stdTheta = Math.sqrt(variance);
+
+      const avgResponses =
+        allSessions.reduce((a, s) => a + s.responsesCount, 0) / allSessions.length;
+
+      // Per-CEFR breakdown
+      const byCefr: Record<string, { count: number; avgTheta: number; avgScore: number }> = {};
+
       for (const cefr of cefrLevels) {
-        const cefrSessions = sessions.filter((s) => s.cefrLevel === cefr);
-        if (cefrSessions.length > 0) {
-          const cefrThetas = cefrSessions
-            .map((s) => {
-              const profiles = (s.metadata as any)?.skillProfiles || {};
-              return profiles[skill] || s.theta;
-            })
-            .filter((t) => Number.isFinite(t));
+        const cefrSessions = allSessions.filter((s) => s.cefrLevel === cefr);
+        if (cefrSessions.length === 0) continue;
 
-          const cefrScores = cefrSessions
-            .map((s) => scoreBySession.get(s.id))
-            .filter((v): v is number => v !== undefined);
-          const avgScore = cefrScores.length > 0
+        const cefrThetas = cefrSessions
+          .map((s) => {
+            const profiles = (s.metadata as any)?.skillProfiles || {};
+            return profiles[skill] ?? s.theta;
+          })
+          .filter((t) => Number.isFinite(t));
+
+        const cefrScores = cefrSessions
+          .map((s) => scoreBySession.get(s.id))
+          .filter((v): v is number => v !== undefined);
+
+        byCefr[cefr] = {
+          count: cefrSessions.length,
+          avgTheta: cefrThetas.length > 0
+            ? cefrThetas.reduce((a, b) => a + b, 0) / cefrThetas.length
+            : 0,
+          avgScore: cefrScores.length > 0
             ? cefrScores.reduce((a, b) => a + b, 0) / cefrScores.length
-            : 0;
-
-          byCefr[cefr] = {
-            count: cefrSessions.length,
-            avgTheta: cefrThetas.reduce((a, b) => a + b, 0) / cefrThetas.length,
-            avgScore,
-          };
-        }
+            : 0,
+        };
       }
 
       metrics.push({
         skill,
-        candidates: sessions.length,
+        candidates: allSessions.length,
         avgTheta,
         stdTheta,
         avgResponses,
@@ -249,45 +272,42 @@ export class LiveMetricsEngine {
 
   /**
    * Item difficulty distribution by CEFR.
+   *
+   * Refactored (Sprint 2): was 7 item.findMany() calls inside a CEFR loop.
+   * Now: 1 groupBy aggregate covering all levels in one round-trip.
    */
   private static async computeItemDifficultyDistribution(
     organizationId: string
   ): Promise<ItemDifficultyDistribution[]> {
     const cefrLevels: CefrLevel[] = ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"];
 
+    // ── 1 query: group by (cefrLevel, status) with avg difficulty/discrimination ──
+    const grouped = await prisma.item.groupBy({
+      by: ["cefrLevel", "status"],
+      where: { organizationId },
+      _count: { id: true },
+      _avg: { difficulty: true, discrimination: true },
+    });
+
+    // Pivot the grouped result into per-CEFR structs
     const distributions: ItemDifficultyDistribution[] = [];
 
     for (const cefr of cefrLevels) {
-      const items = await prisma.item.findMany({
-        where: { organizationId, cefrLevel: cefr },
-        select: {
-          id: true,
-          difficulty: true,
-          discrimination: true,
-          status: true,
-        },
-      });
+      const rows = grouped.filter((r) => r.cefrLevel === cefr);
+      if (rows.length === 0) continue;
 
-      if (items.length === 0) continue;
-
-      const retiredCount = items.filter((i) => i.status === "RETIRED").length;
-      const pretestCount = items.filter((i) => i.status === "PRETEST").length;
-
-      const activeItems = items.filter((i) => i.status === "ACTIVE");
+      const totalCount = rows.reduce((a, r) => a + r._count.id, 0);
+      const retiredRow = rows.find((r) => r.status === "RETIRED");
+      const pretestRow = rows.find((r) => r.status === "PRETEST");
+      const activeRow  = rows.find((r) => r.status === "ACTIVE");
 
       distributions.push({
         cefr,
-        count: items.length,
-        avgDifficulty:
-          activeItems.length > 0
-            ? activeItems.reduce((a, i) => a + i.difficulty, 0) / activeItems.length
-            : 0,
-        avgDiscrimination:
-          activeItems.length > 0
-            ? activeItems.reduce((a, i) => a + i.discrimination, 0) / activeItems.length
-            : 0,
-        retiredCount,
-        pretestCount,
+        count: totalCount,
+        avgDifficulty: activeRow?._avg.difficulty ?? 0,
+        avgDiscrimination: activeRow?._avg.discrimination ?? 0,
+        retiredCount: retiredRow?._count.id ?? 0,
+        pretestCount: pretestRow?._count.id ?? 0,
       });
     }
 
@@ -343,65 +363,80 @@ export class LiveMetricsEngine {
 
   /**
    * Pretest pipeline health.
+   *
+   * Refactored (Sprint 2): was N+N response.count() calls (one per pretest item,
+   * repeated for calibration and promotion thresholds). Now: 1 response.groupBy()
+   * aggregate that counts all pretest responses per item in one round-trip.
    */
   private static async computePretestPipelineMetrics(
     organizationId: string
   ): Promise<PretestPipelineMetrics> {
+    // ── 1 query: all PRETEST items ────────────────────────────────────────────
     const pretestItems = await prisma.item.findMany({
       where: { organizationId, status: "PRETEST" },
       select: { id: true, createdAt: true },
     });
 
-    const readyForCalibration = await Promise.all(
-      pretestItems.map(async (item) => {
-        const count = await prisma.response.count({
-          where: { itemId: item.id, isPretest: true },
-        });
-        return count >= 30;
-      })
-    );
+    let readyForCalibration = 0;
+    let readyForPromotion = 0;
 
-    const readyForPromotion = await Promise.all(
-      pretestItems.map(async (item) => {
-        const count = await prisma.response.count({
-          where: { itemId: item.id, isPretest: true },
-        });
-        return count >= 50;
-      })
-    );
+    if (pretestItems.length > 0) {
+      // ── 1 query: response counts per pretest item (replaces N+N count calls) ──
+      const responseCounts = await prisma.response.groupBy({
+        by: ["itemId"],
+        where: {
+          itemId: { in: pretestItems.map((i) => i.id) },
+          isPretest: true,
+        },
+        _count: { id: true },
+      });
 
-    // Items promoted this week
-    const promotedThisWeek = await prisma.item.count({
-      where: {
-        organizationId,
-        status: "ACTIVE",
-        updatedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-      },
-    });
+      const countByItem = new Map<string, number>(
+        responseCounts.map((r) => [r.itemId, r._count.id])
+      );
 
-    // Compute average promotion time: days from item creation to first ACTIVE status.
-    // Items promoted this week have updatedAt within the last 7 days and status ACTIVE.
-    const recentlyPromoted = await prisma.item.findMany({
-      where: {
-        organizationId,
-        status: "ACTIVE",
-        updatedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-      },
-      select: { createdAt: true, updatedAt: true },
-    });
-    const avgPromotionTime = recentlyPromoted.length > 0
-      ? recentlyPromoted.reduce(
-          (a, i) => a + (i.updatedAt.getTime() - i.createdAt.getTime()),
-          0
-        ) /
-        recentlyPromoted.length /
-        (24 * 60 * 60 * 1000) // convert ms → days
-      : 0;
+      for (const item of pretestItems) {
+        const n = countByItem.get(item.id) ?? 0;
+        if (n >= 30) readyForCalibration++;
+        if (n >= 50) readyForPromotion++;
+      }
+    }
+
+    // ── 1 query: items promoted this week ────────────────────────────────────
+    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const [promotedThisWeek, recentlyPromoted] = await Promise.all([
+      prisma.item.count({
+        where: {
+          organizationId,
+          status: "ACTIVE",
+          updatedAt: { gte: oneWeekAgo },
+        },
+      }),
+      prisma.item.findMany({
+        where: {
+          organizationId,
+          status: "ACTIVE",
+          updatedAt: { gte: oneWeekAgo },
+        },
+        select: { createdAt: true, updatedAt: true },
+      }),
+    ]);
+
+    const avgPromotionTime =
+      recentlyPromoted.length > 0
+        ? recentlyPromoted.reduce(
+            (a, i) => a + (i.updatedAt.getTime() - i.createdAt.getTime()),
+            0
+          ) /
+          recentlyPromoted.length /
+          (24 * 60 * 60 * 1000) // ms → days
+        : 0;
 
     return {
       totalPretestItems: pretestItems.length,
-      readyForCalibration: readyForCalibration.filter((x) => x).length,
-      readyForPromotion: readyForPromotion.filter((x) => x).length,
+      readyForCalibration,
+      readyForPromotion,
       promotedThisWeek,
       avgPromotionTime,
     };

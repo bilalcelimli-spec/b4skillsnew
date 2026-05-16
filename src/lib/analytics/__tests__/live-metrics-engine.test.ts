@@ -11,10 +11,12 @@ vi.mock("../../prisma.js", () => ({
     item: {
       findMany: vi.fn(),
       count: vi.fn(),
+      groupBy: vi.fn(),
     },
     response: {
       count: vi.fn(),
       findMany: vi.fn().mockResolvedValue([]),
+      groupBy: vi.fn().mockResolvedValue([]),
     },
     retirementAuditLog: {
       count: vi.fn(),
@@ -113,8 +115,21 @@ describe("LiveMetricsEngine", () => {
       };
 
       (prisma.session.findMany as any).mockResolvedValue(mockSessions);
-      (prisma.item.findMany as any).mockResolvedValue(mockItems);
-      (prisma.item.count as any).mockResolvedValue(mockItems.length);
+      // item.findMany is now only used for pretest items + recentlyPromoted
+      (prisma.item.findMany as any).mockResolvedValue(
+        mockItems.filter((i) => i.status === "PRETEST")
+      );
+      // item.groupBy drives computeItemDifficultyDistribution
+      (prisma.item.groupBy as any).mockResolvedValue([
+        { cefrLevel: "B1", status: "ACTIVE",   _count: { id: 1 }, _avg: { difficulty: 0.5, discrimination: 0.8 } },
+        { cefrLevel: "B1", status: "PRETEST",  _count: { id: 1 }, _avg: { difficulty: 0.4, discrimination: 0.6 } },
+        { cefrLevel: "B2", status: "RETIRED",  _count: { id: 1 }, _avg: { difficulty: 0.7, discrimination: 0.2 } },
+      ]);
+      // response.groupBy drives pretest pipeline response counts
+      (prisma.response.groupBy as any).mockResolvedValue([
+        { itemId: "item-2", _count: { id: 35 } },
+      ]);
+      (prisma.item.count as any).mockResolvedValue(0);
       (prisma.response.count as any).mockResolvedValue(0);
       (prisma.retirementAuditLog.count as any).mockResolvedValue(0);
 
@@ -134,6 +149,8 @@ describe("LiveMetricsEngine", () => {
     it("should handle empty organization data gracefully", async () => {
       (prisma.session.findMany as any).mockResolvedValue([]);
       (prisma.item.findMany as any).mockResolvedValue([]);
+      (prisma.item.groupBy as any).mockResolvedValue([]);
+      (prisma.response.groupBy as any).mockResolvedValue([]);
       (prisma.item.count as any).mockResolvedValue(0);
       (prisma.response.count as any).mockResolvedValue(0);
       (prisma.retirementAuditLog.count as any).mockResolvedValue(0);
@@ -246,62 +263,30 @@ describe("LiveMetricsEngine", () => {
 
   describe("computeItemDifficultyDistribution", () => {
     it("should calculate item difficulty distribution by CEFR", async () => {
-      // Mock returns items for B1 when queried
-      const b1Items = [
-        {
-          id: "item-1",
-          cefrLevel: "B1",
-          status: "ACTIVE",
-          difficulty: 0.5,
-          discrimination: 0.8,
-        },
-        {
-          id: "item-2",
-          cefrLevel: "B1",
-          status: "PRETEST",
-          difficulty: 0.4,
-          discrimination: 0.6,
-        },
-        {
-          id: "item-3",
-          cefrLevel: "B1",
-          status: "RETIRED",
-          difficulty: 0.3,
-          discrimination: 0.4,
-        },
-      ];
-
-      // Mock returns empty for other CEFRs
-      (prisma.item.findMany as any).mockImplementation((args: any) => {
-        if (args.where?.cefrLevel === "B1") {
-          return Promise.resolve(b1Items);
-        }
-        return Promise.resolve([]);
-      });
+      // Sprint 2 refactor: uses item.groupBy({ by: ['cefrLevel', 'status'] })
+      // instead of 7 individual findMany calls.
+      (prisma.item.groupBy as any).mockResolvedValue([
+        { cefrLevel: "B1", status: "ACTIVE",  _count: { id: 1 }, _avg: { difficulty: 0.5, discrimination: 0.8 } },
+        { cefrLevel: "B1", status: "PRETEST", _count: { id: 1 }, _avg: { difficulty: 0.4, discrimination: 0.6 } },
+        { cefrLevel: "B1", status: "RETIRED", _count: { id: 1 }, _avg: { difficulty: 0.3, discrimination: 0.4 } },
+      ]);
 
       const distribution = await (LiveMetricsEngine as any).computeItemDifficultyDistribution(testOrgId);
 
       expect(distribution).toBeDefined();
       const b1Dist = distribution.find((d: any) => d.cefr === "B1");
 
-      expect(b1Dist.count).toBe(3);
+      expect(b1Dist.count).toBe(3);        // 1 ACTIVE + 1 PRETEST + 1 RETIRED
       expect(b1Dist.retiredCount).toBe(1);
       expect(b1Dist.pretestCount).toBe(1);
-      expect(b1Dist.avgDifficulty).toBeCloseTo(0.5, 5); // avg of active only
+      expect(b1Dist.avgDifficulty).toBeCloseTo(0.5, 5); // avg of ACTIVE only
     });
 
     it("should handle CEFR levels with no items", async () => {
-      const mockItems = [
-        {
-          id: "item-1",
-          cefrLevel: "A1",
-          status: "ACTIVE",
-          difficulty: 0.2,
-          discrimination: 0.7,
-        },
-      ];
-
-      (prisma.item.findMany as any).mockResolvedValue(mockItems as any);
+      // Only A1 returned → distribution has exactly 1 entry
+      (prisma.item.groupBy as any).mockResolvedValue([
+        { cefrLevel: "A1", status: "ACTIVE", _count: { id: 1 }, _avg: { difficulty: 0.2, discrimination: 0.7 } },
+      ]);
 
       const distribution = await (LiveMetricsEngine as any).computeItemDifficultyDistribution(testOrgId);
 
@@ -374,26 +359,23 @@ describe("LiveMetricsEngine", () => {
         { id: "pretest-3", createdAt: now, updatedAt: now },
       ];
 
-      // First call: pretest items; second call: recentlyPromoted (empty → avgPromotionTime = 0)
+      // Sprint 2 refactor: N+N response.count() loops → 1 response.groupBy() call.
+      // item.findMany is called twice: pretest items, then recentlyPromoted.
       (prisma.item.findMany as any)
-        .mockResolvedValueOnce(mockPretestItems as any)
-        .mockResolvedValueOnce([]); // recentlyPromoted
-      (prisma.response.count as any)
-        // readyForCalibration checks (first loop)
-        .mockResolvedValueOnce(25) // pretest-1: < 30, not ready
-        .mockResolvedValueOnce(45) // pretest-2: >= 30, ready
-        .mockResolvedValueOnce(55) // pretest-3: >= 30, ready
-        // readyForPromotion checks (second loop)
-        .mockResolvedValueOnce(25) // pretest-1: < 50, not ready
-        .mockResolvedValueOnce(45) // pretest-2: < 50, not ready
-        .mockResolvedValueOnce(55); // pretest-3: >= 50, ready
+        .mockResolvedValueOnce(mockPretestItems as any) // pretest items
+        .mockResolvedValueOnce([]);                     // recentlyPromoted → avgPromotionTime = 0
+      (prisma.response.groupBy as any).mockResolvedValue([
+        { itemId: "pretest-1", _count: { id: 25 } }, // < 30 → not ready for cal
+        { itemId: "pretest-2", _count: { id: 45 } }, // >= 30 → ready for cal; < 50 → not prom
+        { itemId: "pretest-3", _count: { id: 55 } }, // >= 30 → ready for cal; >= 50 → ready prom
+      ]);
       (prisma.item.count as any).mockResolvedValue(0); // promotedThisWeek
 
       const metrics = await (LiveMetricsEngine as any).computePretestPipelineMetrics(testOrgId);
 
       expect(metrics.totalPretestItems).toBe(3);
-      expect(metrics.readyForCalibration).toBe(2); // 45 >= 30 and 55 >= 30
-      expect(metrics.readyForPromotion).toBe(1); // only 55 >= 50
+      expect(metrics.readyForCalibration).toBe(2); // pretest-2 and pretest-3
+      expect(metrics.readyForPromotion).toBe(1);   // only pretest-3
       expect(metrics.promotedThisWeek).toBe(0);
     });
   });
@@ -528,7 +510,14 @@ describe("LiveMetricsEngine", () => {
       ];
 
       (prisma.session.findMany as any).mockResolvedValue(mockSessions as any);
-      (prisma.item.findMany as any).mockResolvedValue(mockItems as any);
+      // item.findMany: only called for pretest items + recentlyPromoted (no pretest items)
+      (prisma.item.findMany as any).mockResolvedValue([]);
+      // item.groupBy: drives computeItemDifficultyDistribution
+      (prisma.item.groupBy as any).mockResolvedValue([
+        { cefrLevel: "B1", status: "ACTIVE", _count: { id: 1 }, _avg: { difficulty: 0.5, discrimination: 0.8 } },
+      ]);
+      // response.groupBy: pretest pipeline (no pretest items → not called, but mock available)
+      (prisma.response.groupBy as any).mockResolvedValue([]);
       (prisma.item.count as any).mockResolvedValue(1);
       (prisma.response.count as any).mockResolvedValue(0);
       (prisma.retirementAuditLog.count as any).mockResolvedValue(0);
