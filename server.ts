@@ -218,16 +218,50 @@ async function startServer() {
   const REFRESH_SECRET = process.env.REFRESH_SECRET
     || (isProd ? (() => { throw new Error("REFRESH_SECRET is required in production"); })() : "dev-only-insecure-refresh-secret-do-not-use-in-prod");
 
-  const loginLimiter = rateLimit({
+  /** Decrypt a TOTP secret that was stored encrypted with AES-256-GCM. */
+  function decryptTotpSecret(encryptedSecret: string, jwtSecret: string): string {
+    const [ivHex, tagHex, encHex] = encryptedSecret.split(':');
+    const keyBuf = crypto.createHash('sha256').update(jwtSecret).digest();
+    const decipher = crypto.createDecipheriv('aes-256-gcm', keyBuf, Buffer.from(ivHex, 'hex'));
+    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    return decipher.update(Buffer.from(encHex, 'hex')).toString('utf8') + decipher.final('utf8');
+  }
+
+  // If REDIS_URL is set, use Redis as the shared rate-limit store so limits are
+  // enforced across all instances. Falls back to in-memory when Redis is absent.
+  let _redisRateLimitStore: import("rate-limit-redis").RedisStore | undefined;
+  if (process.env.REDIS_URL) {
+    try {
+      const { default: Redis } = await import("ioredis");
+      const { RedisStore } = await import("rate-limit-redis");
+      const redisClient = new Redis(process.env.REDIS_URL, {
+        maxRetriesPerRequest: 1,
+        enableOfflineQueue: false,
+        lazyConnect: true,
+      });
+      await redisClient.connect().catch(() => {});
+      _redisRateLimitStore = new RedisStore({ sendCommand: (...args: string[]) => (redisClient as any).call(...args) });
+      logger.info("Rate limiting: using Redis store (distributed)");
+    } catch (err) {
+      logger.warn({ err }, "Rate limiting: failed to connect Redis — falling back to in-memory store");
+    }
+  } else {
+    logger.warn("Rate limiting: REDIS_URL not set — using in-memory store (not distributed)");
+  }
+
+  const makeRateLimiter = (opts: Parameters<typeof rateLimit>[0]) =>
+    rateLimit({ ...opts, store: _redisRateLimitStore });
+
+  const loginLimiter = makeRateLimiter({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // Limit each IP to 5 requests per `window` (here, per 15 minutes)
+    max: 5,
     message: { error: 'Too many login attempts from this IP, please try again after 15 minutes' },
     standardHeaders: true,
     legacyHeaders: false,
   });
 
   // Stricter limiter for password-reset/email-verify/Google-auth endpoints
-  const authSensitiveLimiter = rateLimit({
+  const authSensitiveLimiter = makeRateLimiter({
     windowMs: 60 * 60 * 1000, // 1 hour
     max: 5,
     message: { error: 'Too many attempts from this IP. Please try again after 1 hour.' },
@@ -236,7 +270,7 @@ async function startServer() {
   });
 
   // Rate limiter for session launch — prevents anonymous abuse
-  const sessionLaunchLimiter = rateLimit({
+  const sessionLaunchLimiter = makeRateLimiter({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 20,
     message: { error: 'Too many session launch attempts. Please try again later.' },
@@ -245,7 +279,7 @@ async function startServer() {
   });
 
   // Refresh-token endpoint: 10 requests per minute per IP
-  const refreshTokenLimiter = rateLimit({
+  const refreshTokenLimiter = makeRateLimiter({
     windowMs: 60 * 1000, // 1 minute
     max: 10,
     message: { error: 'Too many token refresh attempts. Please try again in a moment.' },
@@ -255,7 +289,7 @@ async function startServer() {
 
   // Global API safety net: 500 requests per 15 minutes per IP
   // Prevents brute-force / enumeration on unprotected endpoints
-  const globalApiLimiter = rateLimit({
+  const globalApiLimiter = makeRateLimiter({
     windowMs: 15 * 60 * 1000,
     max: 500,
     message: { error: 'Too many requests from this IP. Please try again later.' },
@@ -310,12 +344,16 @@ async function startServer() {
     name: string | null;
     role: string;
     organizationId: string | null;
+    emailVerified?: Date | null;
+    twoFactorEnabled?: boolean | null;
   }) => ({
     uid: u.id,
     email: u.email,
     displayName: u.name,
     role: u.role,
     organizationId: u.organizationId,
+    emailVerified: !!u.emailVerified,
+    twoFactorEnabled: !!u.twoFactorEnabled,
   });
 
   app.post("/api/auth/register", validate({ body: Schemas.Auth.RegisterBody }), async (req, res) => {
@@ -326,22 +364,30 @@ async function startServer() {
       if (user) return res.status(400).json({ error: 'User already exists' });
       
       const hashedPassword = await bcrypt.hash(password, 10);
+      // Generate email verification token at registration
+      const verifyToken = crypto.randomBytes(32).toString('hex');
       user = await prisma.user.create({
         data: {
           email,
           name: displayName,
           password: hashedPassword,
-          role: "CANDIDATE"
+          role: "CANDIDATE",
+          verifyEmailToken: verifyToken,
         }
       });
       const accessToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '15m' });
       const refreshToken = jwt.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: '7d' });
+      const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
       await prisma.user.update({
         where: { id: user.id },
-        data: { refreshToken }
+        data: { refreshToken: refreshTokenHash }
       });
+      // Send verification email (fire-and-forget — do not block registration response)
+      const appUrl = process.env.APP_URL || 'http://localhost:5173';
+      const verifyLink = `${appUrl}/verify-email?token=${verifyToken}`;
+      sendEmail(user.email, "Verify your LinguAdapt account", `Welcome! Please verify your email address:\n\n${verifyLink}\n\nThis link expires after your first use.`).catch(() => {});
       setAuthCookies(res, accessToken, refreshToken);
-      return res.json({ token: accessToken, user: publicUser(user) });
+      return res.json({ token: accessToken, user: publicUser(user), emailVerified: false });
     } catch (err: any) {
       return res.status(500).json({ error: "Registration failed" });
     }
@@ -356,12 +402,31 @@ async function startServer() {
       
       const isValid = await bcrypt.compare(password, user.password);
       if (!isValid) return res.status(401).json({ error: 'Invalid credentials' });
+
+      if (!user.emailVerified) {
+        return res.status(403).json({
+          error: 'Email not verified',
+          code: 'EMAIL_NOT_VERIFIED',
+          message: 'Please check your inbox and verify your email address before logging in.',
+        });
+      }
+
+      // If 2FA is enabled, issue a short-lived challenge token instead of full access
+      if (user.twoFactorEnabled) {
+        const challengeToken = jwt.sign(
+          { userId: user.id, twoFactorPending: true },
+          JWT_SECRET,
+          { expiresIn: '5m' }
+        );
+        return res.json({ requiresTwoFactor: true, challengeToken });
+      }
       
       const accessToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '15m' });
       const refreshToken = jwt.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: '7d' });
+      const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
       await prisma.user.update({
         where: { id: user.id },
-        data: { refreshToken }
+        data: { refreshToken: refreshTokenHash }
       });
       setAuthCookies(res, accessToken, refreshToken);
       return res.json({ token: accessToken, user: publicUser(user) });
@@ -375,8 +440,9 @@ async function startServer() {
     if (rf) {
       const decoded: any = jwt.decode(rf);
       if (decoded && decoded.userId) {
+        const rfHash = crypto.createHash('sha256').update(rf).digest('hex');
         await prisma.user.updateMany({
-           where: { id: decoded.userId, refreshToken: rf },
+           where: { id: decoded.userId, refreshToken: rfHash },
            data: { refreshToken: null }
         }).catch(() => {});
       }
@@ -403,15 +469,17 @@ async function startServer() {
       if (!rf) return res.status(401).json({ error: 'No refresh token' });
       const decoded: any = jwt.verify(rf, REFRESH_SECRET);
       
+      const rfHash = crypto.createHash('sha256').update(rf).digest('hex');
       const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
-      if (!user || user.refreshToken !== rf) return res.status(401).json({ error: 'Invalid refresh token' });
+      if (!user || user.refreshToken !== rfHash) return res.status(401).json({ error: 'Invalid refresh token' });
 
       const newAccess = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '15m' });
       const newRefresh = jwt.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: '7d' });
+      const newRefreshHash = crypto.createHash('sha256').update(newRefresh).digest('hex');
       
       await prisma.user.update({
         where: { id: user.id },
-        data: { refreshToken: newRefresh }
+        data: { refreshToken: newRefreshHash }
       });
       setAuthCookies(res, newAccess, newRefresh);
       
@@ -421,25 +489,53 @@ async function startServer() {
     }
   });
 
-  const sendMockEmail = async (to: string, subject: string, text: string) => {
-    const testAccount = await nodemailer.createTestAccount();
-    const transporter = nodemailer.createTransport({
-      host: "smtp.ethereal.email",
-      port: 587,
-      secure: false, 
-      auth: {
-        user: testAccount.user,
-        pass: testAccount.pass,
-      },
-    });
-    const info = await transporter.sendMail({
-      from: '"Linguadapt Auth" <noreply@linguadapt.com>',
-      to,
-      subject,
-      text,
-    });
-    console.log(`✉️ Email Mock to ${to}: ${subject}`);
-    console.log(`✉️ Preview URL: %s`, nodemailer.getTestMessageUrl(info));
+  // Build a nodemailer transporter once at startup.
+  // Production: real SMTP via SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / SMTP_FROM.
+  // Development: Ethereal catch-all (previews logged to console).
+  let _emailTransporter: nodemailer.Transporter | null = null;
+  let _emailFrom = '"LinguAdapt" <noreply@linguadapt.com>';
+
+  async function getEmailTransporter(): Promise<nodemailer.Transporter> {
+    if (_emailTransporter) return _emailTransporter;
+
+    const smtpHost = process.env.SMTP_HOST;
+    if (smtpHost) {
+      _emailFrom = process.env.SMTP_FROM || _emailFrom;
+      _emailTransporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: parseInt(process.env.SMTP_PORT || "587", 10),
+        secure: process.env.SMTP_SECURE === "true",
+        auth: {
+          user: process.env.SMTP_USER!,
+          pass: process.env.SMTP_PASS!,
+        },
+      });
+      logger.info({ host: smtpHost }, "Email: using production SMTP");
+    } else {
+      // Dev-only fallback: Ethereal catch-all
+      const testAccount = await nodemailer.createTestAccount();
+      _emailTransporter = nodemailer.createTransport({
+        host: "smtp.ethereal.email",
+        port: 587,
+        secure: false,
+        auth: { user: testAccount.user, pass: testAccount.pass },
+      });
+      logger.warn("Email: no SMTP_HOST set — using Ethereal dev preview (emails NOT delivered)");
+    }
+    return _emailTransporter;
+  }
+
+  const sendEmail = async (to: string, subject: string, text: string): Promise<void> => {
+    try {
+      const transporter = await getEmailTransporter();
+      const info = await transporter.sendMail({ from: _emailFrom, to, subject, text });
+      if (!process.env.SMTP_HOST) {
+        logger.debug({ preview: nodemailer.getTestMessageUrl(info) }, `Ethereal preview for: ${subject}`);
+      }
+    } catch (err) {
+      logger.error({ err, to, subject }, "Failed to send email");
+      // Do not re-throw — email failure must not crash auth flows
+    }
   };
 
   app.post("/api/auth/forgot-password", authSensitiveLimiter, validate({ body: Schemas.Auth.ForgotPasswordBody }), async (req, res) => {
@@ -458,7 +554,7 @@ async function startServer() {
 
     const appUrl = process.env.APP_URL || 'http://localhost:5173';
     const resetLink = `${appUrl}/reset-password?token=${resetToken}`;
-    await sendMockEmail(user.email, "Password Reset", `Click here to reset: ${resetLink}`);
+    await sendEmail(user.email, "Password Reset", `Click here to reset: ${resetLink}`);
     
     return res.json({ message: 'If email exists, reset link sent.' });
   });
@@ -480,10 +576,12 @@ async function startServer() {
     return res.json({ success: true, message: 'Password reset successfully' });
   });
 
+  // Resend verification email (user-initiated)
   app.post("/api/auth/verify-email", authSensitiveLimiter, validate({ body: Schemas.Auth.VerifyEmailBody }), async (req, res) => {
-    const { email } = req.body; // Mock endpoint to start email verification process
+    const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || user.emailVerified) return res.json({ message: 'Process started if email needs verification' });
+    // Always return success to avoid email enumeration
+    if (!user || user.emailVerified) return res.json({ message: 'If email exists and is unverified, a link has been sent.' });
 
     const verifyToken = crypto.randomBytes(32).toString('hex');
     await prisma.user.update({
@@ -493,8 +591,161 @@ async function startServer() {
     
     const appUrl = process.env.APP_URL || 'http://localhost:5173';
     const verifyLink = `${appUrl}/verify-email?token=${verifyToken}`;
-    await sendMockEmail(user.email, "Verify your email", `Click here to verify: ${verifyLink}`);
-    return res.json({ message: 'Process started if email needs verification' });
+    await sendEmail(user.email, "Verify your LinguAdapt account", `Click here to verify your email:\n\n${verifyLink}`);
+    return res.json({ message: 'If email exists and is unverified, a link has been sent.' });
+  });
+
+  // Confirm email verification token (called from the link in the verification email)
+  app.get("/api/auth/confirm-email", async (req, res) => {
+    const token = req.query.token;
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'Verification token is required' });
+    }
+    const user = await prisma.user.findFirst({
+      where: { verifyEmailToken: token, emailVerified: false }
+    });
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or already-used verification token' });
+    }
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerified: new Date(), verifyEmailToken: null }
+    });
+    // Redirect to login page with a success flag
+    const appUrl = process.env.APP_URL || 'http://localhost:5173';
+    return res.redirect(`${appUrl}/login?verified=1`);
+  });
+
+  // ─── TOTP Two-Factor Authentication ──────────────────────────────────────────
+
+  // Step 1: Generate a TOTP secret and return the QR code (user not yet enrolled)
+  app.post("/api/auth/2fa/setup", authMiddleware, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, twoFactorEnabled: true } });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (user.twoFactorEnabled) return res.status(400).json({ error: '2FA is already enabled' });
+
+      const { authenticator } = await import('otplib');
+      const secret = authenticator.generateSecret();
+      // Encrypt the secret at rest using AES-256-GCM with JWT_SECRET as key material
+      const keyBuf = crypto.createHash('sha256').update(JWT_SECRET).digest();
+      const iv = crypto.randomBytes(12);
+      const cipher = crypto.createCipheriv('aes-256-gcm', keyBuf, iv);
+      const enc = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
+      const tag = cipher.getAuthTag();
+      const encryptedSecret = `${iv.toString('hex')}:${tag.toString('hex')}:${enc.toString('hex')}`;
+
+      // Store pending secret (not yet active — user must verify first)
+      await prisma.user.update({
+        where: { id: userId },
+        data: { twoFactorSecret: encryptedSecret, twoFactorEnabled: false }
+      });
+
+      const otpauthUrl = authenticator.keyuri(user.email, 'LinguAdapt', secret);
+      const QRCode = await import('qrcode');
+      const qrDataUrl = await QRCode.default.toDataURL(otpauthUrl);
+
+      return res.json({ otpauthUrl, qrDataUrl, secret });
+    } catch (err) {
+      logger.error({ err }, '2fa/setup error');
+      return res.status(500).json({ error: 'Failed to set up 2FA' });
+    }
+  });
+
+  // Step 2: Confirm TOTP code and activate 2FA
+  app.post("/api/auth/2fa/verify-setup", authMiddleware, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const { code } = req.body;
+      if (!code || typeof code !== 'string') return res.status(400).json({ error: 'TOTP code required' });
+
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { twoFactorSecret: true, twoFactorEnabled: true } });
+      if (!user?.twoFactorSecret) return res.status(400).json({ error: '2FA setup not initiated. Call /api/auth/2fa/setup first.' });
+      if (user.twoFactorEnabled) return res.status(400).json({ error: '2FA is already enabled' });
+
+      const secret = decryptTotpSecret(user.twoFactorSecret, JWT_SECRET);
+      const { authenticator } = await import('otplib');
+      if (!authenticator.verify({ token: code, secret })) {
+        return res.status(400).json({ error: 'Invalid TOTP code' });
+      }
+
+      await prisma.user.update({ where: { id: userId }, data: { twoFactorEnabled: true } });
+      // Invalidate role cache entry so next checkRole picks up new twoFactorEnabled
+      _roleCache.delete(userId);
+      return res.json({ success: true, message: '2FA enabled successfully' });
+    } catch (err) {
+      logger.error({ err }, '2fa/verify-setup error');
+      return res.status(500).json({ error: 'Failed to verify 2FA setup' });
+    }
+  });
+
+  // Step 3 (login flow): Exchange challenge token + TOTP code for full session
+  app.post("/api/auth/2fa/challenge", loginLimiter, async (req, res) => {
+    try {
+      const { challengeToken, code } = req.body;
+      if (!challengeToken || !code) return res.status(400).json({ error: 'challengeToken and code are required' });
+
+      let decoded: any;
+      try {
+        decoded = jwt.verify(challengeToken, JWT_SECRET);
+      } catch {
+        return res.status(401).json({ error: 'Invalid or expired challenge token' });
+      }
+      if (!decoded.twoFactorPending) return res.status(401).json({ error: 'Invalid challenge token' });
+
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: { id: true, email: true, name: true, role: true, organizationId: true,
+                   emailVerified: true, twoFactorEnabled: true, twoFactorSecret: true }
+      });
+      if (!user?.twoFactorEnabled || !user.twoFactorSecret) {
+        return res.status(400).json({ error: '2FA not enabled for this account' });
+      }
+
+      const secret = decryptTotpSecret(user.twoFactorSecret, JWT_SECRET);
+      const { authenticator } = await import('otplib');
+      if (!authenticator.verify({ token: String(code), secret })) {
+        return res.status(401).json({ error: 'Invalid TOTP code' });
+      }
+
+      const accessToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '15m' });
+      const refreshToken = jwt.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: '7d' });
+      const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+      await prisma.user.update({ where: { id: user.id }, data: { refreshToken: refreshTokenHash } });
+      setAuthCookies(res, accessToken, refreshToken);
+      return res.json({ token: accessToken, user: publicUser(user) });
+    } catch (err) {
+      logger.error({ err }, '2fa/challenge error');
+      return res.status(500).json({ error: '2FA challenge failed' });
+    }
+  });
+
+  // Disable 2FA (requires current TOTP code to confirm intent)
+  app.delete("/api/auth/2fa/disable", authMiddleware, async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const { code } = req.body;
+      if (!code) return res.status(400).json({ error: 'TOTP code required to disable 2FA' });
+
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { twoFactorSecret: true, twoFactorEnabled: true } });
+      if (!user?.twoFactorEnabled || !user.twoFactorSecret) {
+        return res.status(400).json({ error: '2FA is not enabled' });
+      }
+
+      const secret = decryptTotpSecret(user.twoFactorSecret, JWT_SECRET);
+      const { authenticator } = await import('otplib');
+      if (!authenticator.verify({ token: String(code), secret })) {
+        return res.status(401).json({ error: 'Invalid TOTP code' });
+      }
+
+      await prisma.user.update({ where: { id: userId }, data: { twoFactorEnabled: false, twoFactorSecret: null } });
+      _roleCache.delete(userId);
+      return res.json({ success: true, message: '2FA disabled' });
+    } catch (err) {
+      logger.error({ err }, '2fa/disable error');
+      return res.status(500).json({ error: 'Failed to disable 2FA' });
+    }
   });
 
   // When the database is unavailable, API routes return 503 (no offline mock data).
@@ -510,6 +761,12 @@ async function startServer() {
   });
 
   // --- RBAC MIDDLEWARE ---
+  // Short-lived in-memory cache for checkRole DB lookups.
+  // Avoids one prisma.user.findUnique per admin request per second.
+  // TTL: 5 minutes. Invalidated on role/org changes via cache key = userId.
+  const _roleCache = new Map<string, { role: string; organizationId: string | null; expiresAt: number }>();
+  const ROLE_CACHE_TTL_MS = 5 * 60 * 1000;
+
   const checkRole = (roles: string[]) => {
     return async (req: any, res: any, next: any) => {
       try {
@@ -529,16 +786,30 @@ async function startServer() {
           });
         }
 
-        const user = await prisma.user.findUnique({
-          where: { id: decoded.userId },
-          select: { role: true, organizationId: true }
-        });
+        const now = Date.now();
+        const cached = _roleCache.get(decoded.userId);
+        let userRole: string;
+        let userOrgId: string | null;
 
-        if (!user || !roles.includes(user.role)) {
+        if (cached && cached.expiresAt > now) {
+          userRole = cached.role;
+          userOrgId = cached.organizationId;
+        } else {
+          const user = await prisma.user.findUnique({
+            where: { id: decoded.userId },
+            select: { role: true, organizationId: true }
+          });
+          if (!user) return res.status(403).json({ error: "Forbidden: Insufficient permissions" });
+          _roleCache.set(decoded.userId, { role: user.role, organizationId: user.organizationId, expiresAt: now + ROLE_CACHE_TTL_MS });
+          userRole = user.role;
+          userOrgId = user.organizationId;
+        }
+
+        if (!roles.includes(userRole)) {
           return res.status(403).json({ error: "Forbidden: Insufficient permissions" });
         }
 
-        req.user = { id: decoded.userId, role: user.role, organizationId: user.organizationId };
+        req.user = { id: decoded.userId, role: userRole, organizationId: userOrgId };
         next();
       } catch (err) {
         return res.status(401).json({ error: "Unauthorized" });
@@ -591,8 +862,21 @@ async function startServer() {
       res.json(next);
     } catch (error: any) {
       const msg = error?.message ?? "Failed to fetch next item";
-      // "Invalid session" means session is complete / not in progress — treat as stop
+      // "Invalid session" means session is complete / not in progress.
+      // Look up the session: if it is already COMPLETED, return a graceful stop
+      // so the client shows the results screen instead of crashing the exam.
       if (msg === "Invalid session") {
+        try {
+          const ended = await prisma.session.findUnique({
+            where: { id: req.params.id },
+            select: { status: true, theta: true },
+          });
+          if (ended?.status === "COMPLETED") {
+            return res.json({ stop: true, reason: "SESSION_ALREADY_COMPLETED", finalTheta: ended.theta });
+          }
+        } catch {
+          // DB error — fall through to original error response
+        }
         return res.status(409).json({ error: msg, stop: false });
       }
       logger.error({ err: error, sessionId: req.params.id }, "[sessions/next] error");
@@ -603,7 +887,21 @@ async function startServer() {
   app.post("/api/sessions/:id/respond", async (req, res) => {
     try {
       const { id } = req.params;
-      const { itemId, value, latencyMs } = req.body;
+      const { itemId, value, latencyMs, candidateId } = req.body;
+
+      // Verify the caller owns this session to prevent cross-session answer injection
+      if (!candidateId || typeof candidateId !== "string") {
+        return res.status(400).json({ error: "candidateId is required" });
+      }
+      const sessionOwner = await prisma.session.findUnique({
+        where: { id },
+        select: { candidateId: true },
+      });
+      if (!sessionOwner) return res.status(404).json({ error: "Session not found" });
+      if (sessionOwner.candidateId !== candidateId) {
+        return res.status(403).json({ error: "Forbidden: candidateId does not match session" });
+      }
+
       const result = await AssessmentService.submitResponse(id, itemId, value, latencyMs);
       res.json(result);
     } catch (error: any) {
@@ -1154,6 +1452,102 @@ async function startServer() {
     }
   });
 
+  // GET /api/admin/calibration/snapshots
+  // Returns IRT parameter snapshots for active items, consumed by the monthly
+  // Item Parameter Drift (IPD) GitHub Actions workflow (.github/workflows/item-parameter-drift.yml).
+  //
+  // Query params:
+  //   window  — "current" (default) | "previous"
+  //   months  — integer 1-12 (default 1). Used for the "previous" window:
+  //             returns calibration runs from [2×months, months] ago.
+  //   skill   — "ALL" (default) | "READING" | "LISTENING" | "WRITING" | "SPEAKING" | "GRAMMAR" | "VOCABULARY"
+  //
+  // Response: { window, months, skill, generatedAt, items: [{ itemId, skill, cefrLevel, b, a, c, seB, seA, seC, calibratedAt }] }
+  //   b/a/c  — latest CalibrationRun estimates, falling back to Item.difficulty/discrimination/guessing
+  //   seB/seA/seC — from CalibrationRun (null when no run exists; workflow defaults to 0.15)
+  app.get(
+    "/api/admin/calibration/snapshots",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req, res) => {
+      try {
+        const windowParam = String(req.query.window ?? "current").toLowerCase();
+        const months = Math.min(12, Math.max(1, parseInt(String(req.query.months ?? "1"), 10) || 1));
+        const skill = String(req.query.skill ?? "ALL").toUpperCase();
+        const orgId = (req as any).user?.organizationId as string | undefined;
+
+        const now = new Date();
+        const msPerMonth = 30 * 24 * 60 * 60 * 1000;
+        // "previous" window: calibration runs from [2×months ago, months ago]
+        const prevStart = new Date(now.getTime() - 2 * months * msPerMonth);
+        const prevEnd   = new Date(now.getTime() -     months * msPerMonth);
+
+        const skillFilter: any = skill !== "ALL" ? { skill } : {};
+        // SUPER_ADMIN sees all orgs; org-scoped roles see only their own org
+        const orgFilter: any = orgId ? { organizationId: orgId } : {};
+
+        const calibRunWhere = windowParam === "previous"
+          ? { runAt: { gte: prevStart, lte: prevEnd } }
+          : {};
+
+        const items = await prisma.item.findMany({
+          where: { status: "ACTIVE", ...skillFilter, ...orgFilter },
+          select: {
+            id: true,
+            skill: true,
+            cefrLevel: true,
+            difficulty: true,      // b-parameter fallback
+            discrimination: true,  // a-parameter fallback
+            guessing: true,        // c-parameter fallback
+            updatedAt: true,
+            calibrationRuns: {
+              where: calibRunWhere,
+              orderBy: { runAt: "desc" },
+              take: 1,
+              select: {
+                bEstimate: true,
+                aEstimate: true,
+                cEstimate: true,
+                bSE: true,
+                aSE: true,
+                cSE: true,
+                runAt: true,
+              },
+            },
+          },
+        });
+
+        const snapshotItems: object[] = [];
+        for (const item of items) {
+          const run = item.calibrationRuns[0];
+          // For "previous" window: skip items with no calibration run in that period
+          if (windowParam === "previous" && !run) continue;
+          snapshotItems.push({
+            itemId:       item.id,
+            skill:        item.skill,
+            cefrLevel:    item.cefrLevel,
+            b:            run?.bEstimate ?? item.difficulty,
+            a:            run?.aEstimate ?? item.discrimination,
+            c:            run?.cEstimate ?? item.guessing,
+            seB:          run?.bSE  ?? null,
+            seA:          run?.aSE  ?? null,
+            seC:          run?.cSE  ?? null,
+            calibratedAt: (run?.runAt ?? item.updatedAt).toISOString(),
+          });
+        }
+
+        res.json({
+          window:      windowParam,
+          months,
+          skill,
+          generatedAt: now.toISOString(),
+          items:       snapshotItems,
+        });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
   // --- ITEM BANK INVENTORY API ---
   app.get("/api/items/inventory", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
     try {
@@ -1609,6 +2003,80 @@ async function startServer() {
       res.json({ ok: true, itemId });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
+
+  // POST /api/admin/items/retire — bulk retire by ID list
+  // Called by the monthly IPD workflow (.github/workflows/item-parameter-drift.yml) to
+  // auto-retire Class-C (severe drift) items without manual intervention.
+  //
+  // Body: { itemIds: string[], reason?: string }
+  // Response: { ok, retired, total, skipped, reason }
+  //   retired — items actually updated (excludes already-retired items)
+  //   skipped — itemIds that were already RETIRED before this call
+  app.post(
+    "/api/admin/items/retire",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req, res) => {
+      try {
+        const { itemIds, reason } = req.body;
+
+        if (!Array.isArray(itemIds) || itemIds.length === 0) {
+          return res.status(400).json({ error: "itemIds must be a non-empty array of strings" });
+        }
+        if (itemIds.length > 500) {
+          return res.status(400).json({ error: "Cannot retire more than 500 items per request" });
+        }
+        if (itemIds.some((id: any) => typeof id !== "string" || id.length > 128)) {
+          return res.status(400).json({ error: "All itemIds must be non-empty strings (max 128 chars)" });
+        }
+
+        const retireReason = (typeof reason === "string" && reason.trim().length > 0)
+          ? reason.trim().slice(0, 500)
+          : "Bulk retirement via admin API";
+
+        const now = new Date();
+        const triggeredBy = (req as any).user?.id ?? "API_BATCH";
+
+        // Retire non-already-retired items and write audit log in a single transaction.
+        // createMany skips items whose audit log entry would duplicate — safe to re-call.
+        const [updateResult] = await prisma.$transaction([
+          prisma.item.updateMany({
+            where: {
+              id: { in: itemIds },
+              status: { not: "RETIRED" },
+            },
+            data: {
+              status: "RETIRED",
+              retiredAt: now,
+              retiredBy: triggeredBy,
+              retirementReason: retireReason,
+            },
+          }),
+          prisma.retirementAuditLog.createMany({
+            data: itemIds.map((itemId: string) => ({
+              itemId,
+              action: "AUTO_RETIRED",
+              reason: retireReason,
+              triggeredBy,
+              approvalStatus: "APPROVED",   // CI-driven retirement is pre-approved
+              approvalDate: now,
+              notes: `Bulk retirement via POST /api/admin/items/retire — ${now.toISOString()}`,
+            })),
+            skipDuplicates: true,
+          }),
+        ]);
+
+        res.json({
+          ok: true,
+          retired: updateResult.count,
+          total: itemIds.length,
+          skipped: itemIds.length - updateResult.count,
+          reason: retireReason,
+        });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    }
+  );
 
   // --- MIRT SNAPSHOT API ---
 
@@ -7680,6 +8148,94 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // ─── PRETEST CALIBRATION PIPELINE API ──────────────────────────────────────
+  //
+  // POST /api/psychometrics/calibration/run
+  //   Triggers a full calibration sweep: EM update for every PRETEST item with
+  //   n ≥ MIN_N responses, persists CalibrationRun records, and promotes items
+  //   that meet the ACTIVE criteria (n ≥ PROMOTE_N AND |Δb| ≤ 0.30).
+  //
+  // GET  /api/psychometrics/calibration/runs
+  //   Returns the 50 most recent CalibrationRun records (latest first).
+  //
+  // GET  /api/psychometrics/calibration/item/:itemId
+  //   Returns full calibration history for a specific PRETEST item.
+
+  app.post(
+    "/api/psychometrics/calibration/run",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req, res) => {
+      try {
+        const { PretestCalibrationPipeline } = await import(
+          "./src/lib/psychometrics/pretest-calibration-pipeline.js"
+        );
+        const result = await PretestCalibrationPipeline.runCalibrationSweep({
+          triggerSource: "MANUAL",
+        });
+        res.json(result);
+      } catch (e: any) {
+        res.status(500).json({ error: e.message ?? "Calibration sweep failed" });
+      }
+    }
+  );
+
+  app.get(
+    "/api/psychometrics/calibration/runs",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req, res) => {
+      try {
+        const { PretestCalibrationPipeline } = await import(
+          "./src/lib/psychometrics/pretest-calibration-pipeline.js"
+        );
+        const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string || "50", 10)));
+        const runs = await PretestCalibrationPipeline.getRecentRuns(limit);
+        res.json({ runs, total: runs.length });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message ?? "Failed to fetch calibration runs" });
+      }
+    }
+  );
+
+  app.get(
+    "/api/psychometrics/calibration/item/:itemId",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req, res) => {
+      try {
+        const { PretestCalibrationPipeline } = await import(
+          "./src/lib/psychometrics/pretest-calibration-pipeline.js"
+        );
+        const { itemId } = req.params;
+        if (!itemId || typeof itemId !== "string") {
+          return res.status(400).json({ error: "itemId required" });
+        }
+        const history = await PretestCalibrationPipeline.getItemHistory(itemId);
+        res.json({ itemId, history, total: history.length });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message ?? "Failed to fetch item calibration history" });
+      }
+    }
+  );
+
+  // POST /api/psychometrics/exposure/scan
+  //   Manually trigger the Sympson-Hetter exposure auto-retire scan.
+  //   ψ > 0.25 → difStatus = FLAGGED, ψ > 0.35 → status = RETIRED.
+
+  app.post(
+    "/api/psychometrics/exposure/scan",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req, res) => {
+      try {
+        const { ExposureAutoRetireService } = await import(
+          "./src/lib/psychometrics/pretest-calibration-pipeline.js"
+        );
+        const result = await ExposureAutoRetireService.runExposureScan();
+        res.json(result);
+      } catch (e: any) {
+        res.status(500).json({ error: e.message ?? "Exposure scan failed" });
+      }
+    }
+  );
+
   // --- A/B ITEM VARIANT TESTING API ---
   // Runs a Bayesian Thompson-sampling experiment on response data for items
   // that have variants stored in metadata (variantGroup field).
@@ -11222,12 +11778,16 @@ async function startServer() {
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000; // must be > keepAliveTimeout
 
+  const { drainScoringQueue } = await import("./src/lib/scoring/scoring-queue.js");
+
   const shutdown = (signal: string) => {
     logger.info({ signal }, "Shutting down");
-    server.close(() => {
+    server.close(async () => {
+      // Wait for in-flight AI scoring jobs before disconnecting from DB
+      await drainScoringQueue(25_000).catch(() => {});
       prisma.$disconnect().finally(() => process.exit(0));
     });
-    setTimeout(() => process.exit(1), 10_000).unref();
+    setTimeout(() => process.exit(1), 35_000).unref();
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
