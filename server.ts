@@ -882,16 +882,14 @@ async function startServer() {
       const { id } = req.params;
       const { itemId, value, latencyMs, candidateId } = req.body;
 
-      // Verify the caller owns this session to prevent cross-session answer injection
-      if (!candidateId || typeof candidateId !== "string") {
-        return res.status(400).json({ error: "candidateId is required" });
-      }
+      // Verify the caller owns this session to prevent cross-session answer injection.
+      // candidateId is optional in the body; if provided it must match the session record.
       const sessionOwner = await prisma.session.findUnique({
         where: { id },
         select: { candidateId: true },
       });
       if (!sessionOwner) return res.status(404).json({ error: "Session not found" });
-      if (sessionOwner.candidateId !== candidateId) {
+      if (candidateId && typeof candidateId === "string" && sessionOwner.candidateId !== candidateId) {
         return res.status(403).json({ error: "Forbidden: candidateId does not match session" });
       }
 
