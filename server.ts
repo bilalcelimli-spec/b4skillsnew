@@ -17,6 +17,8 @@ import { logger, httpLogger, captureException, Sentry } from "./src/lib/observab
 import { buildCorsMiddleware, buildHelmetMiddleware, assertProductionSecrets } from "./src/lib/security/http-security.js";
 import { validate } from "./src/lib/security/validate.js";
 import * as Schemas from "./src/lib/security/schemas/index.js";
+import { AppError } from "./src/lib/errors/app-error.js";
+import { errorHandler } from "./src/lib/errors/error-handler.js";
 import { ProgressTracker } from "./src/lib/analytics/progress-tracker.js";
 import { ConcurrentValidityService } from "./src/lib/psychometrics/concurrent-validity.js";
 import { startScheduledJobs } from "./src/lib/jobs/scheduled-jobs.js";
@@ -11759,13 +11761,9 @@ async function startServer() {
     }
   );
 
-  app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    const reqId = (res.getHeader("x-request-id") as string) || undefined;
-    logger.error({ err, reqId, url: req.url, method: req.method }, "Unhandled request error");
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Internal server error", requestId: reqId });
-    }
-  });
+  // Centralized error handler — handles AppError, Prisma errors, ZodError, and unknown errors.
+  // Must be registered after all routes and before app.listen().
+  app.use(errorHandler);
 
   const server = app.listen(PORT, "0.0.0.0", () => {
     logger.info({ port: PORT }, `LinguAdapt Server running on http://localhost:${PORT}`);
