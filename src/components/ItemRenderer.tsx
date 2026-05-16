@@ -337,7 +337,10 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                 const opt = content.options[selectedOption];
                 const answer = (opt && typeof opt === "object" && opt.id) ? opt.id : selectedOption;
                 onResponse(answer);
-                setSelectedOption(null);
+                // Do NOT reset selectedOption here — keep the selection visible
+                // while submitting so the user can see what they chose.
+                // The useEffect resets it when the item changes (on success),
+                // and if the response fails, the selection stays so the user can retry.
               }
             }}
             className={cn(

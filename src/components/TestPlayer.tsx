@@ -724,11 +724,22 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
                   </div>
                 </div>
 
+                {itemFeedback?.error && (
+                  <div className="mb-4 px-5 py-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3">
+                    <span className="text-rose-600 font-bold text-sm">⚠ {itemFeedback.error}</span>
+                    <button
+                      onClick={() => setItemFeedback(null)}
+                      className="ml-auto text-xs text-rose-400 hover:text-rose-600 font-bold uppercase tracking-widest"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
                 <ItemRenderer 
                   item={currentItem} 
                   onResponse={handleResponse} 
                   disabled={submitting}
-                  feedback={itemFeedback}
+                  feedback={itemFeedback?.error ? null : itemFeedback}
                   isUploading={submitting}
                   uploadProgress={uploadProgress}
                   uploadStatus={uploadStatus}
