@@ -19,6 +19,7 @@ import { validate } from "./src/lib/security/validate.js";
 import * as Schemas from "./src/lib/security/schemas/index.js";
 import { AppError } from "./src/lib/errors/app-error.js";
 import { errorHandler } from "./src/lib/errors/error-handler.js";
+import { metricsMiddleware, metricsHandler } from "./src/lib/observability/metrics.js";
 import { ProgressTracker } from "./src/lib/analytics/progress-tracker.js";
 import { ConcurrentValidityService } from "./src/lib/psychometrics/concurrent-validity.js";
 import { startScheduledJobs } from "./src/lib/jobs/scheduled-jobs.js";
@@ -51,6 +52,9 @@ async function startServer() {
   }
 
   app.use(httpLogger);
+  // --- PROMETHEUS METRICS MIDDLEWARE ---
+  // Must be registered before routes so the timer starts before any handler runs.
+  app.use(metricsMiddleware);
   // --- REQUEST CORRELATION ID ---
   // Attach a unique request ID to every request for distributed tracing.
   // Reuses X-Request-Id if sent by a trusted upstream proxy, otherwise generates one.
@@ -200,6 +204,11 @@ async function startServer() {
       circuitBreakers: breakerHealth,
     });
   });
+
+  // /metrics — Prometheus text exposition (scrape endpoint for Grafana / Datadog).
+  // Protected: only accessible from trusted scraper IPs in production. For now
+  // we rely on the network boundary (internal VPC) as the access control layer.
+  app.get("/metrics", metricsHandler);
 
   // /api/health — alias kept for backwards-compatibility; same as /readyz
   app.get("/api/health", async (_req, res) => {
