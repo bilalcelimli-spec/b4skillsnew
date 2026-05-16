@@ -1,4 +1,5 @@
 import { information } from "./irt";
+import { klInformation } from "../psychometrics/kl-information.js";
 import { Item, BlueprintConstraint, SkillType } from "./types";
 import { getExposureStore } from "./exposure-store.js";
 import {
@@ -44,6 +45,35 @@ function dpTargetRate(eligiblePoolSize: number): number {
 }
 
 /**
+ * Logistic sigmoid function.
+ */
+function sigmoid(x: number): number {
+  return 1 / (1 + Math.exp(-x));
+}
+
+/**
+ * Smooth KL/MFI blend weight α ∈ [0, 1].
+ *
+ *   α → 1 : use KL information (high uncertainty / early items)
+ *   α → 0 : use MFI          (reliable estimate / later items)
+ *
+ * Unlike the hard binary switch in selectMethod(), this is a *continuous*
+ * transition: when SEM is near 0.40 or n is near 5, α takes intermediate
+ * values so the transition is gradual and noise-free.
+ *
+ * Mathematically:
+ *   α = σ((SEM − 0.40) / 0.15) × σ((5 − n) / 2)
+ *
+ * where σ is the logistic function. The two factors are independent:
+ *   - the first factor rises as SEM climbs above 0.40
+ *   - the second factor rises as n falls below 5
+ * Either condition alone triggers partial KL weighting.
+ */
+function hybridAlpha(sem: number, itemsAdministered: number): number {
+  return sigmoid((sem - 0.40) / 0.15) * sigmoid((5 - itemsAdministered) / 2);
+}
+
+/**
  * Track that an item was administered at a given ability estimate.
  * Prefer passing `atTheta` so conditional Sympson–Hetter stats are updated.
  */
@@ -54,9 +84,34 @@ export function recordItemExposure(itemId: string, atTheta?: number): void {
 }
 
 /**
- * Select the best item from the pool based on Fisher Information.
- * If blueprint constraints are provided, filters the pool to items that
- * still need to be administered per the blueprint before applying MFI.
+ * Select the best item from the pool using a KL/MFI hybrid information criterion
+ * with Davey–Parshall + Sympson-Hetter exposure control.
+ *
+ * Improvements over the previous MFI-only version:
+ *
+ *  1. **KL/MFI smooth hybrid** — Bayesian KL information (Chang & Ying 1996) is
+ *     blended with Fisher MFI via α(SEM, n). Early items (high SEM, few responses)
+ *     lean toward KL (broader search); later items lean toward MFI (local precision).
+ *     The blend is a continuous sigmoid function — no hard binary switch.
+ *
+ *  2. **b-targeted final selection** — After ranking by composite score, the winner
+ *     is the item with minimum |b − θ| among the top-3 candidates. This matches the
+ *     item difficulty to the current ability estimate, maximising conditional Fisher
+ *     information exactly at θ̂ rather than picking randomly from the top set.
+ *
+ *  3. **Pool-exhaustion emergency guard** — When the remaining eligible items for a
+ *     skill ≤ the remaining minCount gap, exposure penalties are bypassed and the
+ *     engine forces a selection from that skill. This prevents blueprint infeasibility
+ *     when high-exposure items have crowded out a skill's pool.
+ *
+ * @param pool              Full item pool (operational + pretest)
+ * @param currentTheta      Current ability estimate θ̂
+ * @param usedItemIds       Set of already-administered item IDs
+ * @param topN              Unused (kept for API compatibility; internally uses 3)
+ * @param blueprint         Content blueprint constraints
+ * @param currentSkillCounts Items administered per skill so far
+ * @param sem               Current SEM (default 1.0 = high uncertainty → full KL)
+ * @param operationalCount  Operational items administered so far (default 0)
  */
 export async function selectNextItem(
   pool: Item[],
@@ -64,7 +119,9 @@ export async function selectNextItem(
   usedItemIds: Set<string>,
   topN: number = 5,
   blueprint?: BlueprintConstraint[],
-  currentSkillCounts?: Partial<Record<SkillType, number>>
+  currentSkillCounts?: Partial<Record<SkillType, number>>,
+  sem: number = 1.0,
+  operationalCount: number = 0
 ): Promise<Item | null> {
   const availableItems = pool.filter(
     (item) => !usedItemIds.has(item.id) && item.status !== "RETIRED"
@@ -78,6 +135,43 @@ export async function selectNextItem(
   const stratumN = store.getStratumTotalSync(stratum);
   const useConditional = stratumN >= DEFAULT_MIN_STRATUM_N;
 
+  // ── 1. Pool-exhaustion emergency guard ─────────────────────────────────────
+  // When the remaining available items for a constrained skill can no longer
+  // satisfy its minCount gap, we MUST select from that skill immediately —
+  // bypassing exposure penalties to avoid blueprint infeasibility.
+  if (blueprint && currentSkillCounts) {
+    const emergencySkills = new Set<SkillType>();
+    for (const constraint of blueprint) {
+      const count = currentSkillCounts[constraint.skill] ?? 0;
+      const remainingNeeded = constraint.minCount - count;
+      if (remainingNeeded <= 0) continue;
+      const skillAvailable = availableItems.filter(it => it.skill === constraint.skill).length;
+      if (skillAvailable > 0 && skillAvailable <= remainingNeeded) {
+        emergencySkills.add(constraint.skill);
+      }
+    }
+
+    if (emergencySkills.size > 0) {
+      const emergencyPool = availableItems.filter(it => emergencySkills.has(it.skill));
+      if (emergencyPool.length > 0) {
+        // Pure MFI — no exposure penalty during emergency forced selection.
+        const scored = emergencyPool.map(item => ({
+          item,
+          score: information(currentTheta, item.params),
+        }));
+        scored.sort((a, b) => b.score - a.score);
+        const top3 = scored.slice(0, Math.min(3, scored.length));
+        const selected = top3.reduce((best, c) =>
+          Math.abs(c.item.params.b - currentTheta) < Math.abs(best.item.params.b - currentTheta)
+            ? c : best
+        ).item;
+        await store.recordExposure(selected.id, currentTheta);
+        return selected;
+      }
+    }
+  }
+
+  // ── 2. Blueprint enforcement (normal path) ──────────────────────────────────
   let candidatePool = availableItems;
 
   if (blueprint && blueprint.length > 0 && currentSkillCounts) {
@@ -107,27 +201,49 @@ export async function selectNextItem(
     }
   }
 
-  const scoredItems = candidatePool.map((item) => {
-    const info = information(currentTheta, item.params);
+  // ── 3. KL/MFI hybrid scoring with exposure control ─────────────────────────
+  // α → 1 means "weight KL heavily"; α → 0 means "weight MFI heavily".
+  const alpha = hybridAlpha(sem, operationalCount);
+
+  // Compute raw KL and MFI scores for each candidate in one pass.
+  const klRaw  = candidatePool.map(item => klInformation(currentTheta, sem, item.params));
+  const mfiRaw = candidatePool.map(item => information(currentTheta, item.params));
+
+  // Normalise to [0, 1] so the two criteria are on a common scale before blending.
+  const maxKl  = Math.max(...klRaw)  || 1;
+  const maxMfi = Math.max(...mfiRaw) || 1;
+
+  const targetRate = dpTargetRate(candidatePool.length);
+
+  const scoredItems = candidatePool.map((item, i) => {
+    const klNorm  = klRaw[i]!  / maxKl;
+    const mfiNorm = mfiRaw[i]! / maxMfi;
+
+    // Exposure weights (most conservative of DP and SH wins)
     const rate = useConditional
       ? store.getConditionalExposureRateSync(item.id, stratum)
       : store.getExposureRateSync(item.id);
-
-    // Davey-Parshall weight (continuous penalty) combined with Sympson-Hetter hard cap.
-    // DP provides smooth, differentiable decay; SH acts as a safety ceiling.
-    const targetRate = dpTargetRate(candidatePool.length);
     const dpWeight = daveyParshallWeight(rate, targetRate);
     const shWeight = sympsonHetterWeight(rate, MAX_EXPOSURE_RATE);
-    const exposureWeight = Math.min(dpWeight, shWeight); // most conservative wins
+    const exposureWeight = Math.min(dpWeight, shWeight);
 
-    return { item, score: info * exposureWeight };
+    const composite = (alpha * klNorm + (1 - alpha) * mfiNorm) * exposureWeight;
+    return { item, score: composite };
   });
 
   scoredItems.sort((a, b) => b.score - a.score);
 
-  const candidates = scoredItems.slice(0, Math.min(topN, scoredItems.length));
-  const randomIndex = Math.floor(Math.random() * candidates.length);
-  const selected = candidates[randomIndex].item;
+  // ── 4. b-targeted final selection from top-3 ───────────────────────────────
+  // Among the three highest-scoring items, select the one whose difficulty b
+  // is closest to the current theta. When the item is perfectly targeted
+  // (b ≈ θ), its 3PL information is maximised at exactly the current estimate —
+  // the same principle behind maximum-likelihood item selection in classical CAT.
+  const top3 = scoredItems.slice(0, Math.min(3, scoredItems.length));
+  const selected = top3.reduce((best, candidate) => {
+    const diffBest = Math.abs(best.item.params.b - currentTheta);
+    const diffCand = Math.abs(candidate.item.params.b - currentTheta);
+    return diffCand < diffBest ? candidate : best;
+  }).item;
 
   await store.recordExposure(selected.id, currentTheta);
   return selected;

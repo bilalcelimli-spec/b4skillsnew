@@ -318,3 +318,225 @@ describe("AssessmentEngine.getNextItem — MST module filter", () => {
     expect(next?.id).toBe("r1");
   });
 });
+
+// ── Per-skill SEM stopping ─────────────────────────────────────────────────────
+
+describe("AssessmentEngine.shouldStop — per-skill SEM targets", () => {
+  /**
+   * Helper that builds a SessionState with a given number of responses, theta,
+   * global SEM, and optional per-skill profiles.
+   */
+  function stateWithSkills(
+    count: number,
+    theta: number,
+    sem: number,
+    skillProfiles?: Partial<Record<SkillType, { theta: number; sem: number }>>
+  ): SessionState {
+    return {
+      theta,
+      sem,
+      responses: Array.from({ length: count }, (_, i) => ({
+        itemId: `i${i}`,
+        score: 1,
+        isPretest: false,
+      })),
+      usedItemIds: new Set<string>(),
+      skillProfiles,
+    };
+  }
+
+  it("stops with PER_SKILL_SEM_TARGETS_MET when every configured skill meets its target", () => {
+    const engine = new AssessmentEngine(baseConfig({
+      semThreshold: 0.20, // global threshold not yet met (sem=0.50 > 0.20)
+      perSkillSemTargets: {
+        [SkillType.READING]: 0.35,
+        [SkillType.WRITING]: 0.35,
+      },
+    }));
+    const state = stateWithSkills(6, 0, 0.50, {
+      [SkillType.READING]: { theta: 0.5, sem: 0.30 }, // 0.30 ≤ 0.35 ✓
+      [SkillType.WRITING]: { theta: 0.3, sem: 0.32 }, // 0.32 ≤ 0.35 ✓
+    });
+    const result = engine.shouldStop(state);
+    expect(result.stop).toBe(true);
+    expect(result.reason).toBe("PER_SKILL_SEM_TARGETS_MET");
+  });
+
+  it("does NOT stop when any configured skill has SEM above its target", () => {
+    const engine = new AssessmentEngine(baseConfig({
+      semThreshold: 0.20,
+      perSkillSemTargets: {
+        [SkillType.READING]: 0.35,
+        [SkillType.WRITING]: 0.35,
+      },
+    }));
+    const state = stateWithSkills(6, 0, 0.80, {
+      [SkillType.READING]: { theta: 0.5, sem: 0.30 }, // meets target
+      [SkillType.WRITING]: { theta: 0.3, sem: 0.50 }, // 0.50 > 0.35 ✗
+    });
+    const result = engine.shouldStop(state);
+    expect(result.stop).toBe(false);
+  });
+
+  it("does NOT stop when a configured skill has no profile yet (not yet estimated)", () => {
+    const engine = new AssessmentEngine(baseConfig({
+      semThreshold: 0.20,
+      perSkillSemTargets: { [SkillType.SPEAKING]: 0.35 },
+    }));
+    // SPEAKING profile is absent — skill not yet administered
+    const state = stateWithSkills(5, 0, 0.80, {
+      [SkillType.READING]: { theta: 0.0, sem: 0.25 },
+    });
+    const result = engine.shouldStop(state);
+    expect(result.stop).toBe(false);
+  });
+
+  it("ignores per-skill targets when perSkillSemTargets is empty object", () => {
+    const engine = new AssessmentEngine(baseConfig({
+      semThreshold: 0.20,
+      perSkillSemTargets: {},
+    }));
+    const state = stateWithSkills(5, 0, 0.80);
+    // Empty targets → config present but no skills configured → should NOT stop
+    const result = engine.shouldStop(state);
+    expect(result.stop).toBe(false);
+  });
+
+  it("fires after minItems floor is passed", () => {
+    // minItems=5; only 4 responses → per-skill check must NOT fire even if targets met
+    const engine = new AssessmentEngine(baseConfig({
+      minItems: 5,
+      semThreshold: 0.20,
+      perSkillSemTargets: { [SkillType.READING]: 0.35 },
+    }));
+    const state = stateWithSkills(4, 0, 0.80, {
+      [SkillType.READING]: { theta: 0.5, sem: 0.25 }, // target met
+    });
+    expect(engine.shouldStop(state).stop).toBe(false);
+  });
+});
+
+// ── Smart pretest scheduling ──────────────────────────────────────────────────
+
+describe("AssessmentEngine.getNextItem — smart pretest scheduling", () => {
+  const pretestItem: Item = {
+    id: "pt1",
+    skill: SkillType.READING,
+    params: { a: 1.0, b: 0.0, c: 0.25 },
+    isPretest: true,
+  };
+  // Use id "opX" to avoid clashing with opState()'s generated ids "op0", "op1", ...
+  const opItem: Item = {
+    id: "opX",
+    skill: SkillType.READING,
+    params: { a: 1.5, b: 0.0, c: 0.25 },
+    isPretest: false,
+  };
+
+  function opState(opCount: number): SessionState {
+    return {
+      theta: 0,
+      sem: 0.8,
+      responses: Array.from({ length: opCount }, (_, i) => ({
+        itemId: `op${i}`,
+        score: 1,
+        isPretest: false,
+      })),
+      usedItemIds: new Set(Array.from({ length: opCount }, (_, i) => `op${i}`)),
+    };
+  }
+
+  it("selects pretest at 4th operational position (default schedule)", async () => {
+    // maxPretests = round(30 × 0.1) = 3 → slots = {4, 8, 12}
+    // opN = 3 → nextOpPosition = 4 → pretest slot hit
+    const engine = new AssessmentEngine(baseConfig({
+      pretestRatio: 0.1,
+      maxItems: 30,
+      useShadowTest: false,
+      useMirt: false,
+      useMirt2B: false,
+    }));
+    const pool = [pretestItem, opItem];
+    const selected = await engine.getNextItem(opState(3), pool);
+    expect(selected?.isPretest).toBe(true);
+    expect(selected?.id).toBe("pt1");
+  });
+
+  it("does NOT select pretest at 3rd operational position (not a scheduled slot)", async () => {
+    // opN = 2 → nextOpPosition = 3, not in {4, 8, 12}
+    const engine = new AssessmentEngine(baseConfig({
+      pretestRatio: 0.1,
+      maxItems: 30,
+      useShadowTest: false,
+      useMirt: false,
+      useMirt2B: false,
+    }));
+    const pool = [pretestItem, opItem];
+    const selected = await engine.getNextItem(opState(2), pool);
+    expect(selected?.isPretest).not.toBe(true);
+    expect(selected?.id).toBe("opX");
+  });
+
+  it("uses explicit pretestPositions when configured", async () => {
+    // Configured to only deliver a pretest at position 2 (unusual, but explicit)
+    const engine = new AssessmentEngine(baseConfig({
+      pretestRatio: 0.1,
+      maxItems: 30,
+      pretestPositions: [2],
+      useShadowTest: false,
+      useMirt: false,
+      useMirt2B: false,
+    }));
+    const pool = [pretestItem, opItem];
+    // opN = 1 → nextOpPosition = 2 → matches custom slot
+    const selected = await engine.getNextItem(opState(1), pool);
+    expect(selected?.isPretest).toBe(true);
+  });
+
+  it("does not schedule pretest when pretestRatio is 0", async () => {
+    const engine = new AssessmentEngine(baseConfig({
+      pretestRatio: 0,
+      maxItems: 30,
+      useShadowTest: false,
+      useMirt: false,
+      useMirt2B: false,
+    }));
+    const pool = [pretestItem, opItem];
+    // Even at position 4, no pretest because ratio=0
+    const selected = await engine.getNextItem(opState(3), pool);
+    expect(selected?.isPretest).not.toBe(true);
+  });
+
+  it("caps total pretests at maxPretests derived from ratio × maxItems", async () => {
+    // ratio=0.1, maxItems=10 → maxPretests=1 → only slot {4}
+    // First pretest already given → should not administer another at position 8
+    const engine = new AssessmentEngine(baseConfig({
+      pretestRatio: 0.1,
+      maxItems: 10,
+      useShadowTest: false,
+      useMirt: false,
+      useMirt2B: false,
+    }));
+    const pool = [pretestItem, opItem];
+    // Build state: 7 operational + 1 pretest already administered
+    const state: SessionState = {
+      theta: 0,
+      sem: 0.8,
+      responses: [
+        ...Array.from({ length: 7 }, (_, i) => ({
+          itemId: `op${i}`,
+          score: 1 as const,
+          isPretest: false,
+        })),
+        { itemId: "ptDone", score: 1, isPretest: true }, // 1 pretest used
+      ],
+      usedItemIds: new Set([
+        ...Array.from({ length: 7 }, (_, i) => `op${i}`),
+        "ptDone",
+      ]),
+    };
+    // opN = 7 → nextOpPosition = 8, in default slots for ratio=0.1×30=3 but maxPretests=1 → cap hit
+    const selected = await engine.getNextItem(state, pool);
+    expect(selected?.isPretest).not.toBe(true);
+  });
+});

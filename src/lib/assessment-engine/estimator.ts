@@ -124,7 +124,11 @@ export function estimateTheta(
     ? DEFAULT_PRIOR_WEIGHTS
     : PRIOR_THETA_POINTS.map(t => normalDensity(t, priorMean, priorSd));
 
-  let numerator = 0;
+  // Pre-compute likelihood × prior terms in a single pass.
+  // Previously the likelihood was evaluated twice (once for the mean, once for
+  // the variance), doubling the most expensive operation in the EAP loop.
+  // Caching in a typed Float64Array eliminates the second evaluation entirely.
+  const terms = new Float64Array(PRIOR_THETA_POINTS.length);
   let denominator = 0;
 
   for (let i = 0; i < PRIOR_THETA_POINTS.length; i++) {
@@ -133,22 +137,22 @@ export function estimateTheta(
     const l = useGrm
       ? Math.exp(jointLogLikelihoodAt(theta, op, items))
       : likelihood(theta, responseData);
-    const term = l * weight;
-    numerator += theta * term;
-    denominator += term;
+    terms[i] = l * weight;
+    denominator += terms[i]!;
+  }
+
+  // Mean (EAP) — reuse cached terms, no second likelihood evaluation
+  let numerator = 0;
+  for (let i = 0; i < PRIOR_THETA_POINTS.length; i++) {
+    numerator += PRIOR_THETA_POINTS[i]! * terms[i]!;
   }
 
   const thetaEap = numerator / denominator;
 
+  // Variance — again reuse cached terms
   let varianceNumerator = 0;
   for (let i = 0; i < PRIOR_THETA_POINTS.length; i++) {
-    const theta = PRIOR_THETA_POINTS[i]!;
-    const weight = priorWeights[i]!;
-    const l = useGrm
-      ? Math.exp(jointLogLikelihoodAt(theta, op, items))
-      : likelihood(theta, responseData);
-    const term = l * weight;
-    varianceNumerator += Math.pow(theta - thetaEap, 2) * term;
+    varianceNumerator += Math.pow(PRIOR_THETA_POINTS[i]! - thetaEap, 2) * terms[i]!;
   }
 
   const variance = varianceNumerator / denominator;

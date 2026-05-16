@@ -218,9 +218,31 @@ export class AssessmentEngine {
     const opN = operationalResponseCount(state.responses);
     const inMstStructure = Boolean(mst?.enabled && mstOpTotal > 0 && opN < mstOpTotal);
 
-    // 1. Exposure Control & Pretest Logic (disabled during MST panels so module counts stay aligned)
-    const pretestRatio = inMstStructure ? 0 : (this.config.pretestRatio || 0);
-    const shouldAdministerPretest = Math.random() < pretestRatio;
+    // 1. Smart pretest scheduling — deterministic position-based (not random probability).
+    //    Default: administer a pretest at every 4th operational position (4, 8, 12, …).
+    //    Override via config.pretestPositions for explicit control.
+    //    Max pretest count is derived from pretestRatio × maxItems so the overall ratio
+    //    is honoured even though individual positions are fixed.
+    const pretestRatio = this.config.pretestRatio ?? 0;
+    const maxPretests = Math.round(this.config.maxItems * pretestRatio);
+    const existingPretestCount = state.responses.filter(r => r.isPretest).length;
+
+    const pretestSlots: ReadonlySet<number> = this.config.pretestPositions
+      ? new Set(this.config.pretestPositions)
+      : (() => {
+          const slots = new Set<number>();
+          for (let i = 0; i < maxPretests; i++) {
+            slots.add(4 + i * 4); // positions 4, 8, 12, 16, …
+          }
+          return slots;
+        })();
+
+    const nextOpPosition = opN + 1; // 1-indexed next operational position
+    const shouldAdministerPretest =
+      !inMstStructure &&
+      pretestRatio > 0 &&
+      existingPretestCount < maxPretests &&
+      pretestSlots.has(nextOpPosition);
 
     if (shouldAdministerPretest) {
       const pretestPool = pool.filter(item => item.isPretest && !state.usedItemIds.has(item.id));
@@ -321,14 +343,18 @@ export class AssessmentEngine {
       }
     }
 
-    // 4c. Standard MFI + Sympson–Hetter (θ-conditional) + blueprint
+    // 4c. KL/MFI hybrid + Sympson–Hetter (θ-conditional) + blueprint + b-targeting
+    //     Pass current SEM and operational count so the selector can apply the
+    //     smooth KL/MFI blend and b-targeted final pick.
     return selectNextItem(
       operationalPool,
       state.theta,
       state.usedItemIds,
       5,
       effectiveBlueprint,
-      currentSkillCounts
+      currentSkillCounts,
+      state.sem,
+      opN
     );
   }
 
@@ -375,6 +401,25 @@ export class AssessmentEngine {
     // 1. Minimum items floor
     if (count < this.config.minItems) {
       return { stop: false, reason: null };
+    }
+
+    // 1b. Per-skill SEM targets — stop when every configured skill is measured
+    //     precisely enough, independent of the composite SEM.
+    if (this.config.perSkillSemTargets && state.skillProfiles) {
+      const targets = this.config.perSkillSemTargets;
+      const skillsConfigured = Object.keys(targets) as SkillType[];
+      if (skillsConfigured.length > 0) {
+        const allMet = skillsConfigured.every(skill => {
+          const target = targets[skill];
+          if (target === undefined) return true;
+          const profile = state.skillProfiles![skill];
+          if (!profile) return false; // skill not yet estimated
+          return profile.sem <= target;
+        });
+        if (allMet) {
+          return { stop: true, reason: "PER_SKILL_SEM_TARGETS_MET" };
+        }
+      }
     }
 
     const sprt = this.config.sprt;

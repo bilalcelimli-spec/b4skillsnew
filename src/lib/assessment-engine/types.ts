@@ -206,4 +206,22 @@ export interface EngineConfig {
    * Default: false (composite scorer).
    */
   useRlSelector?: boolean;
+  /**
+   * Per-skill SEM stopping targets. When all listed skills have a per-skill SEM
+   * at or below their target, the session stops with reason "PER_SKILL_SEM_TARGETS_MET".
+   * Complementary to the global `semThreshold`: the global threshold governs the
+   * composite estimate; these govern individual skill precision.
+   *
+   * Example: { WRITING: 0.35, SPEAKING: 0.35 } stops once both productive skills
+   * are measured precisely regardless of overall composite SEM.
+   */
+  perSkillSemTargets?: Partial<Record<SkillType, number>>;
+  /**
+   * Explicit 1-indexed operational positions at which a pretest item is scheduled.
+   * When omitted, pretests are placed at positions 4, 8, 12, … (one every 4 items).
+   * Only applies when `pretestRatio > 0`. MST phases are always excluded.
+   *
+   * Example: [4, 9] schedules exactly two pretests at the 4th and 9th operational items.
+   */
+  pretestPositions?: number[];
 }
