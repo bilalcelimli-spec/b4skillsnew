@@ -14,6 +14,7 @@ vi.mock("../../prisma.js", () => ({
     },
     response: {
       count: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
     },
     retirementAuditLog: {
       count: vi.fn(),
@@ -68,6 +69,7 @@ describe("LiveMetricsEngine", () => {
         },
       ];
 
+      const _now = new Date();
       const mockItems = [
         {
           id: "item-1",
@@ -75,6 +77,8 @@ describe("LiveMetricsEngine", () => {
           status: "ACTIVE",
           difficulty: 0.5,
           discrimination: 0.8,
+          createdAt: _now,
+          updatedAt: _now,
         },
         {
           id: "item-2",
@@ -82,6 +86,8 @@ describe("LiveMetricsEngine", () => {
           status: "PRETEST",
           difficulty: 0.4,
           discrimination: 0.6,
+          createdAt: _now,
+          updatedAt: _now,
         },
         {
           id: "item-3",
@@ -89,12 +95,9 @@ describe("LiveMetricsEngine", () => {
           status: "RETIRED",
           difficulty: 0.7,
           discrimination: 0.2,
+          createdAt: _now,
+          updatedAt: _now,
         },
-      ];
-
-      const mockPretestItems = [
-        { id: "pretest-1", createdAt: new Date() },
-        { id: "pretest-2", createdAt: new Date() },
       ];
 
       const mockResponses = [
@@ -364,13 +367,17 @@ describe("LiveMetricsEngine", () => {
 
   describe("computePretestPipelineMetrics", () => {
     it("should identify items ready for calibration and promotion", async () => {
+      const now = new Date();
       const mockPretestItems = [
-        { id: "pretest-1", createdAt: new Date() },
-        { id: "pretest-2", createdAt: new Date() },
-        { id: "pretest-3", createdAt: new Date() },
+        { id: "pretest-1", createdAt: now, updatedAt: now },
+        { id: "pretest-2", createdAt: now, updatedAt: now },
+        { id: "pretest-3", createdAt: now, updatedAt: now },
       ];
 
-      (prisma.item.findMany as any).mockResolvedValue(mockPretestItems as any);
+      // First call: pretest items; second call: recentlyPromoted (empty → avgPromotionTime = 0)
+      (prisma.item.findMany as any)
+        .mockResolvedValueOnce(mockPretestItems as any)
+        .mockResolvedValueOnce([]); // recentlyPromoted
       (prisma.response.count as any)
         // readyForCalibration checks (first loop)
         .mockResolvedValueOnce(25) // pretest-1: < 30, not ready
@@ -507,6 +514,7 @@ describe("LiveMetricsEngine", () => {
         },
       ];
 
+      const _integNow = new Date();
       const mockItems = [
         {
           id: "item-1",
@@ -514,6 +522,8 @@ describe("LiveMetricsEngine", () => {
           status: "ACTIVE",
           difficulty: 0.5,
           discrimination: 0.8,
+          createdAt: _integNow,
+          updatedAt: _integNow,
         },
       ];
 

@@ -226,7 +226,9 @@ export const ScoringOrchestrator = {
       (orchestrated.aiResult as any).argumentQualityProfile = aqProfile;
 
       // If discourse quality diverges strongly from Gemini's coherence score, flag for review
-      const geminiCoherence = orchestrated.aiResult.rubricScores.coherence ?? orchestrated.aiResult.score;
+      // raterAgreementKappa expects both values on 0..1 scale; rubricScores.coherence is 0..10
+      const rawCoherence = orchestrated.aiResult.rubricScores.coherence ?? (orchestrated.aiResult.score * 10);
+      const geminiCoherence = rawCoherence > 1 ? rawCoherence / 10 : rawCoherence;
       const aqAgreement = ArgumentQualityAnalyzer.raterAgreementKappa(geminiCoherence, aqProfile.discourseQualityScore);
       (orchestrated.aiResult as any).argumentQualityAgreement = aqAgreement;
 

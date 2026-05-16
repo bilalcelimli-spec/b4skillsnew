@@ -19,6 +19,44 @@ vi.mock("../gemini-scoring-service", () => ({
   },
 }));
 
+// Mock ArgumentQualityAnalyzer so orchestrator tests are not sensitive to
+// the exact discourse features of the test essays. AQ analysis has its own
+// dedicated test suite (argument-quality-analyzer.test.ts).
+vi.mock("../argument-quality-analyzer", () => ({
+  ArgumentQualityAnalyzer: {
+    analyse: vi.fn().mockReturnValue({
+      wordCount: 150,
+      sentenceCount: 8,
+      argument: {
+        claimDensity: 2.5,
+        evidenceDensity: 3.0,
+        warrantDensity: 2.0,
+        concessionDensity: 1.5,
+        supportRatio: 1.2,
+        hasCounterArgument: true,
+      },
+      coherence: {
+        cohesiveReferenceDensity: 5.0,
+        avgSentenceLength: 18,
+        paragraphCount: 3,
+        topicContinuity: 0.7,
+      },
+      register: {
+        informalMarkerDensity: 0,
+        formalMarkerDensity: 3.0,
+        guiraudIndex: 4.5,
+        uniqueWordRatio: 0.6,
+        registerConsistency: 0.85,
+      },
+      discourseQualityScore: 7.5,
+      predictedCefrBand: "B2",
+      predictionConfidence: 0.78,
+      flags: [],
+    }),
+    raterAgreementKappa: vi.fn().mockReturnValue({ agreement: "STRONG", delta: 0.05 }),
+  },
+}));
+
 const PROMPT =
   "Write 200-250 words discussing the advantages and disadvantages of remote " +
   "work compared to working in an office. Give specific examples from your " +
