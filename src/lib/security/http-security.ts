@@ -48,9 +48,6 @@ export function buildHelmetMiddleware(): RequestHandler {
     scriptSrc: isProd
       ? ["'self'"]
       : ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-    // require-sri-for: enforce Subresource Integrity on scripts and styles
-    // from external origins (fonts.googleapis.com, cdn.*)
-    requireSriFor: isProd ? ["script", "style"] : null,
     styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
     fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
     imgSrc: ["'self'", "data:", "blob:", "https:"],
@@ -97,7 +94,15 @@ export function buildHelmetMiddleware(): RequestHandler {
 
 export function assertProductionSecrets(): void {
   if (!isProd) return;
-  const required = ["JWT_SECRET", "REFRESH_SECRET", "DATABASE_URL", "APP_URL"];
+  const required = [
+    "JWT_SECRET",
+    "REFRESH_SECRET",
+    "DATABASE_URL",
+    "APP_URL",
+    "SMTP_HOST",
+    "SMTP_USER",
+    "SMTP_PASS",
+  ];
   const missing = required.filter((k) => !process.env[k]);
   if (missing.length) {
     throw new Error(
@@ -116,5 +121,13 @@ export function assertProductionSecrets(): void {
   const corsOrigins = parseOrigins(process.env.CORS_ORIGINS);
   if (!corsOrigins.includes(appUrl)) {
     throw new Error("CORS_ORIGINS must include APP_URL in production.");
+  }
+  // Stripe: warn but don't hard-fail — some deployments may not use payments
+  if (!process.env.STRIPE_SECRET_KEY) {
+    console.warn("[startup] WARNING: STRIPE_SECRET_KEY is not set — payment endpoints will fail.");
+  }
+  // Redis: warn if not set — rate limiting and exposure store will be per-instance
+  if (!process.env.REDIS_URL) {
+    console.warn("[startup] WARNING: REDIS_URL is not set — rate limiting and exposure tracking will not persist across restarts or scale horizontally.");
   }
 }

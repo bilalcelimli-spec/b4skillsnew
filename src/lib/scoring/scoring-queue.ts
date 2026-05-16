@@ -212,3 +212,30 @@ export function getScoringQueueStats(): {
 } {
   return { activeCount, queueDepth: queue.length, maxConcurrent: MAX_CONCURRENT_AI };
 }
+
+/**
+ * Wait for all in-progress and queued scoring jobs to complete (or timeout).
+ * Call this during graceful shutdown before closing the server.
+ */
+export function drainScoringQueue(timeoutMs = 25_000): Promise<void> {
+  return new Promise((resolve) => {
+    if (activeCount === 0 && queue.length === 0) return resolve();
+
+    const deadline = setTimeout(() => {
+      logger.warn(
+        { activeCount, queueDepth: queue.length },
+        "async-scoring: drain timed out — some jobs may be lost"
+      );
+      resolve();
+    }, timeoutMs);
+    deadline.unref();
+
+    const check = setInterval(() => {
+      if (activeCount === 0 && queue.length === 0) {
+        clearInterval(check);
+        clearTimeout(deadline);
+        resolve();
+      }
+    }, 100);
+  });
+}

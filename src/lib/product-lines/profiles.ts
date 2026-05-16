@@ -98,6 +98,14 @@ export interface ProductLineProfile {
    * Derived from: MC items × 45s + Listening × 90s + Writing × 1200s + Speaking × 240s
    */
   estimatedDurationMin: [number, number];
+  /**
+   * Hard server-side time ceiling in milliseconds.
+   * The session is finalized with reason TIME_LIMIT_EXCEEDED if elapsed time
+   * exceeds this value before psychometric stopping criteria are met.
+   * This is a safety net — never shown to candidates as a countdown.
+   * Set to roughly estimatedDurationMin[1] × 1.5 to accommodate slow readers.
+   */
+  maxDurationMs: number;
 }
 
 // ─── Profile Definitions ──────────────────────────────────────────────────────
@@ -153,6 +161,8 @@ const PRIMARY: ProductLineProfile = {
   warmupItems: 3,
   warmupDifficultyOffset: 0.5,
   estimatedDurationMin: [28, 42],
+  // 42 min × 1.5 safety net (young learners may need extra time)
+  maxDurationMs: 3_780_000,
 };
 
 /**
@@ -212,6 +222,8 @@ const JUNIOR_SUITE: ProductLineProfile = {
   warmupItems: 3,
   warmupDifficultyOffset: 0.5,
   estimatedDurationMin: [55, 75],
+  // 75 min × 1.5 safety net
+  maxDurationMs: 6_750_000,
 };
 
 /**
@@ -261,6 +273,8 @@ const DIAGNOSTIC_15: ProductLineProfile = {
   warmupItems: 2,
   warmupDifficultyOffset: 0.3,
   estimatedDurationMin: [12, 18],
+  // 18 min × 1.5 safety net
+  maxDurationMs: 1_620_000,
 };
 
 /**
@@ -309,6 +323,8 @@ const EXPRESS_30: ProductLineProfile = {
   warmupItems: 2,
   warmupDifficultyOffset: 0.3,
   estimatedDurationMin: [28, 42],
+  // 42 min × 1.5 safety net
+  maxDurationMs: 3_780_000,
 };
 
 /**
@@ -367,6 +383,8 @@ const ACADEMIA: ProductLineProfile = {
   warmupItems: 2,
   warmupDifficultyOffset: 0.3,
   estimatedDurationMin: [90, 120],
+  // 120 min × 1.5 safety net (high-stakes; extra buffer for productive tasks)
+  maxDurationMs: 10_800_000,
 };
 
 /**
@@ -421,6 +439,8 @@ const CORPORATE: ProductLineProfile = {
   warmupItems: 2,
   warmupDifficultyOffset: 0.4,
   estimatedDurationMin: [50, 65],
+  // 65 min × 1.5 safety net
+  maxDurationMs: 5_850_000,
 };
 
 /**
@@ -473,6 +493,8 @@ const LANGUAGE_SCHOOLS: ProductLineProfile = {
   warmupItems: 2,
   warmupDifficultyOffset: 0.4,
   estimatedDurationMin: [55, 75],
+  // 75 min × 1.5 safety net
+  maxDurationMs: 6_750_000,
 };
 
 // ─── Registry ─────────────────────────────────────────────────────────────────

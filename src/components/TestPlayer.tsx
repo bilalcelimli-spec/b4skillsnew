@@ -46,7 +46,12 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   const [finished, setFinished] = useState(false);
   const [status, setStatus] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [timeLeft, setTimeLeft] = useState(1800); // 30 minutes total
+  // Adaptive timing: elapsed seconds (counts up). No fixed countdown.
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  // maxDurationMs: server-enforced safety-net ceiling received on launch.
+  // Never shown as a countdown — used only to render a faint progress arc.
+  const [maxDurationMs, setMaxDurationMs] = useState<number>(5_400_000); // 90 min default
+  const sessionStartRef = React.useRef<number>(Date.now());
   const [showInsights, setShowInsights] = useState(false);
   const [itemFeedback, setItemFeedback] = useState<any>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -61,6 +66,9 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   // Theta trajectory for the real-time adaptivity ladder
   const [thetaHistory, setThetaHistory] = useState<Array<{ n: number; theta: number; cefr: string }>>([]);
   const responseStartTime = React.useRef<number>(Date.now());
+  // Prevent concurrent fetchNextItem calls (race condition from section-transition
+  // "Continue manually" button being clicked while the loop is still in-flight).
+  const isFetchingNextRef = React.useRef(false);
 
   const SECTION_ORDER = ['VOCABULARY', 'GRAMMAR', 'LISTENING', 'READING'];
   const SECTION_LABELS: Record<string, string> = {
@@ -96,6 +104,10 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         }
         
         setSessionId(data.sessionId);
+        if (typeof data.maxDurationMs === "number") {
+          setMaxDurationMs(data.maxDurationMs);
+        }
+        sessionStartRef.current = Date.now();
         fetchNextItem(data.sessionId);
       } catch (err) {
         setError("Failed to initialize assessment session. Please check your database connection.");
@@ -105,19 +117,16 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     launch();
   }, []);
 
-  // Timer — ends the exam when it reaches 0
+  // Elapsed time counter — counts up from 0. The exam ends when the server
+  // signals stop (psychometric criteria met) or TIME_LIMIT_EXCEEDED.
+  // No client-side hard stop based on time.
   useEffect(() => {
     if (loading || !sessionId || finished) return;
-    if (timeLeft === 0) {
-      setFinished(true);
-      onComplete(null, sessionId);
-      return;
-    }
     const timer = setInterval(() => {
-      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+      setElapsedSeconds(Math.floor((Date.now() - sessionStartRef.current) / 1000));
     }, 1000);
     return () => clearInterval(timer);
-  }, [loading, sessionId, finished, timeLeft]);
+  }, [loading, sessionId, finished]);
 
   // Applies the result of a /next fetch to state (shared between normal flow and pre-fetched transition)
   const applyNextData = (data: any, sid: string) => {
@@ -130,12 +139,21 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       setCurrentSection(data.currentSection);
       setSectionIndex(data.sectionIndex ?? 0);
     }
+    // Sync elapsed time from server response (authoritative for reconnect cases)
+    if (typeof data.elapsedMs === "number") {
+      setElapsedSeconds(Math.floor(data.elapsedMs / 1000));
+    }
+    if (typeof data.maxDurationMs === "number") {
+      setMaxDurationMs(data.maxDurationMs);
+    }
     responseStartTime.current = Date.now();
     setCurrentItem(data.item);
     fetchStatus(sid);
   };
 
   const fetchNextItem = async (sid: string) => {
+    if (isFetchingNextRef.current) return;
+    isFetchingNextRef.current = true;
     setLoading(true);
     setUploadStatus('idle');
     setUploadProgress(0);
@@ -179,6 +197,9 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
           try {
             const nextRes = await fetch(`/api/sessions/${sid}/next`);
             const nextData = await nextRes.json();
+            if (!nextRes.ok || nextData.error) {
+              throw new Error(nextData.error || "Fetch failed during section transition");
+            }
             const elapsed = Date.now() - t0;
             if (elapsed < MIN_DISPLAY_MS) {
               await new Promise<void>(r => setTimeout(r, MIN_DISPLAY_MS - elapsed));
@@ -214,6 +235,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       setError("Failed to fetch next item.");
     } finally {
       setLoading(false);
+      isFetchingNextRef.current = false;
     }
   };
 
@@ -330,7 +352,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       const res = await fetch(`/api/sessions/${sessionId}/respond`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId: currentItem.id, value: finalValue, latencyMs: Date.now() - responseStartTime.current })
+        body: JSON.stringify({ itemId: currentItem.id, value: finalValue, latencyMs: Date.now() - responseStartTime.current, candidateId })
       });
       const submitData = await res.json();
       
@@ -356,6 +378,18 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  // Precision score: how close are we to the SEM target (0 → 1)?
+  // Uses current SEM from status if available, else falls back to item count heuristic.
+  const getPrecisionPct = (): number => {
+    const currentSem = status?.sem;
+    if (typeof currentSem === "number" && currentSem > 0) {
+      // SEM 1.0 → 0%, SEM 0.30 → 100% (linear interpolation clamped to [0,1])
+      const pct = Math.min(1, Math.max(0, (1.0 - currentSem) / (1.0 - 0.30)));
+      return Math.round(pct * 100);
+    }
+    return 0;
   };
 
   if (error) {
@@ -425,10 +459,53 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
             <Activity size={16} />
             {t("admin.analytics")}
           </Button>
-          <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-xl font-mono font-bold text-slate-700" role="timer" aria-label="Time remaining">
-            <Clock size={18} className="text-slate-400" />
-            {formatTime(timeLeft)}
+
+          {/* Adaptive timing display: elapsed time + precision arc */}
+          <div className="flex items-center gap-3">
+            {/* Elapsed time (counts up) */}
+            <div
+              className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-xl font-mono font-bold text-slate-700"
+              role="timer"
+              aria-label="Time elapsed"
+              title="Time elapsed — the assessment ends when your level is determined"
+            >
+              <Clock size={18} className="text-slate-400" />
+              {formatTime(elapsedSeconds)}
+            </div>
+
+            {/* Precision meter: SEM-based progress toward stopping threshold */}
+            {(() => {
+              const pct = getPrecisionPct();
+              const radius = 10;
+              const circ = 2 * Math.PI * radius;
+              const dash = (pct / 100) * circ;
+              const color = pct >= 80 ? "#10b981" : pct >= 50 ? "#6366f1" : "#94a3b8";
+              return (
+                <div
+                  className="flex flex-col items-center gap-0.5 cursor-default"
+                  title={`Measurement precision: ${pct}% — exam ends when precision target is reached`}
+                  aria-label={`Measurement precision ${pct}%`}
+                >
+                  <svg width="28" height="28" viewBox="0 0 28 28">
+                    <circle cx="14" cy="14" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="3" />
+                    <circle
+                      cx="14" cy="14" r={radius}
+                      fill="none"
+                      stroke={color}
+                      strokeWidth="3"
+                      strokeDasharray={`${dash} ${circ - dash}`}
+                      strokeLinecap="round"
+                      transform="rotate(-90 14 14)"
+                      style={{ transition: "stroke-dasharray 0.6s ease" }}
+                    />
+                    <text x="14" y="18" textAnchor="middle" fontSize="7" fontWeight="700" fill={color}>{pct}%</text>
+                  </svg>
+                  <span className="text-[8px] font-semibold text-slate-400 uppercase tracking-wider leading-none">Precision</span>
+                </div>
+              );
+            })()}
           </div>
+
           <div className="flex items-center gap-2 px-3 py-1 bg-red-50 text-red-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
             <ShieldCheck size={14} />
             Secure Session

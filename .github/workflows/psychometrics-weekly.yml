@@ -1,0 +1,195 @@
+# ─── Weekly Psychometrics Maintenance Jobs ────────────────────────────────────
+#
+# Runs every Sunday at 02:00 UTC (outside peak hours for all time zones).
+# Triggers three maintenance pipelines via secure API calls to the production
+# server so the jobs run in-process against the live Prisma/PostgreSQL DB.
+#
+# Jobs
+# ────
+# 1. dif-analysis       — Batch DIF audit (Mantel-Haenszel + logistic regression)
+#                          ETS C-class items flagged → item.status = REVIEW
+#
+# 2. calibration-sweep  — Online pretest calibration (Stocking 1990 EM)
+#                          Items with n≥500 stable runs promoted PRETEST → ACTIVE
+#
+# 3. exposure-scan      — Sympson-Hetter over-exposure check
+#                          ψ > 0.35 → RETIRED, ψ > 0.25 → FLAGGED warning
+#
+# Required repository secrets
+# ────────────────────────────
+#   PSYCHOMETRICS_API_URL    — Full base URL of the production server, e.g.
+#                              https://your-app.onrender.com
+#   PSYCHOMETRICS_API_TOKEN  — JWT Bearer token with SUPER_ADMIN role
+#                              (generate via /api/auth/login + long-lived token)
+#
+# Security
+# ────────
+# Secrets are never logged. HTTP calls include a request-id header for
+# correlation in the server's Pino log stream.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Psychometrics Weekly Maintenance
+
+on:
+  schedule:
+    # Every Sunday at 02:00 UTC
+    - cron: "0 2 * * 0"
+  # Allow manual trigger from GitHub Actions UI for emergency re-runs
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (log only, do not execute pipeline jobs)"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  # ─── 1. DIF Analysis ──────────────────────────────────────────────────────
+  dif-analysis:
+    name: Batch DIF Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      API_URL: ${{ secrets.PSYCHOMETRICS_API_URL }}
+      API_TOKEN: ${{ secrets.PSYCHOMETRICS_API_TOKEN }}
+    steps:
+      - name: Validate required secrets
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "::error::PSYCHOMETRICS_API_URL secret is not set"
+            exit 1
+          fi
+          if [ -z "$API_TOKEN" ]; then
+            echo "::error::PSYCHOMETRICS_API_TOKEN secret is not set"
+            exit 1
+          fi
+
+      - name: Trigger DIF batch analysis
+        if: ${{ inputs.dry_run != 'true' }}
+        run: |
+          REQUEST_ID=$(uuidgen || cat /proc/sys/kernel/random/uuid)
+          RESPONSE=$(curl \
+            --silent \
+            --show-error \
+            --fail \
+            --max-time 1800 \
+            --retry 3 \
+            --retry-delay 30 \
+            --retry-connrefused \
+            -X POST "${API_URL}/api/psychometrics/dif/run-batch" \
+            -H "Authorization: Bearer ${API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -H "X-Request-Id: ${REQUEST_ID}" \
+            -d '{}')
+          echo "DIF analysis result: $RESPONSE"
+          echo "$RESPONSE" | python3 -c "
+          import sys, json
+          try:
+              d = json.load(sys.stdin)
+              flagged = d.get('itemsFlagged', d.get('flagged', '?'))
+              analyzed = d.get('itemsAnalyzed', d.get('analyzed', '?'))
+              print(f'Analyzed: {analyzed}, Flagged: {flagged}')
+          except Exception as e:
+              print(f'Warning: Could not parse response: {e}')
+          "
+
+      - name: Dry run notice
+        if: ${{ inputs.dry_run == 'true' }}
+        run: echo "::notice::Dry run — DIF analysis skipped"
+
+  # ─── 2. Pretest Calibration Sweep ────────────────────────────────────────
+  calibration-sweep:
+    name: Pretest Calibration Sweep
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Run even if DIF fails — independent job
+    needs: []
+    env:
+      API_URL: ${{ secrets.PSYCHOMETRICS_API_URL }}
+      API_TOKEN: ${{ secrets.PSYCHOMETRICS_API_TOKEN }}
+    steps:
+      - name: Validate required secrets
+        run: |
+          if [ -z "$API_URL" ] || [ -z "$API_TOKEN" ]; then
+            echo "::error::PSYCHOMETRICS_API_URL or PSYCHOMETRICS_API_TOKEN is not set"
+            exit 1
+          fi
+
+      - name: Trigger calibration sweep
+        if: ${{ inputs.dry_run != 'true' }}
+        run: |
+          REQUEST_ID=$(uuidgen || cat /proc/sys/kernel/random/uuid)
+          RESPONSE=$(curl \
+            --silent \
+            --show-error \
+            --fail \
+            --max-time 1800 \
+            --retry 3 \
+            --retry-delay 30 \
+            --retry-connrefused \
+            -X POST "${API_URL}/api/psychometrics/calibration/run" \
+            -H "Authorization: Bearer ${API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -H "X-Request-Id: ${REQUEST_ID}" \
+            -d '{}')
+          echo "Calibration sweep result: $RESPONSE"
+          echo "$RESPONSE" | python3 -c "
+          import sys, json
+          try:
+              d = json.load(sys.stdin)
+              print(f'Eligible: {d.get(\"itemsEligible\",\"?\")} | Calibrated: {d.get(\"itemsCalibrated\",\"?\")} | Stable: {d.get(\"itemsStable\",\"?\")} | Promoted: {d.get(\"itemsPromoted\",\"?\")} | Rejected: {d.get(\"itemsRejected\",\"?\")} | Errors: {d.get(\"errors\",\"?\")}')
+          except Exception as e:
+              print(f'Warning: Could not parse response: {e}')
+          "
+
+      - name: Dry run notice
+        if: ${{ inputs.dry_run == 'true' }}
+        run: echo "::notice::Dry run — calibration sweep skipped"
+
+  # ─── 3. Exposure Auto-Retire Scan ────────────────────────────────────────
+  exposure-scan:
+    name: Sympson-Hetter Exposure Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: []
+    env:
+      API_URL: ${{ secrets.PSYCHOMETRICS_API_URL }}
+      API_TOKEN: ${{ secrets.PSYCHOMETRICS_API_TOKEN }}
+    steps:
+      - name: Validate required secrets
+        run: |
+          if [ -z "$API_URL" ] || [ -z "$API_TOKEN" ]; then
+            echo "::error::PSYCHOMETRICS_API_URL or PSYCHOMETRICS_API_TOKEN is not set"
+            exit 1
+          fi
+
+      - name: Trigger exposure auto-retire scan
+        if: ${{ inputs.dry_run != 'true' }}
+        run: |
+          REQUEST_ID=$(uuidgen || cat /proc/sys/kernel/random/uuid)
+          RESPONSE=$(curl \
+            --silent \
+            --show-error \
+            --fail \
+            --max-time 300 \
+            --retry 3 \
+            --retry-delay 15 \
+            --retry-connrefused \
+            -X POST "${API_URL}/api/psychometrics/exposure/scan" \
+            -H "Authorization: Bearer ${API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -H "X-Request-Id: ${REQUEST_ID}" \
+            -d '{}')
+          echo "Exposure scan result: $RESPONSE"
+          echo "$RESPONSE" | python3 -c "
+          import sys, json
+          try:
+              d = json.load(sys.stdin)
+              print(f'Checked: {d.get(\"itemsChecked\",\"?\")} | Warned: {d.get(\"itemsWarned\",\"?\")} | Retired: {d.get(\"itemsRetired\",\"?\")}')
+          except Exception as e:
+              print(f'Warning: Could not parse response: {e}')
+          "
+
+      - name: Dry run notice
+        if: ${{ inputs.dry_run == 'true' }}
+        run: echo "::notice::Dry run — exposure scan skipped"

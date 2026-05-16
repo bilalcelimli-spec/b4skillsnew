@@ -12,6 +12,8 @@
  *   JOBS_RETIREMENT_INTERVAL_MS   — Item retirement scan      (default: 7 days)
  *   JOBS_DRIFT_INTERVAL_MS        — IRT parameter drift check (default: 7 days)
  *   JOBS_QWK_INTERVAL_MS          — AI scoring QWK guard      (default: 1 day)
+ *   JOBS_CALIBRATION_INTERVAL_MS  — Pretest calibration sweep (default: 7 days)
+ *   JOBS_EXPOSURE_INTERVAL_MS     — Exposure auto-retire scan  (default: 1 day)
  *   JOBS_STARTUP_DELAY_MS         — Wait before first run     (default: 60 s)
  */
 
@@ -29,6 +31,8 @@ let difRunning = false;
 let retirementRunning = false;
 let driftRunning = false;
 let qwkRunning = false;
+let calibrationRunning = false;
+let exposureRunning = false;
 
 // ─── DIF Batch Detection ──────────────────────────────────────────────────────
 
@@ -130,7 +134,7 @@ async function runParameterDriftMonitor(): Promise<void> {
 
     const items = await prisma.item.findMany({
       where: { status: "ACTIVE" },
-      select: { id: true, params: true },
+      select: { id: true, discrimination: true, difficulty: true, guessing: true },
     });
 
     let checked = 0;
@@ -138,8 +142,8 @@ async function runParameterDriftMonitor(): Promise<void> {
 
     for (const item of items) {
       try {
-        const storedParams = item.params as { a: number; b: number; c: number } | null;
-        if (!storedParams) continue;
+        if (item.discrimination == null || item.difficulty == null) continue;
+        const storedParams = { a: item.discrimination, b: item.difficulty, c: item.guessing ?? 0.25 };
 
         // Fetch recent dichotomous responses for this item
         const responses = await prisma.response.findMany({
@@ -252,7 +256,7 @@ async function runAiScoringQwkGuard(): Promise<void> {
   logger.info("scheduled-jobs: AI scoring QWK guard starting");
   try {
     const { prisma } = await import("../prisma.js");
-    const { computeAgreementMetrics, detectScoringDrift } = await import(
+    const { computeAgreement } = await import(
       "../scoring/ai-human-agreement.js"
     );
 
@@ -260,63 +264,115 @@ async function runAiScoringQwkGuard(): Promise<void> {
     const QWK_FLOOR = 0.75;
     const since = new Date(Date.now() - WINDOW_DAYS * 86_400_000);
 
-    // Fetch completed rating tasks that have both AI score and human score
+    // Fetch completed double-blind rating tasks where both raters scored
     const tasks = await prisma.ratingTask.findMany({
       where: {
         status: "COMPLETED",
         updatedAt: { gte: since },
-        humanScore: { not: null },
-        aiScore: { not: null },
+        score: { not: null },
+        secondRaterScore: { not: null },
       },
-      select: { id: true, aiScore: true, humanScore: true },
+      select: { id: true, score: true, secondRaterScore: true },
     });
 
     if (tasks.length < 10) {
       logger.info(
         { n: tasks.length },
-        "scheduled-jobs: AI scoring QWK guard — insufficient rated tasks (<10), skipping"
+        "scheduled-jobs: AI scoring QWK guard — insufficient double-rated tasks (<10), skipping"
       );
       return;
     }
 
-    const aiScores = tasks.map((t: any) => Math.round((t.aiScore ?? 0) * 10));
-    const humanScores = tasks.map((t: any) => Math.round((t.humanScore ?? 0) * 10));
+    // Map (firstRater=aiScore, secondRater=humanScore) for the agreement library
+    const pairs = tasks.map((t) => ({
+      aiScore: t.score ?? 0,
+      humanScore: t.secondRaterScore ?? 0,
+    }));
 
-    const metrics = computeAgreementMetrics(aiScores, humanScores);
+    const metrics = computeAgreement(pairs);
 
     logger.info(
       { n: tasks.length, qwk: metrics.qwk, mae: metrics.mae, ms: Date.now() - t0 },
-      "scheduled-jobs: AI scoring QWK guard complete"
+      "scheduled-jobs: IRR QWK guard complete"
     );
 
     if (metrics.qwk < QWK_FLOOR) {
       logger.error(
         { qwk: metrics.qwk, threshold: QWK_FLOOR, n: tasks.length },
-        "CRITICAL: AI scoring QWK below floor — auto-disabling AI-only scoring"
+        "CRITICAL: Inter-rater QWK below floor — flagging in SystemConfig"
       );
-      // Write to SystemConfig so server-engine stops using AI as sole scorer
+      // Write to SystemConfig so dashboards can surface the alert
+      const flag = { irrQwkBelowFloor: true, detectedAt: new Date().toISOString(), qwk: metrics.qwk };
+      const existing = await prisma.systemConfig.findUnique({ where: { id: "global" } });
+      const merged = { ...(existing?.config as object ?? {}), ...flag };
       await prisma.systemConfig.upsert({
         where: { id: "global" },
-        create: {
-          id: "global",
-          payload: { aiScoringDisabledAt: new Date().toISOString(), qwkAtDisable: metrics.qwk },
-        },
-        update: {
-          payload: {
-            aiScoringDisabledAt: new Date().toISOString(),
-            qwkAtDisable: metrics.qwk,
-          },
-        },
+        create: { id: "global", config: merged },
+        update: { config: merged },
       });
     }
   } catch (err) {
-    logger.error({ err }, "scheduled-jobs: AI scoring QWK guard failed");
+    logger.error({ err }, "scheduled-jobs: IRR QWK guard failed");
   } finally {
     qwkRunning = false;
   }
 }
 
 let started = false;
+
+// ─── Pretest Calibration Sweep ────────────────────────────────────────────────
+
+async function runPretestCalibration(): Promise<void> {
+  if (calibrationRunning) {
+    logger.info("scheduled-jobs: pretest calibration already running — skipping");
+    return;
+  }
+  calibrationRunning = true;
+  const t0 = Date.now();
+  logger.info("scheduled-jobs: pretest calibration sweep starting");
+  try {
+    const { PretestCalibrationPipeline } = await import(
+      "../psychometrics/pretest-calibration-pipeline.js"
+    );
+    const result = await PretestCalibrationPipeline.runCalibrationSweep({
+      triggerSource: "SCHEDULED",
+    });
+    logger.info(
+      { ...result, ms: Date.now() - t0 },
+      "scheduled-jobs: pretest calibration sweep complete"
+    );
+  } catch (err) {
+    logger.error({ err }, "scheduled-jobs: pretest calibration sweep failed");
+  } finally {
+    calibrationRunning = false;
+  }
+}
+
+// ─── Exposure Auto-Retire Scan ────────────────────────────────────────────────
+
+async function runExposureAutoRetire(): Promise<void> {
+  if (exposureRunning) {
+    logger.info("scheduled-jobs: exposure auto-retire already running — skipping");
+    return;
+  }
+  exposureRunning = true;
+  const t0 = Date.now();
+  logger.info("scheduled-jobs: exposure auto-retire scan starting");
+  try {
+    const { ExposureAutoRetireService } = await import(
+      "../psychometrics/pretest-calibration-pipeline.js"
+    );
+    const result = await ExposureAutoRetireService.runExposureScan();
+    logger.info(
+      { ...result, ms: Date.now() - t0 },
+      "scheduled-jobs: exposure auto-retire scan complete"
+    );
+  } catch (err) {
+    logger.error({ err }, "scheduled-jobs: exposure auto-retire scan failed");
+  } finally {
+    exposureRunning = false;
+  }
+}
 
 /**
  * Start all scheduled jobs. Safe to call multiple times — subsequent calls are no-ops.
@@ -325,19 +381,23 @@ export function startScheduledJobs(): void {
   if (started) return;
   started = true;
 
-  const startupDelay  = ms("JOBS_STARTUP_DELAY_MS",       60_000);
-  const difInterval   = ms("JOBS_DIF_INTERVAL_MS",         SEVEN_DAYS_MS);
-  const retInterval   = ms("JOBS_RETIREMENT_INTERVAL_MS",  SEVEN_DAYS_MS);
-  const driftInterval = ms("JOBS_DRIFT_INTERVAL_MS",       SEVEN_DAYS_MS);
-  const qwkInterval   = ms("JOBS_QWK_INTERVAL_MS",         24 * 60 * 60 * 1000); // 1 day
+  const startupDelay       = ms("JOBS_STARTUP_DELAY_MS",        60_000);
+  const difInterval        = ms("JOBS_DIF_INTERVAL_MS",          SEVEN_DAYS_MS);
+  const retInterval        = ms("JOBS_RETIREMENT_INTERVAL_MS",   SEVEN_DAYS_MS);
+  const driftInterval      = ms("JOBS_DRIFT_INTERVAL_MS",        SEVEN_DAYS_MS);
+  const qwkInterval        = ms("JOBS_QWK_INTERVAL_MS",          24 * 60 * 60 * 1000);
+  const calibInterval      = ms("JOBS_CALIBRATION_INTERVAL_MS",  SEVEN_DAYS_MS);
+  const exposureInterval   = ms("JOBS_EXPOSURE_INTERVAL_MS",     24 * 60 * 60 * 1000);
 
   logger.info(
     {
       startupDelay,
-      difIntervalDays:   difInterval   / 86_400_000,
-      retIntervalDays:   retInterval   / 86_400_000,
-      driftIntervalDays: driftInterval / 86_400_000,
-      qwkIntervalHours:  qwkInterval   / 3_600_000,
+      difIntervalDays:       difInterval       / 86_400_000,
+      retIntervalDays:       retInterval       / 86_400_000,
+      driftIntervalDays:     driftInterval     / 86_400_000,
+      qwkIntervalHours:      qwkInterval       / 3_600_000,
+      calibIntervalDays:     calibInterval     / 86_400_000,
+      exposureIntervalHours: exposureInterval  / 3_600_000,
     },
     "scheduled-jobs: registering scheduled jobs"
   );
@@ -362,4 +422,14 @@ export function startScheduledJobs(): void {
     runAiScoringQwkGuard();
     setInterval(runAiScoringQwkGuard, qwkInterval);
   }, startupDelay + 15_000);
+
+  setTimeout(() => {
+    runPretestCalibration();
+    setInterval(runPretestCalibration, calibInterval);
+  }, startupDelay + 20_000);
+
+  setTimeout(() => {
+    runExposureAutoRetire();
+    setInterval(runExposureAutoRetire, exposureInterval);
+  }, startupDelay + 25_000);
 }

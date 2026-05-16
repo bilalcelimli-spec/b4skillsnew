@@ -418,7 +418,15 @@ export const AssessmentService = {
     // --- CONSUME CREDIT ---
     await BillingService.consumeCredit(organizationId);
 
-    return { sessionId: session.id, status: session.status };
+    return {
+      sessionId: session.id,
+      status: session.status,
+      // Adaptive time budget: safety-net ceiling from the product line profile.
+      // This is NOT a countdown — the exam ends when psychometric criteria are met.
+      // The UI uses this only to show elapsed time as a fraction of the budget.
+      maxDurationMs: profile.maxDurationMs,
+      estimatedDurationMin: profile.estimatedDurationMin,
+    };
   },
 
   /**
@@ -439,9 +447,25 @@ export const AssessmentService = {
     const meta = (session.metadata as any) ?? {};
     const state = toEngineState(session);
 
-    // ── PRODUCT LINE PROFILE ──────────────────────────────────────────────────
-    // Resolve profile for this session's product line. Falls back to Diagnostic.
+    // ── ADAPTIVE TIME BUDGET CHECK ────────────────────────────────────────────
+    // If the elapsed wall-clock time exceeds the profile's safety-net ceiling,
+    // finalize the session. This is a server-side guard — the client never
+    // shows a countdown; the exam simply ends when either:
+    //   (a) psychometric stopping criteria are met (preferred), or
+    //   (b) this hard time ceiling is reached (fallback).
     const profile = getProfile(meta.productLine);
+    if (session.startedAt) {
+      const elapsedMs = Date.now() - session.startedAt.getTime();
+      if (elapsedMs >= profile.maxDurationMs) {
+        logger.info(
+          { sessionId, elapsedMs, maxDurationMs: profile.maxDurationMs, profileName: profile.name },
+          "TIME_LIMIT_EXCEEDED — finalizing session"
+        );
+        await this.finalizeSession(sessionId, session.theta, { stopReason: "TIME_LIMIT_EXCEEDED" });
+        return { stop: true, reason: "TIME_LIMIT_EXCEEDED", finalTheta: session.theta };
+      }
+    }
+
     const activeSectionOrder = profile.sectionOrder;
     const activeSectionConfig = profile.sectionConfig;
 
@@ -708,6 +732,10 @@ export const AssessmentService = {
     delete (safeContent as any).correctOptionIndex;
     delete (safeContent as any).rubric;
 
+    // Compute elapsed time to send alongside the item so the UI can render
+    // an accurate progress indicator without a separate status round-trip.
+    const elapsedMs = session.startedAt ? Date.now() - session.startedAt.getTime() : 0;
+
     return {
       stop: false,
       sectionTransition: false,
@@ -717,6 +745,8 @@ export const AssessmentService = {
       totalSections: activeSectionOrder.length,
       sectionProgress: sectionCount,
       productLine: profile.name,
+      elapsedMs,
+      maxDurationMs: profile.maxDurationMs,
     };
   },
 

@@ -142,6 +142,10 @@ model User {
   resetPasswordToken   String?
   resetPasswordExpires DateTime?
   verifyEmailToken     String?
+
+  // Two-Factor Authentication (TOTP)
+  twoFactorSecret  String?   // encrypted base32 TOTP secret
+  twoFactorEnabled Boolean   @default(false)
   
   // Relations
   sessions        Session[]
@@ -229,6 +233,7 @@ model Item {
   retirementAuditLogs RetirementAuditLog[]
   difReports      DifReportArchive[]
   difFlaggedItem  DifFlaggedItem?
+  calibrationRuns CalibrationRun[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -527,6 +532,139 @@ model SystemConfig {
   config    Json     // { cefrThresholds: { A1: -2.5, ... }, adaptiveSettings: { ... } }
   updatedAt DateTime @updatedAt
 }
+
+// ─── CALIBRATION PIPELINE ──────────────────────────────────────────────────────
+//
+// CalibrationRun: Stores the result of one EM cycle for a pretest item.
+// Produced by the online calibration job (scheduled-jobs.ts → runPretestCalibration).
+//
+// Lifecycle:
+//   PRETEST  → (n≥200) → CalibrationRun recorded, item stays PRETEST
+//   PRETEST  → (n≥500 & stable & |Δb|≤0.30) → item promoted to ACTIVE
+//   ACTIVE   → parameter drift > 0.50 logit → CalibrationRun flagged, item → REVIEW
+//
+// Reference: Stocking (1990), van der Linden & Hambleton (1997) ch. 18
+
+model CalibrationRun {
+  id              String    @id @default(cuid())
+  itemId          String
+  item            Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  // EM iteration context
+  runAt           DateTime  @default(now())
+  triggerSource   String    @default("SCHEDULED")  // SCHEDULED | MANUAL | API
+
+  // Sample size
+  nResponses      Int       // total responses used in this EM cycle
+  nPretest        Int       // subset that were flagged isPretest=true
+
+  // Previous parameters (before update)
+  prevA           Float?
+  prevB           Float?
+  prevC           Float?
+
+  // Estimated parameters (after EM update)
+  aEstimate       Float
+  bEstimate       Float
+  cEstimate       Float
+
+  // Standard errors (from inverse Fisher information approximation)
+  aSE             Float?
+  bSE             Float?
+  cSE             Float?
+
+  // Convergence diagnostics
+  deltaB          Float     // |bNew - bOld|
+  deltaA          Float     // |aNew - aOld|
+  logLikelihood   Float?    // Marginal LL after update
+
+  // Stability gate outcome
+  stable          Boolean   // true = passed all gates; false = rejected
+  rejectionReason String?   // populated when !stable
+
+  // Promotion action taken after this run
+  promotedToActive Boolean  @default(false)
+  promotedAt      DateTime?
+
+  @@index([itemId, runAt])
+  @@index([stable, runAt])
+  @@index([promotedToActive])
+}
+
+// ─── AI SCORER INTER-RATER RELIABILITY ────────────────────────────────────────
+//
+// AnchorRating: A human-expert rating of an anchor writing/speaking response.
+// Used to compute Quadratic Weighted Kappa (QWK) between the AI scorer and human.
+// Target: QWK ≥ 0.80 (ETS standard for high-stakes AI scoring).
+
+model AnchorRating {
+  id            String    @id @default(cuid())
+  skill         String    // WRITING | SPEAKING
+  cefrLevel     String    // A1 … C2
+  responseText  String?   // Anonymised written response (or transcript)
+  artifactUrl   String?   // S3 URL for audio (SPEAKING)
+
+  // Expert human scores (0.0 – 1.0 on each dimension)
+  humanScore        Float    // Holistic 0–1
+  humanScoreDim1    Float?   // e.g. Task Achievement
+  humanScoreDim2    Float?   // Coherence & Cohesion
+  humanScoreDim3    Float?   // Lexical Resource
+  humanScoreDim4    Float?   // Grammatical Range & Accuracy
+  humanScoreDim5    Float?   // Pronunciation / Fluency (SPEAKING)
+
+  expertId      String    // User.id of human rater
+  ratedAt       DateTime  @default(now())
+
+  // AI scorer results (populated after running /api/psychometrics/irr/evaluate)
+  aiScore           Float?
+  aiScoreDim1       Float?
+  aiScoreDim2       Float?
+  aiScoreDim3       Float?
+  aiScoreDim4       Float?
+  aiScoreDim5       Float?
+  aiEvaluatedAt     DateTime?
+
+  // Agreement metrics
+  qwk             Float?    // Quadratic Weighted Kappa (human vs AI, holistic)
+  absoluteDiff    Float?    // |humanScore - aiScore|
+  passesFloor     Boolean?  // qwk ≥ 0.80
+
+  @@index([skill, cefrLevel])
+  @@index([passesFloor])
+}
+
+// ─── CONCURRENT VALIDITY STUDY ────────────────────────────────────────────────
+//
+// Stores paired scores from a concurrent validity study:
+//   b4skills θ / CEFR band + external test score (Linguaskill, IELTS, etc.)
+// Target: Pearson r ≥ 0.80, CEFR agreement ≥ 85%
+
+model ConcurrentValidityRecord {
+  id                  String    @id @default(cuid())
+  studyName           String    // e.g. "Linguaskill Pilot — May 2026"
+  recordedAt          DateTime  @default(now())
+
+  // b4skills results
+  b4sThetaOverall     Float
+  b4sCefrLevel        String    // e.g. "B2"
+  b4sScaledScore      Int?      // 0-100
+
+  // External test
+  externalTestName    String    // "Linguaskill" | "IELTS" | "TOEFL iBT"
+  externalScore       Float     // Raw score from external test
+  externalCefrLevel   String?   // CEFR mapping reported by external test
+
+  // Agreement
+  cefrAgreement       Boolean?  // b4sCefrLevel == externalCefrLevel
+  cefrWithinOneBand   Boolean?  // |band_diff| ≤ 1
+
+  candidateId         String?   // Anonymised — no direct PII link required
+  demographicGroup    String?   // Optional grouping label (age, L1, etc.)
+
+  @@index([studyName])
+  @@index([b4sCefrLevel])
+}
+
 
 model Cohort {
   id              String    @id @default(cuid())
