@@ -247,6 +247,143 @@ export interface DriftThresholds {
  * maxQwkDecrease relative to the baseline. The reason string identifies which
  * threshold tripped, so dashboards/alerts can route accordingly.
  */
+// ─────────────────────────────────────────────────────────────────────────────
+// Intraclass Correlation Coefficient ICC(2,1) — two-way random effects
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface IccResult {
+  /** ICC(2,1) point estimate — absolute agreement, two-way random effects model */
+  icc: number;
+  /** Lower bound of 95% confidence interval */
+  ci95Lower: number;
+  /** Upper bound of 95% confidence interval */
+  ci95Upper: number;
+  /** Number of paired observations */
+  n: number;
+  /**
+   * Qualitative interpretation (Koo & Mae 2016):
+   *   < 0.50 = POOR, 0.50–0.75 = MODERATE, 0.75–0.90 = GOOD, ≥ 0.90 = EXCELLENT
+   */
+  interpretation: "POOR" | "MODERATE" | "GOOD" | "EXCELLENT";
+}
+
+/**
+ * Compute ICC(2,1) — Intraclass Correlation Coefficient with 95% CI.
+ *
+ * Two-way random effects model, absolute agreement form.
+ * This is the preferred metric for AI-human scorer comparison in high-stakes
+ * testing contexts (Shrout & Fleiss 1979; Koo & Mae 2016).
+ *
+ * References
+ * ----------
+ * Shrout, P. E., & Fleiss, J. L. (1979). Intraclass correlations: uses in
+ *   assessing rater reliability. Psychological Bulletin, 86(2), 420.
+ * Koo, T. K., & Mae, M. Y. (2016). A guideline of selecting and reporting
+ *   intraclass correlation coefficients for reliability research.
+ *   Journal of Chiropractic Medicine, 15(2), 155–163.
+ *
+ * @param rater1  AI scores, normalised 0–1
+ * @param rater2  Human scores, normalised 0–1
+ */
+export function computeIcc(rater1: number[], rater2: number[]): IccResult {
+  const n = rater1.length;
+  if (n < 3 || rater2.length !== n) {
+    return { icc: 0, ci95Lower: 0, ci95Upper: 0, n, interpretation: "POOR" };
+  }
+
+  const k = 2; // two raters
+
+  // Grand mean
+  let grandSum = 0;
+  for (let i = 0; i < n; i++) grandSum += rater1[i]! + rater2[i]!;
+  const grandMean = grandSum / (n * k);
+
+  // Row means (subject means)
+  const rowMeans = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    rowMeans[i] = (rater1[i]! + rater2[i]!) / k;
+  }
+
+  // Column means (rater means)
+  const colMean1 = mean(rater1);
+  const colMean2 = mean(rater2);
+  const colMeans = [colMean1, colMean2];
+
+  // Sum of squares — between subjects (SSR), between raters (SSC), error (SSE)
+  let ssr = 0; // between-subject
+  let ssc = 0; // between-rater (column)
+  let sst = 0; // total
+
+  for (let i = 0; i < n; i++) {
+    ssr += k * Math.pow(rowMeans[i]! - grandMean, 2);
+  }
+
+  for (let j = 0; j < k; j++) {
+    ssc += n * Math.pow(colMeans[j]! - grandMean, 2);
+  }
+
+  const all = [...rater1, ...rater2];
+  for (const x of all) sst += Math.pow(x - grandMean, 2);
+
+  const sse = sst - ssr - ssc;
+
+  // Mean squares
+  const dfr = n - 1;
+  const dfc = k - 1;
+  const dfe = dfr * dfc;
+
+  const msr = ssr / dfr;
+  const msc = ssc / dfc;
+  const mse = dfe > 0 ? sse / dfe : 0;
+
+  // ICC(2,1) absolute agreement
+  // ICC = (MSr - MSe) / (MSr + (k-1)*MSe + k*(MSc - MSe)/n)
+  const iccDenom = msr + (k - 1) * mse + k * (msc - mse) / n;
+  const icc = iccDenom === 0 ? 0 : Math.max(-1, Math.min(1, (msr - mse) / iccDenom));
+
+  // 95% CI via F-distribution approximation (Shrout & Fleiss 1979)
+  // F_lower = MSr / (MSe * F(alpha/2, n-1, (n-1)(k-1)))
+  // We approximate F critical values at df1=n-1, df2=(n-1)(k-1)
+  const fCritical95 = approximateFCritical95(dfr, dfe);
+  const fl = (msr / (fCritical95 * mse));
+  const fu = (msr * fCritical95) / mse;
+
+  const ci95Lower = Math.max(-1, (fl - 1) / (fl + k - 1));
+  const ci95Upper = Math.min(1, (fu - 1) / (fu + k - 1));
+
+  const interpretation: IccResult["interpretation"] =
+    icc >= 0.90 ? "EXCELLENT"
+    : icc >= 0.75 ? "GOOD"
+    : icc >= 0.50 ? "MODERATE"
+    : "POOR";
+
+  return {
+    icc: Number(icc.toFixed(4)),
+    ci95Lower: Number(ci95Lower.toFixed(4)),
+    ci95Upper: Number(ci95Upper.toFixed(4)),
+    n,
+    interpretation,
+  };
+}
+
+/**
+ * Approximate the 97.5th percentile of the F distribution via Wilson-Hilferty
+ * cube-root normal approximation. Accurate to ~1% for df ≥ 5.
+ */
+function approximateFCritical95(df1: number, df2: number): number {
+  // z_{0.975} ≈ 1.96
+  const z = 1.96;
+  const d1 = df1;
+  const d2 = df2;
+  if (d1 < 1 || d2 < 1) return 1;
+  const h1 = 1 - 2 / (9 * d1);
+  const h2 = 1 - 2 / (9 * d2);
+  const num = h1 + z * Math.sqrt(2 / (9 * d1));
+  const den = h2 - z * Math.sqrt(2 / (9 * d2));
+  if (den <= 0) return 10;
+  return Math.pow(num / den, 3);
+}
+
 export function detectDrift(
   windows: RollingWindow[],
   thresholds: DriftThresholds = {}

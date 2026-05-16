@@ -4,6 +4,7 @@ import {
   computeAgreement,
   rollingAgreement,
   detectDrift,
+  computeIcc,
   type AiHumanPair,
 } from "../ai-human-agreement";
 
@@ -192,5 +193,69 @@ describe("detectDrift()", () => {
     expect(
       detectDrift(windows, { maxMaeIncrease: 0.01 }).driftDetected
     ).toBe(true);
+  });
+});
+
+// ─── computeIcc() — ICC(2,1) intraclass correlation ───────────────────────────
+
+describe("computeIcc()", () => {
+  it("returns 1 for perfectly identical raters", () => {
+    const scores = [0.1, 0.3, 0.5, 0.7, 0.9, 0.4, 0.6, 0.8, 0.2, 0.95];
+    const result = computeIcc(scores, scores);
+    expect(result.icc).toBeCloseTo(1, 2);
+    expect(result.interpretation).toBe("EXCELLENT");
+  });
+
+  it("returns high ICC for closely-agreeing raters", () => {
+    // AI consistently slightly above human — still high agreement
+    const human = [0.3, 0.5, 0.7, 0.4, 0.6, 0.8, 0.2, 0.9, 0.55, 0.65];
+    const ai = human.map(h => Math.min(1, h + 0.03));
+    const result = computeIcc(ai, human);
+    expect(result.icc).toBeGreaterThan(0.75);
+    expect(["GOOD", "EXCELLENT"]).toContain(result.interpretation);
+  });
+
+  it("returns low ICC for random uncorrelated raters", () => {
+    const rater1 = [0.1, 0.9, 0.3, 0.7, 0.5, 0.2, 0.8, 0.4, 0.6, 0.15];
+    const rater2 = [0.9, 0.1, 0.7, 0.3, 0.5, 0.8, 0.2, 0.6, 0.4, 0.85];
+    const result = computeIcc(rater1, rater2);
+    expect(result.icc).toBeLessThan(0.50);
+    expect(["POOR", "MODERATE"]).toContain(result.interpretation);
+  });
+
+  it("returns safe zero result for fewer than 3 pairs", () => {
+    const result = computeIcc([0.5, 0.6], [0.5, 0.6]);
+    expect(result.icc).toBe(0);
+    expect(result.n).toBe(2);
+  });
+
+  it("returns safe zero result for mismatched lengths", () => {
+    const result = computeIcc([0.5, 0.6, 0.7], [0.5, 0.6]);
+    expect(result.icc).toBe(0);
+  });
+
+  it("returns n equal to the input length", () => {
+    const scores = [0.3, 0.5, 0.7, 0.4, 0.6];
+    const result = computeIcc(scores, scores.map(s => s + 0.05));
+    expect(result.n).toBe(5);
+  });
+
+  it("95% CI lower ≤ upper and both are in [-1, 1]", () => {
+    // Use a wide spread with moderate agreement so the CI is non-trivial
+    const human = [0.1, 0.3, 0.5, 0.7, 0.9, 0.2, 0.4, 0.6, 0.8, 0.15,
+                   0.35, 0.55, 0.75, 0.95, 0.25, 0.45, 0.65, 0.85, 0.05, 0.50];
+    const ai    = [0.2, 0.5, 0.4, 0.8, 0.7, 0.3, 0.6, 0.5, 0.9, 0.25,
+                   0.40, 0.65, 0.70, 0.90, 0.30, 0.55, 0.60, 0.80, 0.15, 0.60];
+    const result = computeIcc(ai, human);
+    expect(result.ci95Lower).toBeLessThanOrEqual(result.ci95Upper);
+    expect(result.ci95Lower).toBeGreaterThanOrEqual(-1);
+    expect(result.ci95Upper).toBeLessThanOrEqual(1);
+  });
+
+  it("interprets EXCELLENT for icc ≥ 0.90", () => {
+    // Near-perfect agreement gives ICC ≥ 0.90
+    const scores = Array.from({ length: 20 }, (_, i) => (i + 1) / 20);
+    const result = computeIcc(scores, scores.map(s => Math.min(1, s + 0.01)));
+    expect(result.interpretation).toBe("EXCELLENT");
   });
 });

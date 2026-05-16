@@ -11344,6 +11344,303 @@ async function startServer() {
     }
   });
 
+  // ─── LTI 1.3 Advantage routes ─────────────────────────────────────────────────
+
+  const { LtiService } = await import("./src/lib/lti/lti-service.js");
+
+  /**
+   * POST /lti/login
+   * Step 1 of LTI 1.3 launch: receive OIDC login initiation from the LMS and
+   * return a redirect to the platform's OIDC auth endpoint.
+   */
+  app.post("/lti/login", async (req, res) => {
+    try {
+      const loginParams = req.body;
+      // Load the platform config for this client_id (simplified: use env/config)
+      const platformConfig = {
+        platformId: process.env.LTI_PLATFORM_ID ?? "lms.platform.edu",
+        clientId: process.env.LTI_CLIENT_ID ?? loginParams.client_id,
+        oidcAuthEndpoint: process.env.LTI_OIDC_AUTH_ENDPOINT ?? "",
+        tokenEndpoint: process.env.LTI_TOKEN_ENDPOINT ?? "",
+        jwksEndpoint: process.env.LTI_JWKS_ENDPOINT ?? "",
+        deploymentId: process.env.LTI_DEPLOYMENT_ID ?? "",
+      };
+      const redirectUrl = process.env.LTI_LAUNCH_URL ?? `${req.protocol}://${req.get("host")}/lti/launch`;
+      const { redirectUrl: url } = LtiService.initiateLogin(loginParams, platformConfig, redirectUrl);
+      res.redirect(url);
+    } catch (err) {
+      res.status(400).json({ error: "LTI login initiation failed" });
+    }
+  });
+
+  /**
+   * POST /lti/launch
+   * Step 2 of LTI 1.3: receive id_token + state from the LMS, validate,
+   * and redirect the user into the assessment session.
+   */
+  app.post("/lti/launch", express.urlencoded({ extended: false }), async (req, res) => {
+    try {
+      const { id_token, state } = req.body as { id_token?: string; state?: string };
+      if (!id_token || !state) {
+        return res.status(400).json({ error: "Missing id_token or state" });
+      }
+      const stored = LtiService.consumeState(state);
+      if (!stored) {
+        return res.status(400).json({ error: "Invalid or expired state" });
+      }
+      const platformConfig = {
+        platformId: process.env.LTI_PLATFORM_ID ?? "",
+        clientId: process.env.LTI_CLIENT_ID ?? "",
+        oidcAuthEndpoint: process.env.LTI_OIDC_AUTH_ENDPOINT ?? "",
+        tokenEndpoint: process.env.LTI_TOKEN_ENDPOINT ?? "",
+        jwksEndpoint: process.env.LTI_JWKS_ENDPOINT ?? "",
+        deploymentId: process.env.LTI_DEPLOYMENT_ID ?? "",
+      };
+      const claims = LtiService.parseIdToken(id_token);
+      const validation = LtiService.validateLaunchClaims(claims, platformConfig, stored.nonce);
+      if (!validation.valid) {
+        return res.status(401).json({ error: `LTI validation failed: ${validation.reason}` });
+      }
+      const role = LtiService.isInstructor(claims.roles ?? []) ? "INSTRUCTOR" : "LEARNER";
+      res.redirect(`${stored.targetUri}?lti_role=${role}&sub=${encodeURIComponent(claims.sub)}`);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message ?? "LTI launch failed" });
+    }
+  });
+
+  /**
+   * POST /lti/deep-link
+   * Deep Linking response: instructor selects content and we build the JWT
+   * payload to POST back to the LMS deep_link_return_url.
+   */
+  app.post("/lti/deep-link", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const { claims, items } = req.body;
+      const platformConfig = {
+        platformId: process.env.LTI_PLATFORM_ID ?? "",
+        clientId: process.env.LTI_CLIENT_ID ?? "",
+        oidcAuthEndpoint: process.env.LTI_OIDC_AUTH_ENDPOINT ?? "",
+        tokenEndpoint: process.env.LTI_TOKEN_ENDPOINT ?? "",
+        jwksEndpoint: process.env.LTI_JWKS_ENDPOINT ?? "",
+        deploymentId: process.env.LTI_DEPLOYMENT_ID ?? "",
+      };
+      const result = LtiService.buildDeepLinkResponse(claims, platformConfig, items ?? []);
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message ?? "Deep link response failed" });
+    }
+  });
+
+  // ─── OIDC SSO routes ───────────────────────────────────────────────────────────
+
+  const { OidcSsoService } = await import("./src/lib/auth/oidc-sso.js");
+
+  /**
+   * GET /api/auth/sso/authorize?org=<orgId>
+   * Initiate OIDC Authorization Code Flow for an organization's configured IdP.
+   */
+  app.get("/api/auth/sso/authorize", async (req, res) => {
+    try {
+      const { org } = req.query as { org?: string };
+      if (!org) return res.status(400).json({ error: "org query parameter is required" });
+      const orgRecord = await prisma.organization.findUnique({
+        where: { id: org },
+        select: { id: true, ssoConfig: true },
+      });
+      if (!orgRecord?.ssoConfig) {
+        return res.status(404).json({ error: "SSO not configured for this organization" });
+      }
+      const config = JSON.parse(JSON.stringify(orgRecord.ssoConfig)) as Parameters<typeof OidcSsoService.initiateAuthorizationRequest>[0];
+      const callbackUrl = `${req.protocol}://${req.get("host")}/api/auth/sso/callback`;
+      const redirectAfter = (req.query.redirect as string) ?? "/dashboard";
+      const authReq = OidcSsoService.initiateAuthorizationRequest(config, callbackUrl, redirectAfter);
+      res.redirect(authReq.authorizationUrl);
+    } catch (err) {
+      res.status(500).json({ error: "SSO authorization failed" });
+    }
+  });
+
+  /**
+   * GET /api/auth/sso/callback?code=<code>&state=<state>
+   * Exchange the authorization code for tokens and provision the user.
+   */
+  app.get("/api/auth/sso/callback", async (req, res) => {
+    try {
+      const { code, state, error: idpError } = req.query as Record<string, string>;
+      if (idpError) {
+        return res.status(400).json({ error: `IdP error: ${idpError}` });
+      }
+      if (!code || !state) {
+        return res.status(400).json({ error: "Missing code or state" });
+      }
+      const pending = OidcSsoService.consumeState(state);
+      if (!pending) {
+        return res.status(400).json({ error: "Invalid or expired OIDC state" });
+      }
+      const orgRecord = await prisma.organization.findUnique({
+        where: { id: pending.organizationId },
+        select: { id: true, ssoConfig: true },
+      });
+      if (!orgRecord?.ssoConfig) {
+        return res.status(404).json({ error: "Organization SSO config not found" });
+      }
+      const config = JSON.parse(JSON.stringify(orgRecord.ssoConfig)) as Parameters<typeof OidcSsoService.initiateAuthorizationRequest>[0];
+      // Token exchange body is ready — caller POSTs to config.tokenEndpoint.
+      // In production, use fetch here; for now, respond with the exchange body params
+      const callbackUrl = `${req.protocol}://${req.get("host")}/api/auth/sso/callback`;
+      const body = OidcSsoService.buildTokenExchangeBody(config, code, pending.codeVerifier, callbackUrl);
+      // Return redirect instructions to client (actual exchange happens server-side in production)
+      res.json({ status: "code_received", tokenEndpoint: config.tokenEndpoint, body: Object.fromEntries(body) });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "SSO callback failed" });
+    }
+  });
+
+  // ─── Validity evidence ─────────────────────────────────────────────────────────
+
+  /**
+   * GET /api/psychometrics/validity-evidence
+   * Returns the compiled AERA/APA/NCME five-source validity evidence package.
+   * For production, this would pull from the weekly psychometrics CI output.
+   */
+  app.get(
+    "/api/psychometrics/validity-evidence",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (_req, res) => {
+      try {
+        const { buildEmptyValidityPackage } = await import("./src/lib/psychometrics/validity-evidence-package.js");
+        // In production: load from precomputed snapshot in DB or object storage.
+        // Here we serve the empty/initialised package as a scaffold.
+        const pkg = buildEmptyValidityPackage();
+        res.json(pkg);
+      } catch (err) {
+        res.status(500).json({ error: "Failed to load validity evidence" });
+      }
+    }
+  );
+
+  // ─── Public scoring agreement ──────────────────────────────────────────────────
+
+  /**
+   * GET /api/public/scoring-agreement
+   * Returns AI–human scoring agreement metrics and ICC(2,1) for public transparency.
+   */
+  app.get("/api/public/scoring-agreement", async (_req, res) => {
+    try {
+      const { computeAgreement, computeIcc } = await import("./src/lib/scoring/ai-human-agreement.js");
+      // Load most recent rated pairs from DB (aiScore and humanScore are on Response)
+      const ratedResponses = await prisma.response.findMany({
+        where: { aiScore: { not: null }, humanScore: { not: null } },
+        select: { aiScore: true, humanScore: true },
+        orderBy: { createdAt: "desc" },
+        take: 500,
+      });
+      const pairs = ratedResponses.map((r: { aiScore: number | null; humanScore: number | null }) => ({
+        aiScore: r.aiScore as number,
+        humanScore: r.humanScore as number,
+      }));
+      const overall = computeAgreement(pairs);
+      const icc = computeIcc(
+        pairs.map((p: { aiScore: number }) => p.aiScore),
+        pairs.map((p: { humanScore: number }) => p.humanScore)
+      );
+      res.json({ overall, icc, n: pairs.length });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to compute scoring agreement" });
+    }
+  });
+
+  // ─── Scoring SLA monitor ───────────────────────────────────────────────────────
+
+  /**
+   * GET /api/admin/scoring-sla
+   * Returns the current SLA health report for the scoring pipeline.
+   */
+  app.get(
+    "/api/admin/scoring-sla",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req, res) => {
+      try {
+        const { getSlaReport } = await import("./src/lib/scoring/sla-monitor.js");
+        const windowMinutes = parseInt((req.query.window as string) ?? "60", 10);
+        const report = getSlaReport(Number.isFinite(windowMinutes) ? windowMinutes : 60);
+        res.json(report);
+      } catch (err) {
+        res.status(500).json({ error: "Failed to generate SLA report" });
+      }
+    }
+  );
+
+  // ─── Freemium placement test (unauthenticated) ────────────────────────────────
+
+  // In-process session store — replace with Redis in production
+  const placementSessions = new Map<string, {
+    state: import("./src/lib/product-lines/placement-test.js").PlacementSessionState;
+    config: import("./src/lib/product-lines/placement-test.js").PlacementConfig;
+  }>();
+
+  /**
+   * POST /api/assessment/placement/start
+   * Start a new freemium placement test session. No authentication required.
+   * Requires explicit consent to data use (GDPR Art. 6(1)(a)).
+   */
+  app.post("/api/assessment/placement/start", async (req, res) => {
+    try {
+      const {
+        createPlacementSession,
+        DEFAULT_PLACEMENT_CONFIG,
+      } = await import("./src/lib/product-lines/placement-test.js");
+      const { consentToResearch = false } = req.body as { consentToResearch?: boolean };
+      const session = createPlacementSession(Boolean(consentToResearch));
+      placementSessions.set(session.placementId, {
+        state: session,
+        config: DEFAULT_PLACEMENT_CONFIG,
+      });
+      // Return placementId so client can submit responses
+      res.status(201).json({
+        placementId: session.placementId,
+        maxItems: DEFAULT_PLACEMENT_CONFIG.maxItems,
+        estimatedMinutes: 10,
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to start placement test" });
+    }
+  });
+
+  /**
+   * POST /api/assessment/placement/:id/respond
+   * Submit one response and receive the next item or the final result.
+   */
+  app.post("/api/assessment/placement/:id/respond", async (req, res) => {
+    try {
+      const {
+        shouldStopPlacement,
+        buildPlacementResult,
+        validatePlacementResponse,
+      } = await import("./src/lib/product-lines/placement-test.js");
+      const { id } = req.params;
+      const entry = placementSessions.get(id);
+      if (!entry) return res.status(404).json({ error: "Placement session not found" });
+      const { itemId, score, latencyMs } = req.body as { itemId: string; score: unknown; latencyMs: unknown };
+      const validationError = validatePlacementResponse(itemId, score, latencyMs);
+      if (validationError) return res.status(400).json({ error: validationError });
+      // Record response
+      entry.state.responses.push({ itemId, score: score as 0 | 1, latencyMs: latencyMs as number });
+      entry.state.usedItemIds.add(itemId);
+      // Check stopping rule
+      const { stop, reason } = shouldStopPlacement(entry.state, entry.config);
+      if (stop) {
+        placementSessions.delete(id);
+        const appBaseUrl = `${req.protocol}://${req.get("host")}`;
+        const result = buildPlacementResult(entry.state, appBaseUrl);
+        return res.json({ complete: true, reason, result });
+      }
+      res.json({ complete: false, itemsAdministered: entry.state.responses.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Failed to process response" });
+    }
+  });
+
   // 404 handler for unknown /api/* routes — must come after all route registrations
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Not found' });
