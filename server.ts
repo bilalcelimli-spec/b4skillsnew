@@ -820,7 +820,7 @@ async function startServer() {
   // --- ASSESSMENT SESSION API ---
   const { AssessmentService } = await import("./src/lib/assessment-engine/server-engine.js");
 
-  app.post("/api/sessions/launch", sessionLaunchLimiter, async (req, res) => {
+  app.post("/api/sessions/launch", sessionLaunchLimiter, validate({ body: Schemas.Sessions.SessionLaunchBody }), async (req, res) => {
     try {
       const { candidateId, organizationId, productLine } = req.body;
       if (!candidateId || typeof candidateId !== "string" || candidateId.length > 128) {
@@ -884,7 +884,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/sessions/:id/respond", async (req, res) => {
+  app.post("/api/sessions/:id/respond", validate({ body: Schemas.Sessions.SessionRespondBody }), async (req, res) => {
     try {
       const { id } = req.params;
       const { itemId, value, latencyMs, candidateId } = req.body;
@@ -930,7 +930,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/items", async (req, res) => {
+  app.post("/api/items", validate({ body: Schemas.Items.CreateItemBody }), async (req, res) => {
     try {
       const item = await AssessmentService.createItem(req.body);
       res.json(item);
@@ -940,7 +940,7 @@ async function startServer() {
   });
 
   // --- ITEM GENERATION (AI) — Single spec ---
-  app.post("/api/items/generate", async (req, res) => {
+  app.post("/api/items/generate", validate({ body: Schemas.Items.GenerateItemRouteBody }), async (req, res) => {
     try {
       const { itemGenerator } = await import("./src/lib/language-skills/ai-item-generator.js");
       const spec = req.body;
@@ -977,7 +977,7 @@ async function startServer() {
   });
 
   // --- ITEM GENERATION (AI) — Bulk (multiple specs) ---
-  app.post("/api/items/generate/bulk", async (req, res) => {
+  app.post("/api/items/generate/bulk", validate({ body: Schemas.Items.BulkGenerateRouteBody }), async (req, res) => {
     try {
       const { itemGenerator } = await import("./src/lib/language-skills/ai-item-generator.js");
       const { specs } = req.body;
@@ -1138,7 +1138,7 @@ async function startServer() {
     }
   );
 
-  app.put("/api/items/:id", async (req, res) => {
+  app.put("/api/items/:id", validate({ body: Schemas.Items.UpdateItemBody }), async (req, res) => {
     try {
       const { id } = req.params;
       const item = await AssessmentService.updateItem(id, req.body);
@@ -1191,7 +1191,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/rating/tasks/:id/claim", async (req, res) => {
+  app.post("/api/rating/tasks/:id/claim", validate({ body: Schemas.Items.RatingClaimBody }), async (req, res) => {
     try {
       const { id } = req.params;
       const { raterId } = req.body;
@@ -1202,7 +1202,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/rating/tasks/:id/submit", async (req, res) => {
+  app.post("/api/rating/tasks/:id/submit", validate({ body: Schemas.Items.RatingSubmitBody }), async (req, res) => {
     try {
       const { id } = req.params;
       const { score, feedback } = req.body;
@@ -1213,7 +1213,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/rating/tasks/:id/claim-second", async (req, res) => {
+  app.post("/api/rating/tasks/:id/claim-second", validate({ body: Schemas.Items.RatingClaimBody }), async (req, res) => {
     try {
       const { id } = req.params;
       const { raterId } = req.body;
@@ -1225,7 +1225,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/rating/tasks/:id/submit-second", async (req, res) => {
+  app.post("/api/rating/tasks/:id/submit-second", validate({ body: Schemas.Items.RatingSubmitBody }), async (req, res) => {
     try {
       const { id } = req.params;
       const { score, feedback } = req.body;
@@ -1339,7 +1339,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/codes/validate", async (req, res) => {
+  app.post("/api/codes/validate", validate({ body: Schemas.Codes.ValidateCodeBody }), async (req, res) => {
     try {
       const { code } = req.body;
       const examCode = await prisma.examCode.findUnique({ where: { code } });
@@ -1353,7 +1353,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/codes/redeem", async (req, res) => {
+  app.post("/api/codes/redeem", validate({ body: Schemas.Codes.RedeemCodeBody }), async (req, res) => {
     try {
       const { code, candidateId: suggestedCandidateId, email, name, surname, school, className } = req.body;
 
@@ -10296,7 +10296,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/sessions/:id/complete", async (req, res) => {
+  app.post("/api/sessions/:id/complete", validate({ body: Schemas.Sessions.SessionCompleteBody }), async (req, res) => {
     const { id } = req.params;
     try {
       // 1. Mark session completed

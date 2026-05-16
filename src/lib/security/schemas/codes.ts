@@ -19,4 +19,10 @@ export const ValidateCodeBody = z.object({
 export const RedeemCodeBody = z.object({
   code: CodeString,
   candidateId: CuidLike.optional(),
+  /** Candidate identity — required at runtime when no authenticated session exists. */
+  email: z.string().trim().toLowerCase().email().max(254).optional(),
+  name: z.string().trim().max(200).optional(),
+  surname: z.string().trim().max(200).optional(),
+  school: z.string().trim().max(200).optional(),
+  className: z.string().trim().max(200).optional(),
 }).strict();

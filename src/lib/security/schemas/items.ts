@@ -54,6 +54,28 @@ export const BulkGenerateItemsBody = GenerateItemBody.extend({
   count: z.number().int().min(1).max(200),
 }).strict();
 
+/**
+ * Route-level schema for POST /api/items/generate — matches the field names
+ * that `ai-item-generator` actually reads (`level`, `format`, `quantity`).
+ * The canonical schema above (GenerateItemBody) uses the standard names.
+ */
+const GenerateSpecShape = z.object({
+  skill: Skill,
+  level: z.string().trim().max(10),        // CEFR level string, e.g. "B2"
+  format: z.string().trim().max(100),       // item format / type
+  quantity: z.number().int().min(1).max(50).default(1),
+  topic: z.string().trim().max(500).optional(),
+  instructions: LongText.optional(),
+  productLine: z.string().trim().max(200).optional(),
+  promptOverride: LongText.optional(),
+}).passthrough();                            // passthrough for exam-source-router extras
+
+export const GenerateItemRouteBody = GenerateSpecShape;
+
+export const BulkGenerateRouteBody = z.object({
+  specs: z.array(GenerateSpecShape).min(1).max(20),
+}).strict();
+
 export const PreviewItemBody = z.object({
   payload: z.record(z.string(), z.unknown()),
   type: ItemType.optional(),
@@ -80,6 +102,7 @@ export const RatingClaimBody = z.object({
 export const RatingSubmitBody = z.object({
   score: z.number().min(0).max(100),
   rubricScores: z.record(z.string(), z.number().min(0).max(100)).optional(),
-  comments: LongText.optional(),
+  /** Free-text reviewer feedback (also exposed as `comments` in some clients). */
+  feedback: LongText.optional(),
   flags: z.array(z.string().max(100)).max(20).optional(),
 }).strict();
