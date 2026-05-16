@@ -10,7 +10,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { prisma } from "./src/lib/prisma.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
 import { logger, httpLogger, captureException, Sentry } from "./src/lib/observability/index.js";
@@ -500,48 +500,29 @@ async function startServer() {
     }
   });
 
-  // Build a nodemailer transporter once at startup.
-  // Production: real SMTP via SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / SMTP_FROM.
-  // Development: Ethereal catch-all (previews logged to console).
-  let _emailTransporter: nodemailer.Transporter | null = null;
-  let _emailFrom = '"LinguAdapt" <noreply@linguadapt.com>';
+  // Email via Resend (https://resend.com).
+  // Production: requires RESEND_API_KEY env var.
+  // Development: logs a warning and skips sending if the key is absent.
+  const _emailFrom = process.env.RESEND_FROM || '"LinguAdapt" <noreply@linguadapt.com>';
+  let _resendClient: Resend | null = null;
 
-  async function getEmailTransporter(): Promise<nodemailer.Transporter> {
-    if (_emailTransporter) return _emailTransporter;
-
-    const smtpHost = process.env.SMTP_HOST;
-    if (smtpHost) {
-      _emailFrom = process.env.SMTP_FROM || _emailFrom;
-      _emailTransporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: parseInt(process.env.SMTP_PORT || "587", 10),
-        secure: process.env.SMTP_SECURE === "true",
-        auth: {
-          user: process.env.SMTP_USER!,
-          pass: process.env.SMTP_PASS!,
-        },
-      });
-      logger.info({ host: smtpHost }, "Email: using production SMTP");
-    } else {
-      // Dev-only fallback: Ethereal catch-all
-      const testAccount = await nodemailer.createTestAccount();
-      _emailTransporter = nodemailer.createTransport({
-        host: "smtp.ethereal.email",
-        port: 587,
-        secure: false,
-        auth: { user: testAccount.user, pass: testAccount.pass },
-      });
-      logger.warn("Email: no SMTP_HOST set — using Ethereal dev preview (emails NOT delivered)");
+  function getResendClient(): Resend {
+    if (!_resendClient) {
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!apiKey) {
+        logger.warn("Email: RESEND_API_KEY not set — emails will not be delivered");
+      }
+      _resendClient = new Resend(apiKey);
     }
-    return _emailTransporter;
+    return _resendClient;
   }
 
   const sendEmail = async (to: string, subject: string, text: string): Promise<void> => {
     try {
-      const transporter = await getEmailTransporter();
-      const info = await transporter.sendMail({ from: _emailFrom, to, subject, text });
-      if (!process.env.SMTP_HOST) {
-        logger.debug({ preview: nodemailer.getTestMessageUrl(info) }, `Ethereal preview for: ${subject}`);
+      const resend = getResendClient();
+      const { error } = await resend.emails.send({ from: _emailFrom, to, subject, text });
+      if (error) {
+        logger.error({ error, to, subject }, "Resend rejected email");
       }
     } catch (err) {
       logger.error({ err, to, subject }, "Failed to send email");

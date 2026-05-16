@@ -99,9 +99,7 @@ export function assertProductionSecrets(): void {
     "REFRESH_SECRET",
     "DATABASE_URL",
     "APP_URL",
-    "SMTP_HOST",
-    "SMTP_USER",
-    "SMTP_PASS",
+    "RESEND_API_KEY",
   ];
   const missing = required.filter((k) => !process.env[k]);
   if (missing.length) {
