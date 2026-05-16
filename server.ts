@@ -414,7 +414,8 @@ async function startServer() {
       const isValid = await bcrypt.compare(password, user.password);
       if (!isValid) return res.status(401).json({ error: 'Invalid credentials' });
 
-      if (!user.emailVerified) {
+      const isAdmin = ['SUPER_ADMIN', 'ASSESSMENT_DIRECTOR', 'CONTENT_ADMIN', 'INST_ADMIN'].includes(user.role);
+      if (!user.emailVerified && !isAdmin) {
         return res.status(403).json({
           error: 'Email not verified',
           code: 'EMAIL_NOT_VERIFIED',
