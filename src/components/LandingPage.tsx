@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { Button } from "./ui/Button";
 import { DynamicPage } from "./DynamicPage";
+import { FreemiumTestWidget } from "./FreemiumTestWidget";
 import { Check, ChevronRight, Menu, X, BrainCircuit, Target, Lightbulb, FileCheck2, Activity, Brain, BarChart, Zap, ArrowRight } from "lucide-react";
 import { cn } from "../lib/utils";
 
@@ -17,6 +18,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [pendingFeature, setPendingFeature] = useState<string | null>(null);
+  const [showFreemiumTest, setShowFreemiumTest] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -45,6 +47,12 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] font-sans text-slate-800 overflow-x-hidden">
+      {/* Freemium Test Widget Overlay */}
+      <AnimatePresence>
+        {showFreemiumTest && (
+          <FreemiumTestWidget onClose={() => setShowFreemiumTest(false)} />
+        )}
+      </AnimatePresence>
       {/* ─── NAVBAR ─── */}
       <nav className={cn(
         "fixed top-0 left-0 w-full z-50 transition-all duration-300",
@@ -208,6 +216,21 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
                 Corporate Solutions <div className="bg-slate-900 text-white rounded-full p-1"><ChevronRight size={14}/></div>
               </button>
             </div>
+
+            {/* Free placement test CTA */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.4 }}
+              className="mt-6 flex items-center gap-4"
+            >
+              <button
+                onClick={() => setShowFreemiumTest(true)}
+                className="flex items-center gap-3 bg-[#9b276c] hover:bg-[#7d1f57] text-white px-6 py-3.5 rounded-full text-sm font-bold shadow-lg shadow-[#9b276c]/30 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#9b276c]/40"
+              >
+                <Zap size={16} />
+                Test Your Level — Free
+              </button>
+              <span className="text-xs text-slate-400 font-medium">10 min · No account needed · A1–C2</span>
+            </motion.div>
           </motion.div>
         </div>
 
@@ -235,6 +258,44 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
             </div>
           </div>
         </motion.div>
+      </section>
+
+      {/* ─── FREE PLACEMENT TEST SECTION ─── */}
+      <section className="py-16 bg-gradient-to-br from-[#9b276c] to-[#7d1f57] relative overflow-hidden">
+        <div className="absolute inset-0 opacity-10 pointer-events-none">
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-white rounded-full blur-3xl" />
+          <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-white rounded-full blur-2xl" />
+        </div>
+        <div className="max-w-4xl mx-auto px-6 relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="text-white max-w-xl">
+            <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-widest mb-4">
+              <Zap size={12} /> Free Placement Test
+            </div>
+            <h2 className="text-3xl md:text-4xl font-black tracking-tight leading-tight mb-3">
+              Discover Your English Level<br className="hidden md:block" /> in 10 Minutes
+            </h2>
+            <p className="text-white/80 text-base leading-relaxed mb-4">
+              No account needed. Our AI-powered adaptive engine serves the best questions from our certified item bank,
+              personalised to your level in real time using IRT psychometrics.
+            </p>
+            <div className="flex flex-wrap gap-3 text-sm text-white/70 font-medium">
+              {["✓ Completely free", "✓ CEFR A1–C2 scale", "✓ 6–12 adaptive questions", "✓ Instant results"].map((t) => (
+                <span key={t}>{t}</span>
+              ))}
+            </div>
+          </div>
+          <div className="flex-shrink-0">
+            <button
+              onClick={() => setShowFreemiumTest(true)}
+              className="flex items-center gap-3 bg-white text-[#9b276c] font-black text-base px-8 py-4 rounded-2xl shadow-2xl hover:shadow-white/30 transition-all hover:-translate-y-1 hover:scale-105"
+            >
+              <Zap size={20} />
+              Start Free Test
+              <ArrowRight size={18} className="ml-1" />
+            </button>
+            <p className="text-white/50 text-xs text-center mt-3 font-medium">Takes about 10 minutes</p>
+          </div>
+        </div>
       </section>
 
       {/* ─── BENTO BOX FEATURES (Redesigned) ─── */}

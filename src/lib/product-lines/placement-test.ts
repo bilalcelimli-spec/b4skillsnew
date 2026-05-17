@@ -34,6 +34,16 @@ import crypto from "crypto";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/** IRT parameters + metadata stored server-side for each served item. */
+export interface PlacementItemMeta {
+  a: number;           // discrimination
+  b: number;           // difficulty
+  c: number;           // guessing (pseudo-chance)
+  skill: string;       // e.g. "READING"
+  correctAnswer: number | string; // MC option index or FIB correct text
+  type: string;        // "MULTIPLE_CHOICE" | "FILL_IN_BLANKS"
+}
+
 export interface PlacementConfig {
   /** Minimum items before stopping */
   minItems: number;
@@ -66,10 +76,16 @@ export interface PlacementResponse {
 
 export interface PlacementSessionState {
   placementId: string;
+  /** Candidate's display name (collected at registration) */
+  name: string;
+  /** Candidate's email (collected at registration; not persisted to DB) */
+  email: string;
   theta: number;
   sem: number;
   responses: PlacementResponse[];
   usedItemIds: Set<string>;
+  /** IRT params + correct answer keyed by itemId — used for server-side scoring */
+  itemMeta: Map<string, PlacementItemMeta>;
   consentToResearch: boolean;
   startedAt: number;
 }
@@ -127,14 +143,19 @@ export function cefrConfidenceInterval(
  */
 export function createPlacementSession(
   consentToResearch: boolean,
+  name: string,
+  email: string,
   config: PlacementConfig = DEFAULT_PLACEMENT_CONFIG
 ): PlacementSessionState {
   return {
     placementId: crypto.randomUUID(),
+    name,
+    email,
     theta: config.startingTheta,
     sem: config.startingSem,
     responses: [],
     usedItemIds: new Set(),
+    itemMeta: new Map(),
     consentToResearch,
     startedAt: Date.now(),
   };
@@ -220,4 +241,77 @@ export function validatePlacementResponse(
 export function isRapidGuess(latencyMs: number, itemDifficulty: number): boolean {
   const expectedMs = 10_000 + Math.max(0, itemDifficulty) * 5_000;
   return latencyMs < 1_500 || latencyMs < expectedMs * 0.10;
+}
+
+// ─── IRT Psychometrics ────────────────────────────────────────────────────────
+
+const IRT_SCALE = 1.7; // Standard IRT logistic scaling constant
+
+/**
+ * 3PL IRT probability: P(θ) = c + (1-c) / (1 + exp(-1.7·a·(θ-b)))
+ */
+export function irt3PL(theta: number, a: number, b: number, c: number): number {
+  return c + (1 - c) / (1 + Math.exp(-IRT_SCALE * a * (theta - b)));
+}
+
+/**
+ * Fisher Information at theta for a 3PL item.
+ * I(θ) = (1.7a)² · (P-c)² / [(1-c)² · P · Q]
+ */
+export function irtFisherInfo(theta: number, a: number, b: number, c: number): number {
+  const P = irt3PL(theta, a, b, c);
+  const Q = 1 - P;
+  if (P <= 0 || Q <= 0) return 0;
+  return (IRT_SCALE * a) ** 2 * (P - c) ** 2 / ((1 - c) ** 2 * P * Q);
+}
+
+/**
+ * EAP (Expected A Posteriori) theta estimation with Gaussian prior.
+ *
+ * Uses Gauss-Hermite quadrature over [-4.5, 4.5] with 41 points.
+ * More stable than MLE for short adaptive tests (≤ 12 items).
+ */
+export function updateThetaEAP(
+  responses: PlacementResponse[],
+  itemMeta: Map<string, PlacementItemMeta>,
+  priorMean = 0.0,
+  priorSd = 1.2,
+): { theta: number; sem: number } {
+  const POINTS = 41;
+  const MIN_T = -4.5;
+  const MAX_T = 4.5;
+  const step = (MAX_T - MIN_T) / (POINTS - 1);
+
+  // Quadrature grid + Gaussian prior weights
+  const quadThetas = Array.from({ length: POINTS }, (_, i) => MIN_T + i * step);
+  const priorW = quadThetas.map((t) => {
+    const z = (t - priorMean) / priorSd;
+    return Math.exp(-0.5 * z * z);
+  });
+  const priorSum = priorW.reduce((a, b) => a + b, 0);
+  const normPrior = priorW.map((w) => w / priorSum);
+
+  // Posterior ∝ likelihood × prior
+  const posterior = quadThetas.map((t, i) => {
+    let logL = 0;
+    for (const r of responses) {
+      const meta = itemMeta.get(r.itemId);
+      if (!meta) continue;
+      const P = irt3PL(t, meta.a, meta.b, meta.c);
+      logL += r.score === 1
+        ? Math.log(Math.max(P, 1e-12))
+        : Math.log(Math.max(1 - P, 1e-12));
+    }
+    return normPrior[i] * Math.exp(logL);
+  });
+
+  const postSum = posterior.reduce((a, b) => a + b, 0);
+  if (postSum <= 0) return { theta: priorMean, sem: priorSd };
+
+  const norm = posterior.map((p) => p / postSum);
+  const theta = norm.reduce((acc, p, i) => acc + p * quadThetas[i], 0);
+  const variance = norm.reduce((acc, p, i) => acc + p * (quadThetas[i] - theta) ** 2, 0);
+  const sem = Math.sqrt(Math.max(variance, 0.001));
+
+  return { theta: Number(theta.toFixed(3)), sem: Number(sem.toFixed(3)) };
 }

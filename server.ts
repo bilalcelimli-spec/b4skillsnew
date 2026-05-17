@@ -348,6 +348,15 @@ async function startServer() {
     legacyHeaders: false,
   });
 
+  // Freemium placement test: 5 starts per IP per hour (public endpoint — prevent abuse)
+  const placementLimiter = makeRateLimiter({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 5,
+    message: { error: 'Too many placement test requests. Please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
   // Global API safety net: 500 requests per 15 minutes per IP
   // Prevents brute-force / enumeration on unprotected endpoints
   const globalApiLimiter = makeRateLimiter({
@@ -11629,54 +11638,185 @@ async function startServer() {
     config: import("./src/lib/product-lines/placement-test.js").PlacementConfig;
   }>();
 
+  /** Strip the correct answer and explanation from item content before sending to client. */
+  function sanitizePlacementItem(item: any): object {
+    const raw = typeof item.content === "object" ? item.content : {};
+    const { correctAnswer, explanation, answers, rubric, ...safeContent } = raw as any;
+    void correctAnswer; void explanation; void answers; void rubric; // explicitly unused
+    return {
+      id: item.id,
+      skill: item.skill,
+      type: item.type,
+      cefrLevel: item.cefrLevel,
+      content: safeContent,
+    };
+  }
+
+  /** MFI item selection with skill-content balancing and exposure dampening. */
+  async function selectPlacementItem(
+    theta: number,
+    usedItemIds: Set<string>,
+    skillCounts: Record<string, number>,
+    maxPerSkill: number,
+  ): Promise<any | null> {
+    const { irtFisherInfo } = await import("./src/lib/product-lines/placement-test.js");
+    const pool = await (prisma as any).item.findMany({
+      where: {
+        status: "ACTIVE",
+        skill: { in: ["READING", "LISTENING", "GRAMMAR", "VOCABULARY"] },
+        isPretest: false,
+        type: { in: ["MULTIPLE_CHOICE", "FILL_IN_BLANKS"] },
+      },
+      select: {
+        id: true, skill: true, cefrLevel: true, content: true, type: true,
+        discrimination: true, difficulty: true, guessing: true, exposureCount: true,
+      },
+    });
+
+    const available = pool.filter((item: any) => !usedItemIds.has(item.id));
+    if (available.length === 0) return null;
+
+    // Content balance: prefer under-represented skills
+    const balanced = available.filter((item: any) => (skillCounts[item.skill] ?? 0) < maxPerSkill);
+    const candidates = balanced.length > 0 ? balanced : available;
+
+    // Score by Fisher information with light exposure damping
+    const scored = candidates.map((item: any) => {
+      const info = irtFisherInfo(theta, item.discrimination ?? 1.0, item.difficulty ?? 0.0, item.guessing ?? 0.2);
+      const exposurePenalty = Math.max(0, (item.exposureCount ?? 0) - 10) * 0.015;
+      return { item, score: info * (1 - Math.min(exposurePenalty, 0.4)) };
+    });
+    scored.sort((a: any, b: any) => b.score - a.score);
+    return scored[0]?.item ?? null;
+  }
+
   /**
    * POST /api/assessment/placement/start
    * Start a new freemium placement test session. No authentication required.
-   * Requires explicit consent to data use (GDPR Art. 6(1)(a)).
+   * Returns the first item alongside the session ID.
    */
-  app.post("/api/assessment/placement/start", async (req, res) => {
+  app.post("/api/assessment/placement/start", placementLimiter, async (req, res) => {
     try {
       const {
         createPlacementSession,
         DEFAULT_PLACEMENT_CONFIG,
       } = await import("./src/lib/product-lines/placement-test.js");
-      const { consentToResearch = false } = req.body as { consentToResearch?: boolean };
-      const session = createPlacementSession(Boolean(consentToResearch));
-      placementSessions.set(session.placementId, {
-        state: session,
-        config: DEFAULT_PLACEMENT_CONFIG,
+
+      const { name, email, consentToResearch = false } = req.body as {
+        name?: string; email?: string; consentToResearch?: boolean;
+      };
+
+      // Input validation
+      if (!name || typeof name !== "string" || name.trim().length < 1 || name.trim().length > 100) {
+        return res.status(400).json({ error: "name is required (max 100 chars)" });
+      }
+      if (!email || typeof email !== "string") {
+        return res.status(400).json({ error: "email is required" });
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email) || email.length > 254) {
+        return res.status(400).json({ error: "Invalid email address" });
+      }
+
+      const safeName = name.trim().replace(/<[^>]*>/g, "");
+      const safeEmail = email.trim().toLowerCase();
+
+      const config = DEFAULT_PLACEMENT_CONFIG;
+      const session = createPlacementSession(Boolean(consentToResearch), safeName, safeEmail, config);
+
+      // Skill counts start at 0
+      const skillCounts: Record<string, number> = {};
+      const maxPerSkill = Math.ceil(config.maxItems / 4);
+      const firstItem = await selectPlacementItem(session.theta, session.usedItemIds, skillCounts, maxPerSkill);
+
+      if (!firstItem) {
+        return res.status(503).json({ error: "No placement items available. Please try again later." });
+      }
+
+      // Store IRT params for server-side scoring
+      const raw = typeof firstItem.content === "object" ? firstItem.content : {};
+      session.itemMeta.set(firstItem.id, {
+        a: firstItem.discrimination ?? 1.0,
+        b: firstItem.difficulty ?? 0.0,
+        c: firstItem.guessing ?? 0.2,
+        skill: firstItem.skill,
+        correctAnswer: (raw as any).correctAnswer ?? -1,
+        type: firstItem.type,
       });
-      // Return placementId so client can submit responses
+      session.usedItemIds.add(firstItem.id);
+
+      placementSessions.set(session.placementId, { state: session, config });
+
       res.status(201).json({
         placementId: session.placementId,
-        maxItems: DEFAULT_PLACEMENT_CONFIG.maxItems,
+        firstItem: sanitizePlacementItem(firstItem),
+        maxItems: config.maxItems,
         estimatedMinutes: 10,
       });
     } catch (err) {
+      console.error("[placement/start]", err);
       res.status(500).json({ error: "Failed to start placement test" });
     }
   });
 
   /**
    * POST /api/assessment/placement/:id/respond
-   * Submit one response and receive the next item or the final result.
+   * Submit one response; score is computed server-side.
+   * Returns { complete: false, nextItem } or { complete: true, result }.
    */
   app.post("/api/assessment/placement/:id/respond", async (req, res) => {
     try {
       const {
         shouldStopPlacement,
         buildPlacementResult,
-        validatePlacementResponse,
+        updateThetaEAP,
       } = await import("./src/lib/product-lines/placement-test.js");
+
       const { id } = req.params;
       const entry = placementSessions.get(id);
-      if (!entry) return res.status(404).json({ error: "Placement session not found" });
-      const { itemId, score, latencyMs } = req.body as { itemId: string; score: unknown; latencyMs: unknown };
-      const validationError = validatePlacementResponse(itemId, score, latencyMs);
-      if (validationError) return res.status(400).json({ error: validationError });
-      // Record response
-      entry.state.responses.push({ itemId, score: score as 0 | 1, latencyMs: latencyMs as number });
-      entry.state.usedItemIds.add(itemId);
+      if (!entry) return res.status(404).json({ error: "Placement session not found or expired" });
+
+      const { itemId, selectedOption, latencyMs } = req.body as {
+        itemId: string; selectedOption: unknown; latencyMs: unknown;
+      };
+
+      if (!itemId || typeof itemId !== "string") {
+        return res.status(400).json({ error: "itemId is required" });
+      }
+      if (typeof latencyMs !== "number" || latencyMs < 0 || latencyMs > 300_000) {
+        return res.status(400).json({ error: "latencyMs must be a number between 0 and 300000" });
+      }
+
+      const meta = entry.state.itemMeta.get(itemId);
+      if (!meta) return res.status(400).json({ error: "Unknown itemId for this session" });
+
+      // Server-side scoring
+      let score: 0 | 1 = 0;
+      if (meta.type === "MULTIPLE_CHOICE" || meta.type === "FILL_IN_BLANKS") {
+        if (meta.type === "MULTIPLE_CHOICE") {
+          score = selectedOption === meta.correctAnswer ? 1 : 0;
+        } else {
+          const ans = String(selectedOption ?? "").trim().toLowerCase();
+          const correct = String(meta.correctAnswer ?? "").trim().toLowerCase();
+          score = ans === correct ? 1 : 0;
+        }
+      }
+
+      entry.state.responses.push({ itemId, score, latencyMs: latencyMs as number });
+
+      // EAP theta update
+      const updated = updateThetaEAP(entry.state.responses, entry.state.itemMeta);
+      entry.state.theta = updated.theta;
+      entry.state.sem = updated.sem;
+
+      // Skill balance tracking
+      const skillCounts: Record<string, number> = {};
+      for (const r of entry.state.responses) {
+        const m = entry.state.itemMeta.get(r.itemId);
+        if (m) skillCounts[m.skill] = (skillCounts[m.skill] ?? 0) + 1;
+      }
+      const maxPerSkill = Math.ceil(entry.config.maxItems / 4);
+
       // Check stopping rule
       const { stop, reason } = shouldStopPlacement(entry.state, entry.config);
       if (stop) {
@@ -11685,8 +11825,37 @@ async function startServer() {
         const result = buildPlacementResult(entry.state, appBaseUrl);
         return res.json({ complete: true, reason, result });
       }
-      res.json({ complete: false, itemsAdministered: entry.state.responses.length });
+
+      // Select next item using MFI
+      const nextItem = await selectPlacementItem(entry.state.theta, entry.state.usedItemIds, skillCounts, maxPerSkill);
+      if (!nextItem) {
+        // No more items — force stop
+        placementSessions.delete(id);
+        const appBaseUrl = `${req.protocol}://${req.get("host")}`;
+        const result = buildPlacementResult(entry.state, appBaseUrl);
+        return res.json({ complete: true, reason: "NO_MORE_ITEMS", result });
+      }
+
+      // Register new item metadata for next response
+      const rawContent = typeof nextItem.content === "object" ? nextItem.content : {};
+      entry.state.itemMeta.set(nextItem.id, {
+        a: nextItem.discrimination ?? 1.0,
+        b: nextItem.difficulty ?? 0.0,
+        c: nextItem.guessing ?? 0.2,
+        skill: nextItem.skill,
+        correctAnswer: (rawContent as any).correctAnswer ?? -1,
+        type: nextItem.type,
+      });
+      entry.state.usedItemIds.add(nextItem.id);
+
+      res.json({
+        complete: false,
+        nextItem: sanitizePlacementItem(nextItem),
+        itemsAdministered: entry.state.responses.length,
+        thetaEstimate: entry.state.theta,
+      });
     } catch (err: any) {
+      console.error("[placement/respond]", err);
       res.status(500).json({ error: err.message ?? "Failed to process response" });
     }
   });
