@@ -340,6 +340,12 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
   const [loading, setLoading] = useState(true);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [stats, setStats] = useState({ total: 0, completed: 0, inProgress: 0, avgTheta: 0 });
+  const [serviceHealth, setServiceHealth] = useState<Record<string, string>>({
+    aiScoring: "loading",
+    adaptiveLogic: "loading",
+    storageApi: "loading",
+    proctoringService: "loading",
+  });
 
   // Open ⌘K
   useEffect(() => {
@@ -389,6 +395,28 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
       finally { setLoading(false); }
     })();
   }, [ORG_ID]);
+
+  // Poll real service health every 30 s
+  useEffect(() => {
+    const fetchServiceHealth = async () => {
+      try {
+        const res = await fetch("/api/health/services", { credentials: "include" });
+        if (!res.ok) throw new Error("health fetch failed");
+        const data = await res.json();
+        setServiceHealth(data.services ?? {});
+      } catch {
+        setServiceHealth({
+          aiScoring: "degraded",
+          adaptiveLogic: "degraded",
+          storageApi: "degraded",
+          proctoringService: "degraded",
+        });
+      }
+    };
+    fetchServiceHealth();
+    const interval = setInterval(fetchServiceHealth, 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="animate-spin text-indigo-600" size={32} /></div>;
@@ -597,10 +625,10 @@ export const AdminDashboard: React.FC<{ orgId?: string }> = ({ orgId: propOrgId 
                       <Card className="border-indigo-100 bg-indigo-50/30 rounded-2xl shadow-sm">
                         <CardHeader className="font-black text-indigo-900 uppercase tracking-tight text-sm">System Health</CardHeader>
                         <CardContent className="space-y-3">
-                          <HealthItem label="AI Scoring Engine" status="Operational" color="bg-green-500" />
-                          <HealthItem label="Adaptive Logic" status="Operational" color="bg-green-500" />
-                          <HealthItem label="Storage API" status="Operational" color="bg-green-500" />
-                          <HealthItem label="Proctoring Service" status="Degraded" color="bg-amber-500" />
+                          <HealthItem label="AI Scoring Engine" status={serviceHealth.aiScoring ?? "loading"} color={serviceHealth.aiScoring === "operational" ? "bg-green-500" : serviceHealth.aiScoring === "degraded" ? "bg-amber-500" : "bg-red-500"} />
+                          <HealthItem label="Adaptive Logic" status={serviceHealth.adaptiveLogic ?? "loading"} color={serviceHealth.adaptiveLogic === "operational" ? "bg-green-500" : serviceHealth.adaptiveLogic === "degraded" ? "bg-amber-500" : "bg-red-500"} />
+                          <HealthItem label="Storage API" status={serviceHealth.storageApi ?? "loading"} color={serviceHealth.storageApi === "operational" ? "bg-green-500" : serviceHealth.storageApi === "degraded" ? "bg-amber-500" : "bg-red-500"} />
+                          <HealthItem label="Proctoring Service" status={serviceHealth.proctoringService ?? "loading"} color={serviceHealth.proctoringService === "operational" ? "bg-green-500" : serviceHealth.proctoringService === "degraded" ? "bg-amber-500" : "bg-red-500"} />
                         </CardContent>
                       </Card>
                       <Card className="rounded-2xl shadow-sm border-slate-200">
@@ -885,11 +913,16 @@ function CEFRBadge({ theta, level }: { theta: number; level?: string }) {
 }
 
 function HealthItem({ label, status, color }: { label: string; status: string; color: string }) {
+  const displayStatus = status === "loading" ? "Checking…"
+    : status === "operational" ? "Operational"
+    : status === "degraded" ? "Degraded"
+    : status === "down" ? "Down"
+    : status;
   return (
     <div className="flex items-center justify-between">
       <span className="text-sm text-slate-600">{label}</span>
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{status}</span>
+        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{displayStatus}</span>
         <div className={cn("w-2 h-2 rounded-full animate-pulse", color)} />
       </div>
     </div>

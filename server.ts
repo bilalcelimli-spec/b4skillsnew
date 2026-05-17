@@ -222,6 +222,56 @@ async function startServer() {
     }
   });
 
+  // /api/health/services — per-service health for the Admin Dashboard System Health panel
+  app.get("/api/health/services", async (_req, res) => {
+    type ServiceStatus = "operational" | "degraded" | "down";
+    const result: Record<string, ServiceStatus> = {};
+
+    // 1. Storage API — basic DB ping with latency check
+    try {
+      const t0 = Date.now();
+      await (prisma as any).$queryRaw`SELECT 1`;
+      const latency = Date.now() - t0;
+      result.storageApi = latency < 500 ? "operational" : "degraded";
+    } catch {
+      result.storageApi = "down";
+    }
+
+    // 2. AI Scoring Engine — check Gemini circuit breaker state
+    try {
+      const { allBreakersHealth } = await import("./src/lib/ai/circuit-breaker.js");
+      const breakers = allBreakersHealth();
+      const gemini = breakers.find((b: any) => b.name === "gemini");
+      result.aiScoring = !gemini || gemini.state === "CLOSED" ? "operational"
+        : gemini.state === "HALF_OPEN" ? "degraded"
+        : "down";
+    } catch {
+      result.aiScoring = "degraded";
+    }
+
+    // 3. Adaptive Logic — verify item bank has active items
+    try {
+      const activeItems = await (prisma as any).item.count({ where: { status: "ACTIVE" } });
+      result.adaptiveLogic = activeItems > 0 ? "operational" : "degraded";
+    } catch {
+      result.adaptiveLogic = "down";
+    }
+
+    // 4. Proctoring Service — verify the ProctoringEvent table is reachable
+    try {
+      await (prisma as any).proctoringEvent.count();
+      result.proctoringService = "operational";
+    } catch {
+      result.proctoringService = "down";
+    }
+
+    const overall = Object.values(result).some((s) => s === "down") ? "down"
+      : Object.values(result).some((s) => s === "degraded") ? "degraded"
+      : "operational";
+
+    res.json({ overall, services: result, timestamp: new Date().toISOString() });
+  });
+
   // --- AUTH ROUTES ---
   const isProd = process.env.NODE_ENV === "production";
   const JWT_SECRET = process.env.JWT_SECRET
