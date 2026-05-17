@@ -1,26 +1,25 @@
 /**
- * Freemium Placement Test
+ * General English Level Test
  *
- * A lightweight 8–12 item adaptive placement test that:
+ * A full adaptive level assessment (10–30 items) that:
  *  - Requires no authentication (open endpoint)
- *  - Runs a mini-CAT starting at B1 (theta=0)
- *  - Returns a CEFR level estimate with a 90% confidence interval
+ *  - Runs a CAT starting at B1 (theta=0)
+ *  - Returns a precise CEFR level estimate with a 90% confidence interval
  *  - Stores anonymised response data for psychometric research
  *    (user consents via API call — GDPR Article 6(1)(a))
- *  - Stops when SEM ≤ 0.45 or after maxItems=12 items
+ *  - Stops when SEM ≤ 0.35 or after maxItems=30 items
  *
  * Design goals
  * ------------
- * 1. Fast: 8–12 items, each < 60 seconds → completes in < 10 minutes
+ * 1. Accurate: 10–30 items, each < 90 seconds → completes in ~20–30 minutes
  * 2. Open: no account required; share a link and test immediately
  * 3. Data flywheel: every placement contributes anonymised calibration data
  * 4. Conversion: result page shows "Upgrade for a full 4-skill report" CTA
  *
  * Item pool selection
  * -------------------
- * Only READING and LISTENING items with status=ACTIVE and isPretest=false
- * are eligible for the placement pool. Items used in placement are tracked
- * in a separate exposure counter so they don't inflate operational exposure.
+ * READING, LISTENING (with audioUrl), GRAMMAR, and VOCABULARY items with
+ * status=ACTIVE and isPretest=false are eligible for the placement pool.
  *
  * Privacy
  * -------
@@ -60,9 +59,9 @@ export interface PlacementConfig {
 }
 
 export const DEFAULT_PLACEMENT_CONFIG: PlacementConfig = {
-  minItems: 6,
-  maxItems: 12,
-  semThreshold: 0.45,
+  minItems: 10,
+  maxItems: 30,
+  semThreshold: 0.35,
   startingTheta: 0.0,  // B1 — best starting point for a general English test
   startingSem: 1.2,    // Wide prior — we know nothing about the user
   eligibleSkills: ["READING", "LISTENING", "GRAMMAR", "VOCABULARY"],

@@ -229,7 +229,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
                 <Zap size={16} />
                 Test Your Level — Free
               </button>
-              <span className="text-xs text-slate-400 font-medium">10 min · No account needed · A1–C2</span>
+              <span className="text-xs text-slate-400 font-medium">~25 min · No account needed · A1–C2</span>
             </motion.div>
           </motion.div>
         </div>
@@ -269,17 +269,17 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
         <div className="max-w-4xl mx-auto px-6 relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
           <div className="text-white max-w-xl">
             <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-widest mb-4">
-              <Zap size={12} /> Free Placement Test
+              <Zap size={12} /> Free Level Test
             </div>
             <h2 className="text-3xl md:text-4xl font-black tracking-tight leading-tight mb-3">
-              Discover Your English Level<br className="hidden md:block" /> in 10 Minutes
+              Measure Your Exact English Level<br className="hidden md:block" /> with Adaptive IRT
             </h2>
             <p className="text-white/80 text-base leading-relaxed mb-4">
               No account needed. Our AI-powered adaptive engine serves the best questions from our certified item bank,
               personalised to your level in real time using IRT psychometrics.
             </p>
             <div className="flex flex-wrap gap-3 text-sm text-white/70 font-medium">
-              {["✓ Completely free", "✓ CEFR A1–C2 scale", "✓ 6–12 adaptive questions", "✓ Instant results"].map((t) => (
+              {["✓ Completely free", "✓ CEFR A1–C2 scale", "✓ 10–30 adaptive questions", "✓ Instant results"].map((t) => (
                 <span key={t}>{t}</span>
               ))}
             </div>
@@ -293,7 +293,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
               Start Free Test
               <ArrowRight size={18} className="ml-1" />
             </button>
-            <p className="text-white/50 text-xs text-center mt-3 font-medium">Takes about 10 minutes</p>
+            <p className="text-white/50 text-xs text-center mt-3 font-medium">Takes about 20–30 minutes</p>
           </div>
         </div>
       </section>

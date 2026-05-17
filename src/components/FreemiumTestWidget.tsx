@@ -144,7 +144,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
   // Session
   const [placementId, setPlacementId] = useState<string | null>(null);
   const [currentItem, setCurrentItem] = useState<PlacementItem | null>(null);
-  const [maxItems, setMaxItems] = useState(12);
+  const [maxItems, setMaxItems] = useState(30);
   const [itemsAdministered, setItemsAdministered] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -242,7 +242,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
       if (!res.ok) throw new Error(data.error ?? "Failed to start test");
       setPlacementId(data.placementId);
       setCurrentItem(data.firstItem);
-      setMaxItems(data.maxItems ?? 12);
+      setMaxItems(data.maxItems ?? 30);
       setItemsAdministered(0);
       setStep("intro");
     } catch (err: any) {
@@ -322,13 +322,13 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
               General English Test
             </h1>
             <p className="text-slate-500 mt-3 text-base leading-relaxed max-w-sm mx-auto">
-              Free · ~10 minutes · CEFR A1–C2 result · Grammar, Vocabulary, Reading &amp; Listening
+              Free · ~20–30 minutes · CEFR A1–C2 result · Grammar, Vocabulary, Reading &amp; Listening
             </p>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             {[
-              { icon: <Clock size={20} />, val: "~10 min", label: "Duration" },
+              { icon: <Clock size={20} />, val: "~25 min", label: "Duration" },
               { icon: <Zap size={20} />, val: "Adaptive", label: "Algorithm" },
               { icon: <Award size={20} />, val: "A1–C2", label: "CEFR Scale" },
             ].map((s, i) => (
@@ -436,8 +436,8 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
               {
                 icon: <BarChart3 size={22} className="text-indigo-600" />,
                 bg: "bg-indigo-50 border-indigo-200",
-                title: "8–12 Questions Total",
-                body: "The test stops automatically once it has a statistically reliable estimate of your level.",
+                title: "10–30 Adaptive Questions",
+                body: "The test stops automatically once it has a statistically precise estimate of your level (SEM ≤ 0.35).",
               },
               {
                 icon: <Clock size={22} className="text-blue-600" />,

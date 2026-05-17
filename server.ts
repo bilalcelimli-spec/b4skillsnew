@@ -11793,7 +11793,7 @@ async function startServer() {
         placementId: session.placementId,
         firstItem: sanitizePlacementItem(firstItem),
         maxItems: config.maxItems,
-        estimatedMinutes: 10,
+        estimatedMinutes: 25,
       });
     } catch (err) {
       console.error("[placement/start]", err);
