@@ -11638,17 +11638,34 @@ async function startServer() {
     config: import("./src/lib/product-lines/placement-test.js").PlacementConfig;
   }>();
 
-  /** Strip the correct answer and explanation from item content before sending to client. */
+  /** Strip the correct answer and explanation from item content before sending to client.
+   *  Also normalises `options` to a plain string[] regardless of whether the DB stores them as
+   *  strings or as rich objects ({ id, text, isCorrect, rationale, … }).
+   */
   function sanitizePlacementItem(item: any): object {
     const raw = typeof item.content === "object" ? item.content : {};
-    const { correctAnswer, explanation, answers, rubric, ...safeContent } = raw as any;
+    const { correctAnswer, explanation, answers, rubric, options: rawOptions, ...restContent } = raw as any;
     void correctAnswer; void explanation; void answers; void rubric; // explicitly unused
+
+    // Normalise options to plain strings — strip any metadata fields that would cause React #31
+    let options: string[] | undefined;
+    if (Array.isArray(rawOptions)) {
+      options = rawOptions.map((o: unknown) => {
+        if (typeof o === "string") return o;
+        if (o !== null && typeof o === "object") return String((o as any).text ?? "");
+        return String(o);
+      });
+    }
+
     return {
       id: item.id,
       skill: item.skill,
       type: item.type,
       cefrLevel: item.cefrLevel,
-      content: safeContent,
+      content: {
+        ...restContent,
+        ...(options !== undefined ? { options } : {}),
+      },
     };
   }
 
@@ -11735,12 +11752,20 @@ async function startServer() {
 
       // Store IRT params for server-side scoring
       const raw = typeof firstItem.content === "object" ? firstItem.content : {};
+      const rawOpts = (raw as any).options;
+      // Derive correctAnswer index: DB may store it as a numeric index, or options may be
+      // object arrays ({id, text, isCorrect}) where we must find the correct-option index.
+      let correctAnswer: number | string = (raw as any).correctAnswer ?? -1;
+      if (Array.isArray(rawOpts) && rawOpts.length > 0 && typeof rawOpts[0] === "object") {
+        const correctIdx = rawOpts.findIndex((o: any) => o?.isCorrect === true);
+        if (correctIdx >= 0) correctAnswer = correctIdx;
+      }
       session.itemMeta.set(firstItem.id, {
         a: firstItem.discrimination ?? 1.0,
         b: firstItem.difficulty ?? 0.0,
         c: firstItem.guessing ?? 0.2,
         skill: firstItem.skill,
-        correctAnswer: (raw as any).correctAnswer ?? -1,
+        correctAnswer,
         type: firstItem.type,
       });
       session.usedItemIds.add(firstItem.id);
@@ -11838,12 +11863,18 @@ async function startServer() {
 
       // Register new item metadata for next response
       const rawContent = typeof nextItem.content === "object" ? nextItem.content : {};
+      const rawNextOpts = (rawContent as any).options;
+      let nextCorrectAnswer: number | string = (rawContent as any).correctAnswer ?? -1;
+      if (Array.isArray(rawNextOpts) && rawNextOpts.length > 0 && typeof rawNextOpts[0] === "object") {
+        const correctIdx = rawNextOpts.findIndex((o: any) => o?.isCorrect === true);
+        if (correctIdx >= 0) nextCorrectAnswer = correctIdx;
+      }
       entry.state.itemMeta.set(nextItem.id, {
         a: nextItem.discrimination ?? 1.0,
         b: nextItem.difficulty ?? 0.0,
         c: nextItem.guessing ?? 0.2,
         skill: nextItem.skill,
-        correctAnswer: (rawContent as any).correctAnswer ?? -1,
+        correctAnswer: nextCorrectAnswer,
         type: nextItem.type,
       });
       entry.state.usedItemIds.add(nextItem.id);
