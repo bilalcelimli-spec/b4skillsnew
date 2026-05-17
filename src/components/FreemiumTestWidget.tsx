@@ -23,8 +23,8 @@ import { cn } from "../lib/utils";
 import {
   X, ArrowRight, CheckCircle2, Brain, Clock, BookOpen,
   Headphones, Pen, Mic, AlertCircle, Loader2, Star,
-  ChevronRight, Award, BarChart3, Zap, Shield,
-  TrendingUp, Volume2,
+  ChevronRight, ChevronDown, Award, BarChart3, Zap, Shield,
+  TrendingUp, Volume2, Share2, Image,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -161,6 +161,12 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
 
   // Confirm quit
   const [showQuitDialog, setShowQuitDialog] = useState(false);
+  // Mobile context panel visibility
+  const [showContext, setShowContext] = useState(true);
+  // FIB text answer
+  const [inputAnswer, setInputAnswer] = useState("");
+  // Share copied feedback
+  const [copied, setCopied] = useState(false);
 
   // ── Effects ────────────────────────────────────────────────────────────────
 
@@ -173,17 +179,23 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
         onClose();
         return;
       }
-      if (step === "question" && currentItem?.content.options && !loading) {
-        const n = currentItem.content.options.length;
-        const num = parseInt(e.key);
-        if (!isNaN(num) && num >= 1 && num <= n) setSelectedOption(num - 1);
-        if (e.key === "Enter" && selectedOption !== null) handleSubmitAnswer();
+      if (step === "question" && !loading) {
+        const isFIB = currentItem?.type === "FILL_IN_BLANKS" || !!currentItem?.content.scaffold;
+        if (!isFIB && currentItem?.content.options) {
+          const n = currentItem.content.options.length;
+          const num = parseInt(e.key);
+          if (!isNaN(num) && num >= 1 && num <= n) setSelectedOption(num - 1);
+        }
+        if (e.key === "Enter") {
+          if (isFIB && inputAnswer.trim()) handleSubmitAnswer();
+          else if (!isFIB && selectedOption !== null) handleSubmitAnswer();
+        }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, currentItem, selectedOption, loading, showQuitDialog, onClose]);
+  }, [step, currentItem, selectedOption, inputAnswer, loading, showQuitDialog, onClose]);
 
   // Timer
   useEffect(() => {
@@ -198,8 +210,10 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
   // Reset option on item change
   useEffect(() => {
     setSelectedOption(null);
+    setInputAnswer("");
     setItemStartTime(Date.now());
     setError(null);
+    setShowContext(true);
   }, [currentItem?.id]);
 
   // Lock body scroll
@@ -244,7 +258,11 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
   }, []);
 
   const handleSubmitAnswer = useCallback(async () => {
-    if (selectedOption === null || !placementId || !currentItem) return;
+    if (!placementId || !currentItem) return;
+    const isFIB = currentItem.type === "FILL_IN_BLANKS" || !!currentItem.content.scaffold;
+    if (isFIB && !inputAnswer.trim()) return;
+    if (!isFIB && selectedOption === null) return;
+    const answer = isFIB ? inputAnswer.trim() : selectedOption;
     const latencyMs = Date.now() - itemStartTime;
     setLoading(true);
     setError(null);
@@ -252,7 +270,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
       const res = await fetch(`/api/assessment/placement/${placementId}/respond`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId: currentItem.id, selectedOption, latencyMs }),
+        body: JSON.stringify({ itemId: currentItem.id, selectedOption: answer, latencyMs }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to submit response");
@@ -269,7 +287,22 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     } finally {
       setLoading(false);
     }
-  }, [selectedOption, placementId, currentItem, itemStartTime, itemsAdministered]);
+  }, [selectedOption, inputAnswer, placementId, currentItem, itemStartTime, itemsAdministered]);
+
+  const handleShareResult = useCallback(async () => {
+    if (!result) return;
+    const meta = CEFR_LABELS[result.cefrLevel];
+    const text = `I just scored ${meta?.label ?? result.cefrLevel} (${meta?.desc ?? ""}) on my free English CEFR placement test! Try it free → https://b4skills.com`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "My CEFR Result", text });
+      } else {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      }
+    } catch {}
+  }, [result]);
 
   // ── Render: Register ──────────────────────────────────────────────────────
 
@@ -465,7 +498,9 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     const content = currentItem.content;
     const hasPassage = !!content.passage;
     const hasAudio = !!content.audioUrl;
-    const hasContext = hasPassage || hasAudio;
+    const hasImage = !!content.imageUrl;
+    const isFIB = currentItem.type === "FILL_IN_BLANKS" || !!content.scaffold;
+    const hasContext = hasPassage || hasAudio || hasImage;
     const opts = content.options ?? [];
     const progressPct = Math.min(100, (itemsAdministered / maxItems) * 100);
 
@@ -484,9 +519,12 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
           "flex-1 overflow-hidden",
           hasContext ? "flex flex-col lg:flex-row" : "flex justify-center overflow-y-auto"
         )}>
-          {/* ── Context panel (passage / audio) ── */}
+          {/* ── Context panel (passage / audio / image) ── */}
           {hasContext && (
-            <div className="lg:w-[44%] xl:w-[40%] flex-shrink-0 bg-slate-50 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto">
+            <div className={cn(
+              "lg:w-[44%] xl:w-[40%] flex-shrink-0 bg-slate-50 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto",
+              !showContext && "hidden lg:block"
+            )}>
               <div className="p-6 md:p-8 space-y-6">
                 {hasAudio && (
                   <div>
@@ -520,6 +558,22 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                     </div>
                   </div>
                 )}
+
+                {hasImage && (
+                  <div>
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                      <Image size={13} /> Visual Context
+                    </div>
+                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                      <img
+                        src={content.imageUrl}
+                        alt="Question visual context"
+                        className="w-full object-contain max-h-72"
+                        loading="lazy"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -534,6 +588,19 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
               transition={{ duration: 0.22 }}
               className={cn("overflow-y-auto", hasContext ? "flex-1" : "w-full max-w-2xl")}
             >
+              {/* Mobile: show/hide context panel */}
+              {hasContext && (
+                <div className="lg:hidden px-6 pt-5">
+                  <button
+                    onClick={() => setShowContext(v => !v)}
+                    className="flex items-center justify-center gap-2 text-xs font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded-full px-4 py-2 w-full hover:bg-slate-100 transition-colors"
+                  >
+                    <ChevronDown size={13} className={cn("transition-transform duration-200", showContext && "-rotate-180")} />
+                    {showContext ? "Hide" : "Show"} {hasAudio ? "audio" : hasImage ? "image" : "passage"}
+                  </button>
+                </div>
+              )}
+
               <div className="p-6 md:p-8 flex flex-col gap-6">
                 <div className="flex items-center justify-between">
                   <SkillBadge skill={currentItem.skill} />
@@ -550,7 +617,41 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                   </p>
                 )}
 
-                {opts.length > 0 && (
+                {/* Fill-in-the-blank */}
+                {isFIB && content.scaffold && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                    <p className="text-base text-slate-700 leading-relaxed">
+                      {content.scaffold.split("___").map((part, i, arr) => (
+                        <React.Fragment key={i}>
+                          {part}
+                          {i < arr.length - 1 && (
+                            <span className={cn(
+                              "inline-block min-w-[80px] border-b-2 px-2 mx-1 text-center font-bold transition-colors",
+                              inputAnswer ? "border-[#9b276c] text-[#9b276c]" : "border-slate-400 text-slate-400"
+                            )}>
+                              {inputAnswer || "···"}
+                            </span>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </p>
+                  </div>
+                )}
+                {isFIB && (
+                  <input
+                    type="text"
+                    value={inputAnswer}
+                    onChange={(e) => setInputAnswer(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && inputAnswer.trim() && handleSubmitAnswer()}
+                    placeholder="Type your answer here…"
+                    disabled={loading}
+                    autoFocus
+                    maxLength={200}
+                    className="w-full border-2 border-slate-200 focus:border-[#9b276c] rounded-xl px-4 py-3.5 text-lg font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#9b276c]/20 transition-all disabled:opacity-50"
+                  />
+                )}
+
+                {!isFIB && opts.length > 0 && (
                   <div className="space-y-3">
                     {opts.map((opt, idx) => (
                       <motion.button
@@ -582,7 +683,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                   </div>
                 )}
 
-                {opts.length > 0 && (
+                {!isFIB && opts.length > 0 && (
                   <p className="text-[11px] text-slate-400 text-center">
                     Press{" "}
                     {opts.map((_, i) => (
@@ -604,10 +705,10 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
 
                 <button
                   onClick={handleSubmitAnswer}
-                  disabled={selectedOption === null || loading}
+                  disabled={(isFIB ? !inputAnswer.trim() : selectedOption === null) || loading}
                   className={cn(
                     "w-full rounded-2xl h-14 font-black text-base flex items-center justify-center gap-2 transition-all",
-                    selectedOption !== null && !loading
+                    (isFIB ? !!inputAnswer.trim() : selectedOption !== null) && !loading
                       ? "bg-[#9b276c] hover:bg-[#7d1f57] text-white shadow-lg shadow-[#9b276c]/25"
                       : "bg-slate-100 text-slate-400 cursor-not-allowed"
                   )}
@@ -791,6 +892,16 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                 </div>
               </div>
             </div>
+
+            <button
+              onClick={handleShareResult}
+              className="w-full bg-white border-2 border-slate-200 hover:border-[#9b276c]/40 text-slate-700 hover:text-[#9b276c] rounded-xl h-12 font-bold text-sm transition-all flex items-center justify-center gap-2"
+            >
+              {copied
+                ? <><CheckCircle2 size={16} className="text-green-500" /> Copied to clipboard!</>
+                : <><Share2 size={16} /> Share My Result</>
+              }
+            </button>
 
             <button
               onClick={onClose}
