@@ -292,7 +292,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
   const handleShareResult = useCallback(async () => {
     if (!result) return;
     const meta = CEFR_LABELS[result.cefrLevel];
-    const text = `I just scored ${meta?.label ?? result.cefrLevel} (${meta?.desc ?? ""}) on my free English CEFR placement test! Try it free → https://b4skills.com`;
+    const text = `I just scored ${meta?.label ?? result.cefrLevel} (${meta?.desc ?? ""}) on my free General English Test! Try it free → https://b4skills.com`;
     try {
       if (navigator.share) {
         await navigator.share({ title: "My CEFR Result", text });
@@ -319,10 +319,10 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
               <Brain size={36} className="text-white" />
             </div>
             <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight">
-              Find Your English Level
+              General English Test
             </h1>
             <p className="text-slate-500 mt-3 text-base leading-relaxed max-w-sm mx-auto">
-              Free · ~10 minutes · CEFR certified result · Powered by adaptive IRT algorithm
+              Free · ~10 minutes · CEFR A1–C2 result · Grammar, Vocabulary, Reading &amp; Listening
             </p>
           </div>
 
@@ -400,7 +400,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
               className="w-full bg-[#9b276c] hover:bg-[#7d1f57] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl h-14 font-black text-base flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#9b276c]/25 hover:shadow-xl"
             >
               {loading ? <Loader2 size={20} className="animate-spin" /> : (
-                <>Start My Free Test <ArrowRight size={18} /></>
+                <>Start General English Test <ArrowRight size={18} /></>
               )}
             </button>
           </div>
@@ -422,7 +422,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
           <div className="text-center">
             <div className="text-5xl mb-4">👋</div>
             <h2 className="text-2xl md:text-3xl font-black text-slate-900">Hi {name.split(" ")[0]}, you're all set!</h2>
-            <p className="text-slate-500 mt-2 text-base">Here's what to expect in your adaptive placement test.</p>
+            <p className="text-slate-500 mt-2 text-base">Here's what to expect in your General English Test.</p>
           </div>
 
           <div className="space-y-3">
@@ -927,7 +927,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
             b4skills
           </div>
           <span className="text-xs font-bold text-slate-400 uppercase tracking-widest hidden sm:block">
-            Free Placement Test
+            General English Test
           </span>
         </div>
 

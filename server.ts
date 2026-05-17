@@ -11644,8 +11644,16 @@ async function startServer() {
    */
   function sanitizePlacementItem(item: any): object {
     const raw = typeof item.content === "object" ? item.content : {};
-    const { correctAnswer, explanation, answers, rubric, options: rawOptions, ...restContent } = raw as any;
-    void correctAnswer; void explanation; void answers; void rubric; // explicitly unused
+    // Strip all server-only / answer-leaking fields before sending to client
+    const {
+      correctAnswer, explanation, answers, rubric,
+      ttsScript, transcript, rationale, speakerNotes,
+      turns, dialogueScript, metadata, aiResult, reviewNotes,
+      options: rawOptions, ...restContent
+    } = raw as any;
+    void correctAnswer; void explanation; void answers; void rubric;
+    void ttsScript; void transcript; void rationale; void speakerNotes;
+    void turns; void dialogueScript; void metadata; void aiResult; void reviewNotes;
 
     // Normalise options to plain strings — strip any metadata fields that would cause React #31
     let options: string[] | undefined;
@@ -11693,9 +11701,18 @@ async function startServer() {
     const available = pool.filter((item: any) => !usedItemIds.has(item.id));
     if (available.length === 0) return null;
 
+    // Exclude LISTENING items that have no audioUrl — they can't be answered without audio
+    // and their presence skews the ability estimate toward low levels
+    const usable = available.filter((item: any) => {
+      if (item.skill !== "LISTENING") return true;
+      const c = typeof item.content === "object" ? (item.content as any) : {};
+      return !!c.audioUrl;
+    });
+
     // Content balance: prefer under-represented skills
-    const balanced = available.filter((item: any) => (skillCounts[item.skill] ?? 0) < maxPerSkill);
-    const candidates = balanced.length > 0 ? balanced : available;
+    const pool2 = usable.length > 0 ? usable : available;
+    const balanced = pool2.filter((item: any) => (skillCounts[item.skill] ?? 0) < maxPerSkill);
+    const candidates = balanced.length > 0 ? balanced : pool2;
 
     // Score by Fisher information with light exposure damping
     const scored = candidates.map((item: any) => {
