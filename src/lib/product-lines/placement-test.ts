@@ -98,6 +98,8 @@ export interface PlacementResult {
   cefrConfidenceInterval: [string, number, number]; // [level, thetaLow, thetaHigh]
   itemsAdministered: number;
   completionMs: number;
+  /** Per-skill correct/total breakdown */
+  skillBreakdown: Record<string, { total: number; correct: number }>;
   /** Upgrade prompt — next step for the user */
   upgradePrompt: {
     message: string;
@@ -200,6 +202,15 @@ export function buildPlacementResult(
     ? `${appBaseUrl}/register?ref=placement&level=${cefrLevel}`
     : `/register?ref=placement&level=${cefrLevel}`;
 
+  const skillBreakdown: Record<string, { total: number; correct: number }> = {};
+  for (const r of state.responses) {
+    const m = state.itemMeta.get(r.itemId);
+    if (!m) continue;
+    if (!skillBreakdown[m.skill]) skillBreakdown[m.skill] = { total: 0, correct: 0 };
+    skillBreakdown[m.skill].total++;
+    skillBreakdown[m.skill].correct += r.score;
+  }
+
   return {
     placementId: state.placementId,
     cefrLevel,
@@ -208,6 +219,7 @@ export function buildPlacementResult(
     cefrConfidenceInterval: ci,
     itemsAdministered: state.responses.length,
     completionMs,
+    skillBreakdown,
     upgradePrompt: {
       message: `Your estimated level is ${cefrLevel}. Get a complete 4-skill report with speaking and writing assessment.`,
       skills: missingSkills,

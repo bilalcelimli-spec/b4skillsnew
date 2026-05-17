@@ -54,6 +54,7 @@ interface PlacementResult {
   cefrConfidenceInterval: [string, number, number];
   itemsAdministered: number;
   completionMs: number;
+  skillBreakdown?: Record<string, { total: number; correct: number }>;
   upgradePrompt: {
     message: string;
     skills: string[];
@@ -99,6 +100,65 @@ const SKILL_META: Record<string, { icon: React.ReactNode; color: string; bg: str
   SPEAKING:   { icon: <Mic size={13} />,        color: "text-rose-700",    bg: "bg-rose-100" },
 };
 
+function thetaToCefrClient(theta: number): string {
+  if (theta >= 2.5) return "C2";
+  if (theta >= 1.5) return "C1";
+  if (theta >= 0.5) return "B2";
+  if (theta >= -0.5) return "B1";
+  if (theta >= -1.75) return "A2";
+  if (theta >= -3.0) return "A1";
+  return "PRE_A1";
+}
+
+const CEFR_CAN_DO: Record<string, string[]> = {
+  PRE_A1: [
+    "Recognise a few familiar words in English",
+    "Copy simple words and short sentences",
+    "Understand very simple instructions with visual support",
+  ],
+  A1: [
+    "Introduce myself and ask basic personal questions",
+    "Understand and use familiar everyday expressions",
+    "Interact in a very simple way when people speak slowly and clearly",
+    "Read and understand simple notices, menus, and timetables",
+  ],
+  A2: [
+    "Communicate in simple, routine tasks on familiar topics",
+    "Describe my background, environment, and personal needs",
+    "Understand sentences and frequently-used expressions in everyday areas",
+    "Read short, simple texts to find specific information",
+    "Write short, simple notes and personal messages",
+  ],
+  B1: [
+    "Deal with most situations while travelling in an English-speaking area",
+    "Describe experiences, events, dreams, hopes, and ambitions",
+    "Understand the main points of clear standard speech on familiar matters",
+    "Read straightforward texts on subjects related to my field",
+    "Produce connected text on familiar or personal interest topics",
+  ],
+  B2: [
+    "Interact with fluency and spontaneity with native speakers",
+    "Understand the main ideas of complex text on concrete and abstract topics",
+    "Read articles and reports concerned with contemporary problems",
+    "Produce clear, detailed text on a wide range of subjects",
+    "Explain a viewpoint on a topical issue giving advantages and disadvantages",
+  ],
+  C1: [
+    "Express ideas fluently and spontaneously without much searching",
+    "Use language flexibly for social, academic, and professional purposes",
+    "Understand a wide range of demanding, longer texts",
+    "Produce clear, well-structured, detailed text on complex subjects",
+    "Follow extended speech even when it is not clearly structured",
+  ],
+  C2: [
+    "Understand virtually everything I hear or read with ease",
+    "Summarise information from different spoken and written sources",
+    "Express myself spontaneously, very fluently and precisely",
+    "Distinguish finer shades of meaning in complex situations",
+    "Convey precise meaning in a nuanced and effortless manner",
+  ],
+};
+
 function formatTime(ms: number): string {
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -130,6 +190,73 @@ const SkillBadge: React.FC<{ skill: string }> = ({ skill }) => {
   );
 };
 
+const AudioPlayer: React.FC<{ src: string }> = ({ src }) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [listenCount, setListenCount] = useState(0);
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) { a.pause(); setPlaying(false); }
+    else { a.play().catch(() => {}); setPlaying(true); }
+  };
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+  return (
+    <div className="bg-white border border-purple-200 rounded-2xl p-4">
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="metadata"
+        onEnded={() => {
+          setPlaying(false); setListenCount(c => c + 1); setProgress(0);
+          if (audioRef.current) audioRef.current.currentTime = 0;
+        }}
+        onTimeUpdate={() => { const a = audioRef.current; if (a?.duration) setProgress(a.currentTime / a.duration); }}
+        onLoadedMetadata={() => { const a = audioRef.current; if (a) setDuration(a.duration); }}
+      />
+      <div className="flex items-center gap-4">
+        <button
+          onClick={toggle}
+          className={cn(
+            "w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-all",
+            playing ? "bg-purple-600 hover:bg-purple-700" : "bg-purple-100 hover:bg-purple-200"
+          )}
+          aria-label={playing ? "Pause" : "Play"}
+        >
+          {playing
+            ? <span className="flex gap-1">{[0, 1].map(i => <span key={i} className="w-1 h-4 bg-white rounded-full" />)}</span>
+            : <Volume2 size={20} className="text-purple-600" />
+          }
+        </button>
+        <div className="flex-1 space-y-1.5">
+          <div className="flex justify-between text-xs font-bold text-slate-400">
+            <span>Audio Clip{listenCount > 0 ? ` (×${listenCount} played)` : ""}</span>
+            {duration > 0 && <span className="font-mono">{fmt(progress * duration)} / {fmt(duration)}</span>}
+          </div>
+          <div
+            className="h-2 bg-purple-100 rounded-full cursor-pointer"
+            onClick={(e) => {
+              const a = audioRef.current;
+              if (!a?.duration) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              const pct = (e.clientX - rect.left) / rect.width;
+              a.currentTime = pct * a.duration;
+              setProgress(pct);
+            }}
+          >
+            <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${progress * 100}%` }} />
+          </div>
+          <p className="text-[10px] text-slate-400">You may listen as many times as you need</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose }) => {
@@ -155,6 +282,8 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
   const [elapsed, setElapsed] = useState(0);
   const [itemStartTime, setItemStartTime] = useState(Date.now());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const submitHandlerRef = useRef<((opt?: number | string) => void) | null>(null);
 
   // Result
   const [result, setResult] = useState<PlacementResult | null>(null);
@@ -167,6 +296,12 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
   const [inputAnswer, setInputAnswer] = useState("");
   // Share copied feedback
   const [copied, setCopied] = useState(false);
+  // Live CEFR band during test
+  const [currentBand, setCurrentBand] = useState<string | null>(null);
+  // Skills seen so far (for progress tracker)
+  const [skillsSeen, setSkillsSeen] = useState<string[]>([]);
+  // MCQ auto-advance (800 ms after selection)
+  const [autoAdvancing, setAutoAdvancing] = useState(false);
 
   // ── Effects ────────────────────────────────────────────────────────────────
 
@@ -184,7 +319,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
         if (!isFIB && currentItem?.content.options) {
           const n = currentItem.content.options.length;
           const num = parseInt(e.key);
-          if (!isNaN(num) && num >= 1 && num <= n) setSelectedOption(num - 1);
+          if (!isNaN(num) && num >= 1 && num <= n) handleSelectOption(num - 1);
         }
         if (e.key === "Enter") {
           if (isFIB && inputAnswer.trim()) handleSubmitAnswer();
@@ -195,7 +330,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, currentItem, selectedOption, inputAnswer, loading, showQuitDialog, onClose]);
+  }, [step, currentItem, selectedOption, inputAnswer, loading, showQuitDialog, onClose, handleSelectOption]);
 
   // Timer
   useEffect(() => {
@@ -214,6 +349,9 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     setItemStartTime(Date.now());
     setError(null);
     setShowContext(true);
+    setAutoAdvancing(false);
+    if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentItem?.id]);
 
   // Lock body scroll
@@ -257,15 +395,16 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     setStep("question");
   }, []);
 
-  const handleSubmitAnswer = useCallback(async () => {
+  const handleSubmitAnswer = useCallback(async (explicitOption?: number | string) => {
     if (!placementId || !currentItem) return;
     const isFIB = currentItem.type === "FILL_IN_BLANKS" || !!currentItem.content.scaffold;
     if (isFIB && !inputAnswer.trim()) return;
-    if (!isFIB && selectedOption === null) return;
-    const answer = isFIB ? inputAnswer.trim() : selectedOption;
+    const answer = isFIB ? inputAnswer.trim() : (explicitOption !== undefined ? explicitOption : selectedOption);
+    if (!isFIB && (answer === null || answer === undefined)) return;
     const latencyMs = Date.now() - itemStartTime;
     setLoading(true);
     setError(null);
+    setAutoAdvancing(false);
     try {
       const res = await fetch(`/api/assessment/placement/${placementId}/respond`, {
         method: "POST",
@@ -280,6 +419,8 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
         setStep("result");
       } else {
         setItemsAdministered(data.itemsAdministered ?? itemsAdministered + 1);
+        if (data.currentCefrBand) setCurrentBand(data.currentCefrBand);
+        if (data.nextItem?.skill) setSkillsSeen(prev => [...prev, data.nextItem.skill]);
         setCurrentItem(data.nextItem);
       }
     } catch (err: any) {
@@ -303,6 +444,21 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
       }
     } catch {}
   }, [result]);
+
+  // Keep ref in sync so auto-advance setTimeout always calls the latest handler
+  submitHandlerRef.current = handleSubmitAnswer;
+
+  const handleSelectOption = useCallback((idx: number) => {
+    if (loading) return;
+    setAutoAdvancing(false);
+    if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null; }
+    setSelectedOption(idx);
+    setAutoAdvancing(true);
+    autoAdvanceRef.current = setTimeout(() => {
+      setAutoAdvancing(false);
+      submitHandlerRef.current?.(idx);
+    }, 800);
+  }, [loading]);
 
   // ── Render: Register ──────────────────────────────────────────────────────
 
@@ -531,18 +687,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                     <div className="flex items-center gap-2 text-xs font-bold text-purple-600 uppercase tracking-wider mb-3">
                       <Headphones size={13} /> Listening Exercise
                     </div>
-                    <div className="bg-white border border-purple-200 rounded-2xl p-5">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 bg-purple-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                          <Volume2 size={18} className="text-white" />
-                        </div>
-                        <div>
-                          <div className="font-bold text-slate-900 text-sm">Audio Clip</div>
-                          <div className="text-xs text-slate-400">You may listen as many times as you need</div>
-                        </div>
-                      </div>
-                      <audio controls src={content.audioUrl} className="w-full" preload="metadata" />
-                    </div>
+                    <AudioPlayer src={content.audioUrl!} />
                   </div>
                 )}
 
@@ -602,12 +747,35 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
               )}
 
               <div className="p-6 md:p-8 flex flex-col gap-6">
-                <div className="flex items-center justify-between">
-                  <SkillBadge skill={currentItem.skill} />
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    <span>Q {itemsAdministered + 1}</span>
-                    <span className="text-slate-200">·</span>
-                    <span>up to {maxItems}</span>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <SkillBadge skill={currentItem.skill} />
+                    {currentBand && itemsAdministered >= 5 && (
+                      <span className={cn(
+                        "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border",
+                        CEFR_COLORS[currentBand]?.bg ?? "bg-slate-100",
+                        CEFR_COLORS[currentBand]?.text ?? "text-slate-600",
+                        CEFR_COLORS[currentBand]?.border ?? "border-slate-300",
+                      )}>
+                        ≈ {CEFR_LABELS[currentBand]?.label ?? currentBand}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-1">
+                      {(["GRAMMAR", "VOCABULARY", "READING", "LISTENING"] as const).map(skill => {
+                        const count = skillsSeen.filter(s => s === skill).length;
+                        if (!count) return null;
+                        const m = SKILL_META[skill];
+                        return (
+                          <div key={skill} title={`${skill}: ${count}`}
+                            className={cn("w-5 h-5 rounded-full flex items-center justify-center", m.bg)}>
+                            <span className={m.color}>{m.icon}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="text-xs font-bold text-slate-400">Q {itemsAdministered + 1}</div>
                   </div>
                 </div>
 
@@ -658,7 +826,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                         key={idx}
                         whileHover={!loading ? { scale: 1.007 } : {}}
                         whileTap={!loading ? { scale: 0.993 } : {}}
-                        onClick={() => !loading && setSelectedOption(idx)}
+                        onClick={() => handleSelectOption(idx)}
                         disabled={loading}
                         className={cn(
                           "w-full text-left px-5 py-4 rounded-2xl border-2 text-sm font-medium transition-all duration-150 flex items-center gap-4",
@@ -704,17 +872,27 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                 )}
 
                 <button
-                  onClick={handleSubmitAnswer}
+                  onClick={() => handleSubmitAnswer()}
                   disabled={(isFIB ? !inputAnswer.trim() : selectedOption === null) || loading}
                   className={cn(
-                    "w-full rounded-2xl h-14 font-black text-base flex items-center justify-center gap-2 transition-all",
+                    "w-full rounded-2xl h-14 font-black text-base flex items-center justify-center gap-2 transition-all relative overflow-hidden",
                     (isFIB ? !!inputAnswer.trim() : selectedOption !== null) && !loading
                       ? "bg-[#9b276c] hover:bg-[#7d1f57] text-white shadow-lg shadow-[#9b276c]/25"
                       : "bg-slate-100 text-slate-400 cursor-not-allowed"
                   )}
                 >
+                  {autoAdvancing && !loading && (
+                    <motion.div
+                      className="absolute inset-0 bg-white/20 origin-left"
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: 1 }}
+                      transition={{ duration: 0.8, ease: "linear" }}
+                    />
+                  )}
                   {loading ? (
                     <><Loader2 size={18} className="animate-spin" /> Analysing your answer…</>
+                  ) : autoAdvancing ? (
+                    <><ChevronRight size={18} className="animate-pulse" /> Submitting…</>
                   ) : (
                     <>Submit Answer <ChevronRight size={18} /></>
                   )}
@@ -856,6 +1034,59 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                 Your true level falls within this range with 90% confidence.
               </p>
             </div>
+
+            {/* Can-do statements */}
+            {CEFR_CAN_DO[cefrKey] && (
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 space-y-3">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">What You Can Do at This Level</div>
+                <ul className="space-y-2">
+                  {CEFR_CAN_DO[cefrKey].map((stmt, i) => (
+                    <motion.li
+                      key={i}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.3 + i * 0.07 }}
+                      className="flex items-start gap-2.5 text-sm text-slate-700"
+                    >
+                      <CheckCircle2 size={14} className={cn("flex-shrink-0 mt-0.5", colors.text)} />
+                      <span>{stmt}</span>
+                    </motion.li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Skill breakdown */}
+            {result.skillBreakdown && Object.keys(result.skillBreakdown).length > 0 && (
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 space-y-3">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Performance by Skill</div>
+                <div className="space-y-3">
+                  {Object.entries(result.skillBreakdown).map(([skill, data]) => {
+                    const pct = data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0;
+                    const m = SKILL_META[skill] ?? { color: "text-slate-600", bg: "bg-slate-100", icon: null };
+                    return (
+                      <div key={skill}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className={cn("flex items-center gap-1.5 text-xs font-bold", m.color)}>
+                            {m.icon} {skill.charAt(0) + skill.slice(1).toLowerCase()}
+                          </div>
+                          <span className="text-xs font-mono font-bold text-slate-500">{data.correct}/{data.total} correct</span>
+                        </div>
+                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${pct}%` }}
+                            transition={{ delay: 0.5, duration: 0.6, ease: "easeOut" }}
+                            className="h-full rounded-full"
+                            style={{ backgroundColor: colors.accent }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Stats */}
             <div className="grid grid-cols-3 gap-3">

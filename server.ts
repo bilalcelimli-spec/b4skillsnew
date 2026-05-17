@@ -11812,6 +11812,7 @@ async function startServer() {
         shouldStopPlacement,
         buildPlacementResult,
         updateThetaEAP,
+        thetaToCefr,
       } = await import("./src/lib/product-lines/placement-test.js");
 
       const { id } = req.params;
@@ -11901,6 +11902,7 @@ async function startServer() {
         nextItem: sanitizePlacementItem(nextItem),
         itemsAdministered: entry.state.responses.length,
         thetaEstimate: entry.state.theta,
+        currentCefrBand: thetaToCefr(entry.state.theta),
       });
     } catch (err: any) {
       console.error("[placement/respond]", err);
