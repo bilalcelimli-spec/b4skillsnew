@@ -30,6 +30,24 @@ async function startServer() {
       await (prisma as any).$queryRaw`SELECT 1`;
       dbAvailable = true;
       console.log("✅ Database connected");
+      // Ensure default admin org + user exist on every startup
+      try {
+        await prisma.organization.upsert({
+          where: { id: "b4skills-demo" },
+          update: {},
+          create: { id: "b4skills-demo", name: "b4skills", slug: "b4skills-demo" }
+        });
+        const { default: bcryptSeed } = await import("bcrypt");
+        const adminHash = await bcryptSeed.hash("Admin@b4skills2025", 10);
+        await prisma.user.upsert({
+          where: { email: "admin@b4skills.com" },
+          update: {},
+          create: { email: "admin@b4skills.com", name: "Admin", password: adminHash, role: "SUPER_ADMIN", organizationId: "b4skills-demo" }
+        });
+        console.log("✅ Admin seed OK");
+      } catch (seedErr) {
+        console.warn("⚠️  Admin seed failed:", seedErr);
+      }
     } catch {
       dbAvailable = false;
       console.warn("⚠️  Database not reachable — running in mock/demo mode");
@@ -1039,9 +1057,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       });
       
       await prisma.user.upsert({
-        where: { id: candidateId },
-        update: { email: email, name: `${name} ${surname}`, organizationId: examCode.organizationId },
-        create: { id: candidateId, email: email, name: `${name} ${surname}`, organizationId: examCode.organizationId, role: "CANDIDATE" }
+        where: { email: email },
+        update: { name: `${name} ${surname}`, organizationId: examCode.organizationId },
+        create: { email: email, name: `${name} ${surname}`, organizationId: examCode.organizationId, role: "CANDIDATE" }
       });
 
       await prisma.candidateProfile.upsert({
