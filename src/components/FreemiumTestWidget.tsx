@@ -330,7 +330,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, currentItem, selectedOption, inputAnswer, loading, showQuitDialog, onClose, handleSelectOption]);
+  }, [step, currentItem, selectedOption, inputAnswer, loading, showQuitDialog, onClose]);
 
   // Timer
   useEffect(() => {
