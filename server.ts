@@ -130,7 +130,7 @@ async function startServer() {
         data: { refreshToken }
       });
       setAuthCookies(res, accessToken, refreshToken);
-      return res.json({ token: accessToken, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
+      return res.json({ token: accessToken, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role, organizationId: user.organizationId || null } });
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
     }
@@ -157,7 +157,7 @@ async function startServer() {
       const userId = (req as any).user.id;
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) return res.status(404).json({ error: 'User not found' });
-      return res.json({ user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
+      return res.json({ user: { uid: user.id, email: user.email, displayName: user.name, role: user.role, organizationId: user.organizationId || null } });
     } catch (err: any) {
       return res.status(401).json({ error: 'Invalid token' });
     }

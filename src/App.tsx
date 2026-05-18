@@ -53,7 +53,7 @@ export default function App() {
         const data = await res.json();
         if (data.user) {
           setUser(data.user);
-          setUserProfile(data.user);
+          setUserProfile({ ...data.user, organizationId: data.user.organizationId || "b4skills-demo" });
           setShowLanding(false);
           
           const role = data.user.role?.toUpperCase();
