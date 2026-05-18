@@ -296,6 +296,38 @@ async function startServer() {
       const url = req.url;
       const method = req.method;
 
+      // ── Auth (demo mode — no DB available) ─────────────────────────────────
+      if ((url === "/auth/login" || url === "/auth/register") && method === "POST") {
+        const demoAccessToken = jwt.sign({ userId: "demo-admin" }, JWT_SECRET, { expiresIn: "15m" });
+        const demoRefreshToken = jwt.sign({ userId: "demo-admin" }, REFRESH_SECRET, { expiresIn: "7d" });
+        setAuthCookies(res, demoAccessToken, demoRefreshToken);
+        return res.json({ token: demoAccessToken, user: { uid: "demo-admin", email: req.body?.email || "demo@b4skills.com", displayName: req.body?.name || "Demo Admin", role: "SUPER_ADMIN", organizationId: "b4skills-demo" } });
+      }
+      if (url === "/auth/me" && method === "GET") {
+        try {
+          let token = req.cookies.accessToken;
+          if (!token && req.headers.authorization?.startsWith("Bearer ")) token = req.headers.authorization.split(" ")[1];
+          if (!token) return res.status(401).json({ error: "Missing token" });
+          const decoded: any = jwt.verify(token, JWT_SECRET);
+          return res.json({ user: { uid: decoded.userId, email: "demo@b4skills.com", displayName: "Demo Admin", role: "SUPER_ADMIN", organizationId: "b4skills-demo" } });
+        } catch { return res.status(401).json({ error: "Invalid token" }); }
+      }
+      if (url === "/auth/refresh" && method === "POST") {
+        try {
+          const rf = req.cookies.refreshToken;
+          if (!rf) return res.status(401).json({ error: "No refresh token" });
+          jwt.verify(rf, REFRESH_SECRET);
+          const newAccess = jwt.sign({ userId: "demo-admin" }, JWT_SECRET, { expiresIn: "15m" });
+          const newRefresh = jwt.sign({ userId: "demo-admin" }, REFRESH_SECRET, { expiresIn: "7d" });
+          setAuthCookies(res, newAccess, newRefresh);
+          return res.json({ token: newAccess });
+        } catch { return res.status(401).json({ error: "Invalid refresh token" }); }
+      }
+      if (url === "/auth/logout" && method === "POST") {
+        res.clearCookie("accessToken"); res.clearCookie("refreshToken");
+        return res.json({ success: true });
+      }
+
       // ── Health ──────────────────────────────────────────────────────────────
       if (url === "/health") return next();
 
