@@ -1,4 +1,8 @@
 import { PrismaClient } from "@prisma/client";
+import {
+  attachItemValidationMiddleware,
+  attachStrictItemValidationMiddleware,
+} from "./validation/prisma-middleware.js";
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
@@ -19,5 +23,18 @@ export const prisma =
   new PrismaClient({
     log: isDev ? ["query", "warn", "error"] : ["warn", "error"],
   });
+
+// Attach item validation middleware
+const isStrictMode = process.env.ITEM_VALIDATION_STRICT === "true";
+if (!process.env.NODE_ENV?.includes("test")) {
+  if (!globalForPrisma.prisma) {
+    // Only attach once on initial client creation
+    if (isStrictMode || !isDev) {
+      attachStrictItemValidationMiddleware(prisma);
+    } else {
+      attachItemValidationMiddleware(prisma);
+    }
+  }
+}
 
 if (isDev) globalForPrisma.prisma = prisma;

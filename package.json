@@ -37,6 +37,8 @@
     "db:bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
     "smoke:auth": "node scripts/smoke-auth.mjs",
     "quality:vocab": "tsx scripts/validate-vocab-200-quality.ts",
+    "validate:items": "tsx scripts/validate-items.ts",
+    "validate:items:strict": "tsx scripts/validate-items.ts --strict",
     "db:job:calibrate-pretest": "tsx scripts/jobs/auto-calibrate-pretest.ts",
     "db:job:retire-items": "tsx scripts/jobs/item-retirement-job.ts",
     "db:job:detect-dif": "tsx scripts/jobs/dif-detection-job.ts"

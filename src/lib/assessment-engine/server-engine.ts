@@ -6,6 +6,8 @@ import { getProfile } from "../product-lines/profiles.js";
 import { resolveMstPhase, buildMstTagFilter } from "../selection/mst-router.js";
 import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint, IrtParameters } from "./types";
 import { prisma } from "../prisma";
+import { validateItemBeforeSave } from "../validation/item-schema.js";
+import AppError from "../errors/app-error.js";
 import { ScoringOrchestrator } from "../scoring/scoring-orchestrator";
 import { RatingQueueService } from "../scoring/rating-queue";
 import { getCachedItems, getItemsByIds } from "./item-bank-cache.js";
@@ -1485,6 +1487,17 @@ export const AssessmentService = {
   async createItem(data: any) {
     const { assets, ...itemData } = data;
     const parsedContent = typeof itemData.content === "string" ? JSON.parse(itemData.content) : itemData.content;
+
+    // Pre-save validation
+    if (itemData.skill && parsedContent) {
+      const validation = await validateItemBeforeSave(itemData.skill, parsedContent);
+      if (!validation.success) {
+        throw AppError.unprocessable(
+          `Item validation failed: ${validation.error}`
+        );
+      }
+    }
+
     const created = await prisma.item.create({
       data: {
         ...itemData,
@@ -1510,6 +1523,23 @@ export const AssessmentService = {
     const parsedContent = itemData.content
       ? (typeof itemData.content === "string" ? JSON.parse(itemData.content) : itemData.content)
       : undefined;
+
+    // Pre-save validation (get skill from existing item if not provided)
+    const existingItem = await prisma.item.findUnique({ where: { id } });
+    if (!existingItem) {
+      throw AppError.notFound("Item not found");
+    }
+    const skill = itemData.skill || existingItem.skill;
+    const contentToValidate = parsedContent ?? existingItem.content;
+    if (skill && contentToValidate) {
+      const validation = await validateItemBeforeSave(skill, contentToValidate);
+      if (!validation.success) {
+        throw AppError.unprocessable(
+          `Item validation failed: ${validation.error}`
+        );
+      }
+    }
+
     const updated = await prisma.item.update({
       where: { id },
       data: { ...itemData, content: parsedContent },

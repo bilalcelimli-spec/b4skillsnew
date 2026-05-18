@@ -6,6 +6,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { validateItemBatch, reportValidationResults } from './_validation-helper.js';
 
 const prisma = new PrismaClient();
 
@@ -616,9 +617,20 @@ const items = [
 
 async function main() {
   console.log(`Seeding Phase 1 grammar items (${items.length} total)…`);
-  let inserted = 0;
 
-  for (const item of items) {
+  // Validate all items before database operations
+  const { valid, invalid } = validateItemBatch(items);
+  reportValidationResults(valid.length, invalid.length, invalid);
+
+  if (invalid.length > 0) {
+    console.error(
+      `\n❌ Cannot proceed: ${invalid.length} items failed validation. Fix errors above.`
+    );
+    process.exit(1);
+  }
+
+  let inserted = 0;
+  for (const item of valid) {
     await prisma.item.create({
       data: {
         type:           'MULTIPLE_CHOICE',
