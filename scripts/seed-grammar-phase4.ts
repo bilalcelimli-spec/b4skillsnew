@@ -7,6 +7,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { validateItemBatch, reportValidationResults } from './_validation-helper.js';
 const prisma = new PrismaClient();
 
 const items = [
@@ -416,7 +417,13 @@ const items = [
 async function main() {
   console.log(`Seeding Phase 4 grammar items (${items.length} total)…`);
   let inserted = 0;
-  for (const item of items) {
+  const { valid, invalid } = validateItemBatch(items);
+  reportValidationResults(valid.length, invalid.length, invalid);
+  if (invalid.length > 0) {
+    console.error(`Cannot proceed: ${invalid.length} items failed validation`);
+    process.exit(1);
+  }
+  for (const item of valid) {
     await prisma.item.create({
       data: {
         type: 'MULTIPLE_CHOICE', skill: item.skill as any, cefrLevel: item.cefrLevel as any,

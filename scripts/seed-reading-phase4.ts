@@ -10,6 +10,7 @@
  */
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
+import { validateItemBatch, reportValidationResults } from "./_validation-helper.js";
 
 const prisma = new PrismaClient();
 const SEED_TAG = "seed-reading-phase4";
@@ -535,7 +536,13 @@ async function main() {
   }
 
   let inserted = 0;
-  for (const item of ALL_ITEMS) {
+  const { valid, invalid } = validateItemBatch(ALL_ITEMS);
+  reportValidationResults(valid.length, invalid.length, invalid);
+  if (invalid.length > 0) {
+    console.error(`Cannot proceed: ${invalid.length} items failed validation`);
+    process.exit(1);
+  }
+  for (const item of valid) {
     const passageText = passageLookup[item.passageId] ?? "";
     await prisma.item.create({
       data: {

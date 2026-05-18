@@ -6,6 +6,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { validateItemBatch, reportValidationResults } from './_validation-helper.js';
 const prisma = new PrismaClient();
 
 const MODULE_ID = 'primary-morning-school';
@@ -169,8 +170,14 @@ const items = [
 
 async function main() {
   console.log(`Seeding Listening Phase 1 — ${MODULE_TITLE} (${items.length} items)…`);
+  const { valid, invalid } = validateItemBatch(items);
+  reportValidationResults(valid.length, invalid.length, invalid);
+  if (invalid.length > 0) {
+    console.error(`Cannot proceed: ${invalid.length} items failed validation`);
+    process.exit(1);
+  }
   let inserted = 0;
-  for (const item of items) {
+  for (const item of valid) {
     await prisma.item.create({
       data: {
         type: 'MULTIPLE_CHOICE', skill: item.skill as any, cefrLevel: item.cefrLevel as any,

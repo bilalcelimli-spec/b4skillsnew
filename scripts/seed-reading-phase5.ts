@@ -14,6 +14,7 @@
  */
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
+import { validateItemBatch, reportValidationResults } from './_validation-helper.js';
 const prisma = new PrismaClient();
 
 const MODULE_ID    = "academia-reading-sleep-science";
@@ -168,7 +169,13 @@ async function main() {
   if (existing && process.env.FORCE !== "1") { console.log(`Module ${MODULE_ID} already seeded.`); return; }
   if (existing && process.env.FORCE === "1") { await prisma.item.deleteMany({ where: { tags: { has: MODULE_ID } } }); }
   let created = 0;
-  for (const item of items) {
+  const { valid, invalid } = validateItemBatch(items);
+  reportValidationResults(valid.length, invalid.length, invalid);
+  if (invalid.length > 0) {
+    console.error(`Cannot proceed: ${invalid.length} items failed validation`);
+    process.exit(1);
+  }
+  for (const item of valid) {
     await prisma.item.create({
       data: {
         type: "MULTIPLE_CHOICE", skill: item.skill as any, cefrLevel: item.cefrLevel as any,

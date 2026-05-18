@@ -11,6 +11,7 @@
 
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
+import { validateItemBatch, reportValidationResults } from './_validation-helper.js';
 const prisma = new PrismaClient();
 
 const SEED_TAG = "seed-grammar-phase11";
@@ -1423,7 +1424,13 @@ async function main() {
 
   const byLevel: Record<string, number> = {};
   if (DRY_RUN) {
-    for (const item of items) {
+    const { valid, invalid } = validateItemBatch(items);
+  reportValidationResults(valid.length, invalid.length, invalid);
+  if (invalid.length > 0) {
+    console.error(`Cannot proceed: ${invalid.length} items failed validation`);
+    process.exit(1);
+  }
+  for (const item of valid) {
       byLevel[item.cefrLevel] = (byLevel[item.cefrLevel] ?? 0) + 1;
     }
     console.log(`DRY_RUN: would insert ${items.length} grammar items`);
