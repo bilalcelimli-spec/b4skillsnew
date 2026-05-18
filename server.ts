@@ -576,14 +576,40 @@ async function startServer() {
   // --- RBAC MIDDLEWARE ---
   const checkRole = (roles: string[]) => {
     return async (req: any, res: any, next: any) => {
-      const userEmail = req.headers["x-user-email"]; // In a real app, this would be from a verified JWT
+      // 1. Try JWT cookie (preferred - works for logged-in users)
+      const accessToken = req.cookies?.accessToken;
+      if (accessToken) {
+        try {
+          const decoded: any = jwt.verify(accessToken, JWT_SECRET);
+          if (decoded.userId) {
+            if (!dbAvailable) {
+              req.user = { role: "SUPER_ADMIN", organizationId: "default-org" };
+              return next();
+            }
+            const jwtUser = await prisma.user.findUnique({
+              where: { id: decoded.userId },
+              select: { role: true, organizationId: true }
+            });
+            if (jwtUser && (roles.includes(jwtUser.role) || jwtUser.role === "SUPER_ADMIN")) {
+              req.user = jwtUser;
+              return next();
+            }
+          }
+        } catch {
+          // JWT invalid/expired, fall through to x-user-email check
+        }
+      }
+
+      // 2. Fall back to x-user-email header (legacy/internal)
+      const userEmailHeader = req.headers["x-user-email"];
+      const userEmail = Array.isArray(userEmailHeader) ? userEmailHeader[0] : userEmailHeader;
       if (!userEmail) return res.status(401).json({ error: "Unauthorized" });
 
       if (userEmail === "bilalcelimli@gmail.com" || !dbAvailable) {
         req.user = { role: "SUPER_ADMIN", organizationId: "default-org" };
         return next();
       }
-      
+
       const user = await prisma.user.findUnique({
         where: { email: userEmail as string },
         select: { role: true, organizationId: true }
