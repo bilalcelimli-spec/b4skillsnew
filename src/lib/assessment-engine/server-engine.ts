@@ -7,7 +7,7 @@ import { resolveMstPhase, buildMstTagFilter } from "../selection/mst-router.js";
 import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint, IrtParameters } from "./types";
 import { prisma } from "../prisma";
 import { validateItemBeforeSave } from "../validation/item-schema.js";
-import AppError from "../errors/app-error.js";
+import { AppError } from "../errors/app-error.js";
 import { ScoringOrchestrator } from "../scoring/scoring-orchestrator";
 import { RatingQueueService } from "../scoring/rating-queue";
 import { getCachedItems, getItemsByIds } from "./item-bank-cache.js";
