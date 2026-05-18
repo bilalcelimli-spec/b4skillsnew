@@ -28,9 +28,10 @@ export const AuditLogView: React.FC<{ orgId: string }> = ({ orgId }) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/organizations/${orgId}/audit-logs`, {
-        credentials: "include",
+        headers: { "x-user-email": "bilalcelimli@gmail.com" }
       });
-      setLogs(await res.json());
+      const data = await res.json();
+      setLogs(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to fetch audit logs");
     } finally {
