@@ -113,23 +113,28 @@ export function assignTrack(
 
 /**
  * Build a Prisma-compatible OR clause to filter items by MST track.
- * Items tagged with `metadata.mstTrack === trackLabel` OR untagged are eligible.
  *
- * Returns undefined when no track filtering should be applied (during routing
- * phase or when MST is not configured).
+ * NOTE: The previous implementation used `{ path: ["mstTrack"], not: {} }` to
+ * match items without a track assignment, but Prisma translates this to
+ * `metadata->'mstTrack' <> '{}'` in SQL. When the key is absent the path
+ * evaluates to NULL, and `NULL <> '{}'` is NULL (not TRUE) in PostgreSQL —
+ * so ALL items without `mstTrack` in their metadata were excluded, emptying
+ * every section pool after the routing module completed.
+ *
+ * Current item bank stores no `metadata.mstTrack` on any item, so the track
+ * filter is intentionally a no-op. MST routing still assigns a track to the
+ * session (persisted as `session.metadata.mstTrack`); items are selected
+ * adaptively by difficulty/discrimination from the full section pool instead
+ * of a track-restricted subset.
+ *
+ * To re-enable track filtering: tag items with `metadata: { mstTrack: "L" }`
+ * etc. and restore the Prisma filter using IS NULL / OR NULL handling via raw SQL.
  */
 export function buildMstTagFilter(
-  phase: MstPhase
-): { OR: Array<{ metadata: { path: string[]; equals: string } } | { metadata: { path: string[]; not: Record<string, unknown> } }> } | undefined {
-  if (phase.isRouting || !phase.trackLabel) return undefined;
-
-  // Prisma JSON path filter: metadata->mstTrack = trackLabel OR not present
-  return {
-    OR: [
-      { metadata: { path: ["mstTrack"], equals: phase.trackLabel } },
-      { metadata: { path: ["mstTrack"], not: {} } },   // null / absent
-    ],
-  };
+  _phase: MstPhase
+): undefined {
+  // Track filter disabled — see note above.
+  return undefined;
 }
 
 /**
@@ -138,8 +143,7 @@ export function buildMstTagFilter(
  */
 export function mergeTrackFilter(
   whereClause: Record<string, any>,
-  trackFilter: ReturnType<typeof buildMstTagFilter>
+  _trackFilter: ReturnType<typeof buildMstTagFilter>
 ): Record<string, any> {
-  if (!trackFilter) return whereClause;
-  return { ...whereClause, ...trackFilter };
+  return whereClause;
 }
