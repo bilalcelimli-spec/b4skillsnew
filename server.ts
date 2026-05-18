@@ -1056,16 +1056,16 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         create: { id: examCode.organizationId, name: examCode.organizationId, slug: examCode.organizationId.toLowerCase() + "-" + Date.now() }
       });
       
-      await prisma.user.upsert({
+      const upsertedUser = await prisma.user.upsert({
         where: { email: email },
         update: { name: `${name} ${surname}`, organizationId: examCode.organizationId },
         create: { email: email, name: `${name} ${surname}`, organizationId: examCode.organizationId, role: "CANDIDATE" }
       });
 
       await prisma.candidateProfile.upsert({
-        where: { userId: candidateId },
+        where: { userId: upsertedUser.id },
         update: { metadata: { school, className } },
-        create: { userId: candidateId, metadata: { school, className } }
+        create: { userId: upsertedUser.id, metadata: { school, className } }
       });
 
       res.json({ success: true, organizationId: examCode.organizationId, productLine: examCode.productLine });
