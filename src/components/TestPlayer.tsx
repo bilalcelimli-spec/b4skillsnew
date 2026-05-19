@@ -305,8 +305,13 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     let finalValue = value;
     let aiPayload: any = { content: value };
 
+    // Productive listening task (listen-and-write): treat like WRITING for AI scoring
+    const isProductiveListening =
+      currentItem.skill === "LISTENING" &&
+      (currentItem as any).content?.taskType === 'productive';
+
     // Phase 7: Real-time AI Feedback for Writing/Speaking
-    if (currentItem.skill === "WRITING" || currentItem.skill === "SPEAKING") {
+    if (currentItem.skill === "WRITING" || currentItem.skill === "SPEAKING" || isProductiveListening) {
       try {
         if (currentItem.skill === "SPEAKING" && value instanceof Blob) {
           setUploadProgress(30);
@@ -318,7 +323,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
             prompt: currentItem.metadata?.prompt ?? (currentItem as any).content?.prompt
           };
           finalValue = { audio: base64, mimeType: value.type };
-        } else if (currentItem.skill === "WRITING") {
+        } else if (currentItem.skill === "WRITING" || isProductiveListening) {
           aiPayload = {
             content: value,
             prompt: currentItem.metadata?.prompt ?? (currentItem as any).content?.prompt
@@ -328,7 +333,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         setUploadStatus('analyzing');
         setUploadProgress(80);
         
-        const endpoint = currentItem.skill === "WRITING" ? "/api/ai/score/writing" : "/api/ai/score/speaking-multimodal";
+        const endpoint = (currentItem.skill === "WRITING" || isProductiveListening) ? "/api/ai/score/writing" : "/api/ai/score/speaking-multimodal";
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

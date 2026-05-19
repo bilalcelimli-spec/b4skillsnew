@@ -420,6 +420,19 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
 
       const fibAllFilled = isListeningFIB && currentFibAnswers.every((a) => a.trim() !== "");
 
+      // Productive (listen-and-write) task: has scoring rubric options stored in DB
+      // but the candidate should write a response, not select a rubric option.
+      const isProductiveTask =
+        content.taskType === 'productive' || content.responseFormat === 'written';
+
+      // Parse word target from "60–80 words" or "60-80 words" format
+      const productiveMinWords: number = (() => {
+        const wc = content.wordCountTarget as string | undefined;
+        if (!wc) return 50;
+        const m = wc.match(/(\d+)/);
+        return m ? parseInt(m[1], 10) : 50;
+      })();
+
       return (
         <div className="space-y-6" role="form" aria-labelledby="listening-prompt">
           {/* ── Audio player ─ NEVER show transcript/passage/ttsScript to student ── */}
@@ -449,6 +462,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
             <div className="space-y-4">
               {/* Inline FIB: ___ replaced with real input elements */}
               {fibScaffold ? (
+
                 <div
                   id="listening-prompt"
                   className="p-5 bg-slate-50 border border-slate-200 rounded-2xl leading-loose"
@@ -486,6 +500,30 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
               >
                 Confirm Answer
               </button>
+            </div>
+          ) : isProductiveTask ? (
+            /* Productive (listen-and-write) task: render a writing editor */
+            <div className="space-y-4">
+              <div className="p-5 bg-indigo-50 border border-indigo-100 rounded-2xl">
+                <div className="flex items-center gap-2 mb-2 text-indigo-600 font-black uppercase tracking-widest text-[10px]">
+                  <FileText size={14} />
+                  Writing Task
+                </div>
+                <p className="text-lg font-bold text-slate-900 leading-relaxed">{content.prompt}</p>
+                {content.wordCountTarget && (
+                  <p className="mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    Target: {content.wordCountTarget}
+                  </p>
+                )}
+              </div>
+              <WritingEditor
+                prompt={content.prompt || ""}
+                minWords={productiveMinWords}
+                onWritingComplete={onResponse}
+                isUploading={isUploading}
+                uploadProgress={uploadProgress}
+                uploadStatus={uploadStatus}
+              />
             </div>
           ) : (
             /* Multiple choice */
