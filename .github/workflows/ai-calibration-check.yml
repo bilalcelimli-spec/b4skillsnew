@@ -167,7 +167,7 @@ jobs:
       # ── Create issue on WARNING ───────────────────────────────────────────
       - name: Create issue on QWK warning
         if: steps.parse.outputs.alert_level == 'WARNING'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const date = new Date().toISOString().split('T')[0];
@@ -206,7 +206,7 @@ jobs:
       # ── Create issue on CRITICAL ──────────────────────────────────────────
       - name: Create issue on QWK critical failure
         if: steps.parse.outputs.alert_level == 'CRITICAL'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const date = new Date().toISOString().split('T')[0];
@@ -246,7 +246,7 @@ jobs:
       # ── Create issue on workflow failure ──────────────────────────────────
       - name: Create issue on workflow failure
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.issues.create({
