@@ -22,8 +22,16 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Trigger Render Deploy Hook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
-          curl -fsSL -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "⚠️  RENDER_DEPLOY_HOOK_URL secret not set — skipping Render deploy trigger."
+            echo "   Add it at: Settings → Secrets and variables → Actions"
+            exit 0
+          fi
+          curl -fsSL -X POST "$RENDER_DEPLOY_HOOK_URL"
+          echo "✅ Render deploy hook triggered."
 
   post-deploy-smoke:
     name: Post-deploy Auth Smoke
@@ -37,6 +45,12 @@ jobs:
       AUTH_PASSWORD: ${{ secrets.AUTH_SMOKE_PASSWORD }}
       DEPLOY_ALERT_WEBHOOK_URL: ${{ secrets.DEPLOY_ALERT_WEBHOOK_URL }}
     steps:
+      - name: Skip smoke if secrets not configured
+        if: ${{ !secrets.APP_URL || !secrets.AUTH_SMOKE_EMAIL || !secrets.AUTH_SMOKE_PASSWORD }}
+        run: |
+          echo "⚠️  Smoke test secrets (APP_URL / AUTH_SMOKE_EMAIL / AUTH_SMOKE_PASSWORD) not set."
+          echo "   Skipping post-deploy smoke test."
+          exit 0
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -50,7 +64,7 @@ jobs:
       - name: Optional failure webhook
         if: failure() && env.DEPLOY_ALERT_WEBHOOK_URL != ''
         run: |
-          curl -fsSL -X POST "${{ secrets.DEPLOY_ALERT_WEBHOOK_URL }}" \
+          curl -fsSL -X POST "$DEPLOY_ALERT_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
             -d "{\"text\":\"b4skills production deploy smoke failed on ${GITHUB_SHA}\"}"
 
