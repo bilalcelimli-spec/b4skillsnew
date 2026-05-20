@@ -589,19 +589,61 @@ async function startServer() {
       }
 
       // ── Freemium placement test (demo mode) ───────────────────────────────────
+      // Use in-memory counter keyed by placementId to track item number
+      if (!((res as any).__demoCounters)) (res as any).__demoCounters = {};
+      const _dc = (app as any).__demoCounters || ((app as any).__demoCounters = {} as Record<string, number>);
+
       if (url === "/assessment/placement/start" && method === "POST") {
-        const mockItem = { id: "demo-p-item-1", skill: "READING", type: "MULTIPLE_CHOICE", cefrLevel: "B1",
-          content: { prompt: "The committee decided to postpone the meeting until further notice. What did the committee decide?", options: ["To cancel the meeting", "To delay the meeting", "To start the meeting early", "To move the meeting online"], correctIndex: 1 },
-          irtA: 1.2, irtB: 0.0, irtC: 0.2, assets: [] };
-        return res.json({ placementId: "demo-placement-" + Date.now(), firstItem: mockItem, maxItems: 5 });
+        const demoId = "demo-placement-" + Date.now();
+        _dc[demoId] = 0;
+        const mockItems = [
+          { id: "dp-1", skill: "GRAMMAR",    cefrLevel: "B1", content: { prompt: "She ___ to work every day by bus.",               options: ["go", "goes", "going", "gone"],          correctIndex: 1 } },
+          { id: "dp-2", skill: "VOCABULARY", cefrLevel: "A2", content: { prompt: "Which word means the opposite of 'difficult'?",   options: ["hard", "easy", "complex", "tricky"],    correctIndex: 1 } },
+          { id: "dp-3", skill: "READING",    cefrLevel: "B1", content: { prompt: "The report stated that productivity had increased significantly. What did the report state?", passage: "A recent company report outlined how productivity had increased significantly over the last quarter, attributing the improvement to new workflow software.", options: ["Productivity had decreased", "Productivity had increased", "Productivity stayed the same", "The report was inconclusive"], correctIndex: 1 } },
+          { id: "dp-4", skill: "GRAMMAR",    cefrLevel: "B2", content: { prompt: "If I ___ you, I would apologise immediately.",     options: ["am", "was", "were", "be"],              correctIndex: 2 } },
+          { id: "dp-5", skill: "VOCABULARY", cefrLevel: "B2", content: { prompt: "The word 'ubiquitous' means:",                    options: ["rare and expensive", "found everywhere", "old-fashioned", "complex to understand"], correctIndex: 1 } },
+        ];
+        return res.json({ placementId: demoId, firstItem: { ...mockItems[0], type: "MULTIPLE_CHOICE", irtA: 1.2, irtB: 0.0, irtC: 0.2, assets: [] }, maxItems: 5 });
       }
       if (url.match(/^\/assessment\/placement\/[^/]+\/respond$/) && method === "POST") {
-        const count = Number(req.body?.latencyMs ?? 0) % 5;
-        if (count >= 4) return res.json({ complete: true, result: { cefrLevel: "B2", theta: 0.8, sem: 0.3 } });
-        const nextItem = { id: "demo-p-item-" + (count + 2), skill: "READING", type: "MULTIPLE_CHOICE", cefrLevel: "B1",
-          content: { prompt: "Sample question " + (count + 2), options: ["Option A", "Option B", "Option C", "Option D"], correctIndex: 0 },
-          irtA: 1.0, irtB: 0.2, irtC: 0.2, assets: [] };
-        return res.json({ complete: false, nextItem, itemsAdministered: count + 1, currentCefrBand: "B1" });
+        // Extract placementId from the URL
+        const urlParts = url.split("/");
+        const demoId = urlParts[urlParts.length - 2];
+        const count = (_dc[demoId] = (_dc[demoId] ?? 0) + 1);
+
+        if (count >= 5) {
+          delete _dc[demoId];
+          return res.json({ complete: true, result: {
+            placementId: demoId,
+            cefrLevel: "B1",
+            theta: 0.2,
+            sem: 0.4,
+            cefrConfidenceInterval: [-0.5, 0.9] as [number, number],
+            cefrRange: "A2\u2013B1",
+            itemsAdministered: 5,
+            completionMs: 180000,
+            skillBreakdown: {
+              GRAMMAR:    { total: 2, correct: 1 },
+              VOCABULARY: { total: 2, correct: 2 },
+              READING:    { total: 1, correct: 1 },
+            },
+            upgradePrompt: {
+              message: "To get a detailed breakdown of your Grammar, Vocabulary, and Listening skills, try our comprehensive adaptive test.",
+              skills: ["Speaking", "Writing", "Deep Psychometrics"],
+              callToActionUrl: "#pricing"
+            }
+          }});
+        }
+
+        const demoItems = [
+          { id: "dp-2", skill: "VOCABULARY", cefrLevel: "A2", content: { prompt: "Which word means the opposite of 'difficult'?",   options: ["hard", "easy", "complex", "tricky"],    correctIndex: 1 } },
+          { id: "dp-3", skill: "READING",    cefrLevel: "B1", content: { prompt: "What did the report state?", passage: "A recent company report outlined how productivity had increased significantly over the last quarter.", options: ["Productivity had decreased", "Productivity had increased", "Productivity stayed the same", "The report was inconclusive"], correctIndex: 1 } },
+          { id: "dp-4", skill: "GRAMMAR",    cefrLevel: "B2", content: { prompt: "If I ___ you, I would apologise immediately.",     options: ["am", "was", "were", "be"],              correctIndex: 2 } },
+          { id: "dp-5", skill: "VOCABULARY", cefrLevel: "B2", content: { prompt: "The word 'ubiquitous' means:",                    options: ["rare and expensive", "found everywhere", "old-fashioned", "complex to understand"], correctIndex: 1 } },
+        ];
+        const nextRaw = demoItems[Math.min(count - 1, demoItems.length - 1)];
+        const nextItem = { ...nextRaw, type: "MULTIPLE_CHOICE", irtA: 1.0, irtB: 0.2, irtC: 0.2, assets: [] };
+        return res.json({ complete: false, nextItem, itemsAdministered: count, currentCefrBand: "B1" });
       }
     }
     next();
@@ -1952,9 +1994,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       if (done) {
         const cefrLevel = thetaToCefr(sess.theta);
-        const lowerCEFR = thetaToCefr(sess.theta - sess.sem);
-        const upperCEFR = thetaToCefr(sess.theta + sess.sem);
-        const cefrRange = lowerCEFR === upperCEFR ? cefrLevel : `${lowerCEFR} - ${upperCEFR}`;
+        const ciLow = sess.theta - 1.645 * sess.sem;
+        const ciHigh = sess.theta + 1.645 * sess.sem;
+        const lowerCEFR = thetaToCefr(ciLow);
+        const upperCEFR = thetaToCefr(ciHigh);
+        const cefrRange = lowerCEFR === upperCEFR ? cefrLevel : `${lowerCEFR}–${upperCEFR}`;
         
         const completionMs = Date.now() - (Number(id.split("-")[1]) || Date.now());
         
@@ -1963,7 +2007,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           cefrLevel,
           theta: sess.theta,
           sem: sess.sem,
-          cefrConfidenceInterval: cefrRange,
+          cefrConfidenceInterval: [ciLow, ciHigh] as [number, number],
+          cefrRange,
           itemsAdministered: sess.itemsAdministered,
           completionMs,
           skillBreakdown: sess.skillBreakdown,
@@ -1981,9 +2026,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const nextItem = pickNextPlacementItem(sess.items, sess.usedIds, sess.theta, sess.skillBreakdown);
       if (!nextItem) {
         const cefrLevel = thetaToCefr(sess.theta);
-        const lowerCEFR = thetaToCefr(sess.theta - sess.sem);
-        const upperCEFR = thetaToCefr(sess.theta + sess.sem);
-        const cefrRange = lowerCEFR === upperCEFR ? cefrLevel : `${lowerCEFR} - ${upperCEFR}`;
+        const ciLow = sess.theta - 1.645 * sess.sem;
+        const ciHigh = sess.theta + 1.645 * sess.sem;
+        const lowerCEFR = thetaToCefr(ciLow);
+        const upperCEFR = thetaToCefr(ciHigh);
+        const cefrRange = lowerCEFR === upperCEFR ? cefrLevel : `${lowerCEFR}–${upperCEFR}`;
         const completionMs = Date.now() - (Number(id.split("-")[1]) || Date.now());
 
         const result = {
@@ -1991,7 +2038,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           cefrLevel,
           theta: sess.theta,
           sem: sess.sem,
-          cefrConfidenceInterval: cefrRange,
+          cefrConfidenceInterval: [ciLow, ciHigh] as [number, number],
+          cefrRange,
           itemsAdministered: sess.itemsAdministered,
           completionMs,
           skillBreakdown: sess.skillBreakdown,

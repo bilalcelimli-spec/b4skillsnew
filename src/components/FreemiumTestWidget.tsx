@@ -51,7 +51,10 @@ interface PlacementResult {
   cefrLevel: string;
   theta: number;
   sem: number;
-  cefrConfidenceInterval: [string, number, number];
+  /** [ciLow, ciHigh] in theta units (90% CI) */
+  cefrConfidenceInterval: [number, number];
+  /** Human-readable CEFR range, e.g. "A2–B1" */
+  cefrRange?: string;
   itemsAdministered: number;
   completionMs: number;
   skillBreakdown?: Record<string, { total: number; correct: number }>;
@@ -418,6 +421,9 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
 
   const handleSubmitAnswer = useCallback(async (explicitOption?: number | string) => {
     if (!placementId || !currentItem) return;
+    // Cancel any pending auto-advance to prevent double-submit
+    if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null; }
+    setAutoAdvancing(false);
     const isFIB = currentItem.type === "FILL_IN_BLANKS" || !!currentItem.content.scaffold;
     const isSpeaking = currentItem.skill === "SPEAKING" && !isFIB && (currentItem.content.options ?? []).length === 0;
     if (isFIB && !inputAnswer.trim()) return;
@@ -431,7 +437,6 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     const latencyMs = Date.now() - itemStartTime;
     setLoading(true);
     setError(null);
-    setAutoAdvancing(false);
     try {
       const res = await fetch(`/api/assessment/placement/${placementId}/respond`, {
         method: "POST",
@@ -456,7 +461,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     } finally {
       setLoading(false);
     }
-  }, [selectedOption, inputAnswer, placementId, currentItem, itemStartTime, itemsAdministered]);
+  }, [selectedOption, inputAnswer, placementId, currentItem, itemStartTime, itemsAdministered, hasRecording]);
 
   const handleShareResult = useCallback(async () => {
     if (!result) return;
@@ -688,7 +693,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     const opts = (content.options ?? []).map((o: any) =>
       typeof o === "string" ? o : String(o?.text ?? o)
     );
-    const progressPct = Math.min(100, (itemsAdministered / maxItems) * 100);
+    const progressPct = step === "result" ? 100 : Math.min(95, (itemsAdministered / maxItems) * 100);
 
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -717,7 +722,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                     <div className="flex items-center gap-2 text-xs font-bold text-purple-600 uppercase tracking-wider mb-3">
                       <Headphones size={13} /> Listening Exercise
                     </div>
-                    <AudioPlayer src={content.audioUrl!} />
+                    <AudioPlayer key={currentItem.id} src={content.audioUrl!} />
                   </div>
                 )}
 
@@ -793,7 +798,9 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                   </div>
                   <div className="flex items-center gap-2.5">
                     <div className="flex items-center gap-1">
-                      {(["GRAMMAR", "VOCABULARY", "READING", "LISTENING"] as const).map(skill => {
+                      {([
+                      "GRAMMAR", "VOCABULARY", "READING", "LISTENING", "SPEAKING", "WRITING",
+                    ] as const).map(skill => {
                         const count = skillsSeen.filter(s => s === skill).length;
                         if (!count) return null;
                         const m = SKILL_META[skill];
@@ -985,9 +992,18 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                 )}
 
                 {error && (
-                  <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm">
-                    <AlertCircle size={15} className="flex-shrink-0" />
-                    {error}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm">
+                      <AlertCircle size={15} className="flex-shrink-0" />
+                      {error}
+                    </div>
+                    <button
+                      onClick={() => handleSubmitAnswer()}
+                      disabled={loading}
+                      className="self-start text-xs font-bold text-red-600 hover:text-red-700 underline underline-offset-2 transition-colors"
+                    >
+                      Retry
+                    </button>
                   </div>
                 )}
 
@@ -1033,7 +1049,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     const colors = CEFR_COLORS[cefrKey] ?? CEFR_COLORS.B1;
     const meta = CEFR_LABELS[cefrKey] ?? { label: cefrKey, desc: "", tagline: "" };
     const minutes = Math.max(1, Math.round(result.completionMs / 60_000));
-    const [, ciLow, ciHigh] = result.cefrConfidenceInterval;
+    const [ciLow, ciHigh] = result.cefrConfidenceInterval;
     const scaleIdx = CEFR_SCALE.indexOf(cefrKey as CefrLevel);
     const ciLeftPct = Math.max(0, ((ciLow + 4.5) / 9) * 100);
     const ciRightPct = Math.max(0, 100 - ((ciHigh + 4.5) / 9) * 100);
@@ -1120,7 +1136,9 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
             <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">90% Confidence Interval</span>
-                <span className="text-xs font-mono text-slate-500 font-bold">θ = {result.theta.toFixed(2)} · SEM = {result.sem.toFixed(2)}</span>
+                <span className="text-xs font-mono text-slate-500 font-bold">
+                  {result.cefrRange ?? `${ciLow.toFixed(1)}–${ciHigh.toFixed(1)}`} · SEM={result.sem.toFixed(2)}
+                </span>
               </div>
               <div className="flex items-center gap-3">
                 <span className="font-bold text-slate-500 w-10 text-right text-xs">{ciLow.toFixed(1)}</span>
@@ -1213,7 +1231,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
               {[
                 { label: "Questions", val: String(result.itemsAdministered), icon: <BarChart3 size={18} /> },
                 { label: "Duration",  val: `~${minutes}m`,                    icon: <Clock size={18} /> },
-                { label: "Precision", val: `${Math.max(0, Math.round((1 - result.sem) * 100))}%`, icon: <TrendingUp size={18} /> },
+                { label: "Precision", val: `${Math.min(100, Math.max(0, Math.round((1 - Math.min(result.sem, 1)) * 100)))}%`, icon: <TrendingUp size={18} /> },
               ].map((s, i) => (
                 <div key={i} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col items-center gap-2 text-center">
                   <div className="text-[#9b276c]">{s.icon}</div>
