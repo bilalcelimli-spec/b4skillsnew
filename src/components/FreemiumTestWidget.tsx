@@ -874,6 +874,8 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                           if (isRecording) {
                             mediaRecorderRef.current?.stop();
                             setIsRecording(false);
+                            // Mark recording as ready immediately — don't wait for async onstop
+                            setHasRecording(true);
                           } else {
                             try {
                               const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -895,10 +897,10 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                               mr.onstop = () => {
                                 stream.getTracks().forEach(t => t.stop());
                                 const blob = new Blob(speakingChunksRef.current, { type: mimeType });
-                                // Only update state if we are still on the same item
-                                if (currentItemRef.current?.id === currentItemId) {
+                                // Update audio URL regardless of item guard so playback works;
+                                // hasRecording is already set synchronously by the stop-button click.
+                                if (blob.size > 0) {
                                   setSpeakingAudioUrl(URL.createObjectURL(blob));
-                                  setHasRecording(true);
                                 }
                               };
 
@@ -908,7 +910,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                                 setIsRecording(false);
                               };
 
-                              mr.start();
+                              mr.start(100); // 100 ms timeslice ensures ondataavailable fires for short recordings
                               setIsRecording(true);
                               setHasRecording(false);
                               setSpeakingAudioUrl(null);
