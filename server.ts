@@ -597,13 +597,15 @@ async function startServer() {
         const demoId = "demo-placement-" + Date.now();
         _dc[demoId] = 0;
         const mockItems = [
-          { id: "dp-1", skill: "GRAMMAR",    cefrLevel: "B1", content: { prompt: "She ___ to work every day by bus.",               options: ["go", "goes", "going", "gone"],          correctIndex: 1 } },
-          { id: "dp-2", skill: "VOCABULARY", cefrLevel: "A2", content: { prompt: "Which word means the opposite of 'difficult'?",   options: ["hard", "easy", "complex", "tricky"],    correctIndex: 1 } },
-          { id: "dp-3", skill: "READING",    cefrLevel: "B1", content: { prompt: "The report stated that productivity had increased significantly. What did the report state?", passage: "A recent company report outlined how productivity had increased significantly over the last quarter, attributing the improvement to new workflow software.", options: ["Productivity had decreased", "Productivity had increased", "Productivity stayed the same", "The report was inconclusive"], correctIndex: 1 } },
-          { id: "dp-4", skill: "GRAMMAR",    cefrLevel: "B2", content: { prompt: "If I ___ you, I would apologise immediately.",     options: ["am", "was", "were", "be"],              correctIndex: 2 } },
-          { id: "dp-5", skill: "VOCABULARY", cefrLevel: "B2", content: { prompt: "The word 'ubiquitous' means:",                    options: ["rare and expensive", "found everywhere", "old-fashioned", "complex to understand"], correctIndex: 1 } },
+          { id: "dp-1", skill: "GRAMMAR",    type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "She ___ to work every day by bus.",               options: ["go", "goes", "going", "gone"],          correctIndex: 1 } },
+          { id: "dp-2", skill: "VOCABULARY", type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "Which word means the opposite of 'difficult'?",   options: ["hard", "easy", "complex", "tricky"],    correctIndex: 1 } },
+          { id: "dp-3", skill: "READING",    type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "According to the passage, what improved last quarter?", passage: "A recent company report outlined how productivity had increased significantly over the last quarter, attributing the improvement to new workflow software.", options: ["Staff numbers", "Productivity", "Customer satisfaction", "Product quality"], correctIndex: 1 } },
+          { id: "dp-4", skill: "LISTENING",  type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "A student missed a class. Which response is most polite?", options: ["Can I get the notes?", "Could I possibly borrow your notes?", "Give me the notes.", "I need the notes now."], correctIndex: 1 } },
+          { id: "dp-5", skill: "GRAMMAR",    type: "MULTIPLE_CHOICE", cefrLevel: "B2", content: { prompt: "If I ___ you, I would apologise immediately.",     options: ["am", "was", "were", "be"],              correctIndex: 2 } },
+          { id: "dp-6", skill: "SPEAKING",   type: "OPEN_RESPONSE",   cefrLevel: "B1", content: { prompt: "Describe your daily routine in 2–3 sentences. Tap the microphone when ready." } },
+          { id: "dp-7", skill: "WRITING",    type: "OPEN_RESPONSE",   cefrLevel: "B1", content: { prompt: "Write 2–3 sentences about a place you would like to visit and explain why." } },
         ];
-        return res.json({ placementId: demoId, firstItem: { ...mockItems[0], type: "MULTIPLE_CHOICE", irtA: 1.2, irtB: 0.0, irtC: 0.2, assets: [] }, maxItems: 5 });
+        return res.json({ placementId: demoId, firstItem: { ...mockItems[0], irtA: 1.2, irtB: 0.0, irtC: 0.2, assets: [] }, maxItems: 7 });
       }
       if (url.match(/^\/assessment\/placement\/[^/]+\/respond$/) && method === "POST") {
         // Extract placementId from the URL
@@ -611,7 +613,7 @@ async function startServer() {
         const demoId = urlParts[urlParts.length - 2];
         const count = (_dc[demoId] = (_dc[demoId] ?? 0) + 1);
 
-        if (count >= 5) {
+        if (count >= 7) {
           delete _dc[demoId];
           return res.json({ complete: true, result: {
             placementId: demoId,
@@ -620,29 +622,34 @@ async function startServer() {
             sem: 0.4,
             cefrConfidenceInterval: [-0.5, 0.9] as [number, number],
             cefrRange: "A2\u2013B1",
-            itemsAdministered: 5,
-            completionMs: 180000,
+            itemsAdministered: 7,
+            completionMs: 240000,
             skillBreakdown: {
               GRAMMAR:    { total: 2, correct: 1 },
-              VOCABULARY: { total: 2, correct: 2 },
+              VOCABULARY: { total: 1, correct: 1 },
               READING:    { total: 1, correct: 1 },
+              LISTENING:  { total: 1, correct: 1 },
+              SPEAKING:   { total: 1, correct: 1 },
+              WRITING:    { total: 1, correct: 1 },
             },
             upgradePrompt: {
-              message: "To get a detailed breakdown of your Grammar, Vocabulary, and Listening skills, try our comprehensive adaptive test.",
-              skills: ["Speaking", "Writing", "Deep Psychometrics"],
+              message: "Get a full psychometric report with detailed skill breakdowns and a certified CEFR certificate.",
+              skills: ["Deep Psychometrics", "Certified Report", "Speaking & Writing AI Scoring"],
               callToActionUrl: "#pricing"
             }
           }});
         }
 
         const demoItems = [
-          { id: "dp-2", skill: "VOCABULARY", cefrLevel: "A2", content: { prompt: "Which word means the opposite of 'difficult'?",   options: ["hard", "easy", "complex", "tricky"],    correctIndex: 1 } },
-          { id: "dp-3", skill: "READING",    cefrLevel: "B1", content: { prompt: "What did the report state?", passage: "A recent company report outlined how productivity had increased significantly over the last quarter.", options: ["Productivity had decreased", "Productivity had increased", "Productivity stayed the same", "The report was inconclusive"], correctIndex: 1 } },
-          { id: "dp-4", skill: "GRAMMAR",    cefrLevel: "B2", content: { prompt: "If I ___ you, I would apologise immediately.",     options: ["am", "was", "were", "be"],              correctIndex: 2 } },
-          { id: "dp-5", skill: "VOCABULARY", cefrLevel: "B2", content: { prompt: "The word 'ubiquitous' means:",                    options: ["rare and expensive", "found everywhere", "old-fashioned", "complex to understand"], correctIndex: 1 } },
+          { id: "dp-2", skill: "VOCABULARY", type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "Which word means the opposite of 'difficult'?",   options: ["hard", "easy", "complex", "tricky"],    correctIndex: 1 } },
+          { id: "dp-3", skill: "READING",    type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "According to the passage, what improved last quarter?", passage: "A recent company report outlined how productivity had increased significantly over the last quarter.", options: ["Staff numbers", "Productivity", "Customer satisfaction", "Product quality"], correctIndex: 1 } },
+          { id: "dp-4", skill: "LISTENING",  type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "A student missed a class. Which response is most polite?", options: ["Can I get the notes?", "Could I possibly borrow your notes?", "Give me the notes.", "I need the notes now."], correctIndex: 1 } },
+          { id: "dp-5", skill: "GRAMMAR",    type: "MULTIPLE_CHOICE", cefrLevel: "B2", content: { prompt: "If I ___ you, I would apologise immediately.",     options: ["am", "was", "were", "be"],              correctIndex: 2 } },
+          { id: "dp-6", skill: "SPEAKING",   type: "OPEN_RESPONSE",   cefrLevel: "B1", content: { prompt: "Describe your daily routine in 2–3 sentences. Tap the microphone when ready." } },
+          { id: "dp-7", skill: "WRITING",    type: "OPEN_RESPONSE",   cefrLevel: "B1", content: { prompt: "Write 2–3 sentences about a place you would like to visit and explain why." } },
         ];
         const nextRaw = demoItems[Math.min(count - 1, demoItems.length - 1)];
-        const nextItem = { ...nextRaw, type: "MULTIPLE_CHOICE", irtA: 1.0, irtB: 0.2, irtC: 0.2, assets: [] };
+        const nextItem = { ...nextRaw, irtA: 1.0, irtB: 0.2, irtC: 0.2, assets: [] };
         return res.json({ complete: false, nextItem, itemsAdministered: count, currentCefrBand: "B1" });
       }
     }
@@ -1962,6 +1969,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const a = item.irtA ?? 1; const b = item.irtB ?? 0; const c = item.irtC ?? 0;
         const correct = (() => {
           if (selectedOption === "speaking_recorded") return true;
+          // Open-response (writing/speaking): any non-empty text answer is treated as
+          // correct for IRT purposes — the freemium test cannot machine-score prose.
+          if (
+            (item.type === "OPEN_RESPONSE" || item.skill === "WRITING") &&
+            typeof selectedOption === "string" &&
+            selectedOption.trim().length > 0
+          ) return true;
           const ci = item.content?.correctIndex;
           if (ci !== undefined && ci !== null) return Number(selectedOption) === ci;
           const co = item.content?.correctOption || item.content?.correctAnswer;

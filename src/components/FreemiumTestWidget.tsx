@@ -333,8 +333,10 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
           if (!isNaN(num) && num >= 1 && num <= n) handleSelectOption(num - 1);
         }
         if (e.key === "Enter") {
+          const isWritingKb = currentItem?.skill === "WRITING" && !isFIB && !(currentItem?.content.options ?? []).length;
           if (isFIB && inputAnswer.trim()) handleSubmitAnswer();
-          else if (!isFIB && selectedOption !== null) handleSubmitAnswer();
+          else if (isWritingKb && inputAnswer.trim()) handleSubmitAnswer();
+          else if (!isFIB && !isWritingKb && selectedOption !== null) handleSubmitAnswer();
         }
       }
     };
@@ -426,14 +428,18 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     setAutoAdvancing(false);
     const isFIB = currentItem.type === "FILL_IN_BLANKS" || !!currentItem.content.scaffold;
     const isSpeaking = currentItem.skill === "SPEAKING" && !isFIB && (currentItem.content.options ?? []).length === 0;
+    const isWriting = currentItem.skill === "WRITING" && !isFIB && (currentItem.content.options ?? []).length === 0;
     if (isFIB && !inputAnswer.trim()) return;
     if (isSpeaking && !hasRecording) return;
+    if (isWriting && !inputAnswer.trim()) return;
     const answer = isFIB
       ? inputAnswer.trim()
       : isSpeaking
         ? "speaking_recorded"
-        : (explicitOption !== undefined ? explicitOption : selectedOption);
-    if (!isFIB && !isSpeaking && (answer === null || answer === undefined)) return;
+        : isWriting
+          ? inputAnswer.trim()
+          : (explicitOption !== undefined ? explicitOption : selectedOption);
+    if (!isFIB && !isSpeaking && !isWriting && (answer === null || answer === undefined)) return;
     const latencyMs = Date.now() - itemStartTime;
     setLoading(true);
     setError(null);
@@ -689,6 +695,8 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     const hasAudio = !!content.audioUrl;
     const hasImage = !!content.imageUrl;
     const isFIB = currentItem.type === "FILL_IN_BLANKS" || !!content.scaffold;
+    const isSpeakingQ = currentItem.skill === "SPEAKING" && !isFIB && opts.length === 0;
+    const isWritingQ = currentItem.skill === "WRITING" && !isFIB && opts.length === 0;
     const hasContext = hasPassage || hasAudio || hasImage;
     const opts = (content.options ?? []).map((o: any) =>
       typeof o === "string" ? o : String(o?.text ?? o)
@@ -857,7 +865,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                 )}
 
                 {/* ── Speaking recorder ── */}
-                {currentItem.skill === "SPEAKING" && !isFIB && opts.length === 0 && (
+                {isSpeakingQ && (
                   <div className="flex flex-col items-center gap-5 py-4">
                     <div className={cn(
                       "relative flex items-center justify-center w-24 h-24 rounded-full transition-all duration-300",
@@ -948,6 +956,26 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                   </div>
                 )}
 
+                {/* ── Writing textarea ── */}
+                {isWritingQ && (
+                  <div className="flex flex-col gap-3">
+                    <textarea
+                      value={inputAnswer}
+                      onChange={(e) => setInputAnswer(e.target.value)}
+                      placeholder="Write your response here…"
+                      disabled={loading}
+                      rows={6}
+                      maxLength={2000}
+                      autoFocus
+                      className="w-full border-2 border-slate-200 focus:border-[#9b276c] rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#9b276c]/20 transition-all disabled:opacity-50 resize-none leading-relaxed"
+                    />
+                    <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                      <span>{inputAnswer.trim().split(/\s+/).filter(Boolean).length} words</span>
+                      <span>Max 2000 characters</span>
+                    </div>
+                  </div>
+                )}
+
                 {!isFIB && opts.length > 0 && (
                   <div className="space-y-3">
                     {opts.map((opt, idx) => (
@@ -1011,10 +1039,10 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
 
                 <button
                   onClick={() => handleSubmitAnswer()}
-                  disabled={(isFIB ? !inputAnswer.trim() : (currentItem.skill === "SPEAKING" && !isFIB && opts.length === 0) ? !hasRecording : selectedOption === null) || loading || isRecording}
+                  disabled={(isFIB ? !inputAnswer.trim() : isSpeakingQ ? !hasRecording : isWritingQ ? !inputAnswer.trim() : selectedOption === null) || loading || isRecording}
                   className={cn(
                     "w-full rounded-2xl h-14 font-black text-base flex items-center justify-center gap-2 transition-all relative overflow-hidden",
-                    (isFIB ? !!inputAnswer.trim() : (currentItem.skill === "SPEAKING" && !isFIB && opts.length === 0) ? hasRecording : selectedOption !== null) && !loading && !isRecording
+                    (isFIB ? !!inputAnswer.trim() : isSpeakingQ ? hasRecording : isWritingQ ? !!inputAnswer.trim() : selectedOption !== null) && !loading && !isRecording
                       ? "bg-[#9b276c] hover:bg-[#7d1f57] text-white shadow-lg shadow-[#9b276c]/25"
                       : "bg-slate-100 text-slate-400 cursor-not-allowed"
                   )}
