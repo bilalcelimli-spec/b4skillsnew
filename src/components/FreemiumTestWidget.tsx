@@ -363,7 +363,12 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     setSpeakingAudioUrl(null);
     speakingChunksRef.current = [];
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop();
+      try {
+        mediaRecorderRef.current.stop();
+        // The stream tracks are handled in the onstop event of that recorder
+      } catch (err) {
+        console.error("Cleanup stop error:", err);
+      }
     }
     mediaRecorderRef.current = null;
     if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null; }
@@ -444,6 +449,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
         if (data.currentCefrBand) setCurrentBand(data.currentCefrBand);
         if (data.nextItem?.skill) setSkillsSeen(prev => [...prev, data.nextItem.skill]);
         setCurrentItem(data.nextItem);
+        setItemStartTime(Date.now());
       }
     } catch (err: any) {
       setError(err.message ?? "Connection error. Please check your network and try again.");
@@ -864,25 +870,47 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                           } else {
                             try {
                               const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                              const mr = new MediaRecorder(stream);
+                              
+                              const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+                                ? 'audio/webm;codecs=opus' 
+                                : MediaRecorder.isTypeSupported('audio/webm') 
+                                  ? 'audio/webm' 
+                                  : 'audio/mp4';
+
+                              const mr = new MediaRecorder(stream, { mimeType });
+                              mediaRecorderRef.current = mr;
                               speakingChunksRef.current = [];
-                              mr.ondataavailable = (e) => { if (e.data.size > 0) speakingChunksRef.current.push(e.data); };
+                              
+                              mr.ondataavailable = (e) => { 
+                                if (e.data.size > 0) speakingChunksRef.current.push(e.data); 
+                              };
+                              
                               mr.onstop = () => {
                                 stream.getTracks().forEach(t => t.stop());
-                                const blob = new Blob(speakingChunksRef.current, { type: "audio/webm" });
+                                const blob = new Blob(speakingChunksRef.current, { type: mimeType });
                                 // Only update state if we are still on the same item
                                 if (currentItemRef.current?.id === currentItemId) {
                                   setSpeakingAudioUrl(URL.createObjectURL(blob));
                                   setHasRecording(true);
                                 }
                               };
-                              mediaRecorderRef.current = mr;
+
+                              mr.onerror = (e: any) => {
+                                console.error("Recorder error:", e);
+                                setError("Recording error: " + (e.message || "Unknown error"));
+                                setIsRecording(false);
+                              };
+
                               mr.start();
                               setIsRecording(true);
                               setHasRecording(false);
                               setSpeakingAudioUrl(null);
-                            } catch {
-                              setError("Microphone access denied. Please allow microphone access in your browser settings.");
+                            } catch (err: any) {
+                              console.error("Recording error:", err);
+                              setError(err.name === "NotAllowedError" 
+                                ? "Microphone access denied. Please allow microphone access in your browser settings."
+                                : `Recording error: ${err.message || "Could not start camera/microphone"}`
+                              );
                             }
                           }
                         }}

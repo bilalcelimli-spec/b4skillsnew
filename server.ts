@@ -1829,10 +1829,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     // Try to balance skills: prefer skills with fewer items administered so far
     const skillCounts: Record<string, number> = {};
     Object.entries(skillBreakdown).forEach(([s, data]) => { skillCounts[s] = (data as any).total; });
-    const minSkillCount = Math.min(...Object.values(skillCounts), 0);
+    const values = Object.values(skillCounts);
+    const minSkillCount = values.length > 0 ? Math.min(...values as number[]) : 0;
     
-    // Filter to skills that are within 2 items of the minimum count (or all if empty)
-    const balancedAvailable = available.filter(it => (skillCounts[it.skill] || 0) <= minSkillCount + 2);
+    // Filter to skills that are within 1 item of the minimum count
+    const balancedAvailable = available.filter(it => (skillCounts[it.skill] || 0) <= minSkillCount + 1);
     const set = balancedAvailable.length > 0 ? balancedAvailable : available;
 
     return set.reduce((best, it) => {
@@ -1951,8 +1952,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       if (done) {
         const cefrLevel = thetaToCefr(sess.theta);
-        const ciLow = sess.theta - 1.645 * sess.sem;
-        const ciHigh = sess.theta + 1.645 * sess.sem;
+        const lowerCEFR = thetaToCefr(sess.theta - sess.sem);
+        const upperCEFR = thetaToCefr(sess.theta + sess.sem);
+        const cefrRange = lowerCEFR === upperCEFR ? cefrLevel : `${lowerCEFR} - ${upperCEFR}`;
+        
         const completionMs = Date.now() - (Number(id.split("-")[1]) || Date.now());
         
         const result = {
@@ -1960,7 +1963,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           cefrLevel,
           theta: sess.theta,
           sem: sess.sem,
-          cefrConfidenceInterval: [cefrLevel, ciLow, ciHigh],
+          cefrConfidenceInterval: cefrRange,
           itemsAdministered: sess.itemsAdministered,
           completionMs,
           skillBreakdown: sess.skillBreakdown,
@@ -1978,8 +1981,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const nextItem = pickNextPlacementItem(sess.items, sess.usedIds, sess.theta, sess.skillBreakdown);
       if (!nextItem) {
         const cefrLevel = thetaToCefr(sess.theta);
-        const ciLow = sess.theta - 1.645 * sess.sem;
-        const ciHigh = sess.theta + 1.645 * sess.sem;
+        const lowerCEFR = thetaToCefr(sess.theta - sess.sem);
+        const upperCEFR = thetaToCefr(sess.theta + sess.sem);
+        const cefrRange = lowerCEFR === upperCEFR ? cefrLevel : `${lowerCEFR} - ${upperCEFR}`;
         const completionMs = Date.now() - (Number(id.split("-")[1]) || Date.now());
 
         const result = {
@@ -1987,7 +1991,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           cefrLevel,
           theta: sess.theta,
           sem: sess.sem,
-          cefrConfidenceInterval: [cefrLevel, ciLow, ciHigh],
+          cefrConfidenceInterval: cefrRange,
           itemsAdministered: sess.itemsAdministered,
           completionMs,
           skillBreakdown: sess.skillBreakdown,
