@@ -657,7 +657,9 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     const hasImage = !!content.imageUrl;
     const isFIB = currentItem.type === "FILL_IN_BLANKS" || !!content.scaffold;
     const hasContext = hasPassage || hasAudio || hasImage;
-    const opts = content.options ?? [];
+    const opts = (content.options ?? []).map((o: any) =>
+      typeof o === "string" ? o : String(o?.text ?? o)
+    );
     const progressPct = Math.min(100, (itemsAdministered / maxItems) * 100);
 
     return (
