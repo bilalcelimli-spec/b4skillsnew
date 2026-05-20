@@ -587,6 +587,22 @@ async function startServer() {
       if (url.includes("/ai/score") || url.includes("/score/ai")) {
         return res.json({ cefrLevel: "B2", score: 0.72, feedback: "Good performance.", breakdown: { grammar: 0.7, vocabulary: 0.75, fluency: 0.7 } });
       }
+
+      // ── Freemium placement test (demo mode) ───────────────────────────────────
+      if (url === "/assessment/placement/start" && method === "POST") {
+        const mockItem = { id: "demo-p-item-1", skill: "READING", type: "MULTIPLE_CHOICE", cefrLevel: "B1",
+          content: { prompt: "The committee decided to postpone the meeting until further notice. What did the committee decide?", options: ["To cancel the meeting", "To delay the meeting", "To start the meeting early", "To move the meeting online"], correctIndex: 1 },
+          irtA: 1.2, irtB: 0.0, irtC: 0.2, assets: [] };
+        return res.json({ placementId: "demo-placement-" + Date.now(), firstItem: mockItem, maxItems: 5 });
+      }
+      if (url.match(/^\/assessment\/placement\/[^/]+\/respond$/) && method === "POST") {
+        const count = Number(req.body?.latencyMs ?? 0) % 5;
+        if (count >= 4) return res.json({ complete: true, result: { cefrLevel: "B2", theta: 0.8, sem: 0.3 } });
+        const nextItem = { id: "demo-p-item-" + (count + 2), skill: "READING", type: "MULTIPLE_CHOICE", cefrLevel: "B1",
+          content: { prompt: "Sample question " + (count + 2), options: ["Option A", "Option B", "Option C", "Option D"], correctIndex: 0 },
+          irtA: 1.0, irtB: 0.2, irtC: 0.2, assets: [] };
+        return res.json({ complete: false, nextItem, itemsAdministered: count + 1, currentCefrBand: "B1" });
+      }
     }
     next();
   });
@@ -1787,6 +1803,131 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to remove candidate" });
+    }
+  });
+
+  // --- FREEMIUM PLACEMENT TEST API ---
+  // Anonymous, no-auth CAT placement test used by FreemiumTestWidget
+  const placementSessions: Record<string, {
+    theta: number; sem: number; items: any[]; usedIds: Set<string>;
+    itemsAdministered: number; maxItems: number;
+    name: string; email: string;
+  }> = {};
+
+  const CEFR_BANDS: { level: string; minTheta: number }[] = [
+    { level: "C2", minTheta: 2.67 }, { level: "C1", minTheta: 1.67 },
+    { level: "B2", minTheta: 0.67 }, { level: "B1", minTheta: -0.33 },
+    { level: "A2", minTheta: -1.33 }, { level: "A1", minTheta: -Infinity },
+  ];
+  const thetaToCefr = (theta: number) => CEFR_BANDS.find(b => theta >= b.minTheta)?.level ?? "A1";
+
+  const pickNextPlacementItem = (allItems: any[], usedIds: Set<string>, theta: number) => {
+    const available = allItems.filter(it => !usedIds.has(it.id) && it.active !== false);
+    if (!available.length) return null;
+    return available.reduce((best, it) => {
+      const diff = Math.abs((it.irtB ?? it.difficulty ?? 0) - theta);
+      const bestDiff = Math.abs((best.irtB ?? best.difficulty ?? 0) - theta);
+      return diff < bestDiff ? it : best;
+    });
+  };
+
+  app.post("/api/assessment/placement/start", async (req, res) => {
+    try {
+      const { name, email, consentToResearch } = req.body;
+      if (!name || !email) return res.status(400).json({ error: "name and email are required" });
+
+      let allItems: any[] = [];
+      try {
+        const dbItems = await prisma.item.findMany({
+          where: { status: "ACTIVE" },
+          select: { id: true, skill: true, type: true, cefrLevel: true, content: true,
+                    difficulty: true, discrimination: true, guessing: true, assets: true }
+        });
+        allItems = dbItems.map(it => ({
+          id: it.id, skill: it.skill, type: it.type, cefrLevel: it.cefrLevel,
+          content: it.content, irtA: it.discrimination, irtB: it.difficulty, irtC: it.guessing,
+          assets: it.assets ?? [], active: true,
+        }));
+      } catch {
+        // DB unavailable — fall back to studioItems
+        const { studioItems } = await import("./src/data/studioItems.js");
+        allItems = (studioItems as any[]).map((it: any) => ({
+          id: it.id, skill: it.skill, type: it.type, cefrLevel: it.cefrLevel,
+          content: { prompt: it.prompt, options: it.options?.map((o: any) => o.text), correctIndex: it.options?.findIndex((o: any) => o.isCorrect) },
+          irtA: it.discrimination ?? 1, irtB: it.difficulty ?? 0, irtC: it.guessing ?? 0,
+          assets: [], active: true,
+        }));
+      }
+
+      if (!allItems.length) return res.status(503).json({ error: "No items available" });
+
+      const pId = "placement-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+      const startTheta = 0.0;
+      const firstItem = pickNextPlacementItem(allItems, new Set(), startTheta);
+      if (!firstItem) return res.status(503).json({ error: "No items available" });
+
+      placementSessions[pId] = {
+        theta: startTheta, sem: 1.5, items: allItems,
+        usedIds: new Set([firstItem.id]),
+        itemsAdministered: 0, maxItems: 30,
+        name: name.trim(), email: email.trim().toLowerCase(),
+      };
+
+      return res.json({ placementId: pId, firstItem, maxItems: 30 });
+    } catch (err) {
+      console.error("PLACEMENT START ERROR", err);
+      res.status(500).json({ error: "Failed to start placement test", details: String(err) });
+    }
+  });
+
+  app.post("/api/assessment/placement/:id/respond", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const sess = placementSessions[id];
+      if (!sess) return res.status(404).json({ error: "Placement session not found" });
+
+      const { itemId, selectedOption, latencyMs } = req.body;
+      const item = sess.items.find(it => it.id === itemId);
+
+      // Simple IRT-based theta update (EAP approximation)
+      if (item) {
+        const a = item.irtA ?? 1; const b = item.irtB ?? 0; const c = item.irtC ?? 0;
+        const correct = (() => {
+          const ci = item.content?.correctIndex;
+          if (ci !== undefined && ci !== null) return Number(selectedOption) === ci;
+          const co = item.content?.correctOption;
+          if (co !== undefined) return String(selectedOption) === String(co);
+          return false;
+        })();
+        const p = c + (1 - c) / (1 + Math.exp(-1.702 * a * (sess.theta - b)));
+        const info = Math.pow(1.702 * a, 2) * p * (1 - p);
+        sess.theta += ((correct ? 1 : 0) - p) / Math.max(info, 0.01);
+        sess.theta = Math.max(-4, Math.min(4, sess.theta));
+        sess.sem = Math.max(0.1, 1 / Math.sqrt(Math.max(info, 0.01)));
+      }
+      sess.itemsAdministered++;
+      const done = sess.itemsAdministered >= sess.maxItems || sess.sem < 0.35;
+
+      if (done) {
+        const cefrLevel = thetaToCefr(sess.theta);
+        delete placementSessions[id]; // clean up
+        return res.json({ complete: true, result: { cefrLevel, theta: sess.theta, sem: sess.sem } });
+      }
+
+      const nextItem = pickNextPlacementItem(sess.items, sess.usedIds, sess.theta);
+      if (!nextItem) {
+        const cefrLevel = thetaToCefr(sess.theta);
+        delete placementSessions[id];
+        return res.json({ complete: true, result: { cefrLevel, theta: sess.theta, sem: sess.sem } });
+      }
+      sess.usedIds.add(nextItem.id);
+      return res.json({
+        complete: false, nextItem,
+        itemsAdministered: sess.itemsAdministered,
+        currentCefrBand: thetaToCefr(sess.theta),
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to process response", details: String(err) });
     }
   });
 
