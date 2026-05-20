@@ -12,6 +12,7 @@
     "build:client": "vite build",
     "build:server": "esbuild server.ts --platform=node --format=esm --outfile=dist/server.js --bundle --packages=external",
     "build": "npm run build:client && npm run build:server && npx prisma generate",
+    "build:all": "npm run build",
     "start": "NODE_ENV=production node dist/server.js",
     "start:prod": "npx prisma migrate deploy && NODE_ENV=production node dist/server.js",
     "preview": "vite preview",
