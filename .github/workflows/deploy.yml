@@ -46,7 +46,7 @@ jobs:
       DEPLOY_ALERT_WEBHOOK_URL: ${{ secrets.DEPLOY_ALERT_WEBHOOK_URL }}
     steps:
       - name: Skip smoke if secrets not configured
-        if: ${{ !secrets.APP_URL || !secrets.AUTH_SMOKE_EMAIL || !secrets.AUTH_SMOKE_PASSWORD }}
+        if: ${{ env.BASE_URL == '' || env.AUTH_EMAIL == '' || env.AUTH_PASSWORD == '' }}
         run: |
           echo "⚠️  Smoke test secrets (APP_URL / AUTH_SMOKE_EMAIL / AUTH_SMOKE_PASSWORD) not set."
           echo "   Skipping post-deploy smoke test."
