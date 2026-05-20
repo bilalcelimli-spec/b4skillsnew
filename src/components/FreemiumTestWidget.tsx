@@ -308,8 +308,10 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
   const [speakingAudioUrl, setSpeakingAudioUrl] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const speakingChunksRef = useRef<Blob[]>([]);
+  const currentItemRef = useRef<any>(null);
 
-  // ── Effects ────────────────────────────────────────────────────────────────
+  // Sync ref for item-scoped callbacks
+  useEffect(() => { currentItemRef.current = currentItem; }, [currentItem]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -854,6 +856,8 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                     )}>
                       <button
                         onClick={async () => {
+                          if (!currentItem) return;
+                          const currentItemId = currentItem.id;
                           if (isRecording) {
                             mediaRecorderRef.current?.stop();
                             setIsRecording(false);
@@ -866,8 +870,11 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                               mr.onstop = () => {
                                 stream.getTracks().forEach(t => t.stop());
                                 const blob = new Blob(speakingChunksRef.current, { type: "audio/webm" });
-                                setSpeakingAudioUrl(URL.createObjectURL(blob));
-                                setHasRecording(true);
+                                // Only update state if we are still on the same item
+                                if (currentItemRef.current?.id === currentItemId) {
+                                  setSpeakingAudioUrl(URL.createObjectURL(blob));
+                                  setHasRecording(true);
+                                }
                               };
                               mediaRecorderRef.current = mr;
                               mr.start();

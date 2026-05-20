@@ -1812,6 +1812,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     theta: number; sem: number; items: any[]; usedIds: Set<string>;
     itemsAdministered: number; maxItems: number;
     name: string; email: string;
+    skillBreakdown: Record<string, { total: number; correct: number }>;
   }> = {};
 
   const CEFR_BANDS: { level: string; minTheta: number }[] = [
@@ -1821,10 +1822,20 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   ];
   const thetaToCefr = (theta: number) => CEFR_BANDS.find(b => theta >= b.minTheta)?.level ?? "A1";
 
-  const pickNextPlacementItem = (allItems: any[], usedIds: Set<string>, theta: number) => {
+  const pickNextPlacementItem = (allItems: any[], usedIds: Set<string>, theta: number, skillBreakdown: Record<string, any> = {}) => {
     const available = allItems.filter(it => !usedIds.has(it.id) && it.active !== false);
     if (!available.length) return null;
-    return available.reduce((best, it) => {
+
+    // Try to balance skills: prefer skills with fewer items administered so far
+    const skillCounts: Record<string, number> = {};
+    Object.entries(skillBreakdown).forEach(([s, data]) => { skillCounts[s] = (data as any).total; });
+    const minSkillCount = Math.min(...Object.values(skillCounts), 0);
+    
+    // Filter to skills that are within 2 items of the minimum count (or all if empty)
+    const balancedAvailable = available.filter(it => (skillCounts[it.skill] || 0) <= minSkillCount + 2);
+    const set = balancedAvailable.length > 0 ? balancedAvailable : available;
+
+    return set.reduce((best, it) => {
       const diff = Math.abs((it.irtB ?? it.difficulty ?? 0) - theta);
       const bestDiff = Math.abs((best.irtB ?? best.difficulty ?? 0) - theta);
       return diff < bestDiff ? it : best;
@@ -1876,7 +1887,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       const pId = "placement-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
       const startTheta = 0.0;
-      const firstItem = pickNextPlacementItem(allItems, new Set(), startTheta);
+      const firstItem = pickNextPlacementItem(allItems, new Set(), startTheta, {});
       if (!firstItem) return res.status(503).json({ error: "No items available" });
 
       placementSessions[pId] = {
@@ -1884,6 +1895,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         usedIds: new Set([firstItem.id]),
         itemsAdministered: 0, maxItems: 30,
         name: name.trim(), email: email.trim().toLowerCase(),
+        skillBreakdown: {},
       };
 
       return res.json({ placementId: pId, firstItem, maxItems: 30 });
@@ -1906,12 +1918,28 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (item) {
         const a = item.irtA ?? 1; const b = item.irtB ?? 0; const c = item.irtC ?? 0;
         const correct = (() => {
+          if (selectedOption === "speaking_recorded") return true;
           const ci = item.content?.correctIndex;
           if (ci !== undefined && ci !== null) return Number(selectedOption) === ci;
-          const co = item.content?.correctOption;
-          if (co !== undefined) return String(selectedOption) === String(co);
+          const co = item.content?.correctOption || item.content?.correctAnswer;
+          if (co !== undefined) {
+             const normalizedInput = String(selectedOption || "").toLowerCase().trim();
+             const normalizedCorrect = String(co).toLowerCase().trim();
+             if (normalizedCorrect.includes("|")) {
+                const parts = normalizedCorrect.split("|").map(p => p.trim());
+                return parts.some(p => p === normalizedInput) || normalizedInput === normalizedCorrect;
+             }
+             return normalizedInput === normalizedCorrect;
+          }
           return false;
         })();
+
+        // Update skill breakdown
+        const sk = item.skill || "GENERAL";
+        if (!sess.skillBreakdown[sk]) sess.skillBreakdown[sk] = { total: 0, correct: 0 };
+        sess.skillBreakdown[sk].total++;
+        if (correct) sess.skillBreakdown[sk].correct++;
+
         const p = c + (1 - c) / (1 + Math.exp(-1.702 * a * (sess.theta - b)));
         const info = Math.pow(1.702 * a, 2) * p * (1 - p);
         sess.theta += ((correct ? 1 : 0) - p) / Math.max(info, 0.01);
@@ -1923,15 +1951,55 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       if (done) {
         const cefrLevel = thetaToCefr(sess.theta);
+        const ciLow = sess.theta - 1.645 * sess.sem;
+        const ciHigh = sess.theta + 1.645 * sess.sem;
+        const completionMs = Date.now() - (Number(id.split("-")[1]) || Date.now());
+        
+        const result = {
+          placementId: id,
+          cefrLevel,
+          theta: sess.theta,
+          sem: sess.sem,
+          cefrConfidenceInterval: [cefrLevel, ciLow, ciHigh],
+          itemsAdministered: sess.itemsAdministered,
+          completionMs,
+          skillBreakdown: sess.skillBreakdown,
+          upgradePrompt: {
+            message: "To get a detailed breakdown of your Grammar, Vocabulary, and Listening skills, try our comprehensive adaptive test.",
+            skills: ["Speaking", "Writing", "Deep Psychometrics"],
+            callToActionUrl: "#pricing"
+          }
+        };
+
         delete placementSessions[id]; // clean up
-        return res.json({ complete: true, result: { cefrLevel, theta: sess.theta, sem: sess.sem } });
+        return res.json({ complete: true, result });
       }
 
-      const nextItem = pickNextPlacementItem(sess.items, sess.usedIds, sess.theta);
+      const nextItem = pickNextPlacementItem(sess.items, sess.usedIds, sess.theta, sess.skillBreakdown);
       if (!nextItem) {
         const cefrLevel = thetaToCefr(sess.theta);
+        const ciLow = sess.theta - 1.645 * sess.sem;
+        const ciHigh = sess.theta + 1.645 * sess.sem;
+        const completionMs = Date.now() - (Number(id.split("-")[1]) || Date.now());
+
+        const result = {
+          placementId: id,
+          cefrLevel,
+          theta: sess.theta,
+          sem: sess.sem,
+          cefrConfidenceInterval: [cefrLevel, ciLow, ciHigh],
+          itemsAdministered: sess.itemsAdministered,
+          completionMs,
+          skillBreakdown: sess.skillBreakdown,
+          upgradePrompt: {
+            message: "To get a detailed breakdown of your Grammar, Vocabulary, and Listening skills, try our comprehensive adaptive test.",
+            skills: ["Speaking", "Writing", "Deep Psychometrics"],
+            callToActionUrl: "#pricing"
+          }
+        };
+
         delete placementSessions[id];
-        return res.json({ complete: true, result: { cefrLevel, theta: sess.theta, sem: sess.sem } });
+        return res.json({ complete: true, result });
       }
       sess.usedIds.add(nextItem.id);
       return res.json({
