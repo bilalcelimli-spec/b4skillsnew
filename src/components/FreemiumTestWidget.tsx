@@ -302,6 +302,12 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
   const [skillsSeen, setSkillsSeen] = useState<string[]>([]);
   // MCQ auto-advance (800 ms after selection)
   const [autoAdvancing, setAutoAdvancing] = useState(false);
+  // Speaking recording
+  const [isRecording, setIsRecording] = useState(false);
+  const [hasRecording, setHasRecording] = useState(false);
+  const [speakingAudioUrl, setSpeakingAudioUrl] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const speakingChunksRef = useRef<Blob[]>([]);
 
   // ── Effects ────────────────────────────────────────────────────────────────
 
@@ -350,6 +356,14 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     setError(null);
     setShowContext(true);
     setAutoAdvancing(false);
+    setIsRecording(false);
+    setHasRecording(false);
+    setSpeakingAudioUrl(null);
+    speakingChunksRef.current = [];
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    mediaRecorderRef.current = null;
     if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentItem?.id]);
@@ -398,9 +412,15 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
   const handleSubmitAnswer = useCallback(async (explicitOption?: number | string) => {
     if (!placementId || !currentItem) return;
     const isFIB = currentItem.type === "FILL_IN_BLANKS" || !!currentItem.content.scaffold;
+    const isSpeaking = currentItem.skill === "SPEAKING" && !isFIB && (currentItem.content.options ?? []).length === 0;
     if (isFIB && !inputAnswer.trim()) return;
-    const answer = isFIB ? inputAnswer.trim() : (explicitOption !== undefined ? explicitOption : selectedOption);
-    if (!isFIB && (answer === null || answer === undefined)) return;
+    if (isSpeaking && !hasRecording) return;
+    const answer = isFIB
+      ? inputAnswer.trim()
+      : isSpeaking
+        ? "speaking_recorded"
+        : (explicitOption !== undefined ? explicitOption : selectedOption);
+    if (!isFIB && !isSpeaking && (answer === null || answer === undefined)) return;
     const latencyMs = Date.now() - itemStartTime;
     setLoading(true);
     setError(null);
@@ -821,6 +841,69 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                   />
                 )}
 
+                {/* ── Speaking recorder ── */}
+                {currentItem.skill === "SPEAKING" && !isFIB && opts.length === 0 && (
+                  <div className="flex flex-col items-center gap-5 py-4">
+                    <div className={cn(
+                      "relative flex items-center justify-center w-24 h-24 rounded-full transition-all duration-300",
+                      isRecording
+                        ? "bg-rose-100 ring-4 ring-rose-300 ring-offset-4 animate-pulse"
+                        : hasRecording
+                          ? "bg-green-100 ring-4 ring-green-300 ring-offset-4"
+                          : "bg-rose-50 hover:bg-rose-100"
+                    )}>
+                      <button
+                        onClick={async () => {
+                          if (isRecording) {
+                            mediaRecorderRef.current?.stop();
+                            setIsRecording(false);
+                          } else {
+                            try {
+                              const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                              const mr = new MediaRecorder(stream);
+                              speakingChunksRef.current = [];
+                              mr.ondataavailable = (e) => { if (e.data.size > 0) speakingChunksRef.current.push(e.data); };
+                              mr.onstop = () => {
+                                stream.getTracks().forEach(t => t.stop());
+                                const blob = new Blob(speakingChunksRef.current, { type: "audio/webm" });
+                                setSpeakingAudioUrl(URL.createObjectURL(blob));
+                                setHasRecording(true);
+                              };
+                              mediaRecorderRef.current = mr;
+                              mr.start();
+                              setIsRecording(true);
+                              setHasRecording(false);
+                              setSpeakingAudioUrl(null);
+                            } catch {
+                              setError("Microphone access denied. Please allow microphone access in your browser settings.");
+                            }
+                          }
+                        }}
+                        disabled={loading}
+                        aria-label={isRecording ? "Stop recording" : "Start recording"}
+                        className="flex items-center justify-center w-full h-full rounded-full focus:outline-none"
+                      >
+                        {isRecording
+                          ? <span className="w-7 h-7 bg-rose-600 rounded-sm" />
+                          : <Mic size={36} className={hasRecording ? "text-green-600" : "text-rose-600"} />
+                        }
+                      </button>
+                    </div>
+
+                    <p className="text-sm font-semibold text-slate-600 text-center">
+                      {isRecording
+                        ? "Recording… tap the square to stop."
+                        : hasRecording
+                          ? "Recording saved. Listen back or submit."
+                          : "Tap the microphone to start recording."}
+                    </p>
+
+                    {speakingAudioUrl && (
+                      <audio controls src={speakingAudioUrl} className="w-full max-w-xs rounded-xl" />
+                    )}
+                  </div>
+                )}
+
                 {!isFIB && opts.length > 0 && (
                   <div className="space-y-3">
                     {opts.map((opt, idx) => (
@@ -875,10 +958,10 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
 
                 <button
                   onClick={() => handleSubmitAnswer()}
-                  disabled={(isFIB ? !inputAnswer.trim() : selectedOption === null) || loading}
+                  disabled={(isFIB ? !inputAnswer.trim() : (currentItem.skill === "SPEAKING" && !isFIB && opts.length === 0) ? !hasRecording : selectedOption === null) || loading || isRecording}
                   className={cn(
                     "w-full rounded-2xl h-14 font-black text-base flex items-center justify-center gap-2 transition-all relative overflow-hidden",
-                    (isFIB ? !!inputAnswer.trim() : selectedOption !== null) && !loading
+                    (isFIB ? !!inputAnswer.trim() : (currentItem.skill === "SPEAKING" && !isFIB && opts.length === 0) ? hasRecording : selectedOption !== null) && !loading && !isRecording
                       ? "bg-[#9b276c] hover:bg-[#7d1f57] text-white shadow-lg shadow-[#9b276c]/25"
                       : "bg-slate-100 text-slate-400 cursor-not-allowed"
                   )}
