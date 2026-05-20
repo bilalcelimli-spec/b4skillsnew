@@ -1843,11 +1843,24 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           select: { id: true, skill: true, type: true, cefrLevel: true, content: true,
                     difficulty: true, discrimination: true, guessing: true, assets: true }
         });
-        allItems = dbItems.map(it => ({
-          id: it.id, skill: it.skill, type: it.type, cefrLevel: it.cefrLevel,
-          content: it.content, irtA: it.discrimination, irtB: it.difficulty, irtC: it.guessing,
-          assets: it.assets ?? [], active: true,
-        }));
+        allItems = dbItems.map(it => {
+          const raw = it.content as any;
+          // Normalize options: DB may store them as objects {id,text,isCorrect,rationale} or strings
+          const normalizeOptions = (opts: any[]): string[] =>
+            (opts ?? []).map(o => (typeof o === "string" ? o : String(o?.text ?? o)));
+          const content = {
+            ...raw,
+            options: raw?.options ? normalizeOptions(raw.options) : undefined,
+            correctIndex: raw?.correctIndex ?? (Array.isArray(raw?.options)
+              ? raw.options.findIndex((o: any) => typeof o === "object" && o?.isCorrect)
+              : undefined),
+          };
+          return {
+            id: it.id, skill: it.skill, type: it.type, cefrLevel: it.cefrLevel,
+            content, irtA: it.discrimination, irtB: it.difficulty, irtC: it.guessing,
+            assets: it.assets ?? [], active: true,
+          };
+        });
       } catch {
         // DB unavailable — fall back to studioItems
         const { studioItems } = await import("./src/data/studioItems.js");
