@@ -1,0 +1,600 @@
+{
+  "generatedAt": "2026-05-20T17:04:50.074Z",
+  "totalItems": 3399,
+  "totalMissing": 20,
+  "stats": {
+    "READING": {
+      "total": 852,
+      "missing": 5,
+      "issues": {
+        "NO_PASSAGE": 5
+      }
+    },
+    "LISTENING": {
+      "total": 327,
+      "missing": 10,
+      "issues": {
+        "NO_AUDIO_URL_HAS_TTS": 10
+      }
+    },
+    "WRITING": {
+      "total": 202,
+      "missing": 0,
+      "issues": {}
+    },
+    "SPEAKING": {
+      "total": 409,
+      "missing": 0,
+      "issues": {}
+    },
+    "GRAMMAR": {
+      "total": 1007,
+      "missing": 5,
+      "issues": {
+        "NO_IMAGE_URL": 5
+      }
+    },
+    "VOCABULARY": {
+      "total": 602,
+      "missing": 0,
+      "issues": {}
+    }
+  },
+  "items": [
+    {
+      "id": "cmp4fk18c0004o79bnfnaok8e",
+      "skill": "READING",
+      "cefrLevel": "PRE_A1",
+      "status": "PRETEST",
+      "type": "DRAG_DROP",
+      "issues": [
+        "NO_PASSAGE"
+      ],
+      "hasTtsScript": false,
+      "hasPassage": false,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "biasReview",
+        "correctAnswer",
+        "distractorRationale"
+      ],
+      "promptSnippet": "What is it?"
+    },
+    {
+      "id": "cmp4fog8j000ao79b3shjmxg2",
+      "skill": "READING",
+      "cefrLevel": "PRE_A1",
+      "status": "PRETEST",
+      "type": "DRAG_DROP",
+      "issues": [
+        "NO_PASSAGE"
+      ],
+      "hasTtsScript": false,
+      "hasPassage": false,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "biasReview",
+        "correctAnswer",
+        "distractorRationale"
+      ],
+      "promptSnippet": "Which job is 'for animals'?"
+    },
+    {
+      "id": "cmp4fe3hi0000o79bo9pus9g7",
+      "skill": "READING",
+      "cefrLevel": "PRE_A1",
+      "status": "PRETEST",
+      "type": "MULTIPLE_CHOICE",
+      "issues": [
+        "NO_PASSAGE"
+      ],
+      "hasTtsScript": false,
+      "hasPassage": false,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "biasReview",
+        "correctAnswer",
+        "distractorRationale"
+      ],
+      "promptSnippet": "What colour is the park?"
+    },
+    {
+      "id": "cmp4fmhss0009o79bwhxg5hnw",
+      "skill": "READING",
+      "cefrLevel": "PRE_A1",
+      "status": "PRETEST",
+      "type": "MULTIPLE_CHOICE",
+      "issues": [
+        "NO_PASSAGE"
+      ],
+      "hasTtsScript": false,
+      "hasPassage": false,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "biasReview",
+        "correctAnswer",
+        "distractorRationale"
+      ],
+      "promptSnippet": "What is in the library?"
+    },
+    {
+      "id": "cmp4fq9hx000co79b0jliuuhq",
+      "skill": "READING",
+      "cefrLevel": "PRE_A1",
+      "status": "PRETEST",
+      "type": "MULTIPLE_CHOICE",
+      "issues": [
+        "NO_PASSAGE"
+      ],
+      "hasTtsScript": false,
+      "hasPassage": false,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "biasReview",
+        "correctAnswer",
+        "distractorRationale"
+      ],
+      "promptSnippet": "Where is Tom from?"
+    },
+    {
+      "id": "cmpbixuwb0000nub4klf4v7fj",
+      "skill": "LISTENING",
+      "cefrLevel": "A1",
+      "status": "ACTIVE",
+      "type": "MULTIPLE_CHOICE",
+      "issues": [
+        "NO_AUDIO_URL_HAS_TTS"
+      ],
+      "moduleId": "primary-morning-school",
+      "passageId": "primary-morning-school",
+      "hasTtsScript": true,
+      "hasPassage": true,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "cefrBand",
+        "moduleId",
+        "speakers",
+        "subskill",
+        "ttsNotes",
+        "ttsScript",
+        "moduleTitle",
+        "productLine",
+        "ttsSettings",
+        "qualityNotes",
+        "questionNumber",
+        "numberOfSpeakers",
+        "estimatedDurationSeconds"
+      ],
+      "promptSnippet": "What subject is first today?"
+    },
+    {
+      "id": "cmpbixv2z0001nub4nn6inwfp",
+      "skill": "LISTENING",
+      "cefrLevel": "A1",
+      "status": "ACTIVE",
+      "type": "MULTIPLE_CHOICE",
+      "issues": [
+        "NO_AUDIO_URL_HAS_TTS"
+      ],
+      "moduleId": "primary-morning-school",
+      "passageId": "primary-morning-school",
+      "hasTtsScript": true,
+      "hasPassage": true,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "cefrBand",
+        "moduleId",
+        "speakers",
+        "subskill",
+        "ttsNotes",
+        "ttsScript",
+        "moduleTitle",
+        "productLine",
+        "ttsSettings",
+        "qualityNotes",
+        "questionNumber",
+        "numberOfSpeakers",
+        "estimatedDurationSeconds"
+      ],
+      "promptSnippet": "What did Tom forget?"
+    },
+    {
+      "id": "cmpbixv4k0002nub4fb0f3jhs",
+      "skill": "LISTENING",
+      "cefrLevel": "A1",
+      "status": "ACTIVE",
+      "type": "MULTIPLE_CHOICE",
+      "issues": [
+        "NO_AUDIO_URL_HAS_TTS"
+      ],
+      "moduleId": "primary-morning-school",
+      "passageId": "primary-morning-school",
+      "hasTtsScript": true,
+      "hasPassage": true,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "cefrBand",
+        "moduleId",
+        "speakers",
+        "subskill",
+        "ttsNotes",
+        "ttsScript",
+        "moduleTitle",
+        "productLine",
+        "ttsSettings",
+        "qualityNotes",
+        "questionNumber",
+        "numberOfSpeakers",
+        "estimatedDurationSeconds"
+      ],
+      "promptSnippet": "Where can Tom get a pencil?"
+    },
+    {
+      "id": "cmpbixv7u0003nub40qmf4l2o",
+      "skill": "LISTENING",
+      "cefrLevel": "A1",
+      "status": "ACTIVE",
+      "type": "MULTIPLE_CHOICE",
+      "issues": [
+        "NO_AUDIO_URL_HAS_TTS"
+      ],
+      "moduleId": "primary-morning-school",
+      "passageId": "primary-morning-school",
+      "hasTtsScript": true,
+      "hasPassage": true,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "cefrBand",
+        "moduleId",
+        "speakers",
+        "subskill",
+        "ttsNotes",
+        "ttsScript",
+        "moduleTitle",
+        "productLine",
+        "ttsSettings",
+        "qualityNotes",
+        "questionNumber",
+        "numberOfSpeakers",
+        "estimatedDurationSeconds"
+      ],
+      "promptSnippet": "How does Tom feel about maths?"
+    },
+    {
+      "id": "cmpbixvam0004nub4zoinr2yp",
+      "skill": "LISTENING",
+      "cefrLevel": "A1",
+      "status": "ACTIVE",
+      "type": "MULTIPLE_CHOICE",
+      "issues": [
+        "NO_AUDIO_URL_HAS_TTS"
+      ],
+      "moduleId": "primary-morning-school",
+      "passageId": "primary-morning-school",
+      "hasTtsScript": true,
+      "hasPassage": true,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "cefrBand",
+        "moduleId",
+        "speakers",
+        "subskill",
+        "ttsNotes",
+        "ttsScript",
+        "moduleTitle",
+        "productLine",
+        "ttsSettings",
+        "qualityNotes",
+        "questionNumber",
+        "numberOfSpeakers",
+        "estimatedDurationSeconds"
+      ],
+      "promptSnippet": "What does Ms. Green tell Tom to do at the end?"
+    },
+    {
+      "id": "cmpbiyxgc0000nuiobtzipkxy",
+      "skill": "LISTENING",
+      "cefrLevel": "A1",
+      "status": "ACTIVE",
+      "type": "MULTIPLE_CHOICE",
+      "issues": [
+        "NO_AUDIO_URL_HAS_TTS"
+      ],
+      "moduleId": "primary-morning-school",
+      "passageId": "primary-morning-school",
+      "hasTtsScript": true,
+      "hasPassage": true,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "cefrBand",
+        "moduleId",
+        "speakers",
+        "subskill",
+        "ttsNotes",
+        "ttsScript",
+        "moduleTitle",
+        "productLine",
+        "ttsSettings",
+        "qualityNotes",
+        "questionNumber",
+        "numberOfSpeakers",
+        "estimatedDurationSeconds"
+      ],
+      "promptSnippet": "What subject is first today?"
+    },
+    {
+      "id": "cmpbiyxju0001nuioqvl47hd4",
+      "skill": "LISTENING",
+      "cefrLevel": "A1",
+      "status": "ACTIVE",
+      "type": "MULTIPLE_CHOICE",
+      "issues": [
+        "NO_AUDIO_URL_HAS_TTS"
+      ],
+      "moduleId": "primary-morning-school",
+      "passageId": "primary-morning-school",
+      "hasTtsScript": true,
+      "hasPassage": true,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "cefrBand",
+        "moduleId",
+        "speakers",
+        "subskill",
+        "ttsNotes",
+        "ttsScript",
+        "moduleTitle",
+        "productLine",
+        "ttsSettings",
+        "qualityNotes",
+        "questionNumber",
+        "numberOfSpeakers",
+        "estimatedDurationSeconds"
+      ],
+      "promptSnippet": "What did Tom forget?"
+    },
+    {
+      "id": "cmpbiyxlw0002nuioygjw45p1",
+      "skill": "LISTENING",
+      "cefrLevel": "A1",
+      "status": "ACTIVE",
+      "type": "MULTIPLE_CHOICE",
+      "issues": [
+        "NO_AUDIO_URL_HAS_TTS"
+      ],
+      "moduleId": "primary-morning-school",
+      "passageId": "primary-morning-school",
+      "hasTtsScript": true,
+      "hasPassage": true,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "cefrBand",
+        "moduleId",
+        "speakers",
+        "subskill",
+        "ttsNotes",
+        "ttsScript",
+        "moduleTitle",
+        "productLine",
+        "ttsSettings",
+        "qualityNotes",
+        "questionNumber",
+        "numberOfSpeakers",
+        "estimatedDurationSeconds"
+      ],
+      "promptSnippet": "Where can Tom get a pencil?"
+    },
+    {
+      "id": "cmpbiyxo90003nuiofa9hu52z",
+      "skill": "LISTENING",
+      "cefrLevel": "A1",
+      "status": "ACTIVE",
+      "type": "MULTIPLE_CHOICE",
+      "issues": [
+        "NO_AUDIO_URL_HAS_TTS"
+      ],
+      "moduleId": "primary-morning-school",
+      "passageId": "primary-morning-school",
+      "hasTtsScript": true,
+      "hasPassage": true,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "cefrBand",
+        "moduleId",
+        "speakers",
+        "subskill",
+        "ttsNotes",
+        "ttsScript",
+        "moduleTitle",
+        "productLine",
+        "ttsSettings",
+        "qualityNotes",
+        "questionNumber",
+        "numberOfSpeakers",
+        "estimatedDurationSeconds"
+      ],
+      "promptSnippet": "How does Tom feel about maths?"
+    },
+    {
+      "id": "cmpbiyxre0004nuioi6ynge5w",
+      "skill": "LISTENING",
+      "cefrLevel": "A1",
+      "status": "ACTIVE",
+      "type": "MULTIPLE_CHOICE",
+      "issues": [
+        "NO_AUDIO_URL_HAS_TTS"
+      ],
+      "moduleId": "primary-morning-school",
+      "passageId": "primary-morning-school",
+      "hasTtsScript": true,
+      "hasPassage": true,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "passage",
+        "cefrBand",
+        "moduleId",
+        "speakers",
+        "subskill",
+        "ttsNotes",
+        "ttsScript",
+        "moduleTitle",
+        "productLine",
+        "ttsSettings",
+        "qualityNotes",
+        "questionNumber",
+        "numberOfSpeakers",
+        "estimatedDurationSeconds"
+      ],
+      "promptSnippet": "What does Ms. Green tell Tom to do at the end?"
+    },
+    {
+      "id": "cmp4k06su0011o7c4t8nmpcgk",
+      "skill": "GRAMMAR",
+      "cefrLevel": "PRE_A1",
+      "status": "PRETEST",
+      "type": "FILL_IN_BLANKS",
+      "issues": [
+        "NO_IMAGE_URL"
+      ],
+      "hasTtsScript": false,
+      "hasPassage": false,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "biasReview",
+        "correctAnswer",
+        "distractorRationale"
+      ],
+      "promptSnippet": "This ___ a photo."
+    },
+    {
+      "id": "cmp4fteze000yo76leijlhguf",
+      "skill": "GRAMMAR",
+      "cefrLevel": "A1",
+      "status": "PRETEST",
+      "type": "DRAG_DROP",
+      "issues": [
+        "NO_IMAGE_URL"
+      ],
+      "hasTtsScript": false,
+      "hasPassage": false,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "biasReview",
+        "correctAnswer",
+        "distractorRationale"
+      ],
+      "promptSnippet": "Look at the night sky. In the sky, there ___ many stars."
+    },
+    {
+      "id": "cmp4gzxdy002xo76lk3s019hr",
+      "skill": "GRAMMAR",
+      "cefrLevel": "A1",
+      "status": "PRETEST",
+      "type": "DRAG_DROP",
+      "issues": [
+        "NO_IMAGE_URL"
+      ],
+      "hasTtsScript": false,
+      "hasPassage": false,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "biasReview",
+        "correctAnswer",
+        "distractorRationale"
+      ],
+      "promptSnippet": "Complete the sentence about the picture: There ___ two books on the desk."
+    },
+    {
+      "id": "cmp4hlvst000oo7ap84g4kbo3",
+      "skill": "GRAMMAR",
+      "cefrLevel": "A2",
+      "status": "PRETEST",
+      "type": "FILL_IN_BLANKS",
+      "issues": [
+        "NO_IMAGE_URL"
+      ],
+      "hasTtsScript": false,
+      "hasPassage": false,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "biasReview",
+        "correctAnswer",
+        "distractorRationale"
+      ],
+      "promptSnippet": "My friend, Alex, bought a new smartphone last week. It's really modern and fast. He bought it online"
+    },
+    {
+      "id": "cmp4hlvsw000po7apjl9dnzd9",
+      "skill": "GRAMMAR",
+      "cefrLevel": "A2",
+      "status": "PRETEST",
+      "type": "FILL_IN_BLANKS",
+      "issues": [
+        "NO_IMAGE_URL"
+      ],
+      "hasTtsScript": false,
+      "hasPassage": false,
+      "hasImageUrl": false,
+      "contentKeys": [
+        "prompt",
+        "options",
+        "biasReview",
+        "correctAnswer",
+        "distractorRationale"
+      ],
+      "promptSnippet": "My new phone is great! I bought it last week. It has a big screen. It is also ____ than my old phone"
+    }
+  ]
+}

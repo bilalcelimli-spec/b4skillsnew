@@ -7,8 +7,8 @@
 | Phase | Component | Priority | Est. Days | Status |
 |-------|-----------|----------|-----------|--------|
 | **Q2.1** | **Speech Acoustic Analysis** | 1 | 12-15 | ✅ COMPLETE |
-| **Q2.2** | Audio Quality Baseline | 1 | 8-10 | ⏳ Starting Next |
-| **Q2.3** | MIRT Multi-Skill Linking | 2 | 15-20 | Queued |
+| **Q2.2** | **Audio Quality Baseline** | 1 | 8-10 | ✅ COMPLETE |
+| **Q2.3** | MIRT Multi-Skill Linking | 2 | 15-20 | ⏳ Starting Next |
 | **Q2.4** | Real-Time Transcription | 2 | 10-15 | Queued |
 | **Q2.5** | Person-Fit Statistics | 3 | 8-12 | Queued |
 
