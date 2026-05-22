@@ -7,6 +7,7 @@ import {
 import { CircuitBreakerOpenError } from "../ai/circuit-breaker.js";
 import { ProsodicAnalyzer } from "./prosodic-analyzer.js";
 import { ArgumentQualityAnalyzer } from "./argument-quality-analyzer.js";
+import { AcousticAnalyzer, computeAcousticFluencyScore, flagAudioQuality, type AudioFeatures } from "./acoustic-analyzer.js";
 
 export type ScoreSource = "ai_auto" | "ai_flagged" | "human" | "rejected_integrity" | "ai_unavailable";
 
@@ -453,6 +454,41 @@ export const ScoringOrchestratorEnsemble = {
 
       // Convert ensemble result
       const orchestrated = convertEnsembleToOrchestrated(ensembleResult, "SPEAKING", integrity);
+
+      // ─── Q2.1: Extract acoustic features for fluency scoring ──────────────────
+      let audioFeatures: AudioFeatures | undefined;
+      try {
+        audioFeatures = await AcousticAnalyzer.analyzeAudio(audioBase64, transcript);
+
+        // Check audio quality and flag if poor
+        const audioQualityCheck = flagAudioQuality(audioFeatures);
+        if (!audioQualityCheck.acceptable) {
+          orchestrated.requiresHumanReview = true;
+          orchestrated.reviewReasons.push(`AUDIO_QUALITY_FLAG: ${audioQualityCheck.reason}`);
+          if (orchestrated.scoreSource === "ai_auto") {
+            orchestrated.scoreSource = "ai_flagged";
+          }
+        }
+
+        // Blend acoustic fluency with LLM fluency (50% LLM + 30% acoustic + 20% speech rate)
+        const acousticFluencyContribution = computeAcousticFluencyScore(
+          audioFeatures,
+          ensembleResult.finalCefrLevel
+        );
+        const llmFluency = orchestrated.aiResult.rubricScores.fluency ?? orchestrated.aiResult.score;
+        const normalizedLLMFluency = llmFluency > 1 ? llmFluency / 10 : llmFluency;
+
+        // Weighted blend: 50% LLM fluency + 50% acoustic contribution
+        const blendedFluency = (normalizedLLMFluency * 0.5 + acousticFluencyContribution * 0.5);
+        orchestrated.aiResult.rubricScores.fluency = blendedFluency * 10; // Convert back to 0-10 scale
+
+        // Attach acoustic features metadata
+        (orchestrated.aiResult as any).audioFeatures = audioFeatures;
+        (orchestrated.aiResult as any).acousticFluencyContribution = acousticFluencyContribution;
+      } catch (acousticError) {
+        console.warn("[ScoringOrchestrator] Acoustic analysis failed, continuing without acoustic features:", acousticError);
+        // Gracefully degrade: continue without acoustic features
+      }
 
       // Enrich with prosodic analysis
       const geminiFeatures = orchestrated.aiResult.speakingFeatures;
