@@ -1,6 +1,6 @@
-import { scoreWithGemini } from "./gemini-scoring-service.js";
-import { scoreWithClaude } from "./claude-scoring-service.js";
-import { scoreWithGPT4 } from "./gpt4-scoring-service.js";
+import { GeminiScoringService } from "./gemini-scoring-service.js";
+import { scoreSpeakingWithClaude, scoreWritingWithClaude } from "./claude-scoring-service.js";
+import { scoreSpeakingWithGPT4, scoreWritingWithGPT4 } from "./gpt4-scoring-service.js";
 import type { CefrLevel } from "../cefr/cefr-framework.js";
 import type { MacroSkill } from "../language-skills/language-skill-framework.js";
 
@@ -87,35 +87,23 @@ async function scoreWithAllRaters(
     {
       name: "gemini" as const,
       fn: () =>
-        scoreWithGemini(
-          candidateResponse,
-          taskPrompt,
-          targetCefrLevel,
-          skill,
-          transcript
-        ),
+        skill === "SPEAKING" && transcript
+          ? GeminiScoringService.scoreSpeaking(transcript, "audio/mpeg", taskPrompt, targetCefrLevel)
+          : GeminiScoringService.scoreWriting(candidateResponse, taskPrompt, targetCefrLevel),
     },
     {
       name: "claude" as const,
       fn: () =>
-        scoreWithClaude(
-          candidateResponse,
-          taskPrompt,
-          targetCefrLevel,
-          skill,
-          transcript
-        ),
+        skill === "SPEAKING" && transcript
+          ? scoreSpeakingWithClaude(transcript, "audio/mpeg", taskPrompt, targetCefrLevel)
+          : scoreWritingWithClaude(candidateResponse, taskPrompt, targetCefrLevel),
     },
     {
       name: "gpt4" as const,
       fn: () =>
-        scoreWithGPT4(
-          candidateResponse,
-          taskPrompt,
-          targetCefrLevel,
-          skill,
-          transcript
-        ),
+        skill === "SPEAKING" && transcript
+          ? scoreSpeakingWithGPT4(transcript, "audio/mpeg", taskPrompt, targetCefrLevel)
+          : scoreWritingWithGPT4(candidateResponse, taskPrompt, targetCefrLevel),
     },
   ];
 
