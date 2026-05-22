@@ -8,6 +8,7 @@ import { CircuitBreakerOpenError } from "../ai/circuit-breaker.js";
 import { ProsodicAnalyzer } from "./prosodic-analyzer.js";
 import { ArgumentQualityAnalyzer } from "./argument-quality-analyzer.js";
 import { AcousticAnalyzer, computeAcousticFluencyScore, flagAudioQuality, type AudioFeatures } from "./acoustic-analyzer.js";
+import { AudioQualityAnalyzer, generateQualityRecommendation, type AudioQualityMetrics } from "./audio-quality-analyzer.js";
 
 export type ScoreSource = "ai_auto" | "ai_flagged" | "human" | "rejected_integrity" | "ai_unavailable";
 
@@ -457,6 +458,7 @@ export const ScoringOrchestratorEnsemble = {
 
       // ─── Q2.1: Extract acoustic features for fluency scoring ──────────────────
       let audioFeatures: AudioFeatures | undefined;
+      let audioQualityMetrics: AudioQualityMetrics | undefined;
       try {
         audioFeatures = await AcousticAnalyzer.analyzeAudio(audioBase64, transcript);
 
@@ -468,6 +470,42 @@ export const ScoringOrchestratorEnsemble = {
           if (orchestrated.scoreSource === "ai_auto") {
             orchestrated.scoreSource = "ai_flagged";
           }
+        }
+
+        // ─── Q2.2: Advanced audio quality analysis ──────────────────────────────
+        try {
+          audioQualityMetrics = await AudioQualityAnalyzer.analyzeAudioQuality(
+            audioBase64,
+            audioFeatures
+          );
+
+          // Generate quality recommendation
+          const qualityRec = generateQualityRecommendation(audioQualityMetrics, audioFeatures);
+
+          // REJECT if critical quality issues
+          if (qualityRec.recommendation === "REJECT") {
+            orchestrated.requiresHumanReview = true;
+            orchestrated.reviewReasons.push(`AUDIO_QUALITY_REJECT: ${qualityRec.reason}`);
+            if (orchestrated.scoreSource === "ai_auto") {
+              orchestrated.scoreSource = "ai_flagged";
+            }
+          }
+
+          // WARN if quality concerns
+          if (qualityRec.recommendation === "WARN") {
+            orchestrated.requiresHumanReview = true;
+            orchestrated.reviewReasons.push(`AUDIO_QUALITY_WARN: ${qualityRec.reason}`);
+            if (orchestrated.scoreSource === "ai_auto") {
+              orchestrated.scoreSource = "ai_flagged";
+            }
+          }
+
+          // Attach quality metrics to metadata
+          (orchestrated.aiResult as any).audioQualityMetrics = audioQualityMetrics;
+          (orchestrated.aiResult as any).qualityRecommendation = qualityRec;
+        } catch (qualityError) {
+          console.warn("[ScoringOrchestrator] Audio quality analysis failed, continuing:", qualityError);
+          // Gracefully degrade: continue without quality analysis
         }
 
         // Blend acoustic fluency with LLM fluency (50% LLM + 30% acoustic + 20% speech rate)
