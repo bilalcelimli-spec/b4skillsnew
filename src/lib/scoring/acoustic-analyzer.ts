@@ -86,6 +86,11 @@ export class AcousticAnalyzer {
       // TODO: In production, invoke Python backend (librosa) or Node audio library
       // For MVP, return simulated features based on audio length + transcript
 
+      // Validate base64 format
+      if (!audioBase64 || !/^[A-Za-z0-9+/]*={0,2}$/.test(audioBase64)) {
+        throw new Error("Invalid base64 format");
+      }
+
       const audioBuffer = Buffer.from(audioBase64, "base64");
       const audioLengthSeconds = this.estimateAudioDuration(audioBuffer);
       const wordCount = transcript.split(/\s+/).length;
