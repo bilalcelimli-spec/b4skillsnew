@@ -1,141 +1,231 @@
+#!/usr/bin/env npx tsx
 /**
- * Fix MCQ Option IDs and Shuffle Answer Positions
+ * Fix MCQ Item Bank: Add option IDs and shuffle answer positions
  *
- * Problem: MCQ items (GRAMMAR, VOCABULARY, READING) lack:
- *   - options[].id fields (A/B/C/D) required by shuffleMcqOptions()
- *   - correctAnswer field required by shuffleMcqOptions()
- * Result: Server-side shuffle silently returns null → candidates always see
- *         options in DB order → correct answer was at pos0 (A) 42.6% of the time.
+ * Problem: 42.6% of correct answers in position 0 (A) due to:
+ *  1. Missing options[].id (A/B/C/D)
+ *  2. Missing correctAnswer field
+ *  3. shuffleMcqOptions() returns null → silent skip
  *
- * Fix:
- *   1. Add id fields (A, B, C, D) to each option
- *   2. Rotate options so correct answer is evenly distributed (round-robin)
- *   3. Set correctAnswer to the letter at the correct position
+ * Solution:
+ *  1. Add options[].id sequentially (A, B, C, D)
+ *  2. Shuffle options with round-robin distribution (targetPos = itemIndex % 4)
+ *  3. Add correctAnswer field with post-shuffle letter
+ *
+ * Flags:
+ *  DRY_RUN=1    — Preview changes, don't touch database
+ *  SKIP_SHUFFLE=1 — Only add id/correctAnswer, don't reorder options
  *
  * Usage:
- *   DRY_RUN=1 npx tsx scripts/fix-mcq-ids-and-shuffle.ts    # preview only
- *   npx tsx scripts/fix-mcq-ids-and-shuffle.ts              # apply
- *   SKIP_SHUFFLE=1 npx tsx scripts/fix-mcq-ids-and-shuffle.ts  # add ids/correctAnswer, keep order
+ *  DRY_RUN=1 npx tsx scripts/fix-mcq-ids-and-shuffle.ts    # Preview
+ *  npx tsx scripts/fix-mcq-ids-and-shuffle.ts              # Apply
  */
 
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../src/lib/prisma.js";
 
-const prisma = new PrismaClient();
-const isDryRun = process.env.DRY_RUN === "1";
-const skipShuffle = process.env.SKIP_SHUFFLE === "1";
+const DRY_RUN = process.env.DRY_RUN === "1";
+const SKIP_SHUFFLE = process.env.SKIP_SHUFFLE === "1";
 
-// Standard MCQ labels (used by server-side shuffle, max A-D)
-const LABELS = ["A", "B", "C", "D", "E", "F", "G", "H"];
-const MCQ_SKILLS = ["GRAMMAR", "VOCABULARY", "READING"];
-// Server shuffleMcqOptions only handles A-D; items with 5+ options are skipped for shuffle
-const MAX_SHUFFLEABLE = 4;
+const LABELS = ["A", "B", "C", "D"];
 
-function rotateArray<T>(arr: T[], by: number): T[] {
-  if (by === 0) return arr;
-  return [...arr.slice(by), ...arr.slice(0, by)];
+interface MCQOption {
+  id?: string;
+  text: string;
+  isCorrect: boolean;
 }
 
-async function main() {
-  console.log(`🔀 Fixing MCQ option IDs and shuffling answer positions…\n`);
-  if (isDryRun) console.log("   (DRY RUN — no DB changes)\n");
-  if (skipShuffle) console.log("   (SKIP_SHUFFLE — adding ids/correctAnswer only)\n");
+interface MCQContent {
+  type: "MULTIPLE_CHOICE";
+  question: string;
+  options: MCQOption[];
+  explanation?: string;
+  correctAnswer?: string;
+}
 
-  const items = await prisma.item.findMany({
-    where: { skill: { in: MCQ_SKILLS as any[] } },
-    select: { id: true, itemCode: true, skill: true, content: true },
-    orderBy: { createdAt: "asc" },
-  });
+function addIdsToOptions(options: MCQOption[]): MCQOption[] {
+  return options.map((opt, i) => ({
+    ...opt,
+    id: LABELS[i % 4],
+  }));
+}
 
-  console.log(`Found ${items.length} MCQ items to process.\n`);
-
-  // Before distribution
-  const beforeDist: Record<string, number> = {};
-  for (const item of items) {
-    const c = typeof item.content === "string" ? JSON.parse(item.content) : item.content;
-    const opts: any[] = c.options || [];
-    const pos = opts.findIndex((o) => o.isCorrect);
-    const key = pos === -1 ? "none" : `pos${pos}`;
-    beforeDist[key] = (beforeDist[key] || 0) + 1;
+function shuffleOptionsRoundRobin(
+  options: MCQOption[],
+  itemIndex: number
+): MCQOption[] {
+  if (options.length !== 4) {
+    console.warn(
+      `  ⚠️  Item has ${options.length} options (expected 4), skipping shuffle`
+    );
+    return options;
   }
-  console.log("Before distribution:");
-  for (const [k, v] of Object.entries(beforeDist).sort()) {
-    console.log(`  ${k}: ${v} (${((v / items.length) * 100).toFixed(1)}%)`);
+
+  const targetPos = itemIndex % 4;
+  const currentCorrectPos = options.findIndex((o) => o.isCorrect);
+
+  if (currentCorrectPos === -1) {
+    console.warn(`  ⚠️  No option marked isCorrect, skipping shuffle`);
+    return options;
   }
-  console.log();
 
-  let updated = 0;
-  let skipped = 0;
-  const afterDist: Record<string, number> = {};
+  // Calculate rotation
+  const rotateBy = (targetPos - currentCorrectPos + 4) % 4;
+  const rotated = [
+    ...options.slice(rotateBy),
+    ...options.slice(0, rotateBy),
+  ];
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const content =
-      typeof item.content === "string" ? JSON.parse(item.content) : item.content;
-    const options: any[] = content.options || [];
+  return rotated;
+}
 
-    if (options.length < 2) {
-      skipped++;
+async function processMCQItems(): Promise<void> {
+  const skills = ["GRAMMAR", "VOCABULARY", "READING"];
+  let totalProcessed = 0;
+  let totalUpdated = 0;
+  const errors: Array<{ itemCode: string; error: string }> = [];
+
+  for (const skill of skills) {
+    console.log(`\n📚 Processing ${skill} items...`);
+
+    const items = await prisma.item.findMany({
+      where: { skill },
+      select: {
+        id: true,
+        itemCode: true,
+        skill: true,
+        content: true,
+      },
+      orderBy: { itemCode: "asc" },
+    });
+
+    if (items.length === 0) {
+      console.log(`  ℹ️  No items found`);
       continue;
     }
 
-    const currentCorrectPos = options.findIndex((o) => o.isCorrect);
-    if (currentCorrectPos === -1) {
-      skipped++;
+    const mcqItems = items.filter(
+      (item) => (item.content as MCQContent).type === "MULTIPLE_CHOICE"
+    );
+
+    if (mcqItems.length === 0) {
+      console.log(`  ℹ️  No MCQ items found (${items.length} total items)`);
       continue;
     }
 
-    let finalOptions: any[];
-    const canShuffle = options.length <= MAX_SHUFFLEABLE && !skipShuffle;
+    console.log(`  Found ${mcqItems.length} MCQ items (out of ${items.length})`);
 
-    if (!canShuffle) {
-      // Items with 5+ options (e.g. KET matching) or SKIP_SHUFFLE: just add ids, keep order
-      finalOptions = options.map((o, idx) => ({ ...o, id: LABELS[idx] }));
-    } else {
-      // Round-robin target: distribute correct answers evenly across A/B/C/D
-      const targetPos = i % 4;
-      const rotateBy = (targetPos - currentCorrectPos + options.length) % options.length;
-      const rotated = rotateArray(options, rotateBy);
-      finalOptions = rotated.map((o, idx) => ({ ...o, id: LABELS[idx] }));
+    for (let idx = 0; idx < mcqItems.length; idx++) {
+      const item = mcqItems[idx];
+      const content = item.content as MCQContent;
+
+      if (content.type !== "MULTIPLE_CHOICE" || !content.options) {
+        errors.push({
+          itemCode: item.itemCode,
+          error: "Invalid content structure",
+        });
+        continue;
+      }
+
+      try {
+        // Check if needs update
+        const needsIdUpdate = content.options.some((opt) => !opt.id);
+        const needsCorrectAnswerUpdate = !("correctAnswer" in content);
+
+        if (!needsIdUpdate && !needsCorrectAnswerUpdate) {
+          if (DRY_RUN) {
+            console.log(
+              `  [DRY RUN] ${item.itemCode}: already has id/correctAnswer`
+            );
+          }
+          continue;
+        }
+
+        // Step 1: Add IDs if missing
+        let updatedOptions = content.options.map((opt, i) =>
+          opt.id
+            ? opt
+            : {
+                ...opt,
+                id: LABELS[i % 4],
+              }
+        );
+
+        // Step 2: Shuffle if not skipped
+        if (!SKIP_SHUFFLE && needsIdUpdate) {
+          updatedOptions = shuffleOptionsRoundRobin(updatedOptions, idx);
+        }
+
+        // Step 3: Add correctAnswer field
+        const correctPos = updatedOptions.findIndex((o) => o.isCorrect);
+        const correctAnswer = correctPos >= 0 ? LABELS[correctPos] : "A";
+
+        const updatedContent: MCQContent = {
+          ...content,
+          options: updatedOptions,
+          correctAnswer,
+        };
+
+        if (DRY_RUN) {
+          console.log(
+            `  [DRY RUN] ${item.itemCode}: shuffle ${!SKIP_SHUFFLE && needsIdUpdate ? "enabled" : "disabled"}, correctAnswer=${correctAnswer}`
+          );
+        } else {
+          await prisma.item.update({
+            where: { id: item.id },
+            data: { content: updatedContent },
+          });
+          console.log(
+            `  ✅ ${item.itemCode}: correctAnswer=${correctAnswer}${!SKIP_SHUFFLE && needsIdUpdate ? " (shuffled)" : ""}`
+          );
+        }
+
+        totalUpdated++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push({ itemCode: item.itemCode, error: msg });
+        console.error(`  ❌ ${item.itemCode}: ${msg}`);
+      }
+
+      totalProcessed++;
     }
-
-    const newCorrectPos = finalOptions.findIndex((o) => o.isCorrect);
-    // Only set correctAnswer for items with ≤4 options (server shuffle requires A-D)
-    const correctAnswer = options.length <= MAX_SHUFFLEABLE ? LABELS[newCorrectPos] : undefined;
-
-    const posKey = `pos${newCorrectPos}`;
-    afterDist[posKey] = (afterDist[posKey] || 0) + 1;
-
-    if (!isDryRun) {
-      const updatedContent: any = { ...content, options: finalOptions };
-      if (correctAnswer !== undefined) updatedContent.correctAnswer = correctAnswer;
-      await prisma.item.update({
-        where: { id: item.id },
-        data: { content: updatedContent },
-      });
-    }
-
-    updated++;
   }
 
-  console.log(`\nAfter distribution (${isDryRun ? "projected" : "applied"}):`);
-  for (const [k, v] of Object.entries(afterDist).sort()) {
-    console.log(`  ${k}: ${v} (${((v / updated) * 100).toFixed(1)}%)`);
+  // Summary
+  console.log(`\n${"=".repeat(60)}`);
+  console.log(`📊 SUMMARY`);
+  console.log(`${"=".repeat(60)}`);
+  console.log(`Total MCQ items processed: ${totalProcessed}`);
+  console.log(`Items updated: ${totalUpdated}`);
+  if (errors.length > 0) {
+    console.error(`Errors: ${errors.length}`);
+    for (const { itemCode, error } of errors.slice(0, 10)) {
+      console.error(`  - ${itemCode}: ${error}`);
+    }
+    if (errors.length > 10) {
+      console.error(`  ... and ${errors.length - 10} more`);
+    }
   }
 
-  console.log(`\n📊 Summary:`);
-  console.log(`   Processed: ${updated}`);
-  console.log(`   Skipped:   ${skipped} (no options or no correct answer)`);
-
-  if (isDryRun) {
-    console.log(`\n✓ DRY RUN complete. Run without DRY_RUN=1 to apply.\n`);
+  if (DRY_RUN) {
+    console.log(`\n⚠️  DRY RUN MODE — No database changes made`);
+    console.log(`Remove DRY_RUN=1 to apply changes`);
   } else {
-    console.log(`\n✨ Done! ${updated} items updated.\n`);
+    console.log(`\n✨ Database updated successfully`);
+  }
+
+  if (SKIP_SHUFFLE) {
+    console.log(`\n⚠️  SKIP_SHUFFLE=1 — Options NOT reordered`);
+    console.log(`Remove SKIP_SHUFFLE=1 to enable shuffling`);
   }
 }
 
-main()
-  .catch((e) => {
-    console.error("Error:", e);
-    process.exit(1);
+// Main
+processMCQItems()
+  .then(() => {
+    console.log(`\nDone.`);
+    process.exit(0);
   })
-  .finally(() => prisma.$disconnect());
+  .catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });

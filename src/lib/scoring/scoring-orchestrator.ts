@@ -345,3 +345,162 @@ export const ScoringOrchestrator = {
     }
   },
 };
+// ─── Multi-Rater Ensemble Integration ─────────────────────────────────────────
+
+const USE_ENSEMBLE_SCORING = process.env.USE_ENSEMBLE_SCORING === "true";
+
+import { scoreWithEnsemble, scoreWritingWithEnsemble, scoreSpeakingWithEnsemble } from "./multi-rater-ensemble.js";
+import { convertEnsembleToOrchestrated } from "./ensemble-adapter.js";
+import type { CefrLevel } from "../cefr/cefr-framework.js";
+
+/**
+ * Extended orchestrator that can use either primary-verifier or multi-rater ensemble
+ * mode based on USE_ENSEMBLE_SCORING environment variable.
+ */
+export const ScoringOrchestratorEnsemble = {
+  async scoreWriting(text: string, prompt: string, targetCefrLevel?: CefrLevel): Promise<OrchestratedScore> {
+    if (!USE_ENSEMBLE_SCORING) {
+      return ScoringOrchestrator.scoreWriting(text, prompt);
+    }
+
+    const integrity = assessWritingIntegrity({ text, prompt });
+    if (integrity.recommendation === "reject") {
+      return buildRejectedScore(integrity);
+    }
+
+    try {
+      // Call multi-rater ensemble instead
+      const ensembleResult = await scoreWritingWithEnsemble(text, prompt, targetCefrLevel || "B1");
+
+      // Convert ensemble result to orchestrated format
+      const orchestrated = convertEnsembleToOrchestrated(ensembleResult, "WRITING", integrity);
+
+      // Enrich with discourse analysis (same as primary-verifier flow)
+      const aqProfile = ArgumentQualityAnalyzer.analyse(text, prompt);
+      (orchestrated.aiResult as any).argumentQualityProfile = aqProfile;
+
+      const rawCoherence = orchestrated.aiResult.rubricScores.coherence ?? (orchestrated.aiResult.score * 10);
+      const normalizedCoherence = rawCoherence > 1 ? rawCoherence / 10 : rawCoherence;
+      const aqAgreement = ArgumentQualityAnalyzer.raterAgreementKappa(normalizedCoherence, aqProfile.discourseQualityScore);
+      (orchestrated.aiResult as any).argumentQualityAgreement = aqAgreement;
+
+      if (aqAgreement.agreement === "POOR") {
+        orchestrated.requiresHumanReview = true;
+        orchestrated.reviewReasons.push("DISCOURSE_AI_DISAGREEMENT");
+        if (orchestrated.scoreSource === "ai_auto") {
+          orchestrated.scoreSource = "ai_flagged";
+        }
+      }
+
+      if (aqProfile.flags.includes("UNSUPPORTED_CLAIMS") || aqProfile.flags.includes("NO_CLAIM_DETECTED")) {
+        orchestrated.reviewReasons.push("WEAK_ARGUMENT_STRUCTURE");
+      }
+
+      return orchestrated;
+    } catch (err) {
+      return buildUnavailableScore(err, integrity);
+    }
+  },
+
+  async scoreSpeaking(
+    audioBase64: string,
+    mimeType: string,
+    prompt: string,
+    audioMetadata?: { audioDurationSec?: number; silentDurationSec?: number },
+    targetCefrLevel?: CefrLevel
+  ): Promise<OrchestratedScore> {
+    if (!USE_ENSEMBLE_SCORING) {
+      return ScoringOrchestrator.scoreSpeaking(audioBase64, mimeType, prompt, audioMetadata);
+    }
+
+    // Audio-only integrity checks first
+    const audioOnly = assessSpeakingIntegrity({
+      transcript: "",
+      prompt,
+      audioDurationSec: audioMetadata?.audioDurationSec,
+      silentDurationSec: audioMetadata?.silentDurationSec,
+      minWordCount: 0,
+    });
+    if (audioOnly.issues.some(i =>
+      i.flag === "AUDIO_TOO_SHORT" || i.flag === "AUDIO_MOSTLY_SILENT"
+    )) {
+      return buildRejectedScore(audioOnly);
+    }
+
+    try {
+      // Call multi-rater ensemble
+      const ensembleResult = await scoreSpeakingWithEnsemble(
+        audioBase64,
+        mimeType,
+        prompt,
+        targetCefrLevel || "B1"
+      );
+
+      // Extract transcript from first rater (all raters should provide same transcript)
+      const transcript = ensembleResult.raterScores[0]?.feedback?.split("\n")[0] || "";
+
+      // Full integrity check with transcript
+      const integrity = assessSpeakingIntegrity({
+        transcript,
+        prompt,
+        audioDurationSec: audioMetadata?.audioDurationSec,
+        silentDurationSec: audioMetadata?.silentDurationSec,
+      });
+
+      if (integrity.recommendation === "reject") {
+        return buildRejectedScore(integrity);
+      }
+
+      // Convert ensemble result
+      const orchestrated = convertEnsembleToOrchestrated(ensembleResult, "SPEAKING", integrity);
+
+      // Enrich with prosodic analysis
+      const geminiFeatures = orchestrated.aiResult.speakingFeatures;
+      if (geminiFeatures) {
+        const prosodicProfile = ProsodicAnalyzer.analyse(
+          geminiFeatures,
+          transcript || undefined,
+          audioMetadata?.audioDurationSec
+        );
+        const kappa = ProsodicAnalyzer.raterAgreementKappa(
+          orchestrated.aiResult.rubricScores.fluency ?? orchestrated.aiResult.score * 10,
+          prosodicProfile.fluencyScore
+        );
+        if (kappa.agreement === "POOR") {
+          orchestrated.requiresHumanReview = true;
+          orchestrated.reviewReasons.push("PROSODIC_AI_DISAGREEMENT");
+          if (orchestrated.scoreSource === "ai_auto") {
+            orchestrated.scoreSource = "ai_flagged";
+          }
+        }
+        (orchestrated.aiResult as any).prosodicProfile = prosodicProfile;
+        (orchestrated.aiResult as any).prosodicKappa = kappa;
+      }
+
+      return orchestrated;
+    } catch (err) {
+      return buildUnavailableScore(err, audioOnly);
+    }
+  },
+
+  async scoreSpeakingFromText(text: string, prompt: string): Promise<OrchestratedScore> {
+    if (!USE_ENSEMBLE_SCORING) {
+      return ScoringOrchestrator.scoreSpeakingFromText(text, prompt);
+    }
+
+    const integrity = assessSpeakingIntegrity({ transcript: text, prompt });
+    if (integrity.recommendation === "reject") {
+      return buildRejectedScore(integrity);
+    }
+
+    try {
+      const ensembleResult = await scoreWritingWithEnsemble(text, prompt);
+      return applyIntegrityToResult(
+        convertEnsembleToOrchestrated(ensembleResult, "SPEAKING", integrity),
+        integrity
+      );
+    } catch (err) {
+      return buildUnavailableScore(err, integrity);
+    }
+  },
+};
