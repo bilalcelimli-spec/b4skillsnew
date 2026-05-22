@@ -694,13 +694,13 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     const hasPassage = !!content.passage;
     const hasAudio = !!content.audioUrl;
     const hasImage = !!content.imageUrl;
+    const opts = (content.options ?? []).map((o: any) =>
+      typeof o === "string" ? o : String(o?.text ?? o)
+    );
     const isFIB = currentItem.type === "FILL_IN_BLANKS" || !!content.scaffold;
     const isSpeakingQ = currentItem.skill === "SPEAKING" && !isFIB && opts.length === 0;
     const isWritingQ = currentItem.skill === "WRITING" && !isFIB && opts.length === 0;
     const hasContext = hasPassage || hasAudio || hasImage;
-    const opts = (content.options ?? []).map((o: any) =>
-      typeof o === "string" ? o : String(o?.text ?? o)
-    );
     const progressPct = step === "result" ? 100 : Math.min(95, (itemsAdministered / maxItems) * 100);
 
     return (
