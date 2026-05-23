@@ -67,6 +67,7 @@ function buildWavHeader(pcm: Buffer): Buffer {
 // ---------------------------------------------------------------------------
 // Clean transcript for TTS: remove editorial [answer] markers
 // e.g. "She's [wearing a yellow hat]" → "She's wearing a yellow hat"
+// NOTE: do NOT call this on dialogue transcripts — it would strip speaker labels.
 // ---------------------------------------------------------------------------
 function cleanTranscript(transcript: string): string {
   return transcript
@@ -76,18 +77,90 @@ function cleanTranscript(transcript: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Voice selection based on item tags / product line
+// Dialogue detection: "Name: text" lines
+// ---------------------------------------------------------------------------
+const DIALOGUE_LINE_RE = /^([A-Z][a-zA-Z.\s]+):\s+\S/m;
+
+function isDialogue(transcript: string): boolean {
+  return DIALOGUE_LINE_RE.test(transcript);
+}
+
+// Extract ordered unique speaker names from "Name: text" format
+function extractSpeakers(transcript: string): string[] {
+  const seen = new Set<string>();
+  const order: string[] = [];
+  const re = /^([A-Z][a-zA-Z.\s]+):/gm;
+  let m;
+  while ((m = re.exec(transcript)) !== null) {
+    const name = m[1].trim();
+    if (!seen.has(name)) { seen.add(name); order.push(name); }
+  }
+  return order;
+}
+
+// Convert "Name: text\nName2: text" → "[Name] text\n[Name2] text" for Gemini multi-speaker
+function reformatForMultiSpeaker(transcript: string): string {
+  return transcript
+    .replace(/^([A-Z][a-zA-Z.\s]+):\s*/gm, (_, name) => `[${name.trim()}] `)
+    .trim();
+}
+
+// ---------------------------------------------------------------------------
+// Voice assignment (gender-heuristic, same logic as regenerate-dialogue-audio.ts)
+// ---------------------------------------------------------------------------
+const FEMALE_NAMES = new Set([
+  "chloe", "sarah", "maria", "emily", "sophia", "lucy", "anna", "emma",
+  "grace", "kalinda", "ruth", "ms", "mrs", "miss", "librarian",
+]);
+const MALE_NAMES = new Set([
+  "david", "alex", "ben", "leo", "jake", "tom", "daniel", "mark", "anton",
+  "james", "kai", "mr", "coach", "teacher",
+]);
+const FEMALE_VOICE = "Aoede";
+const MALE_VOICE   = "Charon";
+const NEUTRAL_ALT  = "Kore";
+
+function guessGender(name: string): "female" | "male" | "unknown" {
+  const lower = name.toLowerCase().split(" ")[0].replace(/\.$/, "");
+  if (FEMALE_NAMES.has(lower)) return "female";
+  if (MALE_NAMES.has(lower))   return "male";
+  return "unknown";
+}
+
+function assignVoices(speakers: string[]): Record<string, string> {
+  const assigned: Record<string, string> = {};
+  let femaleUsed = false;
+  let maleUsed = false;
+  for (const speaker of speakers) {
+    const gender = guessGender(speaker);
+    if (gender === "female") {
+      assigned[speaker] = femaleUsed ? NEUTRAL_ALT : FEMALE_VOICE;
+      femaleUsed = true;
+    } else if (gender === "male") {
+      assigned[speaker] = maleUsed ? "Puck" : MALE_VOICE;
+      maleUsed = true;
+    } else {
+      const used = Object.values(assigned);
+      if (!used.includes(FEMALE_VOICE))      assigned[speaker] = FEMALE_VOICE;
+      else if (!used.includes(MALE_VOICE))   assigned[speaker] = MALE_VOICE;
+      else                                   assigned[speaker] = NEUTRAL_ALT;
+    }
+  }
+  return assigned;
+}
+
+// ---------------------------------------------------------------------------
+// Voice selection for monologue items
 // ---------------------------------------------------------------------------
 function resolveVoice(tags: string[], cefrLevel: string): string {
-  if (tags.includes("primary")) return "Aoede";       // warm, child-friendly
-  if (tags.includes("junior")) return "Puck";          // clear, youthful
-  if (tags.includes("academia")) return "Fenrir";      // authoritative
-  if (tags.includes("corporate")) return "Orus";       // professional
-  if (tags.includes("language-schools")) return "Charon"; // clear, standard
-  // Fall back by CEFR: higher levels → more natural/complex voice
+  if (tags.includes("primary")) return "Aoede";
+  if (tags.includes("junior")) return "Puck";
+  if (tags.includes("academia")) return "Fenrir";
+  if (tags.includes("corporate")) return "Orus";
+  if (tags.includes("language-schools")) return "Charon";
   if (["C1", "C2"].includes(cefrLevel)) return "Umbriel";
   if (["B2", "B1"].includes(cefrLevel)) return "Kore";
-  return "Aoede"; // A1/A2 default
+  return "Aoede";
 }
 
 // ---------------------------------------------------------------------------
@@ -164,9 +237,17 @@ async function main() {
 
     const ttsText = cleanTranscript(transcript);
     const voiceName = resolveVoice(tags, item.cefrLevel);
-    const prompt = buildPrompt(tags, ttsText, item.cefrLevel);
 
-    console.log(`[GEN]   ${item.id} (${item.cefrLevel}) → ${voiceName}`);
+    // Detect dialogue: use multi-speaker TTS if ≥2 distinct speakers found
+    const dialogue = isDialogue(transcript);
+    const speakers = dialogue ? extractSpeakers(transcript) : [];
+    const voiceMap = speakers.length >= 2 ? assignVoices(speakers) : {};
+
+    if (dialogue && speakers.length >= 2) {
+      console.log(`[GEN]   ${item.id} (${item.cefrLevel}) → MULTI-SPEAKER: ${speakers.map(s => `${s}→${voiceMap[s]}`).join(" | ")}`);
+    } else {
+      console.log(`[GEN]   ${item.id} (${item.cefrLevel}) → ${voiceName}`);
+    }
     console.log(`        tags: ${tags.join(", ")}`);
     console.log(`        transcript preview: ${ttsText.slice(0, 80)}…`);
 
@@ -176,16 +257,37 @@ async function main() {
     }
 
     try {
+      let speechConfig: any;
+      let ttsInput: string;
+      let instruction: string;
+
+      if (dialogue && speakers.length >= 2) {
+        // Multi-speaker: reformat transcript for Gemini's speaker-label syntax
+        ttsInput = reformatForMultiSpeaker(transcript);
+        instruction = "Read the following conversation aloud as a natural dialogue between the speakers. Do not generate any new content — only read the text provided.\n\n";
+        speechConfig = {
+          multiSpeakerVoiceConfig: {
+            speakerVoiceConfigs: speakers.map((speaker) => ({
+              speaker,
+              voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceMap[speaker] } },
+            })),
+          },
+        };
+      } else {
+        // Monologue: single voice as before
+        ttsInput = ttsText;
+        instruction = buildPrompt(tags, "", item.cefrLevel).replace(/\n\n$/, "\n\n");
+        speechConfig = {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+        };
+      }
+
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        contents: [{ role: "user", parts: [{ text: instruction + ttsInput }] }],
         config: {
           responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName },
-            },
-          },
+          speechConfig,
         },
       });
 
