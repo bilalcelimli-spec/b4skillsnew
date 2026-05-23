@@ -40,6 +40,8 @@
     "quality:vocab": "tsx scripts/validate-vocab-200-quality.ts",
     "validate:items": "tsx scripts/validate-items.ts",
     "validate:items:strict": "tsx scripts/validate-items.ts --strict",
+    "validate:seeds": "tsx scripts/validate-seeds.ts",
+    "validate:seeds:strict": "tsx scripts/validate-seeds.ts --strict",
     "db:job:calibrate-pretest": "tsx scripts/jobs/auto-calibrate-pretest.ts",
     "db:job:retire-items": "tsx scripts/jobs/item-retirement-job.ts",
     "db:job:detect-dif": "tsx scripts/jobs/dif-detection-job.ts"
@@ -103,7 +105,12 @@
     "workbox-routing": "^7.4.0",
     "workbox-strategies": "^7.4.0",
     "workbox-window": "^7.4.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "ws": "^8.18.0",
+    "pdfkit": "^0.15.1",
+    "exceljs": "^4.4.0",
+    "parquetjs": "^0.11.2",
+    "@aws-sdk/client-s3": "^3.817.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
@@ -118,6 +125,8 @@
     "@types/node": "^22.14.0",
     "@types/nodemailer": "^8.0.0",
     "@types/qrcode": "^1.5.6",
+    "@types/ws": "^8.5.14",
+    "@types/pdfkit": "^0.13.9",
     "@vitest/coverage-v8": "^4.1.5",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.12",

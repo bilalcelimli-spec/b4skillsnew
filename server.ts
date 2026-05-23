@@ -12,6 +12,7 @@ import rateLimit from "express-rate-limit";
 import nodemailer from "nodemailer";
 import { prisma } from "./src/lib/prisma.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
+import { SecretsManager } from "./src/lib/secrets/secrets-manager.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -21,6 +22,9 @@ const __dirname = path.dirname(__filename);
 let dbAvailable = false;
 
 async function startServer() {
+  // Load secrets first — AWS Secrets Manager if configured, else env vars
+  await SecretsManager.load();
+
   const app = express();
   const PORT = parseInt(process.env.PORT || "3001", 10);
 
@@ -2078,6 +2082,360 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // ── Cohort Analytics ─────────────────────────────────────────────────────
+  const { cohortAnalytics } = await import("./src/lib/analytics/cohort-analytics.js");
+
+  app.get("/api/analytics/cohort/:orgId/full", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const stats = await cohortAnalytics.getCohortStats(req.params.orgId);
+      res.json(stats);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  // ── Q3: Report Generator ──────────────────────────────────────────────────
+  const { ReportGenerator } = await import("./src/lib/analytics/report-generator.js");
+
+  app.get("/api/reports/candidate/:id", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const { id } = req.params;
+      const format = (req.query.format as string) ?? "csv";
+      const { buffer, mimeType, filename } = await ReportGenerator.generateCandidateReport(id, format as any);
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      return res.send(buffer);
+    } catch (err) { res.status(500).json({ error: "Report generation failed", details: String(err) }); }
+  });
+
+  app.get("/api/reports/cohort/:orgId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const { orgId } = req.params;
+      const format = (req.query.format as string) ?? "csv";
+      const { buffer, mimeType, filename } = await ReportGenerator.generateCohortReport(orgId, format as any);
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      return res.send(buffer);
+    } catch (err) { res.status(500).json({ error: "Cohort report generation failed", details: String(err) }); }
+  });
+
+  // ── Q3: Privacy Manager ───────────────────────────────────────────────────
+  const { privacyManager } = await import("./src/lib/compliance/privacy-manager.js");
+
+  app.get("/api/privacy/settings/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const settings = await privacyManager.getPrivacySettings(req.params.userId);
+      res.json(settings);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.post("/api/privacy/consent/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const { consents } = req.body;
+      const user = (req as any).user;
+      await privacyManager.updateConsent(req.params.userId, consents, { ipAddress: req.ip!, userAgent: req.headers["user-agent"] ?? "" });
+      res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.post("/api/privacy/export/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const actorId = (req as any).user?.id ?? "system";
+      const bundle = await privacyManager.requestDataExport(req.params.userId, actorId);
+      res.json(bundle);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.post("/api/privacy/delete/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const actorId = (req as any).user?.id ?? "system";
+      const { reason } = req.body;
+      const deletion = await privacyManager.requestDeletion(req.params.userId, actorId, reason);
+      res.json(deletion);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.get("/api/privacy/audit/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const log = await privacyManager.getAuditLog(req.params.userId, limit);
+      res.json(log);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  // ── Q5: Learning Trajectory ───────────────────────────────────────────────
+  const { LearningTrajectoryAnalyzer } = await import("./src/lib/analytics/learning-trajectory.js");
+  const trajectoryAnalyzer = new LearningTrajectoryAnalyzer();
+
+  app.get("/api/analytics/trajectory/:candidateId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const skill = req.query.skill as string | undefined;
+      const trajectory = await trajectoryAnalyzer.analyzeTrajectory(req.params.candidateId, skill as any);
+      res.json(trajectory);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.get("/api/analytics/trajectory/:candidateId/multi", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const trajectories = await trajectoryAnalyzer.analyzeMultiSkillTrajectory(req.params.candidateId);
+      res.json(trajectories);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.get("/api/analytics/trajectory/:candidateId/vs-cohort", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const { orgId } = req.query;
+      if (!orgId) return res.status(400).json({ error: "orgId required" });
+      const comparison = await trajectoryAnalyzer.compareCandidateVsCohort(req.params.candidateId, orgId as string);
+      res.json(comparison);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  // ── Q5: Item Difficulty ───────────────────────────────────────────────────
+  const { DifficultyEstimator } = await import("./src/lib/analytics/difficulty-estimation.js");
+  const diffEstimator = new DifficultyEstimator();
+
+  app.get("/api/analytics/difficulty/:itemId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const report = await diffEstimator.computeItemDifficultyReport(req.params.itemId);
+      res.json(report);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.get("/api/analytics/difficulty", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const skill = req.query.skill as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 100;
+      const reports = await diffEstimator.batchEstimate(skill as any, limit);
+      res.json(reports);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  // ── Q5: Learning Path & Spaced Repetition ────────────────────────────────
+  const { LearningPathEngine } = await import("./src/lib/recommendations/learning-path-engine.js");
+  const { SpacedRepetitionScheduler } = await import("./src/lib/recommendations/spaced-repetition.js");
+  const pathEngine = new LearningPathEngine();
+  const spacedRep = new SpacedRepetitionScheduler();
+
+  app.get("/api/recommendations/path/:candidateId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const target = req.query.targetCefrLevel as string | undefined;
+      const path = await pathEngine.generatePersonalisedPath(req.params.candidateId, target as any);
+      res.json(path);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.get("/api/recommendations/review-queue/:candidateId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      await spacedRep.syncFromSessions(req.params.candidateId);
+      const queue = await spacedRep.getReviewQueue(req.params.candidateId);
+      res.json(queue);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.post("/api/recommendations/review/:candidateId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const result = await spacedRep.recordReview(req.body);
+      res.json(result);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.get("/api/recommendations/review/:candidateId/forecast", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      await spacedRep.syncFromSessions(req.params.candidateId);
+      const queue = await spacedRep.getReviewQueue(req.params.candidateId);
+      const days = parseInt(req.query.days as string) || 30;
+      const forecast = spacedRep.forecastRetention([...queue.dueItems, ...queue.upcomingItems], days);
+      res.json(forecast);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  // ── Q5: Data Warehouse / BI ───────────────────────────────────────────────
+  const { DataWarehouseExporter } = await import("./src/lib/analytics/data-warehouse-exporter.js");
+  const dataExporter = new DataWarehouseExporter();
+
+  app.get("/api/bi/metrics/:orgId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const metrics = await dataExporter.getBIMetrics(req.params.orgId);
+      res.json(metrics);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.post("/api/bi/export/:orgId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const { format, from: fromDate, to: toDate, skill } = req.body;
+      const result = await dataExporter.exportAssessments({
+        organizationId: req.params.orgId,
+        format: format ?? "json",
+        from: fromDate ? new Date(fromDate) : undefined,
+        to: toDate ? new Date(toDate) : undefined,
+      });
+      if (result.format === "json") return res.json(JSON.parse(result.data.toString()));
+      res.setHeader("Content-Type", result.format === "csv" ? "text/csv" : "application/octet-stream");
+      res.setHeader("Content-Disposition", `attachment; filename="export-${req.params.orgId}.${result.format}"`);
+      res.send(result.data);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  // ── Q6: SLA Manager ──────────────────────────────────────────────────────
+  const { slaManager } = await import("./src/lib/sla/sla-manager.js");
+
+  app.get("/api/sla/:orgId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const report = await slaManager.generateMonthlyReport(req.params.orgId);
+      res.json(report);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.get("/api/sla/:orgId/range", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const from = new Date(req.query.from as string || Date.now() - 30 * 86400000);
+      const to   = new Date(req.query.to   as string || Date.now());
+      const report = await slaManager.evaluateSLACompliance(req.params.orgId, from, to);
+      res.json(report);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  // ── Q7: Webhook Manager ───────────────────────────────────────────────────
+  const { webhookManager } = await import("./src/lib/webhooks/webhook-manager.js");
+  await webhookManager.loadFromDatabase();
+
+  app.post("/api/webhooks/register", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const endpoint = await webhookManager.registerWebhook(req.body);
+      res.status(201).json(endpoint);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.get("/api/webhooks/logs", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const { webhookId, limit } = req.query;
+      const logs = await webhookManager.getDeliveryLog(webhookId as string, parseInt(limit as string) || 100);
+      res.json(logs);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.get("/api/webhooks/stats/:orgId", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const stats = await webhookManager.getDeliveryStats(req.params.orgId);
+      res.json(stats);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  // ── Q6: Accessibility / WCAG ──────────────────────────────────────────────
+  const { WCAGChecker } = await import("./src/lib/accessibility/wcag-checker.js");
+  const wcagChecker = new WCAGChecker();
+
+  app.post("/api/wcag/audit", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const { html, level } = req.body;
+      if (!html) return res.status(400).json({ error: "html body required" });
+      const result = wcagChecker.audit(html, level ?? "AA");
+      const report = wcagChecker.generateReport(result);
+      res.json({ ...result, report });
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  // ── Q6: Brand Manager ────────────────────────────────────────────────────
+  const { brandManager } = await import("./src/lib/branding/brand-manager.js");
+
+  app.get("/api/brand/:orgId", async (req: express.Request, res: express.Response) => {
+    try {
+      const config = await brandManager.getBrandConfig(req.params.orgId);
+      const css = brandManager.generateCssVariables(config);
+      res.json({ config, css });
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.get("/api/brand/by-domain/:domain", async (req: express.Request, res: express.Response) => {
+    try {
+      const config = await brandManager.getBrandConfigByDomain(req.params.domain);
+      res.json(config);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  // ── Q8: Cultural Framework ───────────────────────────────────────────────
+  const { getCulturalContext, getAllCulturalProfiles, getInstructionalStyle, getFeedbackStyle } = await import("./src/lib/i18n/cultural-framework.js");
+
+  app.get("/api/cultural/profile/:region", async (req: express.Request, res: express.Response) => {
+    try {
+      const ctx = getCulturalContext(req.params.region as any);
+      if (!ctx) return res.status(404).json({ error: "Unknown region" });
+      const instructionalStyle = getInstructionalStyle(ctx);
+      const feedbackStyle = getFeedbackStyle(ctx);
+      res.json({ ...ctx, instructionalStyle, feedbackStyle });
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.get("/api/cultural/profiles", async (_req: express.Request, res: express.Response) => {
+    try {
+      res.json(getAllCulturalProfiles());
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  // ── Q8: Cultural Sensitivity Filter ──────────────────────────────────────
+  const { CulturalSensitivityFilter } = await import("./src/lib/i18n/cultural-sensitivity-filter.js");
+  const sensitivityFilter = new CulturalSensitivityFilter();
+
+  app.post("/api/cultural/filter", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const { text, regions } = req.body;
+      if (!text) return res.status(400).json({ error: "text required" });
+      const report = sensitivityFilter.evaluate(text, regions ?? []);
+      res.json(report);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.post("/api/cultural/filter/check", authMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const { text, region } = req.body;
+      if (!text || !region) return res.status(400).json({ error: "text and region required" });
+      const safe = sensitivityFilter.isSafeForRegion(text, region);
+      res.json({ safe, region, textLength: text.length });
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  // ── Q8: Regional Compliance ───────────────────────────────────────────────
+  const { getComplianceConfig, formatScore, isTestingAllowed } = await import("./src/lib/compliance/regional-compliance.js");
+
+  app.get("/api/cultural/compliance/:region", async (req: express.Request, res: express.Response) => {
+    try {
+      const config = getComplianceConfig(req.params.region as any);
+      if (!config) return res.status(404).json({ error: "Unknown region" });
+      res.json(config);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.post("/api/cultural/compliance/:region/check-eligibility", async (req: express.Request, res: express.Response) => {
+    try {
+      const { attemptsThisYear, daysSinceLastAttempt } = req.body;
+      const result = isTestingAllowed(req.params.region as any, attemptsThisYear ?? 0, daysSinceLastAttempt ?? 999);
+      res.json(result);
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  app.post("/api/cultural/compliance/:region/format-score", async (req: express.Request, res: express.Response) => {
+    try {
+      const { score } = req.body;
+      if (score === undefined) return res.status(400).json({ error: "score required" });
+      const formatted = formatScore(score, req.params.region as any);
+      res.json({ formatted, region: req.params.region, rawScore: score });
+    } catch (err) { res.status(500).json({ error: String(err) }); }
+  });
+
+  // ── Q3: Realtime WebSocket Dashboard ────────────────────────────────────
+  // Import http module to get underlying server for WS attachment
+  const http = await import("http");
+  const { realtimeManager } = await import("./src/lib/realtime/websocket-manager.js");
+
+  // Create http.Server from Express app and attach WS
+  const httpServer = http.createServer(app);
+  realtimeManager.attach(httpServer);
+
+  // Override app.listen with httpServer.listen below
+  httpServer.listen(parseInt(process.env.PORT || "3001", 10), "0.0.0.0", () => {
+    console.log(`LinguAdapt Server running on http://localhost:${process.env.PORT || "3001"}`);
+    console.log(`[WS] Realtime dashboard WebSocket attached at /ws/dashboard`);
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -2093,9 +2451,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`LinguAdapt Server running on http://localhost:${PORT}`);
-  });
+  // Note: httpServer.listen() is called above, after the WebSocket attachment.
+  // The old app.listen() is replaced by httpServer.listen() to support WS upgrade.
 }
 
 startServer();

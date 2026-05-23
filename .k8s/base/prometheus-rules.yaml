@@ -1,0 +1,69 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: b4skills-alerts
+  labels:
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: b4skills.api
+      interval: 30s
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            rate(http_requests_total{job="b4skills-api",status=~"5.."}[5m])
+            / rate(http_requests_total{job="b4skills-api"}[5m]) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "b4skills API error rate > 5%"
+            description: "Error rate is {{ $value | humanizePercentage }}"
+
+        - alert: DatabasePoolExhausted
+          expr: pg_stat_activity_count{state="active"} > 20
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Database connection pool near exhaustion"
+
+        - alert: LowCacheHitRate
+          expr: |
+            rate(cache_hits_total[5m]) / rate(cache_requests_total[5m]) < 0.70
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Cache hit rate below 70%"
+
+        - alert: HighAssessmentLatency
+          expr: |
+            histogram_quantile(0.95,
+              rate(assessment_duration_seconds_bucket[5m])
+            ) > 30
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Assessment p95 latency > 30s"
+
+        - alert: PodMemoryHigh
+          expr: |
+            container_memory_usage_bytes{pod=~"b4skills-api.*"}
+            / container_spec_memory_limit_bytes{pod=~"b4skills-api.*"} > 0.85
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod memory usage > 85%"
+
+        - alert: PodRestarting
+          expr: |
+            rate(kube_pod_container_status_restarts_total{pod=~"b4skills-api.*"}[15m]) > 0
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ $labels.pod }} is restarting"
