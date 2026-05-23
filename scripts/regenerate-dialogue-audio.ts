@@ -68,11 +68,14 @@ function buildWavHeader(pcm: Buffer): Buffer {
 // ---------------------------------------------------------------------------
 const FEMALE_NAMES = new Set([
   "chloe", "sarah", "maria", "emily", "sophia", "lucy", "anna", "emma",
-  "ms", "mrs", "miss", "librarian",
+  "ms", "mrs", "miss", "librarian", "elena", "natasha", "amina", "olivia",
+  "rachel", "lisa", "kate", "mum", "girl", "mother", "woman",
 ]);
 const MALE_NAMES = new Set([
   "david", "alex", "ben", "leo", "jake", "tom", "daniel", "mark", "mr",
-  "coach", "teacher",
+  "coach", "teacher", "jack", "carlos", "ahmed", "james", "peter",
+  "michael", "ryan", "sam", "dad", "boy", "father", "man", "waiter",
+  "student", "employee", "patient", "mentee",
 ]);
 
 // Nice voice pairs for teen conversations (junior items)
@@ -103,12 +106,13 @@ function assignVoices(speakers: string[]): Record<string, string> {
       assigned[speaker] = maleVoiceUsed ? "Puck" : MALE_VOICE;
       maleVoiceUsed = true;
     } else {
-      // Unknown gender — alternate between voices
-      const usedVoices = Object.values(assigned);
-      if (!usedVoices.includes(FEMALE_VOICE)) {
+      // Unknown gender — pick the next unused voice
+      if (!femaleVoiceUsed) {
         assigned[speaker] = FEMALE_VOICE;
-      } else if (!usedVoices.includes(MALE_VOICE)) {
+        femaleVoiceUsed = true;
+      } else if (!maleVoiceUsed) {
         assigned[speaker] = MALE_VOICE;
+        maleVoiceUsed = true;
       } else {
         assigned[speaker] = NEUTRAL_ALT;
       }
