@@ -12,15 +12,13 @@ const signOut = async () => {
 
 import { Button } from "./components/ui/Button";
 import { Card, CardContent, CardHeader } from "./components/ui/Card";
-import { AdminDashboard } from "./components/AdminDashboard";
+import { UnifiedAdminConsole } from "./components/admin/UnifiedAdminConsole";
 import { RatingDashboard } from "./components/RatingDashboard";
 import { InstitutionalDashboard } from "./components/InstitutionalDashboard";
 import { CertificateView } from "./components/CertificateView";
 import { TestPlayer } from "./components/TestPlayer";
 import { LandingPage } from "./components/LandingPage";
 import { ItemBankManager } from "./components/ItemBankManager";
-import { AssessmentStudio } from "./components/admin/AssessmentStudio";
-import { PsychometricManager } from "./components/PsychometricManager";
 import { CandidateProfile } from "./components/CandidateProfile";
 import { LogIn, LogOut, GraduationCap, LayoutDashboard, FileText, Settings, ShieldCheck, User as UserIcon, ShieldAlert, CheckCircle2, ClipboardList, Building2, BarChart3, Award, Database, UserCircle, Sliders, BoxSelect } from "lucide-react";
 import { motion } from "motion/react";
@@ -176,26 +174,12 @@ export default function App() {
             onClick={() => setActiveTab("dashboard")}
           />
           {isAdmin && (
-            <>
-              <SidebarItem 
-                icon={<ShieldAlert size={20} />} 
-                label="Admin Panel" 
-                active={activeTab === "admin"} 
-                onClick={() => setActiveTab("admin")}
-              />
-              <SidebarItem 
-                icon={<BoxSelect size={20} />} 
-                label="Studio" 
-                active={activeTab === "items"} 
-                onClick={() => setActiveTab("items")}
-              />
-              <SidebarItem 
-                icon={<Sliders size={20} />} 
-                label="Psychometrics" 
-                active={activeTab === "psychometrics"} 
-                onClick={() => setActiveTab("psychometrics")}
-              />
-            </>
+            <SidebarItem 
+              icon={<ShieldAlert size={20} />} 
+              label="Admin Console" 
+              active={activeTab === "admin"} 
+              onClick={() => setActiveTab("admin")}
+            />
           )}
           {isRater && (
             <SidebarItem 
@@ -247,13 +231,9 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className={cn("flex-1 overflow-y-auto", activeTab === "admin" && isAdmin ? "p-4" : "p-8")}>
         {activeTab === "admin" && isAdmin ? (
-          <AdminDashboard orgId={userProfile?.organizationId} />
-        ) : activeTab === "items" && isAdmin ? (
-          <AssessmentStudio />
-        ) : activeTab === "psychometrics" && isAdmin ? (
-          <PsychometricManager />
+          <UnifiedAdminConsole orgId={userProfile?.organizationId} />
         ) : activeTab === "rating" && isRater ? (
           <RatingDashboard />
         ) : activeTab === "institutional" && isOrgAdmin ? (

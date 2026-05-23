@@ -29,6 +29,21 @@ export const GlobalSettings: React.FC<{ orgId: string }> = ({ orgId }) => {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/organizations/${orgId}/settings`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          setSettings((prev) => ({ ...prev, ...data }));
+        }
+      } catch {
+        // keep defaults
+      }
+    };
+    load();
+  }, [orgId]);
+
   const handleSave = async () => {
     setLoading(true);
     setError(null);

@@ -536,6 +536,9 @@ async function startServer() {
       }
 
       // ── Delete webhook ─────────────────────────────────────────────────────────
+      if (url.match(/\/organizations\/[^/]+\/settings$/) && method === "GET") return res.json({ allowRetakes: true, maxRetakes: 3, retakeCooldownDays: 7, sessionTimeoutMinutes: 120, adaptiveAlgorithm: "IRT-3PL", notifyOnCompletion: true });
+      if (url.match(/\/organizations\/[^/]+\/branding$/) && method === "GET") return res.json({ primaryColor: "#1a56db", secondaryColor: "#7e3af2", logoUrl: "", customDomain: "", welcomeMessage: "Welcome to your English assessment", organizationName: "Demo Organization" });
+      if (url.includes("/items/exposure-report") && method === "GET") return res.json({ totalActive: 120, neverUsed: 34, overExposed: 8, overExposureThreshold: 0.3, strata: [{ stratumIndex: 1, label: "Stratum 1 (Low α)", totalItems: 40, usedItems: 28, usageRate: 0.7, minA: 0.4, maxA: 0.8 }, { stratumIndex: 2, label: "Stratum 2 (Mid α)", totalItems: 40, usedItems: 35, usageRate: 0.875, minA: 0.8, maxA: 1.4 }, { stratumIndex: 3, label: "Stratum 3 (High α)", totalItems: 40, usedItems: 31, usageRate: 0.775, minA: 1.4, maxA: 2.2 }], bySkill: { Reading: { total: 35, active: 30, pretest: 3, retired: 2 }, Listening: { total: 30, active: 26, pretest: 2, retired: 2 }, Writing: { total: 25, active: 22, pretest: 2, retired: 1 }, Speaking: { total: 20, active: 18, pretest: 1, retired: 1 }, Grammar: { total: 20, active: 16, pretest: 2, retired: 2 }, Vocabulary: { total: 15, active: 12, pretest: 1, retired: 2 } }, byCefrLevel: { A1: { total: 15, active: 12 }, A2: { total: 20, active: 18 }, B1: { total: 30, active: 26 }, B2: { total: 30, active: 28 }, C1: { total: 20, active: 18 }, C2: { total: 10, active: 8 } } });
       if (url.includes("/organizations/") && url.includes("/webhooks/") && method === "DELETE") return res.json({ success: true });
 
       // ── Delete/revoke api-key ──────────────────────────────────────────────────
@@ -830,6 +833,65 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.json(status);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch session status" });
+    }
+  });
+
+  // --- ITEM EXPOSURE REPORT ---
+  app.get("/api/items/exposure-report", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    try {
+      const items = await prisma.item.findMany({
+        select: { id: true, skill: true, cefrLevel: true, discrimination: true, active: true, status: true },
+      });
+      const responses = await prisma.response.groupBy({
+        by: ["itemId"],
+        _count: { itemId: true },
+      });
+      const usageMap: Record<string, number> = {};
+      for (const r of responses) usageMap[r.itemId] = r._count.itemId;
+
+      const totalActive = items.filter((i) => i.active).length;
+      const neverUsed = items.filter((i) => !usageMap[i.id]).length;
+      const overExposureThreshold = 0.3;
+      const totalResponses = Object.values(usageMap).reduce((a, b) => a + b, 0) || 1;
+      const overExposed = items.filter((i) => (usageMap[i.id] ?? 0) / totalResponses > overExposureThreshold).length;
+
+      // α-strata (3 strata by discrimination)
+      const sorted = [...items].sort((a, b) => (a.discrimination ?? 0) - (b.discrimination ?? 0));
+      const chunkSize = Math.ceil(sorted.length / 3);
+      const strata = [0, 1, 2].map((si) => {
+        const chunk = sorted.slice(si * chunkSize, (si + 1) * chunkSize);
+        const usedInChunk = chunk.filter((i) => usageMap[i.id]).length;
+        const aVals = chunk.map((i) => i.discrimination ?? 0);
+        return {
+          stratumIndex: si + 1,
+          label: `Stratum ${si + 1} (${["Low", "Mid", "High"][si]} α)`,
+          totalItems: chunk.length,
+          usedItems: usedInChunk,
+          usageRate: chunk.length > 0 ? usedInChunk / chunk.length : 0,
+          minA: Math.min(...aVals, 0),
+          maxA: Math.max(...aVals, 0),
+        };
+      });
+
+      const bySkill: Record<string, { total: number; active: number; pretest: number; retired: number }> = {};
+      for (const i of items) {
+        if (!bySkill[i.skill]) bySkill[i.skill] = { total: 0, active: 0, pretest: 0, retired: 0 };
+        bySkill[i.skill].total++;
+        if (i.active) bySkill[i.skill].active++;
+        if (i.status === "PRETEST") bySkill[i.skill].pretest++;
+        if (i.status === "RETIRED") bySkill[i.skill].retired++;
+      }
+
+      const byCefrLevel: Record<string, { total: number; active: number }> = {};
+      for (const i of items) {
+        if (!byCefrLevel[i.cefrLevel]) byCefrLevel[i.cefrLevel] = { total: 0, active: 0 };
+        byCefrLevel[i.cefrLevel].total++;
+        if (i.active) byCefrLevel[i.cefrLevel].active++;
+      }
+
+      res.json({ totalActive, neverUsed, overExposed, overExposureThreshold, strata, bySkill, byCefrLevel });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to compute exposure report", details: String(err) });
     }
   });
 
@@ -1529,6 +1591,26 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  app.get("/api/organizations/:id/settings", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const org = await prisma.organization.findUnique({ where: { id }, select: { settings: true } });
+      res.json((org?.settings as any) || {});
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  app.get("/api/organizations/:id/branding", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const branding = await BrandingService.getBranding(id);
+      res.json(branding || {});
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch branding" });
+    }
+  });
+
   app.get("/api/organizations/:id/analytics", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req, res) => {
     const { id } = req.params;
     try {
@@ -1554,20 +1636,47 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       const cefrData = Object.entries(distribution).map(([name, value]) => ({ name, value }));
 
-      // Skill Breakdown (Mocked from responses for now, in real app we'd aggregate score reports)
-      const skillBreakdown = [
-        { subject: 'Reading', A: 120, B: 110, fullMark: 150 },
-        { subject: 'Listening', A: 98, B: 130, fullMark: 150 },
-        { subject: 'Writing', A: 86, B: 130, fullMark: 150 },
-        { subject: 'Speaking', A: 99, B: 100, fullMark: 150 },
-      ];
+      // Skill Breakdown — aggregate from score reports
+      const scoreReports = await (prisma as any).scoreReport.findMany({
+        where: { session: { organizationId: id } },
+        select: { readingScore: true, listeningScore: true, writingScore: true, speakingScore: true, grammarScore: true, vocabularyScore: true },
+      });
+      const skillTotals: Record<string, number[]> = { Reading: [], Listening: [], Writing: [], Speaking: [], Grammar: [], Vocabulary: [] };
+      for (const r of scoreReports) {
+        if (r.readingScore != null)    skillTotals.Reading.push(r.readingScore);
+        if (r.listeningScore != null)  skillTotals.Listening.push(r.listeningScore);
+        if (r.writingScore != null)    skillTotals.Writing.push(r.writingScore);
+        if (r.speakingScore != null)   skillTotals.Speaking.push(r.speakingScore);
+        if (r.grammarScore != null)    skillTotals.Grammar.push(r.grammarScore);
+        if (r.vocabularyScore != null) skillTotals.Vocabulary.push(r.vocabularyScore);
+      }
+      const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 100) : 0;
+      const skillBreakdown = Object.entries(skillTotals).map(([skill, arr]) => ({
+        skill,
+        avg: avg(arr),
+        count: arr.length,
+      }));
+
+      // Monthly trend
+      const monthlyRaw = await prisma.session.groupBy({
+        by: ["createdAt"],
+        where: { organizationId: id, status: "COMPLETED" },
+        _count: { id: true },
+      });
+      const monthMap: Record<string, number> = {};
+      for (const r of monthlyRaw) {
+        const key = new Date(r.createdAt).toLocaleString("en", { month: "short" });
+        monthMap[key] = (monthMap[key] || 0) + r._count.id;
+      }
+      const monthlyTrend = Object.entries(monthMap).slice(-6).map(([month, count]) => ({ month, count }));
 
       res.json({
         sessionsCount,
         feedbacksCount,
         avgRating,
         cefrDistribution: cefrData,
-        skillBreakdown
+        skillBreakdown,
+        monthlyTrend,
       });
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch analytics" });

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -24,12 +24,28 @@ export const BrandingSettings: React.FC<{ orgId: string; initialBranding?: Brand
   });
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/organizations/${orgId}/branding`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          setBranding((prev) => ({ ...prev, ...data }));
+        }
+      } catch {
+        // keep defaults
+      }
+    };
+    load();
+  }, [orgId]);
+
   const handleSave = async () => {
     setSaving(true);
     try {
       const res = await fetch(`/api/organizations/${orgId}/branding`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(branding)
       });
       if (res.ok) {
