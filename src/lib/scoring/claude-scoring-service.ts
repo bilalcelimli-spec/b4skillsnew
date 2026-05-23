@@ -9,9 +9,13 @@ import { buildSkillAwarePromptAddendum, type MacroSkill } from "../language-skil
  * Provides independent CEFR-aligned evaluation using Claude 3.5 Sonnet.
  */
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || "",
-});
+let _anthropic: Anthropic | null = null;
+function getAnthropic(): Anthropic {
+  if (!_anthropic) {
+    _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || "" });
+  }
+  return _anthropic;
+}
 
 export interface AIScore {
   score: number;
@@ -108,7 +112,7 @@ Evaluate this response and return a JSON object with the following structure:
 }
 `;
 
-    const response = await anthropic.messages.create({
+    const response = await getAnthropic().messages.create({
       model: "claude-3-5-sonnet-20241022",
       max_tokens: 1500,
       system: SYSTEM_INSTRUCTION,
