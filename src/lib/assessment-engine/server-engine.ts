@@ -1010,96 +1010,8 @@ export const AssessmentService = {
       include: { responses: { include: { item: true } } },
     });
 
-    // ── Build per-skill diagnostic sub-reports ────────────────────────────────
-    type SkillSubReport = {
-      theta: number;
-      sem: number;
-      cefr: string;
-      scaledScore: number;
-      confidenceInterval: [number, number];
-      canDoStatements: string[];
-    };
-
-    const skillSubReports: Partial<Record<SkillType, SkillSubReport>> = {};
-    const skillScoresForDb: Record<string, number | null> = {
-      readingScore: null, listeningScore: null, writingScore: null,
-      speakingScore: null, grammarScore: null, vocabularyScore: null,
-    };
-
-    const SKILL_DB_MAP: Record<string, string> = {
-      [SkillType.READING]: "readingScore",
-      [SkillType.LISTENING]: "listeningScore",
-      [SkillType.WRITING]: "writingScore",
-      [SkillType.SPEAKING]: "speakingScore",
-      [SkillType.GRAMMAR]: "grammarScore",
-      [SkillType.VOCABULARY]: "vocabularyScore",
-    };
-
-    // Group non-pretest responses by skill and re-estimate theta per skill
-    if (session) {
-      const { estimateTheta: estimateThetaFn } = await import("./estimator.js");
-      const itemDict: Record<string, Item> = {};
-      for (const r of session.responses) {
-        if (r.item) {
-          itemDict[r.item.id] = dbItemToEngineItem(r.item);
-        }
-      }
-
-      for (const skill of Object.values(SkillType)) {
-        const skillResponses = session.responses
-          .filter(r => !r.isPretest && r.item?.skill === skill && r.score !== null)
-          .map(r => ({
-            itemId: r.itemId,
-            score:
-              (r.adjustedScore != null && Number.isFinite(r.adjustedScore)
-                ? r.adjustedScore
-                : r.score) ?? 0,
-            isPretest: false,
-            latencyMs: r.latencyMs,
-          }));
-
-        if (skillResponses.length === 0) continue;
-
-        const { theta: sTheta, sem: sSem } = estimateThetaFn(
-          skillResponses,
-          itemDict,
-          0,
-          1,
-          { useGrmProductive: engine.getConfig().useGrmProductive === true }
-        );
-        const skillCefr = engine.mapToCefr(sTheta);
-        const canDos = getCanDo(skillCefr as any, skill.toLowerCase() as any);
-        const canDoStatements = canDos.flatMap(d => d.descriptors).slice(0, 4);
-        const lo = Number((sTheta - 1.96 * sSem).toFixed(3));
-        const hi = Number((sTheta + 1.96 * sSem).toFixed(3));
-        const sScaled = Math.max(0, Math.min(100, Math.round(((sTheta + 4) / 8) * 100)));
-
-        skillSubReports[skill] = {
-          theta: sTheta,
-          sem: sSem,
-          cefr: skillCefr,
-          scaledScore: sScaled,
-          confidenceInterval: [lo, hi],
-          canDoStatements,
-        };
-
-        const dbKey = SKILL_DB_MAP[skill];
-        if (dbKey) skillScoresForDb[dbKey] = sScaled;
-      }
-    }
-
-    // ── Overall CI ─────────────────────────────────────────────────────────────
+    // These values are needed for the Prisma transaction regardless of analysis outcome
     const sessionSem = session?.sem ?? 1;
-    const overallCI: [number, number] = [
-      Number((theta - 1.96 * sessionSem).toFixed(3)),
-      Number((theta + 1.96 * sessionSem).toFixed(3)),
-    ];
-
-    const overallCanDo = getCanDo(cefrLevel as any);
-    const mirtVector = (session?.metadata as any)?.mirtAbilityVector ?? null;
-    const mirt2B = (session?.metadata as any)?.mirt2B ?? null;
-
-    const stopReason = opts?.stopReason ?? (session?.metadata as { stopReason?: string } | null)?.stopReason ?? null;
     const sessionMeta = (session?.metadata as Record<string, unknown> | null) ?? {};
     const sessionProductLine: string | null = (sessionMeta.productLine as string) ?? null;
     const sessionMstTrack: string | null = (sessionMeta.mstTrack as string) ?? null;
@@ -1108,315 +1020,436 @@ export const AssessmentService = {
       globalMaxItems: sessionProfile.globalMaxItems,
       globalSemThreshold: sessionProfile.globalSemThreshold,
     };
+    const stopReason = opts?.stopReason ?? (sessionMeta.stopReason as string | undefined) ?? null;
 
-    // Compact skill profile snapshot for session metadata (theta + SEM only)
-    const skillProfilesSnapshot: Record<string, { theta: number; sem: number }> = {};
-    for (const [skill, report] of Object.entries(skillSubReports)) {
-      if (report) {
-        skillProfilesSnapshot[skill] = { theta: report.theta, sem: report.sem };
-      }
-    }
-
-    const ec = engine.getConfig();
-    const opCount =
-      session?.responses?.filter((r) => !r.isPretest).length ?? 0;
-    const testInfo = sessionSem > 0 ? 1 / (sessionSem * sessionSem) : 0;
-    const psychometrics = {
-      operationalItemCount: opCount,
-      testInformation: Number(testInfo.toFixed(2)),
-      marginalReliabilityApprox:
-        sessionSem > 0
-          ? Number((1 - Math.min(1, sessionSem * sessionSem)).toFixed(3))
-          : null,
-      featureFlags: {
-        useRtIrt: ec.useRtIrt === true,
-        useGrmProductive: ec.useGrmProductive === true,
-        useMirt2B: ec.useMirt2B === true,
-        useMirt: ec.useMirt === true,
-        mstEnabled: ec.mst?.enabled === true,
-        sprtEnabled: ec.sprt?.enabled === true,
-        useShadowTest: ec.useShadowTest === true,
-        // Faz 2–3 features — always active regardless of config flags
-        daveyParshallExposureControl: true,
-        klInformationSelection: true,
-        onlineCalibrationStockingEM: true,
-        itemParameterDriftLordChiSq: true,
-        personFitDrasgowLzECI: true,
-        answerCopyingWollackOmega: true,
-        collusionGraphDetection: true,
-        clickstreamHmmAnalysis: true,
-        mirt4DCompensatory: true,
-        gdinaDiagnosticFeedback: true,
-        rlItemSelector: ec.useRlSelector === true,
-      },
+    // Initialize with safe defaults — overwritten by analysis block below if successful
+    let skillScoresForDb: Record<string, number | null> = {
+      readingScore: null, listeningScore: null, writingScore: null,
+      speakingScore: null, grammarScore: null, vocabularyScore: null,
     };
-
-    // ── Classification Consistency (Livingston-Lewis) ─────────────────────────
-    const classificationResult = classifyCandidate(theta, sessionSem);
-    const consistencyReport = computeConsistencyReport(theta, sessionSem);
-
-    // ── Person-Fit (Drasgow Lz + ECI + U3) ───────────────────────────────────
-    const allItems = session
-      ? session.responses.map(r => r.item).filter(Boolean).map(dbItemToEngineItem)
-      : [];
-    const personFitResult = session
-      ? computePersonFit({
-          responses: session.responses.map(r => ({
-            itemId: r.itemId,
-            score: r.score ?? 0,
-            isPretest: r.isPretest ?? false,
-            latencyMs: r.latencyMs ?? undefined,
-          })),
-          items: allItems,
-          theta,
-        })
-      : null;
-
-    // ── MIRT 4D profile ────────────────────────────────────────────────────────
-    const mirt4DProfile = (() => {
-      if (!session) return null;
-      const opResponses = session.responses.filter(r => !r.isPretest && r.score !== null);
-      if (opResponses.length === 0) return null;
-      const obs: Mirt4DObservation[] = opResponses
-        .map(r => {
-          const item = allItems.find(it => it.id === r.itemId);
-          if (!item) return null;
-          return {
-            score: ((r.score ?? 0) > 0.5 ? 1 : 0) as 0 | 1,
-            params: unidimTo4DParams(
-              item.params.a,
-              item.params.b,
-              item.params.c,
-              (item.skill as string) ?? "DEFAULT",
-            ),
-          };
-        })
-        .filter((x): x is Mirt4DObservation => x !== null);
-      if (obs.length === 0) return null;
-      const profile = estimate4DTheta(obs);
-      return {
-        theta: profile.theta,
-        sem: profile.sem,
-        traceCovariance: profile.traceCovariance,
-        composite: compositeTheta(profile),
-        compositeSem: compositeSem(profile),
-        dimensionLabels: [
-          "Receptive (Reading/Listening)",
-          "Productive (Writing/Speaking)",
-          "Grammatical Accuracy (Grammar/Vocabulary)",
-          "Strategic Competence (Discourse/Pragmatics)",
-        ],
-      };
-    })();
-
-    // ── Clickstream behavioural analysis ─────────────────────────────────────
-    const behaviourProfile = (() => {
-      if (!session) return null;
-      const meta = (session.metadata as Record<string, unknown> | null) ?? {};
-      const rawClickstreams = (meta.clickstreams as ItemClickstream[] | undefined) ?? [];
-      if (rawClickstreams.length === 0) return null;
-      const profile = analyseClickstream(rawClickstreams);
-      return {
-        itemCount: profile.itemCount,
-        meanResponseTime: profile.meanResponseTime,
-        cvResponseTime: profile.cvResponseTime,
-        stateProportions: profile.stateProportions,
-        focusLossProportion: profile.focusLossProportion,
-        revisionRate: profile.revisionRate,
-        rapidGuessCount: profile.rapidGuessCount,
-        lowEffortFlag: profile.lowEffortFlag,
-        riskLevel: profile.riskLevel,
-      };
-    })();
-
-    // ── G-DINA diagnostic feedback ──────────────────────────────────────────────────
-    const gdinaDiagnostic = (() => {
-      if (!session) return null;
-      const opResponses = session.responses.filter(r => !r.isPretest && r.score !== null);
-      const J = LINGUADAPT_QMATRIX.length;
-      if (opResponses.length < Math.ceil(J / 2)) return null; // need at least half the items
-
-      // Build a response vector aligned to the prototype Q-matrix.
-      // We use the first J operational responses for the CDM estimation.
-      const responseVector = LINGUADAPT_QMATRIX.map((_, j) => {
-        const r = opResponses[j % opResponses.length];
-        return r ? ((r.score ?? 0) > 0.5 ? 1 : 0) : 0;
-      });
-
-      // Use precomputed Q-matrix; in production supply a full item-bank Q-matrix.
-      const responses = [responseVector]; // single examinee
-      try {
-        const model = estimateGdina(responses, LINGUADAPT_QMATRIX, 50); // fast: 50 iter
-        const classification = classifyExamineeGdina(responseVector, model);
-        const feedback = generateDiagnosticFeedback(classification, LINGUADAPT_ATTRIBUTES);
-        return {
-          overallMasteryRate: feedback.overallMasteryRate,
-          learningStage: feedback.learningStage,
-          primaryWeakness: feedback.primaryWeakness,
-          primaryStrength: feedback.primaryStrength,
-          mapProfile: feedback.mapProfileString,
-          attributes: feedback.attributes,
-        };
-      } catch {
-        return null;
-      }
-    })();
-
-    // ── Per-session cheating signal (answer-copying self-check) ───────────────
-    // Compares the observed response pattern against the expected pattern
-    // given the examinee's own θ (self-reference baseline).
-    // A flagged result means the pattern is anomalous relative to
-    // person-fit AND ω/S2 — this is then surfaced in the admin panel.
-    const securityFlag = (() => {
-      if (!session || allItems.length < 10) return null;
-      const opResponses = session.responses.filter(r => !r.isPretest);
-      if (opResponses.length < 10) return null;
-
-      const copyingItems: CopyingItemMeta[] = allItems
-        .filter(it => !it.isPretest)
-        .map(it => ({ itemId: it.id, params: it.params }));
-
-      const expectedResponses: CopyingResponse[] = copyingItems.map(it => ({
-        itemId: it.itemId,
-        score: irtProbability(theta, it.params) > 0.5 ? 1 : 0,
-      }));
-
-      const observed: CopyingResponse[] = opResponses.map(r => ({
-        itemId: r.itemId,
-        score: (r.score ?? 0) > 0.5 ? 1 : 0,
-      }));
-
-      const result = detectAnswerCopying(
-        expectedResponses, observed, theta, theta, copyingItems
-      );
-
-      return {
-        omega:   result.omega,
-        s2:      result.s2,
-        kIndex:  result.kIndex,
-        kPValue: result.kPValue,
-        flagged: result.flagged,
-        triggers: result.triggers,
-      };
-    })();
-
-    // ── Cross-session collusion graph detection ───────────────────────────────
-    // Queries sessions completed in the last 24 hours on the same product line
-    // and runs the Belov-Armstrong / Wollack collusion graph algorithm (IP
-    // proximity + RT correlation + response-pattern overlap).
-    const collusionReport = await (async () => {
-      if (!session || opCount < 10) return null;
-      try {
-        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        const recentSessions = await prisma.session.findMany({
-          where: {
-            status: "COMPLETED",
-            completedAt: { gte: since },
-            id: { not: sessionId },
-            ...(sessionProductLine ? { metadata: { path: ["productLine"], equals: sessionProductLine } } : {}),
-          },
-          include: { responses: { where: { isPretest: false }, select: { itemId: true, score: true, latencyMs: true } } },
-          take: 50,
-          orderBy: { completedAt: "desc" },
-        });
-
-        if (recentSessions.length < 2) return null;
-
-        // Build current examinee profile
-        const currentResponses: CopyingResponse[] = session.responses
-          .filter(r => !r.isPretest)
-          .map(r => ({ itemId: r.itemId, score: (r.score ?? 0) > 0.5 ? 1 : 0 }));
-        const currentRTs: Record<string, number> = {};
-        for (const r of session.responses) {
-          if (r.latencyMs) currentRTs[r.itemId] = r.latencyMs;
-        }
-
-        const profiles: CollusionExamineeProfile[] = [
-          {
-            examineeId: sessionId,
-            theta,
-            responses: currentResponses,
-            responseTimes: currentRTs,
-          },
-          ...recentSessions.slice(0, 20).map(s => ({
-            examineeId: s.id,
-            theta: s.theta ?? 0,
-            responses: s.responses.map(r => ({ itemId: r.itemId, score: (r.score ?? 0) > 0.5 ? 1 : 0 })),
-            responseTimes: s.responses.reduce<Record<string, number>>((acc, r) => {
-              if (r.latencyMs) acc[r.itemId] = r.latencyMs;
-              return acc;
-            }, {}),
-          })),
-        ];
-
-        const itemMetas = allItems.filter(it => !it.isPretest).map(it => ({
-          itemId: it.id,
-          params: it.params,
-        }));
-
-        const report = analyseCollusion(profiles, itemMetas);
-        // Only return if current session is involved in a flagged pair
-        const involvedPairs = report.flaggedPairs.filter(
-          p => p.examineeA === sessionId || p.examineeB === sessionId
-        );
-        if (involvedPairs.length === 0) return null;
-        return {
-          flaggedPairs: involvedPairs.length,
-          flagRate: report.flagRate,
-          involvedWithIds: involvedPairs.map(p => p.examineeA === sessionId ? p.examineeB : p.examineeA),
-          riskLevel: report.clusters.find(c => c.members.includes(sessionId))?.riskLevel ?? "LOW",
-        };
-      } catch {
-        return null;
-      }
-    })();
-
-    const diagnosticReport = {
+    let skillProfilesSnapshot: Record<string, { theta: number; sem: number }> = {};
+    let diagnosticReport: any = {
       overallTheta: theta,
       overallSem: sessionSem,
       overallCefr: cefrLevel,
-      confidenceInterval: overallCI,
-      canDoStatements: overallCanDo.flatMap(d => d.descriptors).slice(0, 6),
-      skillProfiles: skillSubReports,
-      mirtAbilityVector: mirtVector,
-      mirt2B,
-      mirt4D: mirt4DProfile,
-      behaviourProfile,
-      gdinaDiagnostic,
       stopReason,
       productLine: sessionProductLine,
       mstTrack: sessionMstTrack,
-      psychometrics,
-      // Livingston-Lewis decision-consistency & classification accuracy
-      classificationConsistency: {
-        cefrLevel: classificationResult.cefrLevel,
-        isBorderline: classificationResult.isBorderline,
-        borderlineLevels: classificationResult.borderlineLevels,
-        posteriorProbCorrect: classificationResult.posteriorProbCorrect,
-        recommendedAction: classificationResult.recommendedAction,
-        decisionConsistency: consistencyReport.decisionConsistency,
-        classificationAccuracy: consistencyReport.classificationAccuracy,
-        meetsHighStakesThreshold: consistencyReport.decisionConsistency >= 0.80,
-        meetsPlacementThreshold: consistencyReport.decisionConsistency >= 0.70,
-      },
-      // Person-fit: Drasgow Lz, ECI, U3 aberrance detection
-      personFit: personFitResult
-        ? {
-            lz: personFitResult.lz,
-            eci: personFitResult.eci,
-            u3: personFitResult.u3,
-            rgi: personFitResult.rgi,
-            flag: personFitResult.flag,
-            recommendedAction: personFitResult.recommendedAction,
-            interpretation: personFitResult.interpretation,
-          }
-        : null,
-      // Test security: per-session anomaly signal (answer-copying self-baseline)
-      securityFlag,
-      // Cross-session collusion graph (Belov-Armstrong / Wollack, last 24h cohort)
-      collusionReport,
       generatedAt: new Date().toISOString(),
     };
+
+    // ── Full psychometric analysis ─────────────────────────────────────────────
+    // Wrapped in try/catch so that any analysis failure never prevents the session
+    // from being marked COMPLETED. The Prisma transaction below always runs.
+    try {
+      // ── Build per-skill diagnostic sub-reports ──────────────────────────────
+      type SkillSubReport = {
+        theta: number;
+        sem: number;
+        cefr: string;
+        scaledScore: number;
+        confidenceInterval: [number, number];
+        canDoStatements: string[];
+      };
+
+      const skillSubReports: Partial<Record<SkillType, SkillSubReport>> = {};
+
+      const SKILL_DB_MAP: Record<string, string> = {
+        [SkillType.READING]: "readingScore",
+        [SkillType.LISTENING]: "listeningScore",
+        [SkillType.WRITING]: "writingScore",
+        [SkillType.SPEAKING]: "speakingScore",
+        [SkillType.GRAMMAR]: "grammarScore",
+        [SkillType.VOCABULARY]: "vocabularyScore",
+      };
+
+      // Group non-pretest responses by skill and re-estimate theta per skill
+      if (session) {
+        const { estimateTheta: estimateThetaFn } = await import("./estimator.js");
+        const itemDict: Record<string, Item> = {};
+        for (const r of session.responses) {
+          if (r.item) {
+            itemDict[r.item.id] = dbItemToEngineItem(r.item);
+          }
+        }
+
+        for (const skill of Object.values(SkillType)) {
+          const skillResponses = session.responses
+            .filter(r => !r.isPretest && r.item?.skill === skill && r.score !== null)
+            .map(r => ({
+              itemId: r.itemId,
+              score:
+                (r.adjustedScore != null && Number.isFinite(r.adjustedScore)
+                  ? r.adjustedScore
+                  : r.score) ?? 0,
+              isPretest: false,
+              latencyMs: r.latencyMs,
+            }));
+
+          if (skillResponses.length === 0) continue;
+
+          try {
+            const { theta: sTheta, sem: sSem } = estimateThetaFn(
+              skillResponses,
+              itemDict,
+              0,
+              1,
+              { useGrmProductive: engine.getConfig().useGrmProductive === true }
+            );
+            const skillCefr = engine.mapToCefr(sTheta);
+            const canDos = getCanDo(skillCefr as any, skill.toLowerCase() as any);
+            const canDoStatements = canDos.flatMap(d => d.descriptors).slice(0, 4);
+            const lo = Number((sTheta - 1.96 * sSem).toFixed(3));
+            const hi = Number((sTheta + 1.96 * sSem).toFixed(3));
+            const sScaled = Math.max(0, Math.min(100, Math.round(((sTheta + 4) / 8) * 100)));
+
+            skillSubReports[skill] = {
+              theta: sTheta,
+              sem: sSem,
+              cefr: skillCefr,
+              scaledScore: sScaled,
+              confidenceInterval: [lo, hi],
+              canDoStatements,
+            };
+
+            const dbKey = SKILL_DB_MAP[skill];
+            if (dbKey) skillScoresForDb[dbKey] = sScaled;
+          } catch (skillErr) {
+            logger.warn({ sessionId, skill, err: skillErr }, "finalizeSession: per-skill theta estimation failed — skipping skill");
+          }
+        }
+      }
+
+      // ── Overall CI ────────────────────────────────────────────────────────────
+      const overallCI: [number, number] = [
+        Number((theta - 1.96 * sessionSem).toFixed(3)),
+        Number((theta + 1.96 * sessionSem).toFixed(3)),
+      ];
+
+      const overallCanDo = getCanDo(cefrLevel as any);
+      const mirtVector = (session?.metadata as any)?.mirtAbilityVector ?? null;
+      const mirt2B = (session?.metadata as any)?.mirt2B ?? null;
+
+      // Compact skill profile snapshot for session metadata (theta + SEM only)
+      for (const [skill, report] of Object.entries(skillSubReports)) {
+        if (report) {
+          skillProfilesSnapshot[skill] = { theta: report.theta, sem: report.sem };
+        }
+      }
+
+      const ec = engine.getConfig();
+      const opCount =
+        session?.responses?.filter((r) => !r.isPretest).length ?? 0;
+      const testInfo = sessionSem > 0 ? 1 / (sessionSem * sessionSem) : 0;
+      const psychometrics = {
+        operationalItemCount: opCount,
+        testInformation: Number(testInfo.toFixed(2)),
+        marginalReliabilityApprox:
+          sessionSem > 0
+            ? Number((1 - Math.min(1, sessionSem * sessionSem)).toFixed(3))
+            : null,
+        featureFlags: {
+          useRtIrt: ec.useRtIrt === true,
+          useGrmProductive: ec.useGrmProductive === true,
+          useMirt2B: ec.useMirt2B === true,
+          useMirt: ec.useMirt === true,
+          mstEnabled: ec.mst?.enabled === true,
+          sprtEnabled: ec.sprt?.enabled === true,
+          useShadowTest: ec.useShadowTest === true,
+          // Faz 2–3 features — always active regardless of config flags
+          daveyParshallExposureControl: true,
+          klInformationSelection: true,
+          onlineCalibrationStockingEM: true,
+          itemParameterDriftLordChiSq: true,
+          personFitDrasgowLzECI: true,
+          answerCopyingWollackOmega: true,
+          collusionGraphDetection: true,
+          clickstreamHmmAnalysis: true,
+          mirt4DCompensatory: true,
+          gdinaDiagnosticFeedback: true,
+          rlItemSelector: ec.useRlSelector === true,
+        },
+      };
+
+      // ── Classification Consistency (Livingston-Lewis) ───────────────────────
+      const classificationResult = classifyCandidate(theta, sessionSem);
+      const consistencyReport = computeConsistencyReport(theta, sessionSem);
+
+      // ── Person-Fit (Drasgow Lz + ECI + U3) ─────────────────────────────────
+      const allItems = session
+        ? session.responses.map(r => r.item).filter(Boolean).map(dbItemToEngineItem)
+        : [];
+      let personFitResult = null;
+      try {
+        personFitResult = session
+          ? computePersonFit({
+              responses: session.responses.map(r => ({
+                itemId: r.itemId,
+                score: r.score ?? 0,
+                isPretest: r.isPretest ?? false,
+                latencyMs: r.latencyMs ?? undefined,
+              })),
+              items: allItems,
+              theta,
+            })
+          : null;
+      } catch (pfErr) {
+        logger.warn({ sessionId, err: pfErr }, "finalizeSession: computePersonFit failed");
+      }
+
+      // ── MIRT 4D profile ──────────────────────────────────────────────────────
+      const mirt4DProfile = (() => {
+        try {
+          if (!session) return null;
+          const opResponses = session.responses.filter(r => !r.isPretest && r.score !== null);
+          if (opResponses.length === 0) return null;
+          const obs: Mirt4DObservation[] = opResponses
+            .map(r => {
+              const item = allItems.find(it => it.id === r.itemId);
+              if (!item) return null;
+              return {
+                score: ((r.score ?? 0) > 0.5 ? 1 : 0) as 0 | 1,
+                params: unidimTo4DParams(
+                  item.params.a,
+                  item.params.b,
+                  item.params.c,
+                  (item.skill as string) ?? "DEFAULT",
+                ),
+              };
+            })
+            .filter((x): x is Mirt4DObservation => x !== null);
+          if (obs.length === 0) return null;
+          const profile = estimate4DTheta(obs);
+          return {
+            theta: profile.theta,
+            sem: profile.sem,
+            traceCovariance: profile.traceCovariance,
+            composite: compositeTheta(profile),
+            compositeSem: compositeSem(profile),
+            dimensionLabels: [
+              "Receptive (Reading/Listening)",
+              "Productive (Writing/Speaking)",
+              "Grammatical Accuracy (Grammar/Vocabulary)",
+              "Strategic Competence (Discourse/Pragmatics)",
+            ],
+          };
+        } catch (mirtErr) {
+          logger.warn({ sessionId, err: mirtErr }, "finalizeSession: MIRT 4D estimation failed");
+          return null;
+        }
+      })();
+
+      // ── Clickstream behavioural analysis ───────────────────────────────────
+      const behaviourProfile = (() => {
+        try {
+          if (!session) return null;
+          const meta = (session.metadata as Record<string, unknown> | null) ?? {};
+          const rawClickstreams = (meta.clickstreams as ItemClickstream[] | undefined) ?? [];
+          if (rawClickstreams.length === 0) return null;
+          const profile = analyseClickstream(rawClickstreams);
+          return {
+            itemCount: profile.itemCount,
+            meanResponseTime: profile.meanResponseTime,
+            cvResponseTime: profile.cvResponseTime,
+            stateProportions: profile.stateProportions,
+            focusLossProportion: profile.focusLossProportion,
+            revisionRate: profile.revisionRate,
+            rapidGuessCount: profile.rapidGuessCount,
+            lowEffortFlag: profile.lowEffortFlag,
+            riskLevel: profile.riskLevel,
+          };
+        } catch (csErr) {
+          logger.warn({ sessionId, err: csErr }, "finalizeSession: clickstream analysis failed");
+          return null;
+        }
+      })();
+
+      // ── G-DINA diagnostic feedback ────────────────────────────────────────────
+      const gdinaDiagnostic = (() => {
+        if (!session) return null;
+        const opResponses = session.responses.filter(r => !r.isPretest && r.score !== null);
+        const J = LINGUADAPT_QMATRIX.length;
+        if (opResponses.length < Math.ceil(J / 2)) return null;
+
+        const responseVector = LINGUADAPT_QMATRIX.map((_, j) => {
+          const r = opResponses[j % opResponses.length];
+          return r ? ((r.score ?? 0) > 0.5 ? 1 : 0) : 0;
+        });
+
+        const responses = [responseVector];
+        try {
+          const model = estimateGdina(responses, LINGUADAPT_QMATRIX, 50);
+          const classification = classifyExamineeGdina(responseVector, model);
+          const feedback = generateDiagnosticFeedback(classification, LINGUADAPT_ATTRIBUTES);
+          return {
+            overallMasteryRate: feedback.overallMasteryRate,
+            learningStage: feedback.learningStage,
+            primaryWeakness: feedback.primaryWeakness,
+            primaryStrength: feedback.primaryStrength,
+            mapProfile: feedback.mapProfileString,
+            attributes: feedback.attributes,
+          };
+        } catch {
+          return null;
+        }
+      })();
+
+      // ── Per-session cheating signal (answer-copying self-check) ──────────────
+      const securityFlag = (() => {
+        try {
+          if (!session || allItems.length < 10) return null;
+          const opResponses = session.responses.filter(r => !r.isPretest);
+          if (opResponses.length < 10) return null;
+
+          const copyingItems: CopyingItemMeta[] = allItems
+            .filter(it => !it.isPretest)
+            .map(it => ({ itemId: it.id, params: it.params }));
+
+          const expectedResponses: CopyingResponse[] = copyingItems.map(it => ({
+            itemId: it.itemId,
+            score: irtProbability(theta, it.params) > 0.5 ? 1 : 0,
+          }));
+
+          const observed: CopyingResponse[] = opResponses.map(r => ({
+            itemId: r.itemId,
+            score: (r.score ?? 0) > 0.5 ? 1 : 0,
+          }));
+
+          const result = detectAnswerCopying(
+            expectedResponses, observed, theta, theta, copyingItems
+          );
+
+          return {
+            omega:   result.omega,
+            s2:      result.s2,
+            kIndex:  result.kIndex,
+            kPValue: result.kPValue,
+            flagged: result.flagged,
+            triggers: result.triggers,
+          };
+        } catch (sfErr) {
+          logger.warn({ sessionId, err: sfErr }, "finalizeSession: security flag computation failed");
+          return null;
+        }
+      })();
+
+      // ── Cross-session collusion graph detection ─────────────────────────────
+      const collusionReport = await (async () => {
+        if (!session || (session.responses.filter(r => !r.isPretest).length) < 10) return null;
+        try {
+          const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          const recentSessions = await prisma.session.findMany({
+            where: {
+              status: "COMPLETED",
+              completedAt: { gte: since },
+              id: { not: sessionId },
+              ...(sessionProductLine ? { metadata: { path: ["productLine"], equals: sessionProductLine } } : {}),
+            },
+            include: { responses: { where: { isPretest: false }, select: { itemId: true, score: true, latencyMs: true } } },
+            take: 50,
+            orderBy: { completedAt: "desc" },
+          });
+
+          if (recentSessions.length < 2) return null;
+
+          const currentResponses: CopyingResponse[] = session.responses
+            .filter(r => !r.isPretest)
+            .map(r => ({ itemId: r.itemId, score: (r.score ?? 0) > 0.5 ? 1 : 0 }));
+          const currentRTs: Record<string, number> = {};
+          for (const r of session.responses) {
+            if (r.latencyMs) currentRTs[r.itemId] = r.latencyMs;
+          }
+
+          const profiles: CollusionExamineeProfile[] = [
+            {
+              examineeId: sessionId,
+              theta,
+              responses: currentResponses,
+              responseTimes: currentRTs,
+            },
+            ...recentSessions.slice(0, 20).map(s => ({
+              examineeId: s.id,
+              theta: s.theta ?? 0,
+              responses: s.responses.map(r => ({ itemId: r.itemId, score: (r.score ?? 0) > 0.5 ? 1 : 0 })),
+              responseTimes: s.responses.reduce<Record<string, number>>((acc, r) => {
+                if (r.latencyMs) acc[r.itemId] = r.latencyMs;
+                return acc;
+              }, {}),
+            })),
+          ];
+
+          const itemMetas = allItems.filter(it => !it.isPretest).map(it => ({
+            itemId: it.id,
+            params: it.params,
+          }));
+
+          const report = analyseCollusion(profiles, itemMetas);
+          const involvedPairs = report.flaggedPairs.filter(
+            p => p.examineeA === sessionId || p.examineeB === sessionId
+          );
+          if (involvedPairs.length === 0) return null;
+          return {
+            flaggedPairs: involvedPairs.length,
+            flagRate: report.flagRate,
+            involvedWithIds: involvedPairs.map(p => p.examineeA === sessionId ? p.examineeB : p.examineeA),
+            riskLevel: report.clusters.find(c => c.members.includes(sessionId))?.riskLevel ?? "LOW",
+          };
+        } catch {
+          return null;
+        }
+      })();
+
+      diagnosticReport = {
+        overallTheta: theta,
+        overallSem: sessionSem,
+        overallCefr: cefrLevel,
+        confidenceInterval: overallCI,
+        canDoStatements: overallCanDo.flatMap(d => d.descriptors).slice(0, 6),
+        skillProfiles: skillSubReports,
+        mirtAbilityVector: mirtVector,
+        mirt2B,
+        mirt4D: mirt4DProfile,
+        behaviourProfile,
+        gdinaDiagnostic,
+        stopReason,
+        productLine: sessionProductLine,
+        mstTrack: sessionMstTrack,
+        psychometrics,
+        classificationConsistency: {
+          cefrLevel: classificationResult.cefrLevel,
+          isBorderline: classificationResult.isBorderline,
+          borderlineLevels: classificationResult.borderlineLevels,
+          posteriorProbCorrect: classificationResult.posteriorProbCorrect,
+          recommendedAction: classificationResult.recommendedAction,
+          decisionConsistency: consistencyReport.decisionConsistency,
+          classificationAccuracy: consistencyReport.classificationAccuracy,
+          meetsHighStakesThreshold: consistencyReport.decisionConsistency >= 0.80,
+          meetsPlacementThreshold: consistencyReport.decisionConsistency >= 0.70,
+        },
+        personFit: personFitResult
+          ? {
+              lz: personFitResult.lz,
+              eci: personFitResult.eci,
+              u3: personFitResult.u3,
+              rgi: personFitResult.rgi,
+              flag: personFitResult.flag,
+              recommendedAction: personFitResult.recommendedAction,
+              interpretation: personFitResult.interpretation,
+            }
+          : null,
+        securityFlag,
+        collusionReport,
+        generatedAt: new Date().toISOString(),
+      };
+    } catch (analysisErr) {
+      // Analysis failed — log and proceed with minimal report so the session
+      // is always completed. Psychometric data will be absent but the session
+      // lifecycle is not blocked.
+      logger.error(
+        { sessionId, err: analysisErr },
+        "finalizeSession: psychometric analysis failed — completing session with minimal report"
+      );
+    }
 
     await prisma.$transaction([
       prisma.session.update({
