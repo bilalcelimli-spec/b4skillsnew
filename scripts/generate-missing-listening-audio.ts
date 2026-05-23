@@ -190,6 +190,10 @@ function sleep(ms: number) {
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
+// REGEN_DIALOGUE=1 — re-generate only dialogue items (those with ≥2 speakers),
+// regardless of whether audioUrl already exists. Use this to fix single-voice audio.
+const REGEN_DIALOGUE = process.env.REGEN_DIALOGUE === "1";
+
 async function main() {
   if (!fs.existsSync(PUBLIC_AUDIO_DIR)) {
     fs.mkdirSync(PUBLIC_AUDIO_DIR, { recursive: true });
@@ -203,11 +207,22 @@ async function main() {
 
   const targets = items.filter((item) => {
     const c = item.content as Record<string, unknown>;
-    return !c.audioUrl && c.transcript;
+    const hasTranscript = !!c.transcript;
+    if (!hasTranscript) return false;
+    if (REGEN_DIALOGUE) {
+      // Re-generate all dialogue items (fix single-voice audio)
+      return isDialogue(c.transcript as string);
+    }
+    // Normal mode: only items missing audioUrl
+    return !c.audioUrl;
   });
 
   console.log(`\nTotal LISTENING items: ${items.length}`);
-  console.log(`Items needing audio: ${targets.length}`);
+  if (REGEN_DIALOGUE) {
+    console.log(`Dialogue items to regenerate (multi-speaker fix): ${targets.length}`);
+  } else {
+    console.log(`Items needing audio: ${targets.length}`);
+  }
   if (DRY_RUN) console.log("DRY RUN — no files or DB writes.\n");
 
   let generated = 0;
@@ -222,7 +237,7 @@ async function main() {
     const outputPath = path.join(PUBLIC_AUDIO_DIR, filename);
     const audioUrl = `/audio/${filename}`;
 
-    if (!FORCE && fs.existsSync(outputPath)) {
+    if (!FORCE && !REGEN_DIALOGUE && fs.existsSync(outputPath)) {
       console.log(`[SKIP]  ${item.id} — file exists`);
       // Patch audioUrl in DB even if file exists (in case it was missed)
       if (!DRY_RUN) {
