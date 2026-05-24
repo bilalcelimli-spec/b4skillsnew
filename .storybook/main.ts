@@ -1,0 +1,23 @@
+import type { StorybookConfig } from "@storybook/react-vite";
+
+const config: StorybookConfig = {
+  stories: ["../src/**/*.stories.@(ts|tsx|js|jsx|mdx)"],
+  addons: [
+    "@storybook/addon-essentials",
+    "@storybook/addon-a11y",
+    "@storybook/addon-interactions",
+  ],
+  framework: {
+    name: "@storybook/react-vite",
+    options: {},
+  },
+  docs: {
+    autodocs: "tag",
+  },
+  viteFinal: (config) => {
+    // Ensure Vite resolves the same aliases as the app
+    return config;
+  },
+};
+
+export default config;

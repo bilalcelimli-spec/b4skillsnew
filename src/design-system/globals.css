@@ -1,0 +1,241 @@
+/**
+ * Design System CSS — Global Tokens & Dark Mode
+ * ─────────────────────────────────────────────────────────────────────────────
+ * CSS custom properties generated from design tokens.
+ * Supports:
+ *   • System dark mode (prefers-color-scheme)
+ *   • Manual override via [data-theme="dark"] on <html>
+ *   • RTL layout via [dir="rtl"] on <html>
+ *   • Reduced-motion via prefers-reduced-motion
+ *   • High-contrast via prefers-contrast: more
+ *
+ * Imported in src/index.css AFTER @import "tailwindcss".
+ */
+
+/* ── Font loading ─────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Lora:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans:ital,wght@0,400;0,600;1,400&display=swap');
+
+/* ── Root (light mode) ────────────────────────────────────────────────────── */
+:root {
+  /* Brand */
+  --color-brand-1: #f8f9ff; --color-brand-2: #f0f3ff; --color-brand-3: #e0e7ff;
+  --color-brand-4: #c7d4ff; --color-brand-5: #a9beff; --color-brand-6: #8aa5ff;
+  --color-brand-7: #6b8efc; --color-brand-8: #4d75f7; --color-brand-9: #1a56db;
+  --color-brand-10:#1748c4; --color-brand-11:#1239a8; --color-brand-12:#0b2470;
+
+  /* Neutral */
+  --color-neutral-1: #f8fafc; --color-neutral-2: #f1f5f9;
+  --color-neutral-3: #e2e8f0; --color-neutral-4: #cbd5e1;
+  --color-neutral-5: #94a3b8; --color-neutral-6: #64748b;
+  --color-neutral-7: #475569; --color-neutral-8: #334155;
+  --color-neutral-9: #1e293b; --color-neutral-10:#0f172a;
+
+  /* Semantic */
+  --bg-app:          #f8fafc;
+  --bg-subtle:       #f1f5f9;
+  --bg-surface:      #ffffff;
+  --bg-overlay:      rgba(15, 23, 42, 0.6);
+  --border:          #e2e8f0;
+  --border-strong:   #cbd5e1;
+  --text-primary:    #0f172a;
+  --text-secondary:  #64748b;
+  --text-muted:      #94a3b8;
+  --text-inverse:    #ffffff;
+  --brand:           #1a56db;
+  --brand-hover:     #1748c4;
+  --brand-subtle:    #e0e7ff;
+  --focus-ring:      #4d75f7;
+
+  /* Status */
+  --success:  #15803d; --success-subtle: #d3f9e0; --success-text: #052e16;
+  --warning:  #b45309; --warning-subtle: #feecaa; --warning-text: #451a03;
+  --error:    #b91c1c; --error-subtle:   #fdd7d7; --error-text:   #450a0a;
+  --info:     #0369a1; --info-subtle:    #e0f2fe; --info-text:    #0c4a6e;
+
+  /* Typography */
+  --font-sans:     "Inter Variable", "Inter", system-ui, -apple-system, sans-serif;
+  --font-serif:    "Lora", Georgia, serif;
+  --font-mono:     "JetBrains Mono", "Fira Code", monospace;
+  --font-extended: "Noto Sans", "Noto Sans CJK SC", "Noto Sans Arabic", system-ui, sans-serif;
+
+  /* Radii */
+  --radius-xs: 2px; --radius-sm: 4px; --radius-md: 8px;
+  --radius-lg: 12px; --radius-xl: 16px; --radius-2xl: 20px; --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-xs:  0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm:  0 1px 3px 0 rgb(0 0 0 / 0.10), 0 1px 2px -1px rgb(0 0 0 / 0.10);
+  --shadow-md:  0 4px 6px -1px rgb(0 0 0 / 0.10), 0 2px 4px -2px rgb(0 0 0 / 0.10);
+  --shadow-lg:  0 10px 15px -3px rgb(0 0 0 / 0.10), 0 4px 6px -4px rgb(0 0 0 / 0.10);
+  --shadow-xl:  0 20px 25px -5px rgb(0 0 0 / 0.10), 0 8px 10px -6px rgb(0 0 0 / 0.10);
+  --shadow-glow-brand:   0 0 0 3px rgba(26, 86, 219, 0.35);
+  --shadow-glow-success: 0 0 0 3px rgba(21, 128, 61, 0.35);
+
+  /* Motion */
+  --duration-xs: 80ms; --duration-sm: 120ms; --duration-md: 200ms;
+  --duration-lg: 300ms; --duration-xl: 500ms;
+  --ease-standard:   cubic-bezier(0.2, 0, 0, 1);
+  --ease-decelerate: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --ease-accelerate: cubic-bezier(0.3, 0, 1.0, 1);
+
+  /* Z-index */
+  --z-dropdown: 1000; --z-sticky: 1100; --z-overlay: 1300;
+  --z-modal: 1400; --z-popover: 1500; --z-toast: 1700; --z-tooltip: 1800;
+
+  /* Layout */
+  --container-max: 1280px;
+  --sidebar-width: 260px;
+  --header-height: 64px;
+  --content-padding: 24px;
+}
+
+/* ── Dark mode ───────────────────────────────────────────────────────────── */
+[data-theme="dark"],
+.dark {
+  --bg-app:          #0c0f1a;
+  --bg-subtle:       #111827;
+  --bg-surface:      #1a2035;
+  --bg-overlay:      rgba(0, 0, 0, 0.8);
+  --border:          #1f2d45;
+  --border-strong:   #2a3d5c;
+  --text-primary:    #e8edf8;
+  --text-secondary:  #94a3b8;
+  --text-muted:      #64748b;
+  --text-inverse:    #0c0f1a;
+  --brand:           #6b8efc;
+  --brand-hover:     #8aa5ff;
+  --brand-subtle:    #1a2d5a;
+  --focus-ring:      #6b8efc;
+
+  --success:  #4ade80; --success-subtle: #052e16; --success-text: #d3f9e0;
+  --warning:  #fb923c; --warning-subtle: #451a03; --warning-text: #fef7dc;
+  --error:    #f87171; --error-subtle:   #450a0a; --error-text:   #fdd7d7;
+  --info:     #38bdf8; --info-subtle:    #0c4a6e; --info-text:    #e0f2fe;
+
+  --shadow-xs:  0 1px 2px 0 rgb(0 0 0 / 0.2);
+  --shadow-sm:  0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+  --shadow-md:  0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-lg:  0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+  --shadow-xl:  0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.4);
+  --shadow-glow-brand:   0 0 0 3px rgba(107, 142, 252, 0.4);
+  --shadow-glow-success: 0 0 0 3px rgba(74, 222, 128, 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-app:          #0c0f1a;
+    --bg-subtle:       #111827;
+    --bg-surface:      #1a2035;
+    --bg-overlay:      rgba(0, 0, 0, 0.8);
+    --border:          #1f2d45;
+    --border-strong:   #2a3d5c;
+    --text-primary:    #e8edf8;
+    --text-secondary:  #94a3b8;
+    --text-muted:      #64748b;
+    --text-inverse:    #0c0f1a;
+    --brand:           #6b8efc;
+    --brand-hover:     #8aa5ff;
+    --brand-subtle:    #1a2d5a;
+    --focus-ring:      #6b8efc;
+    --success:  #4ade80; --success-subtle: #052e16; --success-text: #d3f9e0;
+    --warning:  #fb923c; --warning-subtle: #451a03; --warning-text: #fef7dc;
+    --error:    #f87171; --error-subtle:   #450a0a; --error-text:   #fdd7d7;
+    --info:     #38bdf8; --info-subtle:    #0c4a6e; --info-text:    #e0f2fe;
+  }
+}
+
+/* ── Base styles ──────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: smooth;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  min-height: 100dvh;
+  transition: background-color var(--duration-md) var(--ease-standard),
+              color           var(--duration-md) var(--ease-standard);
+}
+
+/* ── Focus styles (WCAG 2.2 AAA: 3px offset, high contrast) ──────────────── */
+:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* Remove focus ring for mouse/touch interactions (not keyboard) */
+:focus:not(:focus-visible) { outline: none; }
+
+/* ── RTL support ─────────────────────────────────────────────────────────── */
+[dir="rtl"] {
+  --content-padding: 24px;
+  /* Flip logical property defaults */
+}
+
+[dir="rtl"] body {
+  font-family: var(--font-extended);
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── High contrast ───────────────────────────────────────────────────────── */
+@media (prefers-contrast: more) {
+  :root {
+    --border: #000000;
+    --text-secondary: var(--text-primary);
+    --brand: #0000dd;
+    --focus-ring: #000000;
+  }
+  [data-theme="dark"], .dark {
+    --border: #ffffff;
+    --text-secondary: var(--text-primary);
+    --brand: #9999ff;
+    --focus-ring: #ffffff;
+  }
+}
+
+/* ── Tablet layout helpers ───────────────────────────────────────────────── */
+@media (min-width: 768px) and (max-width: 1023px) {
+  :root {
+    --sidebar-width: 72px;   /* icon-only on tablet portrait */
+    --content-padding: 20px;
+  }
+}
+
+/* ── Scrollbar styling (non-obscuring, accessible) ───────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Selection ───────────────────────────────────────────────────────────── */
+::selection { background: var(--brand-subtle); color: var(--brand); }
+
+/* ── Print ───────────────────────────────────────────────────────────────── */
+@media print {
+  body { background: white; color: black; }
+  .no-print { display: none !important; }
+}

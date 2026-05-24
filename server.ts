@@ -310,8 +310,100 @@ async function startServer() {
       return res.status(401).json({ error: 'Invalid Google Token' });
     }
   });
-  
-  // --- OFFLINE MOCK MIDDLEWARE ---
+
+  // ── Social SSO — redirect-based flows (Google, Microsoft, LinkedIn) ────────
+
+  const { createOAuthState, consumeOAuthState, getSocialAuthUrl, exchangeSocialCode, verifyGoogleIdToken } =
+    await import("./src/lib/auth/social-sso.js");
+
+  const socialAuthLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    message: { error: "Too many auth attempts" },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  // Helper: upsert user from social profile, issue tokens, set cookies
+  async function handleSocialProfile(profile: Awaited<ReturnType<typeof exchangeSocialCode>>, res: any) {
+    let user = await prisma.user.findUnique({ where: { email: profile.email } });
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          email:         profile.email,
+          name:          profile.name,
+          image:         profile.picture ?? null,
+          role:          "CANDIDATE" as const,
+          emailVerified: profile.emailVerified ? new Date() : null,
+        },
+      });
+    } else if (!user.image && profile.picture) {
+      user = await prisma.user.update({ where: { id: user.id }, data: { image: profile.picture } });
+    }
+    const accessToken  = jwt.sign({ userId: user.id }, JWT_SECRET,     { expiresIn: "15m" });
+    const refreshToken = jwt.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: "7d"  });
+    await prisma.user.update({ where: { id: user.id }, data: { refreshToken } });
+    setAuthCookies(res, accessToken, refreshToken);
+    return { accessToken, user };
+  }
+
+  // POST /api/auth/social/google/id-token — mobile/SPA flow (pass ID token directly)
+  app.post("/api/auth/social/google/id-token", socialAuthLimiter, async (req, res) => {
+    try {
+      const { idToken } = req.body;
+      if (!idToken || typeof idToken !== "string") return res.status(400).json({ error: "idToken required" });
+      const profile = await verifyGoogleIdToken(idToken);
+      const { accessToken, user } = await handleSocialProfile(profile, res);
+      return res.json({ token: accessToken, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
+    } catch (err: any) {
+      console.error("[social-sso] google id-token:", err.message);
+      return res.status(401).json({ error: "Google authentication failed" });
+    }
+  });
+
+  // GET /api/auth/social/:provider — start the OAuth redirect flow
+  app.get("/api/auth/social/:provider", socialAuthLimiter, (req, res) => {
+    const provider = req.params.provider as "google" | "microsoft" | "linkedin";
+    if (!["google", "microsoft", "linkedin"].includes(provider)) {
+      return res.status(400).json({ error: "Unknown provider" });
+    }
+    const state   = createOAuthState(provider, req.query.redirect_uri as string ?? "/");
+    const authUrl = getSocialAuthUrl(provider, state);
+    // Store state in a short-lived signed cookie for CSRF protection
+    res.cookie("oauth_state", state, { httpOnly: true, sameSite: "lax", maxAge: 10 * 60 * 1000, secure: process.env.NODE_ENV === "production" });
+    return res.redirect(authUrl);
+  });
+
+  // GET /api/auth/social/:provider/callback — OAuth callback
+  app.get("/api/auth/social/:provider/callback", socialAuthLimiter, async (req, res) => {
+    try {
+      const provider = req.params.provider as "google" | "microsoft" | "linkedin";
+      const { code, state, error } = req.query as Record<string, string>;
+
+      if (error) return res.status(401).json({ error: `Provider error: ${error}` });
+      if (!code || !state) return res.status(400).json({ error: "Missing code or state" });
+
+      // CSRF check
+      const cookieState = req.cookies?.oauth_state;
+      if (!cookieState || cookieState !== state) return res.status(403).json({ error: "State mismatch" });
+      res.clearCookie("oauth_state");
+
+      const statePayload = consumeOAuthState(state);
+      if (!statePayload) return res.status(403).json({ error: "Expired or unknown state" });
+
+      const profile = await exchangeSocialCode(provider, code);
+      const { accessToken, user } = await handleSocialProfile(profile, res);
+
+      // Redirect back to SPA with a one-time code (token already in cookies)
+      const redirectTo = statePayload.redirectUri && statePayload.redirectUri.startsWith("/") ? statePayload.redirectUri : "/";
+      return res.redirect(`${redirectTo}?sso=ok`);
+    } catch (err: any) {
+      console.error("[social-sso] callback:", err.message);
+      return res.redirect("/login?error=sso_failed");
+    }
+  });
+
+
   // If no database is available, we intercept admin routes and serve mock data
   app.use("/api", (req, res, next) => {
     if (!dbAvailable) {
@@ -2529,6 +2621,682 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.json({ formatted, region: req.params.region, rawScore: score });
     } catch (err) { res.status(500).json({ error: String(err) }); }
   });
+
+  // ── Multi-Region: attach region middleware ──────────────────────────────
+  const { regionMiddleware, detectRegionFromRequest } = await import("./src/lib/regional/multi-region.js");
+  app.use(regionMiddleware);
+
+  app.get("/api/region", (req: any, res) => {
+    res.json({
+      region: req.region ?? detectRegionFromRequest(req),
+      flyRegion: process.env.FLY_REGION ?? "local",
+    });
+  });
+
+  // ── Edge cache headers ──────────────────────────────────────────────────
+  const { edgeCacheMiddleware } = await import("./src/lib/cdn/edge-cache.js");
+  app.use(edgeCacheMiddleware);
+
+  // ── Anti-cheat ML v1 ────────────────────────────────────────────────────
+  const { computeAnticheatReport } = await import("./src/lib/proctoring/anticheat-ml.js");
+
+  app.post("/api/proctoring/anticheat", async (req, res) => {
+    try {
+      const telemetry = req.body;
+      if (!telemetry?.sessionId) return res.status(400).json({ error: "sessionId required" });
+      const report = computeAnticheatReport(telemetry);
+      // Persist risk score to DB if available
+      if (dbAvailable && report.riskScore >= 25) {
+        try {
+          await prisma.session.update({
+            where: { id: telemetry.sessionId },
+            data: { status: report.riskScore >= 75 ? "FLAGGED" : "IN_PROGRESS" },
+          });
+        } catch { /* session may not exist in mock mode */ }
+      }
+      res.json(report);
+    } catch (err) {
+      res.status(500).json({ error: "Anti-cheat analysis failed", details: String(err) });
+    }
+  });
+
+  app.get("/api/proctoring/anticheat/:sessionId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      if (dbAvailable) {
+        const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true, status: true } });
+        if (!session) return res.status(404).json({ error: "Session not found" });
+      }
+      res.json({ sessionId, message: "Submit telemetry via POST /api/proctoring/anticheat to compute report" });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // ── Whisper Speech Pipeline ─────────────────────────────────────────────
+  const whisperRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    message: { error: "Too many speaking submissions, please wait." },
+  });
+
+  app.post("/api/speaking/transcribe", whisperRateLimit, async (req, res) => {
+    try {
+      const { audio, filename = "recording.webm", prompt = "", includeTimestamps = false } = req.body;
+      if (!audio) return res.status(400).json({ error: "audio (base64) required" });
+
+      const { runWhisperPipelineFromBase64 } = await import("./src/lib/scoring/whisper-pipeline.js");
+      const result = await runWhisperPipelineFromBase64(audio, filename, { prompt, includeTimestamps });
+      res.json(result);
+    } catch (err: any) {
+      const msg = err?.message ?? String(err);
+      if (msg.includes("OPENAI_API_KEY")) return res.status(503).json({ error: "Whisper not configured — OPENAI_API_KEY missing" });
+      res.status(500).json({ error: "Transcription failed", details: msg });
+    }
+  });
+
+  // ── Health / SLO endpoints ───────────────────────────────────────────────
+  {
+    const { runDeepHealthCheck, uptimeTracker } = await import("./src/lib/observability/uptime-slo.js");
+
+    app.get("/api/healthz/live", (_req, res) => res.json({ status: "ok" }));
+
+    app.get("/api/healthz/ready", async (_req, res) => {
+      try {
+        const result = await runDeepHealthCheck();
+        const httpStatus = result.status === "healthy" ? 200 : 503;
+        res.status(httpStatus).json(result);
+      } catch (err: any) {
+        res.status(503).json({ healthy: false, error: String(err?.message ?? err) });
+      }
+    });
+
+    app.get("/api/healthz/deep", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (_req, res) => {
+      try {
+        const result = await runDeepHealthCheck();
+        const slo = uptimeTracker.sloStatus();
+        res.json({ ...result, slo });
+      } catch (err: any) {
+        res.status(503).json({ healthy: false, error: String(err?.message ?? err) });
+      }
+    });
+
+    app.get("/api/admin/slo/uptime", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), (_req, res) => {
+      res.json(uptimeTracker.sloStatus());
+    });
+  }
+
+  // ── Compliance endpoints ─────────────────────────────────────────────────
+  {
+    const { generateEvidencePackage, buildAuditEvent } = await import("./src/lib/compliance/soc2-iso27001.js");
+    const { generateFedRAMPPackage } = await import("./src/lib/compliance/fedramp.js");
+
+    app.get("/api/admin/compliance/soc2", checkRole(["SUPER_ADMIN"]), (_req, res) => {
+      res.json(generateEvidencePackage("SOC2"));
+    });
+
+    app.get("/api/admin/compliance/iso27001", checkRole(["SUPER_ADMIN"]), (_req, res) => {
+      res.json(generateEvidencePackage("ISO27001"));
+    });
+
+    app.get("/api/admin/compliance/fedramp", checkRole(["SUPER_ADMIN"]), (_req, res) => {
+      res.json(generateFedRAMPPackage());
+    });
+
+    app.post("/api/admin/compliance/audit-event", checkRole(["SUPER_ADMIN"]), async (req, res) => {
+      try {
+        const { actor, action, resource, organizationId, ipAddress, userAgent, outcomeSuccess, previousHash } = req.body;
+        if (!actor || !action || !resource) return res.status(400).json({ error: "actor, action, resource required" });
+        const event = buildAuditEvent({ category: "ACCESS_CONTROL", severity: "INFO", actor, action, resource, organizationId, ipAddress: ipAddress ?? req.ip, userAgent: userAgent ?? req.headers["user-agent"] ?? "", outcomeSuccess: outcomeSuccess !== false });
+        res.json(event);
+      } catch (err: any) {
+        res.status(500).json({ error: String(err?.message ?? err) });
+      }
+    });
+  }
+
+  // ── Real-time IRT calibration streaming (SSE) ────────────────────────────
+  {
+    const { calibrationStreamer } = await import("./src/lib/psychometrics/realtime-irt-calibration.js");
+    calibrationStreamer.start();
+
+    // Snapshot endpoint (REST polling fallback)
+    app.get("/api/admin/calibration/status", checkRole(["SUPER_ADMIN", "INST_ADMIN", "ASSESSMENT_DIRECTOR"]), (_req, res) => {
+      res.json({ items: calibrationStreamer.getBufferSnapshot(), timestamp: new Date().toISOString() });
+    });
+
+    // SSE stream — admin dashboard subscribes and receives live calibration updates
+    app.get("/api/admin/calibration/stream", checkRole(["SUPER_ADMIN", "INST_ADMIN", "ASSESSMENT_DIRECTOR"]), (req, res) => {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.flushHeaders();
+
+      const onCalibrated = (data: object) => {
+        res.write(`event: item_calibrated\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+      const onCycle = (data: object) => {
+        res.write(`event: cycle_complete\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+
+      calibrationStreamer.on("item_calibrated", onCalibrated);
+      calibrationStreamer.on("cycle_complete", onCycle);
+
+      // Send heartbeat every 30s to keep connection alive through proxies
+      const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 30_000);
+
+      req.on("close", () => {
+        clearInterval(heartbeat);
+        calibrationStreamer.off("item_calibrated", onCalibrated);
+        calibrationStreamer.off("cycle_complete", onCycle);
+      });
+    });
+  }
+
+  // ── Item Bank Administration ─────────────────────────────────────────────
+  {
+    const { expansionEngine } = await import("./src/lib/item-bank/expansion-engine.js");
+
+    app.get("/api/admin/item-bank/snapshot", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), (req, res) => {
+      const tier = (req.query.tier as string | undefined) ?? "TIER1";
+      res.json(expansionEngine.snapshot(tier as any));
+    });
+
+    app.get("/api/admin/item-bank/expansion-plan", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), (req, res) => {
+      const tier = (req.query.tier as string | undefined) ?? "TIER1";
+      res.json(expansionEngine.expansionPlan(tier as any));
+    });
+
+    app.post("/api/admin/item-bank/quality-check", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+      try {
+        const { items } = req.body as { items: unknown[] };
+        if (!Array.isArray(items)) { res.status(400).json({ error: "items must be an array" }); return; }
+        const reports = await expansionEngine.runQualityBatch(items as any);
+        res.json(reports);
+      } catch (err) { res.status(500).json({ error: String(err) }); }
+    });
+
+    app.post("/api/admin/item-bank/promote", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+      try {
+        const minN = typeof req.body?.minN === "number" ? req.body.minN : 200;
+        const promoted = await expansionEngine.promoteCalibrated(minN);
+        res.json({ promoted });
+      } catch (err) { res.status(500).json({ error: String(err) }); }
+    });
+
+    app.get("/api/admin/item-bank/coverage-heatmap", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+      try {
+        res.json(await expansionEngine.coverageHeatmap());
+      } catch (err) { res.status(500).json({ error: String(err) }); }
+    });
+  }
+
+  // ── Anchor Pool / Equating ───────────────────────────────────────────────
+  {
+    const { computeAnchorDrift } = await import("./src/lib/item-bank/anchor-pool.js");
+    const { meanSigmaEquating, stockingLordEquating, EXTERNAL_CONCORDANCE_TABLE, lookupConcordance }
+      = await import("./src/lib/psychometrics/concordance.js");
+
+    app.get("/api/admin/anchors/drift", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+      try {
+        const { anchors } = req.body as { anchors?: unknown[] };
+        if (!Array.isArray(anchors)) { res.json([]); return; }
+        res.json(computeAnchorDrift(anchors as any));
+      } catch (err) { res.status(500).json({ error: String(err) }); }
+    });
+
+    app.post("/api/admin/anchors/equating", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), (req, res) => {
+      try {
+        const { anchors, formX, formY, method } = req.body as any;
+        if (!Array.isArray(anchors) || !formX || !formY) {
+          res.status(400).json({ error: "anchors, formX, formY required" }); return;
+        }
+        const result = method === "STOCKING_LORD"
+          ? stockingLordEquating(anchors, formX, formY)
+          : meanSigmaEquating(anchors, formX, formY);
+        res.json(result);
+      } catch (err) { res.status(500).json({ error: String(err) }); }
+    });
+
+    // Public concordance lookup
+    app.get("/api/concordance", (req, res) => {
+      const theta = parseFloat(req.query.theta as string);
+      if (isNaN(theta)) { res.status(400).json({ error: "theta required" }); return; }
+      res.json(lookupConcordance(theta));
+    });
+
+    app.get("/api/admin/concordance/table", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), (_req, res) => {
+      res.json(EXTERNAL_CONCORDANCE_TABLE);
+    });
+  }
+
+  // ── Exposure Control ─────────────────────────────────────────────────────
+  {
+    const { generateExposureReport } = await import("./src/lib/item-bank/exposure-control.js");
+
+    app.get("/api/admin/exposure/report", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (_req, res) => {
+      try {
+        res.json(await generateExposureReport());
+      } catch (err) { res.status(500).json({ error: String(err) }); }
+    });
+  }
+
+  // ── Native Rater Pool ────────────────────────────────────────────────────
+  {
+    const { NATIVE_RATER_POOL, computeIRRReport } = await import("./src/lib/scoring/native-rater-pool.js");
+
+    app.get("/api/admin/raters", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), (_req, res) => {
+      res.json(NATIVE_RATER_POOL);
+    });
+
+    app.post("/api/admin/raters/irr", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), (req, res) => {
+      try {
+        const { tasks } = req.body as { tasks?: unknown[] };
+        if (!Array.isArray(tasks)) { res.status(400).json({ error: "tasks array required" }); return; }
+        res.json(computeIRRReport(tasks as any));
+      } catch (err) { res.status(500).json({ error: String(err) }); }
+    });
+  }
+
+  // ── Certificates ─────────────────────────────────────────────────────────
+  {
+    const { issueCertificate, buildCertificatePayload, verifyCertificate, lookupCertificate, listCertificatesByCandidate }
+      = await import("./src/lib/certificates/blockchain-cert.js");
+
+    app.post("/api/certificates/issue", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+      try {
+        const payload = buildCertificatePayload(req.body);
+        const cert    = await issueCertificate(payload);
+        res.status(201).json(cert);
+      } catch (err) { res.status(500).json({ error: String(err) }); }
+    });
+
+    // Public: no auth required
+    app.get("/api/certificates/:certId/verify", async (req, res) => {
+      try {
+        const cert = await lookupCertificate(req.params.certId);
+        if (!cert) { res.status(404).json({ error: "Certificate not found" }); return; }
+        res.json(await verifyCertificate(cert));
+      } catch (err) { res.status(500).json({ error: String(err) }); }
+    });
+
+    app.get("/api/certificates/candidate/:candidateId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+      try {
+        res.json(await listCertificatesByCandidate(req.params.candidateId));
+      } catch (err) { res.status(500).json({ error: String(err) }); }
+    });
+  }
+
+  // ── ALTE Compliance ──────────────────────────────────────────────────────
+  {
+    const { generateALTEMembershipPackage } = await import("./src/lib/compliance/alte-compliance.js");
+
+    app.get("/api/admin/compliance/alte", checkRole(["SUPER_ADMIN"]), (_req, res) => {
+      res.json(generateALTEMembershipPackage());
+    });
+  }
+
+  // ── Research / Publication Pipeline ─────────────────────────────────────
+  {
+    const { generatePublicationPackage } = await import("./src/lib/research/publication-pipeline.js");
+
+    app.get("/api/admin/research/export", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+      try {
+        const { skill, cefrLevel } = req.query as Record<string, string | undefined>;
+        const pkg = await generatePublicationPackage({ skill, cefrLevel });
+        const fmt = req.query.format as string | undefined;
+        if (fmt === "csv") {
+          res.setHeader("Content-Type", "text/csv");
+          res.setHeader("Content-Disposition", `attachment; filename="item_analysis_${pkg.packageId}.csv"`);
+          res.send(pkg.csvFiles["item_analysis.csv"]);
+          return;
+        }
+        res.json(pkg);
+      } catch (err) { res.status(500).json({ error: String(err) }); }
+    });
+  }
+
+  // ── LMS Integration — LTI 1.3, Canvas, Moodle ────────────────────────────
+  {
+    const { LtiService }          = await import("./src/lib/lti/lti-service.js");
+    const { createCanvasAdapter } = await import("./src/lib/lms/canvas-adapter.js");
+    const { createMoodleAdapter } = await import("./src/lib/lms/moodle-adapter.js");
+
+    // In-memory platform registry (production: store in DB)
+    const ltiPlatforms: Map<string, any> = new Map();
+
+    // ── LTI OIDC login initiation (step 1 of 3-step LTI 1.3 launch)
+    // POST /api/lms/lti/login  — receives iss, login_hint, target_link_uri from LMS
+    app.post("/api/lms/lti/login", (req, res) => {
+      try {
+        const { iss, login_hint, target_link_uri, lti_message_hint, client_id } = req.body;
+        const platform = ltiPlatforms.get(iss) ?? LtiService.resolvePlatformConfig(iss, client_id ?? "");
+        if (!platform) return res.status(400).json({ error: `Unknown LTI platform: ${iss}` });
+        const toolLaunchUrl = `${req.protocol}://${req.get("host")}/api/lms/lti/launch`;
+        const { redirectUrl } = LtiService.initiateLogin(
+          { iss, login_hint, target_link_uri, lti_message_hint, client_id },
+          platform,
+          toolLaunchUrl,
+        );
+        return res.redirect(redirectUrl);
+      } catch (err: any) {
+        return res.status(400).json({ error: err.message });
+      }
+    });
+
+    // ── LTI launch callback (step 3 — platform redirects here with id_token)
+    // POST /api/lms/lti/launch
+    app.post("/api/lms/lti/launch", async (req, res) => {
+      try {
+        const { id_token, state } = req.body;
+        if (!id_token || !state) return res.status(400).send("Missing id_token or state");
+
+        const stateData = LtiService.consumeState(state);
+        if (!stateData) return res.status(403).send("Invalid or expired state");
+
+        const claims = LtiService.parseIdToken(id_token);
+        // Resolve platform config for validation
+        const platform = ltiPlatforms.get(claims.iss) ?? LtiService.resolvePlatformConfig(claims.iss, Array.isArray(claims.aud) ? claims.aud[0] : claims.aud);
+        if (platform) {
+          const validation = LtiService.validateLaunchClaims(claims, platform, stateData.nonce);
+          if (!validation.valid) return res.status(403).send(`LTI validation failed: ${validation.reason}`);
+        }
+
+        // Auto-provision user from LTI identity
+        const email = (claims as any)["https://purl.imsglobal.org/spec/lti/claim/lis"]?.person_contact_email_primary
+                    ?? `${claims.sub}@lti.linguadapt.com`;
+        const name  = (claims as any).name ?? claims.sub;
+
+        let user = await prisma.user.findUnique({ where: { email } });
+        if (!user) {
+          user = await prisma.user.create({
+            data: { email, name, role: "CANDIDATE" as const, emailVerified: new Date() },
+          });
+        }
+
+        const accessToken  = jwt.sign({ userId: user.id }, JWT_SECRET,     { expiresIn: "15m" });
+        const refreshToken = jwt.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: "7d"  });
+        await prisma.user.update({ where: { id: user.id }, data: { refreshToken } });
+        setAuthCookies(res, accessToken, refreshToken);
+
+        // Redirect to assessment start, carrying deep-link context
+        const targetUri = claims.resourceLink?.id
+          ? `/assessment?lti_resource=${encodeURIComponent(claims.resourceLink.id)}`
+          : "/dashboard";
+        return res.redirect(targetUri);
+      } catch (err: any) {
+        console.error("[lti] launch error:", err.message);
+        return res.status(401).send("LTI launch failed");
+      }
+    });
+
+    // ── LTI JWKS endpoint (tool public keys)
+    // GET /api/lms/lti/jwks
+    app.get("/api/lms/lti/jwks", (_req, res) => {
+      // Return an empty JWKS; in production, expose the tool's public key
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      return res.json({ keys: [] });
+    });
+
+    // ── Canvas grade passback
+    // POST /api/lms/canvas/grade-passback
+    app.post("/api/lms/canvas/grade-passback", checkRole(["INST_ADMIN", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+      try {
+        const { lineItemUrl, ltiUserId, score, pointsPossible, comment, baseUrl, accessToken: token } = req.body;
+        if (!lineItemUrl || !ltiUserId || score === undefined) {
+          return res.status(400).json({ error: "lineItemUrl, ltiUserId, score required" });
+        }
+        const canvas = createCanvasAdapter({ baseUrl, accessToken: token });
+        await canvas.agsGradePassback(lineItemUrl, ltiUserId, Number(score), Number(pointsPossible ?? 100), comment);
+        return res.json({ ok: true });
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    // ── Moodle grade passback
+    // POST /api/lms/moodle/grade-passback
+    app.post("/api/lms/moodle/grade-passback", checkRole(["INST_ADMIN", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+      try {
+        const { courseId, assignmentId, moodleUserId, score, maxScore, comment, baseUrl, wsToken } = req.body;
+        if (!courseId || !assignmentId || !moodleUserId || score === undefined) {
+          return res.status(400).json({ error: "courseId, assignmentId, moodleUserId, score required" });
+        }
+        const moodle = createMoodleAdapter({ baseUrl, wsToken });
+        await moodle.agsGradePassback({ courseId, assignmentId, moodleUserId, score: Number(score), maxScore, comment });
+        return res.json({ ok: true });
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    // ── LMS platform registration (admin CRUD)
+    // GET /api/lms/platforms
+    app.get("/api/lms/platforms", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), (_req, res) => {
+      const platforms = [...ltiPlatforms.values()];
+      return res.json({ platforms });
+    });
+
+    // POST /api/lms/platforms — register a new LMS platform
+    app.post("/api/lms/platforms", checkRole(["SUPER_ADMIN"]), (req, res) => {
+      try {
+        const { platformId, clientId, oidcAuthEndpoint, tokenEndpoint, jwksEndpoint, deploymentId } = req.body;
+        if (!platformId || !clientId) return res.status(400).json({ error: "platformId and clientId required" });
+        const config = { platformId, clientId, oidcAuthEndpoint, tokenEndpoint, jwksEndpoint, deploymentId };
+        ltiPlatforms.set(platformId, config);
+        return res.status(201).json({ platform: config });
+      } catch (err: any) {
+        return res.status(400).json({ error: err.message });
+      }
+    });
+  }
+
+  // ── Score Reporting API ───────────────────────────────────────────────────
+  {
+    const { ScoreReportService, resolveOrgFromApiKey } = await import("./src/lib/reporting/score-report-api.js");
+
+    /** Middleware: accept either JWT cookie OR API key (Bearer la_…) */
+    async function reportAuth(req: any, res: any, next: any) {
+      // 1. Try standard JWT cookie
+      const accessToken = req.cookies?.accessToken;
+      if (accessToken) {
+        try {
+          const decoded = jwt.verify(accessToken, JWT_SECRET) as any;
+          req.user    = decoded;
+          req.apiOrg  = null;
+          return next();
+        } catch { /* fall through to API key */ }
+      }
+      // 2. Try API key
+      const authHeader = req.headers["authorization"] ?? "";
+      const raw        = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (raw.startsWith("la_")) {
+        const org = await resolveOrgFromApiKey(raw);
+        if (org) {
+          req.user   = null;
+          req.apiOrg = org;
+          return next();
+        }
+      }
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    function baseUrl(req: any) {
+      return `${req.protocol}://${req.get("host")}`;
+    }
+
+    // GET /api/reports/scores/:sessionId
+    app.get("/api/reports/scores/:sessionId", reportAuth, async (req, res) => {
+      try {
+        const orgId = req.apiOrg?.id ?? (await prisma.session.findUnique({ where: { id: req.params.sessionId }, select: { organizationId: true } }))?.organizationId;
+        if (!orgId) return res.status(404).json({ error: "Session not found" });
+        const report = await ScoreReportService.getSessionReport(req.params.sessionId, orgId, baseUrl(req));
+        if (!report) return res.status(404).json({ error: "Session not found" });
+        return res.json(report);
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    // GET /api/reports/candidates/:candidateId/history
+    app.get("/api/reports/candidates/:candidateId/history", reportAuth, async (req, res) => {
+      try {
+        const limit  = Math.min(parseInt(req.query.limit  as string ?? "20"), 100);
+        const offset = parseInt(req.query.offset as string ?? "0");
+        const orgId  = req.apiOrg?.id;
+        if (!orgId && !req.user) return res.status(401).json({ error: "Cannot determine organisation" });
+        const resolvedOrgId = orgId ?? (await prisma.user.findUnique({ where: { id: req.user.userId }, select: { organizationId: true } }))?.organizationId ?? "";
+        const result = await ScoreReportService.getCandidateHistory(req.params.candidateId, resolvedOrgId, baseUrl(req), limit, offset);
+        return res.json(result);
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    // GET /api/reports/organisations/:orgId/aggregate
+    app.get("/api/reports/organisations/:orgId/aggregate", reportAuth, async (req, res) => {
+      try {
+        // Only the org itself (via API key) or admins can view aggregate
+        const callerOrgId = req.apiOrg?.id ?? null;
+        if (callerOrgId && callerOrgId !== req.params.orgId) return res.status(403).json({ error: "Forbidden" });
+        const result = await ScoreReportService.getOrgAggregate(req.params.orgId, baseUrl(req));
+        return res.json(result);
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    // POST /api/reports/batch
+    app.post("/api/reports/batch", reportAuth, async (req, res) => {
+      try {
+        const { sessionIds } = req.body;
+        if (!Array.isArray(sessionIds) || sessionIds.length === 0 || sessionIds.length > 200) {
+          return res.status(400).json({ error: "sessionIds must be a non-empty array of ≤ 200 IDs" });
+        }
+        const callerOrgId = req.apiOrg?.id;
+        if (!callerOrgId) return res.status(400).json({ error: "API key required for batch requests" });
+        const reports = await ScoreReportService.batchReports(sessionIds, callerOrgId, baseUrl(req));
+        return res.json({ data: reports, meta: { generated_at: new Date().toISOString(), count: reports.length } });
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    // POST /api/reports/api-keys — generate a new API key for an org (admin only)
+    app.post("/api/reports/api-keys", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req, res) => {
+      try {
+        const { generateApiKey } = await import("./src/lib/reporting/score-report-api.js");
+        const { orgId } = req.body;
+        if (!orgId) return res.status(400).json({ error: "orgId required" });
+        const { key, digest } = generateApiKey();
+        await prisma.organization.update({ where: { id: orgId }, data: { apiKeyDigest: digest } as any });
+        return res.json({ key, note: "Store this key securely — it will not be shown again." });
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    });
+  }
+
+  // ── Diagnostic Test Engine ───────────────────────────────────────────────
+  {
+    const { DiagnosticService } = await import("./src/lib/assessment-engine/diagnostic-service.js");
+
+    // POST /api/sessions/diagnostic/launch
+    app.post("/api/sessions/diagnostic/launch", checkRole(["CANDIDATE", "INST_ADMIN", "SUPER_ADMIN"]), async (req, res) => {
+      try {
+        const userId = (req as any).user?.userId;
+        const user   = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user) return res.status(404).json({ error: "User not found" });
+        const orgId = user.organizationId ?? "default";
+        const result = await DiagnosticService.launch(userId, orgId);
+        return res.status(201).json(result);
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    // POST /api/sessions/diagnostic/:id/respond
+    app.post("/api/sessions/diagnostic/:id/respond", checkRole(["CANDIDATE", "INST_ADMIN", "SUPER_ADMIN"]), async (req, res) => {
+      try {
+        const { itemId, value, latencyMs } = req.body;
+        if (!itemId || value === undefined) return res.status(400).json({ error: "itemId and value required" });
+        const result = await DiagnosticService.respond(req.params.id, itemId, String(value), Number(latencyMs ?? 0));
+        return res.json(result);
+      } catch (err: any) {
+        return res.status(400).json({ error: err.message });
+      }
+    });
+
+    // GET /api/sessions/diagnostic/:id/report
+    app.get("/api/sessions/diagnostic/:id/report", checkRole(["CANDIDATE", "INST_ADMIN", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+      try {
+        const report = await DiagnosticService.getReport(req.params.id);
+        return res.json(report);
+      } catch (err: any) {
+        return res.status(404).json({ error: err.message });
+      }
+    });
+  }
+
+  // ── 2-Year Score Validity Policy ─────────────────────────────────────────
+  {
+    const { ValidityPolicyService } = await import("./src/lib/certificates/validity-policy.js");
+
+    // Public — GET /api/validity/:sessionId
+    app.get("/api/validity/:sessionId", async (req, res) => {
+      try {
+        const result = await ValidityPolicyService.publicVerify(req.params.sessionId);
+        return res.json(result);
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    // Authenticated — GET /api/validity/:sessionId/detail (full result with candidate info)
+    app.get("/api/validity/:sessionId/detail", checkRole(["CANDIDATE", "INST_ADMIN", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+      try {
+        const result = await ValidityPolicyService.checkValidity(req.params.sessionId);
+        return res.json(result);
+      } catch (err: any) {
+        return res.status(404).json({ error: err.message });
+      }
+    });
+
+    // Admin — GET /api/admin/expiring-certificates?orgId=&days=60
+    app.get("/api/admin/expiring-certificates", checkRole(["INST_ADMIN", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+      try {
+        const orgId   = req.query.orgId as string;
+        const days    = parseInt(req.query.days as string ?? "60");
+        if (!orgId) return res.status(400).json({ error: "orgId required" });
+        const results = await ValidityPolicyService.getExpiringSessions(orgId, days);
+        return res.json({ data: results, meta: { count: results.length, withinDays: days } });
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    // Admin — POST /api/admin/validity/expire-batch (manual cron trigger)
+    app.post("/api/admin/validity/expire-batch", checkRole(["SUPER_ADMIN"]), async (_req, res) => {
+      try {
+        const result = await ValidityPolicyService.markExpiredSessions();
+        return res.json({ ok: true, ...result });
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    });
+
+    // Extend /api/certificates/:certId/verify to include validity
+    app.get("/api/certificates/verify/:certId/validity", async (req, res) => {
+      try {
+        // certId here is treated as sessionId for the validity lookup
+        const result = await ValidityPolicyService.publicVerify(req.params.certId);
+        return res.json(result);
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+      }
+    });
+  }
 
   // ── Q3: Realtime WebSocket Dashboard ────────────────────────────────────
   // Import http module to get underlying server for WS attachment

@@ -1,2 +1,72 @@
 @import "tailwindcss";
 @import "react-quill-new/dist/quill.snow.css";
+@import "./design-system/globals.css";
+
+/* ── Tablet layout ─────────────────────────────────────────────────────────── */
+
+/* Sidebar collapses to icon-only on tablet portrait */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .sidebar-label       { display: none !important; }
+  .sidebar-nav         { width: 72px !important; }
+  .main-content        { margin-inline-start: 72px !important; }
+  .card-grid           { grid-template-columns: repeat(2, 1fr) !important; }
+  .assessment-layout   { flex-direction: column !important; }
+  .report-grid         { grid-template-columns: 1fr !important; }
+}
+
+/* Mobile assessment layout */
+@media (max-width: 767px) {
+  .sidebar-nav         { display: none !important; }
+  .main-content        { margin-inline-start: 0 !important; }
+  .card-grid           { grid-template-columns: 1fr !important; }
+  .header-actions      { gap: 8px !important; }
+  .report-grid         { grid-template-columns: 1fr !important; }
+  .score-hero          { flex-direction: column !important; }
+}
+
+/* ── Tablet touch targets (WCAG 2.5.8 AAA: ≥24x24px target, 44px recommended) */
+@media (max-width: 1023px) {
+  button, [role="button"], a, input[type="checkbox"], input[type="radio"] {
+    min-height: 44px;
+    min-width:  44px;
+  }
+  /* Override for inline/icon buttons that genuinely can't be 44px */
+  .touch-target-exempt { min-height: unset; min-width: unset; }
+}
+
+/* ── Dark mode enhanced UI ─────────────────────────────────────────────────── */
+
+/* Glassmorphism card variant for dark dashboards */
+[data-theme="dark"] .glass-card,
+.dark .glass-card {
+  background: rgba(26, 32, 53, 0.7);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Elevated input fields in dark mode */
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select,
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: var(--bg-subtle);
+  border-color:     var(--border-strong);
+  color:            var(--text-primary);
+}
+
+[data-theme="dark"] input::placeholder,
+.dark input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ── Score report print styles ─────────────────────────────────────────────── */
+@media print {
+  .no-print             { display: none !important; }
+  body                  { background: white; color: black; font-size: 11pt; }
+  .score-report         { padding: 0 !important; max-width: 100% !important; }
+  .celebration-banner   { display: none !important; }
+}
+

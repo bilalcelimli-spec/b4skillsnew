@@ -23,6 +23,7 @@ model Organization {
   branding      Json?     // { logoUrl, primaryColor, customCss, faviconUrl, portalName }
   settings      Json?     // { allowedDomains, sessionTimeout, securityLevel, apiKey, webhookUrl }
   ssoConfig     Json?     // { provider: 'SAML' | 'OIDC', entryPoint, issuer, cert, clientId, clientSecret, enabled }
+  apiKeyDigest  String?   // SHA-256 digest of the org's Score Reporting API key
   
   // Relations
   users         User[]
@@ -142,6 +143,10 @@ model User {
   resetPasswordToken   String?
   resetPasswordExpires DateTime?
   verifyEmailToken     String?
+
+  // Social SSO
+  oauthProvider   String?   // "google" | "microsoft" | "linkedin"
+  oauthProviderId String?   // provider subject (sub)
 
   // Two-Factor Authentication (TOTP)
   twoFactorSecret  String?   // encrypted base32 TOTP secret
@@ -392,10 +397,12 @@ model Session {
   
   startedAt       DateTime?
   completedAt     DateTime?
+  validUntil      DateTime? // 2-year validity policy: set to completedAt + 2 years on completion
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([organizationId, candidateId])
+  @@index([validUntil])  // for expiry queries
   @@index([organizationId, status])
   @@index([candidateId, status])
   @@index([status])

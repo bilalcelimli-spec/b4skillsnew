@@ -172,6 +172,14 @@ async function main() {
     const speakers = extractSpeakers(transcript);
     const voiceMap = assignVoices(speakers);
 
+    // Skip items that already have audio unless FORCE=1
+    const FORCE = process.env.FORCE === "1";
+    if (!FORCE && !DRY_RUN && fs.existsSync(outputPath)) {
+      console.log(`\n[SKIP] ${item.id} (${item.cefrLevel}) — audio already exists`);
+      generated++;
+      continue;
+    }
+
     console.log(`\n[GEN]  ${item.id} (${item.cefrLevel}) tags: ${tags.slice(0,2).join(",")}`);
     console.log(`       Speakers: ${speakers.map((s) => `${s} → ${voiceMap[s]}`).join(" | ")}`);
     console.log(`       Snippet: ${transcript.slice(0, 100)}…`);

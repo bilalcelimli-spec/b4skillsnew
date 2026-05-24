@@ -35,8 +35,9 @@ interface MCQOption {
 }
 
 interface MCQContent {
-  type: "MULTIPLE_CHOICE";
-  question: string;
+  type?: "MULTIPLE_CHOICE";
+  prompt: string; // Note: DB uses 'prompt', not 'question'
+  question?: string;
   options: MCQOption[];
   explanation?: string;
   correctAnswer?: string;
@@ -103,9 +104,18 @@ async function processMCQItems(): Promise<void> {
       continue;
     }
 
-    const mcqItems = items.filter(
-      (item) => (item.content as MCQContent).type === "MULTIPLE_CHOICE"
-    );
+    // Detect MCQs by structure: must have prompt/question + options array
+    const mcqItems = items.filter((item) => {
+      const content = item.content as any;
+      return (
+        (content.prompt || content.question) &&
+        Array.isArray(content.options) &&
+        content.options.length > 0 &&
+        typeof content.options[0] === "object" &&
+        "text" in content.options[0] &&
+        "isCorrect" in content.options[0]
+      );
+    });
 
     if (mcqItems.length === 0) {
       console.log(`  ℹ️  No MCQ items found (${items.length} total items)`);
@@ -118,25 +128,28 @@ async function processMCQItems(): Promise<void> {
       const item = mcqItems[idx];
       const content = item.content as MCQContent;
 
-      if (content.type !== "MULTIPLE_CHOICE" || !content.options) {
+      if (!content.options || !Array.isArray(content.options)) {
         errors.push({
           itemCode: item.itemCode,
-          error: "Invalid content structure",
+          error: "Invalid content structure: missing or invalid options array",
         });
         continue;
       }
 
       try {
+        totalProcessed++;
+
         // Check if needs update
         const needsIdUpdate = content.options.some((opt) => !opt.id);
         const needsCorrectAnswerUpdate = !("correctAnswer" in content);
 
         if (!needsIdUpdate && !needsCorrectAnswerUpdate) {
-          if (DRY_RUN) {
-            console.log(
-              `  [DRY RUN] ${item.itemCode}: already has id/correctAnswer`
-            );
-          }
+          // Skip logging in non-dry-run mode to avoid spam
+          // if (DRY_RUN) {
+          //   console.log(
+          //     `  ${item.itemCode}: already has id/correctAnswer`
+          //   );
+          // }
           continue;
         }
 
@@ -185,8 +198,6 @@ async function processMCQItems(): Promise<void> {
         errors.push({ itemCode: item.itemCode, error: msg });
         console.error(`  ❌ ${item.itemCode}: ${msg}`);
       }
-
-      totalProcessed++;
     }
   }
 
