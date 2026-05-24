@@ -105,9 +105,8 @@ export default defineConfig(() => {
         output: {
           // Manual chunk splitting — keeps vendor code separate for long-term caching
           manualChunks(id: string) {
-            if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) return "react";
+            if (id.includes("node_modules/react") || id.includes("node_modules/react-dom") || id.includes("node_modules/recharts")) return "react";
             if (id.includes("node_modules/@radix-ui"))      return "radix";
-            if (id.includes("node_modules/recharts"))        return "recharts";
             if (id.includes("node_modules/motion"))          return "motion";
             if (id.includes("node_modules/i18next"))         return "i18n";
             if (id.includes("node_modules/prisma") || id.includes("node_modules/@prisma")) return "prisma";
@@ -118,6 +117,9 @@ export default defineConfig(() => {
           assetFileNames:  "assets/[name]-[hash][extname]",
         },
       },
+    },
+    optimizeDeps: {
+      include: ['recharts'],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

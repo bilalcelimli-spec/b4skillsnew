@@ -63,6 +63,27 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.use(cookieParser());
 
+  // --- SECURITY: Block known scanner / probe paths (WordPress, PHP, xmlrpc, etc.) ---
+  const BLOCKED_PROBE_PATTERN = /\.(php|asp|aspx|jsp|cgi|env|git|svn|htaccess|htpasswd|DS_Store|config|bak|old|sql|xml)$/i;
+  const BLOCKED_PROBE_PATHS = /\/(wp-admin|wp-login|wp-content|wp-includes|xmlrpc|phpmyadmin|phpinfo|admin|install\.php|setup\.php|\.well-known\/security)/i;
+
+  app.use((req, res, next) => {
+    if (BLOCKED_PROBE_PATTERN.test(req.path) || BLOCKED_PROBE_PATHS.test(req.path)) {
+      return res.status(404).end();
+    }
+    next();
+  });
+
+  // --- SECURITY: Rate-limit unauthenticated POST/PUT/DELETE to non-API paths ---
+  const genericPostLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => req.path.startsWith("/api/"),
+  });
+  app.use(genericPostLimiter);
+
   // --- AUTH ROUTES ---
       const JWT_SECRET = process.env.JWT_SECRET || "super-secret-default-key";
       const REFRESH_SECRET = process.env.REFRESH_SECRET || "super-secret-refresh-key";
@@ -3146,7 +3167,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const offset = parseInt(req.query.offset as string ?? "0");
         const orgId  = req.apiOrg?.id;
         if (!orgId && !req.user) return res.status(401).json({ error: "Cannot determine organisation" });
-        const resolvedOrgId = orgId ?? (await prisma.user.findUnique({ where: { id: req.user.userId }, select: { organizationId: true } }))?.organizationId ?? "";
+        const resolvedOrgId = orgId ?? (await prisma.user.findUnique({ where: { id: req.user?.userId }, select: { organizationId: true } }))?.organizationId ?? "";
         const result = await ScoreReportService.getCandidateHistory(req.params.candidateId, resolvedOrgId, baseUrl(req), limit, offset);
         return res.json(result);
       } catch (err: any) {
@@ -3324,6 +3345,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
+      // Don't serve the SPA shell for static asset requests — return 404 instead
+      const ext = path.extname(req.path);
+      if (ext && ext !== ".html") {
+        return res.status(404).end();
+      }
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
