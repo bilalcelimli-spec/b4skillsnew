@@ -28,12 +28,24 @@ async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3001", 10);
 
+  // Trust the first proxy hop (Render / Fly / any reverse proxy).
+  // Required so express-rate-limit reads X-Forwarded-For correctly.
+  app.set("trust proxy", 1);
+
   // Probe DB connectivity — fall back to mock/demo mode if unreachable
   if (process.env.DATABASE_URL) {
     try {
       await (prisma as any).$queryRaw`SELECT 1`;
       dbAvailable = true;
       console.log("✅ Database connected");
+      // Run pending migrations on startup (safe — idempotent)
+      try {
+        const { execSync } = await import("child_process");
+        execSync("npx prisma migrate deploy", { stdio: "inherit" });
+        console.log("✅ Prisma migrations applied");
+      } catch (migErr) {
+        console.warn("⚠️  Prisma migrate deploy failed:", migErr);
+      }
       // Ensure default admin org + user exist on every startup
       try {
         await prisma.organization.upsert({
@@ -160,7 +172,10 @@ async function startServer() {
     try {
       const { email, password } = req.body;
       if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-      const user = await prisma.user.findUnique({ where: { email } });
+      const user = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, email: true, name: true, password: true, role: true, organizationId: true, refreshToken: true },
+      });
       if (!user || !user.password) return res.status(401).json({ error: 'Invalid credentials' });
       
       const isValid = await bcrypt.compare(password, user.password);
@@ -198,7 +213,10 @@ async function startServer() {
   app.get("/api/auth/me", authMiddleware, async (req: express.Request, res: express.Response) => {
     try {
       const userId = (req as any).user.id;
-      const user = await prisma.user.findUnique({ where: { id: userId } });
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, name: true, role: true, organizationId: true },
+      });
       if (!user) return res.status(404).json({ error: 'User not found' });
       return res.json({ user: { uid: user.id, email: user.email, displayName: user.name, role: user.role, organizationId: user.organizationId || null } });
     } catch (err: any) {
@@ -212,7 +230,10 @@ async function startServer() {
       if (!rf) return res.status(401).json({ error: 'No refresh token' });
       const decoded: any = jwt.verify(rf, REFRESH_SECRET);
       
-      const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: { id: true, refreshToken: true },
+      });
       if (!user || user.refreshToken !== rf) return res.status(401).json({ error: 'Invalid refresh token' });
 
       const newAccess = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '15m' });
