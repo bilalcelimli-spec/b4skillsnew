@@ -630,6 +630,39 @@ export const AssessmentService = {
     const dbItems = await getCachedItems(whereClause);
     const itemPool: Item[] = dbItems.map((di) => dbItemToEngineItem(di));
 
+    // ── FAZ 1 — ANCHOR ITEM INJECTION ────────────────────────────────────────
+    // For equating purposes, inject up to 2 anchor items per section whenever
+    // they haven't been administered yet. Anchor items are force-included in
+    // the pool so the CAT selector will always encounter them; they are tagged
+    // isPretest=false so they count toward the operational count but recorded
+    // in session metadata for separate equating analysis.
+    const usedIds = Array.from(state.usedItemIds);
+    const anchorDbItems = await prisma.item.findMany({
+      where: {
+        isAnchor: true,
+        skill: currentSkill as string,
+        status: "ACTIVE",
+        id: { notIn: usedIds.length > 0 ? usedIds : undefined },
+      },
+      take: 2,
+    });
+    if (anchorDbItems.length > 0) {
+      const anchorEngineItems = anchorDbItems.map((di) => dbItemToEngineItem(di));
+      // Prepend anchor items — CAT selector will see them first and they will
+      // naturally be selected if not already in usedItemIds.
+      itemPool.unshift(...anchorEngineItems.filter((ai) => !itemPool.some((p) => p.id === ai.id)));
+      // Track anchor administration in session metadata for equating audit
+      const existingAnchorLog: string[] = (meta as any).anchorAdministered ?? [];
+      const newAnchorIds = anchorEngineItems.map((i) => i.id);
+      const updatedAnchorLog = Array.from(new Set([...existingAnchorLog, ...newAnchorIds]));
+      if (updatedAnchorLog.length !== existingAnchorLog.length) {
+        await prisma.session.update({
+          where: { id: sessionId },
+          data: { metadata: { ...(meta as any), anchorAdministered: updatedAnchorLog } },
+        });
+      }
+    }
+
     // ── WARM-UP FILTERING ─────────────────────────────────────────────────────
     // For the first N items across all sections, restrict to easier items so
     // candidates build confidence before harder adaptive items appear.

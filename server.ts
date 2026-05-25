@@ -1127,6 +1127,43 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // --- ITEM QUALITY SCORE (IQS) ---
+  // GET  /api/items/:id/iqs  — compute IQS for a persisted item (does NOT persist)
+  // POST /api/items/:id/iqs  — compute IQS AND write iqScore back to DB
+  app.get("/api/items/:id/iqs", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { calculateIqs } = await import("./src/lib/psychometrics/item-quality-score.js");
+      const dbItem = await (await import("./src/lib/prisma.js")).prisma.item.findUnique({ where: { id } });
+      if (!dbItem) return res.status(404).json({ error: "Item not found" });
+      const result = calculateIqs({
+        skill: dbItem.skill,
+        cefrLevel: dbItem.cefrLevel,
+        type: dbItem.type,
+        discrimination: dbItem.discrimination,
+        difficulty: dbItem.difficulty,
+        guessing: dbItem.guessing,
+        content: dbItem.content as any,
+        tags: dbItem.tags,
+        metadata: dbItem.metadata as any,
+      });
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "IQS calculation failed", details: String(error) });
+    }
+  });
+
+  app.post("/api/items/:id/iqs", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { computeAndPersistIqs } = await import("./src/lib/psychometrics/item-quality-score.js");
+      const result = await computeAndPersistIqs(id);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "IQS persist failed", details: String(error) });
+    }
+  });
+
   app.put("/api/items/:id", async (req, res) => {
     try {
       const { id } = req.params;
