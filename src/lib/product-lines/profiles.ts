@@ -67,6 +67,24 @@ export interface MSTConfig {
   trackCefrRanges: Array<[string, string]>; // CEFR range per track
 }
 
+/**
+ * Specifies word-count constraints for a single writing task.
+ * Tasks are administered in `position` order within the Writing section.
+ */
+export interface WritingTaskSpec {
+  /** 1-based task position */
+  position: 1 | 2 | 3;
+  minWords: number;
+  maxWords: number;
+  /**
+   * Canonical task type — used by item-bank query and rubric selection.
+   *   short_response    : controlled production, ~50 words
+   *   paragraph_response: guided paragraph,    max 120 words
+   *   extended_response : free composition,    ~250 words
+   */
+  taskType: "short_response" | "paragraph_response" | "extended_response";
+}
+
 export interface ProductLineProfile {
   name: ProductLineName;
   /** CEFR range [min, max] */
@@ -88,6 +106,13 @@ export interface ProductLineProfile {
   examSources: string[];
   /** MST configuration — undefined means pure CAT */
   mst?: MSTConfig;
+  /**
+   * Per-task word-count constraints for the Writing section.
+   * Array length must equal sectionConfig.WRITING.maxItems.
+   * Engine administers tasks in ascending `position` order.
+   * Undefined for profiles that have no Writing section.
+   */
+  writingTaskSpecs?: WritingTaskSpec[];
   /** Score report template */
   reportTemplate: "yle" | "toefl_junior" | "cefr_band" | "corporate";
   /** Warm-up: first N items should have b ≤ startingTheta + warmupOffset */
@@ -141,19 +166,25 @@ const PRIMARY: ProductLineProfile = {
     // FIB items: I_peak ≈ 0.91 → 5 items gives I ≈ 3.2 → SEM ≈ 0.56
     GRAMMAR:    { minItems: 5,  maxItems: 8,  semThreshold: 0.48 },
     VOCABULARY: { minItems: 5,  maxItems: 8,  semThreshold: 0.48 },
-    // 2 GRM tasks → I ≈ 22 combined → SEM ≈ 0.21; reliable subscore
-    WRITING:    { minItems: 1,  maxItems: 2,  semThreshold: 0.62 },
-    SPEAKING:   { minItems: 1,  maxItems: 2,  semThreshold: 0.62 },
+    // 2–3 GRM tasks → I ≈ 22–33 combined → SEM ≈ 0.17–0.21; reliable subscore
+    WRITING:    { minItems: 2,  maxItems: 3,  semThreshold: 0.55 },
+    SPEAKING:   { minItems: 2,  maxItems: 3,  semThreshold: 0.55 },
   },
   blueprint: [
     { skill: SkillType.LISTENING,  minCount: 6,  maxCount: 10 },
     { skill: SkillType.READING,    minCount: 6,  maxCount: 10 },
     { skill: SkillType.GRAMMAR,    minCount: 5,  maxCount: 8  },
     { skill: SkillType.VOCABULARY, minCount: 5,  maxCount: 8  },
-    { skill: SkillType.WRITING,    minCount: 1,  maxCount: 2  },
-    { skill: SkillType.SPEAKING,   minCount: 1,  maxCount: 2  },
+    { skill: SkillType.WRITING,    minCount: 2,  maxCount: 3  },
+    { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 3  },
   ],
-  globalMaxItems: 40,
+  globalMaxItems: 42,
+  // Age-appropriate word limits for 7-10 year olds
+  writingTaskSpecs: [
+    { position: 1, minWords: 30,  maxWords: 50,  taskType: "short_response" },
+    { position: 2, minWords: 50,  maxWords: 100, taskType: "paragraph_response" },
+    { position: 3, minWords: 100, maxWords: 150, taskType: "extended_response" },
+  ],
   globalSemThreshold: 0.48,
   maxExposureRate: 0.25,
   examSources: ["primary", "general"],
@@ -207,6 +238,11 @@ const JUNIOR_SUITE: ProductLineProfile = {
     { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 3  },
   ],
   globalMaxItems: 56,
+  writingTaskSpecs: [
+    { position: 1, minWords: 40,  maxWords: 60,  taskType: "short_response" },
+    { position: 2, minWords: 80,  maxWords: 120, taskType: "paragraph_response" },
+    { position: 3, minWords: 200, maxWords: 270, taskType: "extended_response" },
+  ],
   globalSemThreshold: 0.36,
   maxExposureRate: 0.28,
   examSources: ["junior", "general"],
@@ -331,18 +367,23 @@ const EXPRESS_30: ProductLineProfile = {
     GRAMMAR:    { minItems: 5, maxItems: 8,  semThreshold: 0.42 },
     READING:    { minItems: 5, maxItems: 9,  semThreshold: 0.43 },
     LISTENING:  { minItems: 4, maxItems: 7,  semThreshold: 0.44 },
-    WRITING:    { minItems: 1, maxItems: 1,  semThreshold: 0.60 },
-    SPEAKING:   { minItems: 1, maxItems: 1,  semThreshold: 0.60 },
+    WRITING:    { minItems: 2, maxItems: 3,  semThreshold: 0.50 },
+    SPEAKING:   { minItems: 2, maxItems: 3,  semThreshold: 0.50 },
   },
   blueprint: [
     { skill: SkillType.VOCABULARY, minCount: 5, maxCount: 8 },
     { skill: SkillType.GRAMMAR,    minCount: 5, maxCount: 8 },
     { skill: SkillType.READING,    minCount: 5, maxCount: 9 },
     { skill: SkillType.LISTENING,  minCount: 4, maxCount: 7 },
-    { skill: SkillType.WRITING,    minCount: 1, maxCount: 1 },
-    { skill: SkillType.SPEAKING,   minCount: 1, maxCount: 1 },
+    { skill: SkillType.WRITING,    minCount: 2, maxCount: 3 },
+    { skill: SkillType.SPEAKING,   minCount: 2, maxCount: 3 },
   ],
-  globalMaxItems: 34,
+  globalMaxItems: 38,
+  writingTaskSpecs: [
+    { position: 1, minWords: 40,  maxWords: 60,  taskType: "short_response" },
+    { position: 2, minWords: 80,  maxWords: 120, taskType: "paragraph_response" },
+    { position: 3, minWords: 200, maxWords: 270, taskType: "extended_response" },
+  ],
   globalSemThreshold: 0.42,
   maxExposureRate: 0.32,
   examSources: ["general"],
@@ -395,6 +436,11 @@ const ACADEMIA: ProductLineProfile = {
     { skill: SkillType.SPEAKING,  minCount: 2,  maxCount: 3  },
   ],
   globalMaxItems: 75,
+  writingTaskSpecs: [
+    { position: 1, minWords: 40,  maxWords: 60,  taskType: "short_response" },
+    { position: 2, minWords: 80,  maxWords: 120, taskType: "paragraph_response" },
+    { position: 3, minWords: 220, maxWords: 280, taskType: "extended_response" },
+  ],
   globalSemThreshold: 0.30,
   maxExposureRate: 0.20,
   examSources: ["academia", "general"],
@@ -446,19 +492,24 @@ const CORPORATE: ProductLineProfile = {
     // FIB: I_peak ≈ 0.91 → 9 items → I ≈ 5.7 → SEM ≈ 0.42 (meets 0.38 target)
     GRAMMAR:    { minItems: 5,  maxItems: 9,  semThreshold: 0.38 },
     VOCABULARY: { minItems: 5,  maxItems: 9,  semThreshold: 0.36 },
-    // 2 fixed tasks: Task 1 email + Task 2 report/proposal
-    WRITING:    { minItems: 2,  maxItems: 2,  semThreshold: 0.42 },
-    SPEAKING:   { minItems: 2,  maxItems: 2,  semThreshold: 0.42 },
+    // 2–3 tasks: Task 1 short message, Task 2 business email, Task 3 report/proposal
+    WRITING:    { minItems: 2,  maxItems: 3,  semThreshold: 0.40 },
+    SPEAKING:   { minItems: 2,  maxItems: 3,  semThreshold: 0.40 },
   },
   blueprint: [
     { skill: SkillType.READING,    minCount: 7,  maxCount: 12 },
     { skill: SkillType.LISTENING,  minCount: 7,  maxCount: 12 },
     { skill: SkillType.GRAMMAR,    minCount: 5,  maxCount: 9  },
     { skill: SkillType.VOCABULARY, minCount: 5,  maxCount: 9  },
-    { skill: SkillType.WRITING,    minCount: 2,  maxCount: 2  },
-    { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 2  },
+    { skill: SkillType.WRITING,    minCount: 2,  maxCount: 3  },
+    { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 3  },
   ],
-  globalMaxItems: 48,
+  globalMaxItems: 49,
+  writingTaskSpecs: [
+    { position: 1, minWords: 40,  maxWords: 60,  taskType: "short_response" },
+    { position: 2, minWords: 80,  maxWords: 120, taskType: "paragraph_response" },
+    { position: 3, minWords: 220, maxWords: 270, taskType: "extended_response" },
+  ],
   globalSemThreshold: 0.34,
   maxExposureRate: 0.28,
   examSources: ["corporate", "general"],
@@ -501,18 +552,23 @@ const LANGUAGE_SCHOOLS: ProductLineProfile = {
     READING:    { minItems: 6,  maxItems: 12, semThreshold: 0.40 },
     // CRITICAL fix: min raised from 3 → 6; SEM 0.67 → 0.55 at minimum
     LISTENING:  { minItems: 6,  maxItems: 10, semThreshold: 0.40 },
-    WRITING:    { minItems: 1,  maxItems: 2,  semThreshold: 0.55 },
-    SPEAKING:   { minItems: 1,  maxItems: 2,  semThreshold: 0.55 },
+    WRITING:    { minItems: 2,  maxItems: 3,  semThreshold: 0.48 },
+    SPEAKING:   { minItems: 2,  maxItems: 3,  semThreshold: 0.48 },
   },
   blueprint: [
     { skill: SkillType.VOCABULARY, minCount: 6,  maxCount: 12 },
     { skill: SkillType.GRAMMAR,    minCount: 6,  maxCount: 10 },
     { skill: SkillType.READING,    minCount: 6,  maxCount: 12 },
     { skill: SkillType.LISTENING,  minCount: 6,  maxCount: 10 },
-    { skill: SkillType.WRITING,    minCount: 1,  maxCount: 2  },
-    { skill: SkillType.SPEAKING,   minCount: 1,  maxCount: 2  },
+    { skill: SkillType.WRITING,    minCount: 2,  maxCount: 3  },
+    { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 3  },
   ],
-  globalMaxItems: 50,
+  globalMaxItems: 52,
+  writingTaskSpecs: [
+    { position: 1, minWords: 40,  maxWords: 60,  taskType: "short_response" },
+    { position: 2, minWords: 80,  maxWords: 120, taskType: "paragraph_response" },
+    { position: 3, minWords: 200, maxWords: 260, taskType: "extended_response" },
+  ],
   globalSemThreshold: 0.37,
   maxExposureRate: 0.28,
   examSources: ["language-schools", "general"],
