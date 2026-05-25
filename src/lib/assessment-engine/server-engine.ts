@@ -652,14 +652,20 @@ export const AssessmentService = {
     // isPretest=false so they count toward the operational count but recorded
     // in session metadata for separate equating analysis.
     const usedIds = Array.from(state.usedItemIds);
+    // Wrap in try/catch: if the DB schema is behind on migrations (isAnchor column
+    // not yet added), anchor injection fails silently rather than crashing getNextItem.
     const anchorDbItems = await prisma.item.findMany({
       where: {
         isAnchor: true,
         skill: currentSkill as string,
         status: "ACTIVE",
-        id: { notIn: usedIds.length > 0 ? usedIds : undefined },
+        // notIn must be an array (never undefined) to avoid a Prisma validation error
+        id: { notIn: usedIds },
       },
       take: 2,
+    }).catch((err) => {
+      logger.warn({ err: String(err), skill: currentSkill, sessionId }, "anchor injection skipped — likely missing isAnchor column; run migration 007");
+      return [] as typeof anchorDbItems;
     });
     if (anchorDbItems.length > 0) {
       const anchorEngineItems = anchorDbItems.map((di) => dbItemToEngineItem(di));
