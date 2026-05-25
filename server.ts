@@ -2155,8 +2155,15 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   ];
   const thetaToCefr = (theta: number) => CEFR_BANDS.find(b => theta >= b.minTheta)?.level ?? "A1";
 
+  // Freemium placement only tests receptive/grammar skills — SPEAKING and WRITING
+  // require AI scoring that is not available in the anonymous placement flow.
+  // If DB items for those skills exist they will simply never be selected here.
+  const FREEMIUM_PLACEMENT_SKILLS = ["GRAMMAR", "VOCABULARY", "READING", "LISTENING"];
+
   const pickNextPlacementItem = (allItems: any[], usedIds: Set<string>, theta: number, skillBreakdown: Record<string, any> = {}) => {
-    const available = allItems.filter(it => !usedIds.has(it.id) && it.active !== false);
+    const available = allItems.filter(
+      it => !usedIds.has(it.id) && it.active !== false && FREEMIUM_PLACEMENT_SKILLS.includes(it.skill)
+    );
     if (!available.length) return null;
 
     // Try to balance skills: prefer skills with fewer items administered so far

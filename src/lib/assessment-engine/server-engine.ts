@@ -377,16 +377,31 @@ export const AssessmentService = {
         return { skill, count, minRequired, sufficient: count >= minRequired };
       })
     );
-    const insufficientSections = itemCountsBySkill.filter((s) => !s.sufficient);
-    if (insufficientSections.length > 0) {
+    // WRITING and SPEAKING are optional productive skills — the CAT engine
+    // already handles empty pools with a graceful NO_ITEMS_LEFT_IN_SECTION
+    // force-advance, so insufficient productive items should never block launch.
+    const OPTIONAL_SKILLS = ["WRITING", "SPEAKING"];
+    const insufficientCoreSections = itemCountsBySkill.filter(
+      (s) => !s.sufficient && !OPTIONAL_SKILLS.includes(s.skill as string)
+    );
+    const insufficientOptionalSections = itemCountsBySkill.filter(
+      (s) => !s.sufficient && OPTIONAL_SKILLS.includes(s.skill as string)
+    );
+    if (insufficientOptionalSections.length > 0) {
+      logger.warn(
+        { profileName: profile.name, insufficientOptionalSections },
+        "Item bank has insufficient WRITING/SPEAKING items — those sections will be skipped at runtime (non-blocking)"
+      );
+    }
+    if (insufficientCoreSections.length > 0) {
       logger.error(
-        { profileName: profile.name, insufficientSections },
+        { profileName: profile.name, insufficientCoreSections },
         "Item bank coverage check failed — session launch blocked"
       );
       throw new Error(
         `Item bank is insufficient for profile "${profile.name}". ` +
         `The following sections need more ACTIVE/PRETEST items: ` +
-        insufficientSections
+        insufficientCoreSections
           .map((s) => `${s.skill} (has ${s.count}, needs ${s.minRequired})`)
           .join(", ") +
         ". Please add items via the admin console or expand the item bank before launching sessions."
