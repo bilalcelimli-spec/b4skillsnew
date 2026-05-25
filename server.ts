@@ -743,8 +743,8 @@ async function startServer() {
           { id: "dp-3", skill: "READING",    type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "According to the passage, what improved last quarter?", passage: "A recent company report outlined how productivity had increased significantly over the last quarter, attributing the improvement to new workflow software.", options: ["Staff numbers", "Productivity", "Customer satisfaction", "Product quality"], correctIndex: 1 } },
           { id: "dp-4", skill: "LISTENING",  type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "A student missed a class. Which response is most polite?", options: ["Can I get the notes?", "Could I possibly borrow your notes?", "Give me the notes.", "I need the notes now."], correctIndex: 1 } },
           { id: "dp-5", skill: "GRAMMAR",    type: "MULTIPLE_CHOICE", cefrLevel: "B2", content: { prompt: "If I ___ you, I would apologise immediately.",     options: ["am", "was", "were", "be"],              correctIndex: 2 } },
-          { id: "dp-6", skill: "SPEAKING",   type: "OPEN_RESPONSE",   cefrLevel: "B1", content: { prompt: "Describe your daily routine in 2–3 sentences. Tap the microphone when ready." } },
-          { id: "dp-7", skill: "WRITING",    type: "OPEN_RESPONSE",   cefrLevel: "B1", content: { prompt: "Write 2–3 sentences about a place you would like to visit and explain why." } },
+          { id: "dp-6", skill: "VOCABULARY", type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "Choose the word that best completes the sentence: The scientist made a remarkable ___.", options: ["discovery", "discovering", "discovered", "discover"], correctIndex: 0 } },
+          { id: "dp-7", skill: "GRAMMAR",    type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "Which sentence is correct?", options: ["He don't like coffee.", "He doesn't like coffee.", "He not like coffee.", "He no like coffee."], correctIndex: 1 } },
         ];
         return res.json({ placementId: demoId, firstItem: { ...mockItems[0], irtA: 1.2, irtB: 0.0, irtC: 0.2, assets: [] }, maxItems: 7 });
       }
@@ -766,12 +766,10 @@ async function startServer() {
             itemsAdministered: 7,
             completionMs: 240000,
             skillBreakdown: {
-              GRAMMAR:    { total: 2, correct: 1 },
-              VOCABULARY: { total: 1, correct: 1 },
+              GRAMMAR:    { total: 3, correct: 2 },
+              VOCABULARY: { total: 2, correct: 2 },
               READING:    { total: 1, correct: 1 },
               LISTENING:  { total: 1, correct: 1 },
-              SPEAKING:   { total: 1, correct: 1 },
-              WRITING:    { total: 1, correct: 1 },
             },
             upgradePrompt: {
               message: "Get a full psychometric report with detailed skill breakdowns and a certified CEFR certificate.",
@@ -786,8 +784,8 @@ async function startServer() {
           { id: "dp-3", skill: "READING",    type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "According to the passage, what improved last quarter?", passage: "A recent company report outlined how productivity had increased significantly over the last quarter.", options: ["Staff numbers", "Productivity", "Customer satisfaction", "Product quality"], correctIndex: 1 } },
           { id: "dp-4", skill: "LISTENING",  type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "A student missed a class. Which response is most polite?", options: ["Can I get the notes?", "Could I possibly borrow your notes?", "Give me the notes.", "I need the notes now."], correctIndex: 1 } },
           { id: "dp-5", skill: "GRAMMAR",    type: "MULTIPLE_CHOICE", cefrLevel: "B2", content: { prompt: "If I ___ you, I would apologise immediately.",     options: ["am", "was", "were", "be"],              correctIndex: 2 } },
-          { id: "dp-6", skill: "SPEAKING",   type: "OPEN_RESPONSE",   cefrLevel: "B1", content: { prompt: "Describe your daily routine in 2–3 sentences. Tap the microphone when ready." } },
-          { id: "dp-7", skill: "WRITING",    type: "OPEN_RESPONSE",   cefrLevel: "B1", content: { prompt: "Write 2–3 sentences about a place you would like to visit and explain why." } },
+          { id: "dp-6", skill: "VOCABULARY", type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "Choose the word that best completes the sentence: The scientist made a remarkable ___.", options: ["discovery", "discovering", "discovered", "discover"], correctIndex: 0 } },
+          { id: "dp-7", skill: "GRAMMAR",    type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "Which sentence is correct?", options: ["He don't like coffee.", "He doesn't like coffee.", "He not like coffee.", "He no like coffee."], correctIndex: 1 } },
         ];
         const nextRaw = demoItems[Math.min(count - 1, demoItems.length - 1)];
         const nextItem = { ...nextRaw, irtA: 1.0, irtB: 0.2, irtC: 0.2, assets: [] };
