@@ -329,7 +329,7 @@ export class WebhookManager {
 
   async loadFromDatabase(): Promise<void> {
     try {
-      const dbWebhooks = await (prisma as any).webhook.findMany({ where: { active: true } });
+      const dbWebhooks = await (prisma as any).webhook.findMany({ where: { isActive: true } });
       for (const wh of dbWebhooks) {
         endpoints.set(wh.id, {
           id: wh.id,
@@ -337,7 +337,7 @@ export class WebhookManager {
           url: wh.url,
           secret: wh.secret,
           events: wh.events,
-          active: wh.active,
+          active: wh.isActive,
           createdAt: wh.createdAt,
           description: wh.description,
         });

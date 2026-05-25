@@ -35,7 +35,11 @@ export interface SessionTrustReport {
 export const ProctoringService = {
   async logEvent(sessionId: string, event: Omit<ProctoringEvent, "id" | "timestamp">) {
     try {
-      const res = await fetch('/api/proctoring/events', {
+      // fetch() requires an absolute URL when called server-side; build one from PORT env var
+      const base = typeof window === 'undefined'
+        ? `http://localhost:${process.env.PORT ?? 3001}`
+        : '';
+      const res = await fetch(`${base}/api/proctoring/events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...event, sessionId })

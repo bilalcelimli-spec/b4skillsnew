@@ -66,6 +66,8 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error(`AI scoring timed out after ${AI_TIMEOUT_MS}ms`)), AI_TIMEOUT_MS)
     );
+    // Prevent an unhandled-rejection crash if the race resolves before the timer fires
+    timeoutPromise.catch(() => undefined);
 
     let scoringDecision: Awaited<ReturnType<typeof ScoringOrchestrator.scoreWriting>> | null = null;
 
