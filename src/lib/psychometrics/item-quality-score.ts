@@ -19,7 +19,7 @@
  *       + domainAuthenticity       × 0.05
  */
 
-import { prisma } from "../../lib/db.js";
+import { prisma } from "../prisma.js";
 import type { CefrLevel } from "../cefr/cefr-framework.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
