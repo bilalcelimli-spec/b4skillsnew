@@ -27,6 +27,7 @@ import { validateItem, type QualityReport } from "./item-quality-validator.js";
 import { analyseText } from "./readability-engine.js";
 import { meetsLexicalStandard } from "./vocabulary-profiler.js";
 import type { CefrLevel } from "../cefr/cefr-framework.js";
+import { calculateIqs, IQS_THRESHOLD_REVIEW, IQS_THRESHOLD_REJECT, type IqsResult } from "../psychometrics/item-quality-score.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIGURATION
@@ -49,8 +50,16 @@ export interface GeneratedItem {
   subSkill?: string;
   stimulus?: string;
   question?: string | null;
+  // MCQ
   options?: string[] | null;
   correctAnswer?: string | null;
+  // FIB / CLOZE_PASSAGE / GAP_FILL
+  passage?: string | null;
+  blanks?: Array<{ id: string; position: string; acceptableAnswers: string[] }> | null;
+  wordBank?: string[] | null;
+  // DRAG_DROP
+  draggableItems?: string[] | null;
+  correctSequence?: string[] | null;
   acceptableAnswers?: string[] | null;
   answerKey?: string;
   distractorRationale?: Record<string, string> | null;
@@ -95,6 +104,8 @@ export interface GeneratedItemWithQuality extends GeneratedItem {
   totalGenerationPasses: number;
   /** Pass 5 — EVP-band + Flesch-Kincaid lexical conformance check */
   lexicalCheck?: { passes: boolean; issues: string[] };
+  /** Faz 1 — IQS composite quality gate result */
+  iqsResult?: IqsResult;
 }
 
 export interface GenerationResult {
@@ -103,6 +114,91 @@ export interface GenerationResult {
   approvedCount: number;
   reviewCount: number;
   rejectedCount: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FORMAT-SPECIFIC OUTPUT SCHEMA HINTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FIB_FORMATS = new Set<string>([
+  "GAP_FILL_OPEN", "GAP_FILL_CLOSED", "CLOZE_PASSAGE",
+  "FILL_IN_BLANKS", "SUMMARY_COMPLETION",
+]);
+const DRAG_FORMATS = new Set<string>(["DRAG_DROP", "ORDERING"]);
+
+/**
+ * Returns an additional OUTPUT FORMAT addendum that overrides the MCQ-centric
+ * schema produced by buildItemGenerationPrompt when format is FIB or DRAG_DROP.
+ */
+function buildFormatSchemaAddendum(spec: ItemGenerationSpec): string {
+  const f = spec.format as string;
+  const irtNorm = getIrtNorm(spec.level);
+  const aT = irtNorm?.a.target ?? 1.2;
+  const bT = irtNorm?.b.target ?? 0.0;
+  const cT = 0; // FIB/DRAG_DROP have no guessing
+
+  if (FIB_FORMATS.has(f)) {
+    const isOpen = f === "GAP_FILL_OPEN" || f === "SUMMARY_COMPLETION";
+    return `
+OVERRIDE — FORMAT-SPECIFIC OUTPUT SCHEMA (replaces generic MCQ schema above)
+Because this is a ${f} item, use THIS JSON structure instead:
+[
+  {
+    "type": "${f}",
+    "skill": "${spec.skill}",
+    "cefrLevel": "${spec.level}",
+    "subSkill": "the sub-skill being tested",
+    "passage": "The full passage/sentence with each blank shown as ___[N]___ where N is the blank number (e.g. ___1___, ___2___)",
+    "question": null,
+    "blanks": [
+      {
+        "id": "1",
+        "position": "brief description of where blank 1 appears",
+        "acceptableAnswers": ["correct word/phrase", "acceptable variant"]
+      }
+    ],
+    "wordBank": ${isOpen ? "null" : '["correct1", "correct2", "decoy1", "decoy2"] // include 2 extra decoys beyond the correct answers'},
+    "options": null,
+    "correctAnswer": null,
+    "answerKey": "Explanation of why each answer is correct",
+    "distractorRationale": ${isOpen ? "null" : '{ "decoy1": "why this plausible distractor is wrong" }'},
+    "irtParams": { "a": ${aT}, "b": ${bT}, "c": ${cT} },
+    "biasReview": "brief bias checklist note",
+    "writingNotes": "item writer notes"
+  }
+]
+Return ONLY the JSON array. No preamble, no markdown fences.
+`.trim();
+  }
+
+  if (DRAG_FORMATS.has(f)) {
+    return `
+OVERRIDE — FORMAT-SPECIFIC OUTPUT SCHEMA (replaces generic MCQ schema above)
+Because this is a ${f} item, use THIS JSON structure instead:
+[
+  {
+    "type": "${f}",
+    "skill": "${spec.skill}",
+    "cefrLevel": "${spec.level}",
+    "subSkill": "the sub-skill being tested",
+    "stimulus": "The sentence/passage with drop zones marked as [___] in order",
+    "question": "Drag the words into the correct positions",
+    "draggableItems": ["word1", "word2", "word3", "decoy1"],
+    "correctSequence": ["word1", "word2", "word3"],
+    "options": null,
+    "correctAnswer": null,
+    "answerKey": "Explanation of correct word order / arrangement",
+    "distractorRationale": { "decoy1": "why this word seems plausible but is wrong here" },
+    "irtParams": { "a": ${aT}, "b": ${bT}, "c": ${cT} },
+    "biasReview": "brief bias checklist note",
+    "writingNotes": "item writer notes"
+  }
+]
+Return ONLY the JSON array. No preamble, no markdown fences.
+`.trim();
+  }
+
+  return ""; // no override needed for MCQ-like formats
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -284,7 +380,9 @@ export class AIItemGenerator {
 
   // ── Pass 1: Writer ──────────────────────────────────────────────────────────
   private async callWriter(spec: ItemGenerationSpec): Promise<string> {
-    const prompt = buildItemGenerationPrompt(spec);
+    const basePrompt = buildItemGenerationPrompt(spec);
+    const schemaAddendum = buildFormatSchemaAddendum(spec);
+    const prompt = schemaAddendum ? `${basePrompt}\n\n${schemaAddendum}` : basePrompt;
     const response = await this.ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -492,10 +590,48 @@ export class AIItemGenerator {
       }
     }
 
-    return { ...currentItem, qualityReport, itemReview, readabilityScore, revisionHistory, totalGenerationPasses: totalPasses, lexicalCheck };
-  }
+    // ── Pass 6: IQS Gate (Faz 1) ──────────────────────────────────────────
+    // Compute the composite Item Quality Score and attach it to the result.
+    // Items with IQS < IQS_THRESHOLD_REJECT are flagged as REJECTED regardless
+    // of the existing qualityReport.status; items with IQS < IQS_THRESHOLD_REVIEW
+    // are down-graded to REVIEW if currently APPROVED.
+    let iqsResult: IqsResult | undefined;
+    try {
+      iqsResult = calculateIqs({
+        skill: currentItem.skill,
+        cefrLevel: currentItem.cefrLevel,
+        type: currentItem.type,
+        discrimination: currentItem.irtParams?.a,
+        difficulty: currentItem.irtParams?.b,
+        guessing: currentItem.irtParams?.c,
+        content: currentItem as unknown as Record<string, unknown>,
+      });
 
-  // ── Public API ──────────────────────────────────────────────────────────────
+      if (iqsResult.iqScore < IQS_THRESHOLD_REJECT) {
+        qualityReport.status = "REJECTED";
+        qualityReport.issues.push({
+          code: "IQS-REJECT",
+          severity: "CRITICAL",
+          category: "writing_guidelines" as const,
+          message: `IQS ${iqsResult.iqScore} < ${IQS_THRESHOLD_REJECT} auto-reject threshold`,
+          suggestion: `Address IQS flags: ${iqsResult.flags.slice(0, 3).join("; ")}`,
+        });
+      } else if (iqsResult.iqScore < IQS_THRESHOLD_REVIEW && qualityReport.status === "APPROVED") {
+        qualityReport.status = "REVIEW";
+        qualityReport.issues.push({
+          code: "IQS-REVIEW",
+          severity: "MAJOR",
+          category: "writing_guidelines" as const,
+          message: `IQS ${iqsResult.iqScore} < ${IQS_THRESHOLD_REVIEW} REVIEW threshold`,
+          suggestion: `Improve: ${iqsResult.flags.slice(0, 2).join("; ")}`,
+        });
+      }
+    } catch (err) {
+      console.warn("[AIItemGenerator] IQS gate failed (non-fatal):", String(err));
+    }
+
+    return { ...currentItem, qualityReport, itemReview, readabilityScore, revisionHistory, totalGenerationPasses: totalPasses, lexicalCheck, iqsResult };
+  }
 
   /**
    * Generate `spec.quantity` items using the full three-persona pipeline.

@@ -266,14 +266,41 @@ const DIAGNOSTIC_15: ProductLineProfile = {
     { skill: SkillType.LISTENING,  minCount: 3, maxCount: 6 },
   ],
   globalMaxItems: 22,
-  globalSemThreshold: 0.46, // honest achievable target (was 0.35 — impossible with 20 items)
+  globalSemThreshold: 0.46,
   maxExposureRate: 0.35,
   examSources: ["general"],
+  /**
+   * MST 2-stage configuration for 15-Min Diagnostic.
+   *
+   * Rationale:
+   *   Pure-CAT on 20 items gives SEM ≈ 0.46 at best.  Adding a routing
+   *   stage (8 items) splits candidates into L / H tracks so the
+   *   subsequent 12 adaptive items operate in a tighter θ-band →
+   *   information per item rises ~18%, improving effective SEM to ≈ 0.41
+   *   within the same time budget.
+   *
+   *   Routing cut:
+   *     Single cut at θ = 0.0 (B1 threshold):
+   *       L track: VOCABULARY → GRAMMAR pool restricted to A1–B1 items
+   *       H track: GRAMMAR  → READING  pool restricted to B1–C1 items
+   *   This mirrors the DIALANG 2-stage short-form design (Alderson 2005).
+   *
+   *   trackCefrRanges:
+   *     L → A1–B1 (placement within beginner-intermediate band)
+   *     H → B1–C1 (placement within upper-intermediate-advanced band)
+   */
+  mst: {
+    enabled: true,
+    stages: 2,
+    routingItemCount: 8,   // 8 routing items → SEM ≈ 0.48; sufficient for binary L/H cut
+    routingCuts: [0.0],    // θ < 0.0 → L track; θ ≥ 0.0 → H track
+    trackLabels: ["L", "H"],
+    trackCefrRanges: [["A1", "B1"], ["B1", "C1"]],
+  },
   reportTemplate: "cefr_band",
   warmupItems: 2,
   warmupDifficultyOffset: 0.3,
   estimatedDurationMin: [12, 18],
-  // 18 min × 1.5 safety net
   maxDurationMs: 1_620_000,
 };
 
