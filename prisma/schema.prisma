@@ -219,6 +219,22 @@ model Item {
   version         Int        @default(1)
   metadata        Json?      // Pipeline state, QA scores, audit trail
   
+  // ── FAZ 1: Anchor Item & IQS ─────────────────────────────────────────────
+  // isAnchor: true → item must appear in every test form for equating (Kolen & Brennan 2014)
+  // Target pool: 6 skill × 7 CEFR × 10 = 420 anchor items
+  isAnchor        Boolean   @default(false)
+  // iqScore: Item Quality Score (0–100). IQS ≥ 80 → REVIEW, ≥ 90 → ACTIVE, < 60 → REJECT
+  iqScore         Float?
+
+  // ── FAZ 1: Three-Axis CEFR Classification (Blueprint §6.3) ───────────────
+  // cefrLevel is kept for backward-compat (overall). The three axes below enable
+  // construct-specific calibration (Cambridge English Profile / CEFR Companion Volume 2020).
+  cefrLinguisticRange    CefrLevel? // Axis 1: Vocabulary + Grammar range
+  cefrLinguisticAccuracy CefrLevel? // Axis 2: Error tolerance / accuracy
+  cefrFunctionalAdequacy CefrLevel? // Axis 3: Task completion / functional adequacy
+  // Audit trail: { ai: "B2", expert1: "B2", expert2: "B1", empirical: "B2" }
+  cefrSources     Json?
+
   // Stats
   exposureCount   Int       @default(0)
   pVal            Float?    // Classical test theory difficulty
@@ -249,6 +265,8 @@ model Item {
   @@index([status, skill])
   @@index([organizationId, status])
   @@index([status, retirementScore])  // For retirement monitoring queries
+  @@index([isAnchor, skill, cefrLevel])  // Faz1: anchor item queries for equating
+  @@index([iqScore])                     // Faz1: quality gate queries
 }
 
 model RetirementAuditLog {

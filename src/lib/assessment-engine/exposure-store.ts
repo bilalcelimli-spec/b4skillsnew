@@ -99,6 +99,20 @@ class InMemoryExposureStore implements ExposureStore {
     return this.stratumTotal[s] ?? 0;
   }
 
+  /**
+   * Bootstrap exposure counts from a DB snapshot (called once on server startup).
+   * Allows Davey-Parshall/Sympson-Hetter weights to survive server restarts.
+   *
+   * @param itemExposures  Map of itemId → total exposure count from DB
+   * @param totalSessions  Approximate total distinct sessions (used as denominator)
+   */
+  bootstrap(itemExposures: ReadonlyMap<string, number>, totalSessions: number): void {
+    for (const [id, count] of itemExposures) {
+      if (count > 0) this.exposures.set(id, (this.exposures.get(id) ?? 0) + count);
+    }
+    this.totalTests = Math.max(this.totalTests, totalSessions);
+  }
+
   getConditionalExposureRateSync(itemId: string, s: number): number {
     if (s < 0 || s >= STRATUM_COUNT) return 0;
     const tot = this.stratumTotal[s] ?? 0;
@@ -319,4 +333,22 @@ export function _resetExposureStoreForTests(): void {
 
 export function initExposureStore(): void {
   getExposureStore().catch(() => {});
+}
+
+/**
+ * Bootstrap the in-memory ExposureStore from a pre-loaded snapshot of item
+ * exposure counts. Call this once at server startup (after initExposureStore)
+ * so Davey-Parshall α-weights survive restarts.
+ *
+ * No-op when using Redis (already persistent across restarts).
+ */
+export async function bootstrapExposureFromSnapshot(
+  itemExposures: ReadonlyMap<string, number>,
+  totalSessions: number,
+): Promise<void> {
+  const store = await getExposureStore();
+  if (store instanceof InMemoryExposureStore) {
+    store.bootstrap(itemExposures, totalSessions);
+  }
+  // Redis/other persistent stores: already have their own durable state — no-op.
 }

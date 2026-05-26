@@ -19,6 +19,7 @@ import { validateItem } from "../language-skills/item-quality-validator.js";
 import { logger } from "../observability/index.js";
 import { getCanDo, thetaToCefr, CEFR_LEVELS } from "../cefr/cefr-framework.js";
 import { initExposureStore, getExposureStore } from "./exposure-store.js";
+import { bootstrapExposureFromDb } from "./exposure-bootstrap.js";
 import { parseSystemConfigPayload } from "./system-config-zod.js";
 import type { ResponseTimeParams } from "../psychometrics/response-time-irt.js";
 import {
@@ -280,6 +281,8 @@ const DEFAULT_CONFIG: EngineConfig = {
 
 // Pre-initialise the exposure store so Redis connection is established before first request
 initExposureStore();
+// Bootstrap in-memory exposure weights from DB on startup (prevents same-item reset after restart)
+bootstrapExposureFromDb().catch(() => {});
 
 let engineInstance: AssessmentEngine | null = null;
 let lastConfigUpdate: number = 0;
@@ -361,6 +364,31 @@ export const AssessmentService = {
     }
 
     const initialState = engine.initializeSession();
+
+    // ── WARM-START THETA FROM CANDIDATE HISTORY ───────────────────────────────
+    // Reuse the candidate's final ability estimate from their last completed
+    // session as the starting point for this session (with small jitter).
+    // This diversifies early item selection: each session starts from a
+    // different theta rather than always θ₀ = 0 (which always produces the
+    // same first items). For new candidates, a small random offset is added
+    // so two simultaneous first-time test-takers don't see identical exams.
+    try {
+      const lastCompleted = await prisma.session.findFirst({
+        where: { candidateId, status: "COMPLETED" },
+        orderBy: { completedAt: "desc" },
+        select: { theta: true },
+      });
+      if (lastCompleted && Number.isFinite(lastCompleted.theta)) {
+        // Returning candidate: start near their previous estimate (±0.1 jitter)
+        const jitter = (Math.random() - 0.5) * 0.2;
+        initialState.theta = Math.max(-4, Math.min(4, lastCompleted.theta + jitter));
+      } else {
+        // New candidate: uniform noise ±0.2 so everyone doesn't start at θ=0
+        initialState.theta = (Math.random() - 0.5) * 0.4;
+      }
+    } catch {
+      // Non-fatal — fall back to default θ₀ from engine config
+    }
 
     // ── ITEM BANK PRE-FLIGHT CHECK ────────────────────────────────────────────
     // Verify the item bank has at least minItems for every section in the profile
@@ -584,9 +612,32 @@ export const AssessmentService = {
     // ── ITEM SELECTION ────────────────────────────────────────────────────────
     // Fetch available items restricted to the current skill section.
     // Optionally narrow by exam source tags defined in the product line profile.
+    // ── CROSS-SESSION ITEM EXCLUSION ──────────────────────────────────────────
+    // Extend the "used items" set with items this candidate has seen in any
+    // previous completed session. This prevents a returning candidate from
+    // receiving the exact same exam they took before.
+    // Falls back to current-session-only exclusion if the query fails.
+    const crossSessionUsedIds = new Set<string>(state.usedItemIds);
+    try {
+      const prevItemRows = await prisma.response.findMany({
+        where: {
+          session: {
+            candidateId: session.candidateId,
+            status: "COMPLETED",
+            id: { not: sessionId },
+          },
+        },
+        select: { itemId: true },
+        take: 400, // cap to keep the IN clause manageable
+      });
+      for (const r of prevItemRows) crossSessionUsedIds.add(r.itemId);
+    } catch {
+      // Non-fatal — fall back to current-session exclusion
+    }
+
     const whereClause: any = {
       status: { in: ["ACTIVE", "PRETEST"] },
-      id: { notIn: Array.from(state.usedItemIds) },
+      id: { notIn: Array.from(crossSessionUsedIds) },
       skill: currentSkill as string,
     };
 
@@ -642,7 +693,13 @@ export const AssessmentService = {
       }
     }
 
-    const dbItems = await getCachedItems(whereClause);
+    let dbItems = await getCachedItems(whereClause);
+    // If cross-session exclusion emptied the pool, fall back to current-session-only
+    // exclusion so the exam can continue rather than silently advancing sections.
+    if (dbItems.length === 0 && crossSessionUsedIds.size > state.usedItemIds.size) {
+      whereClause.id.notIn = Array.from(state.usedItemIds);
+      dbItems = await getCachedItems(whereClause);
+    }
     const itemPool: Item[] = dbItems.map((di) => dbItemToEngineItem(di));
 
     // ── FAZ 1 — ANCHOR ITEM INJECTION ────────────────────────────────────────
@@ -702,6 +759,18 @@ export const AssessmentService = {
         ? operationalPool
         : itemPool.filter((item) => !item.isPretest);
 
+    // ── POOL SHUFFLE (tie-breaking) ───────────────────────────────────────────
+    // Shuffle the pool with a session-scoped seed before passing to the CAT
+    // selector. When two items have equal composite scores (common in early
+    // sessions where θ̂ is uncertain), the selector picks the first in the
+    // sorted order. Without shuffling this is always the same DB-insertion-order
+    // item. A session-seeded shuffle ensures ties are broken differently each
+    // session while preserving full CAT psychometric properties.
+    const shuffledSelectionPool = seededFisherYates(
+      selectionPool,
+      `${sessionId}:${currentSkill}:${sectionCount}`,
+    );
+
     // ── CAT SELECTION (composite α/β/γ/δ + shadow-test + sequencing) ─────────
     // Build administeredItems from pool (items already used in this session)
     const itemById = new Map<string, Item>(itemPool.map((i) => [i.id, i]));
@@ -719,7 +788,7 @@ export const AssessmentService = {
 
     const catSelector = getCATSelector(profile);
     const catResult = await catSelector.selectNext(
-      selectionPool as ShadowItem[],
+      shuffledSelectionPool as ShadowItem[],
       state,
       seqCtx,
       profile.blueprint,
@@ -761,6 +830,15 @@ export const AssessmentService = {
         reason: "NO_ITEMS_LEFT_IN_SECTION",
       };
     }
+
+    // ── DB EXPOSURE COUNT SYNC ────────────────────────────────────────────────
+    // Persist a durable exposure increment so the in-memory ExposureStore can be
+    // bootstrapped from DB on the next server restart. This prevents the D-P
+    // α-weights from resetting to 1.0 (open gate) after every process restart,
+    // which is the primary cause of same-item-same-order exams.
+    prisma.item
+      .update({ where: { id: nextItem.id }, data: { exposureCount: { increment: 1 } } })
+      .catch(() => {}); // fire-and-forget: non-critical, calibration-service also tracks this
 
     // ── ANSWER SECURITY ──────────────────────────────────────────────────────
     // Strip sensitive answer/rubric fields before sending to client.
