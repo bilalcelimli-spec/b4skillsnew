@@ -39,7 +39,7 @@ export const ProctoringService = {
       const base = typeof window === 'undefined'
         ? `http://localhost:${process.env.PORT ?? 3001}`
         : '';
-      const res = await fetch(`${base}/api/proctoring/events`, {
+      const res = await fetch(`${base}/api/proctoring/event`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...event, sessionId })

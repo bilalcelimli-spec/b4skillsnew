@@ -1650,7 +1650,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.post("/api/proctoring/event", async (req, res) => {
     try {
       const { sessionId, type, severity, metadata } = req.body;
-      const event = await ProctoringService.logEvent(sessionId, { sessionId, type, severity, metadata });
+      // Map string severity to Int as defined in the Prisma schema (1=Low, 3=Medium, 5=High)
+      const severityMap: Record<string, number> = { LOW: 1, MEDIUM: 3, HIGH: 5 };
+      const severityInt = typeof severity === "number" ? severity : (severityMap[String(severity).toUpperCase()] ?? 1);
+      const event = await (prisma as any).proctoringEvent.create({
+        data: { sessionId, type, severity: severityInt, metadata: metadata ?? null }
+      });
       res.json(event);
     } catch (error) {
       res.status(500).json({ error: "Failed to log proctoring event" });
