@@ -777,6 +777,9 @@ export const AssessmentService = {
       `${sessionId}:${currentSkill}:${sectionCount}`,
     );
 
+    // ── CAT SELECTION helpers — must be declared BEFORE content-tag block uses itemById ──
+    const itemById = new Map<string, Item>(itemPool.map((i) => [i.id, i]));
+
     // ── CONTENT-TAG DIVERSITY + ITEM-TYPE ROTATION ────────────────────────────
     // 1. Collect tags and item types from the last 3 items administered in this
     //    skill section so we can soft-deprioritize repeated content clusters.
@@ -837,7 +840,6 @@ export const AssessmentService = {
 
     // ── CAT SELECTION (composite α/β/γ/δ + shadow-test + sequencing) ─────────
     // Build administeredItems from pool (items already used in this session)
-    const itemById = new Map<string, Item>(itemPool.map((i) => [i.id, i]));
     const administeredItems: Item[] = session.responses
       .map((r) => itemById.get(r.itemId))
       .filter((i): i is Item => i != null);
