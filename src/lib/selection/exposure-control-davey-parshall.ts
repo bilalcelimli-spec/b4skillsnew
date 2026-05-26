@@ -151,6 +151,51 @@ function getOrCreateRecord(store: ExposureStore, itemId: string): ItemExposureRe
   return store.records.get(itemId)!;
 }
 
+// ─── Startup bootstrap ───────────────────────────────────────────────────────
+
+/**
+ * Bootstrap a Davey-Parshall ExposureStore from DB item exposure counts.
+ *
+ * Since the DB stores only a total exposure count per item (not per stratum),
+ * the count is distributed evenly across strata as an approximation.  This
+ * gives over-exposed items an appropriate α penalty on first request after
+ * server restart, preventing the CAT from always selecting the single highest-
+ * information item at cold start.
+ *
+ * @param store          The store to populate in-place
+ * @param itemExposures  Map of itemId → DB exposureCount
+ * @param totalSessions  Approximate total completed sessions (denominator)
+ * @param kMax           Target max exposure rate (default DEFAULT_K_MAX)
+ */
+export function bootstrapDpStoreFromCounts(
+  store: ExposureStore,
+  itemExposures: ReadonlyMap<string, number>,
+  totalSessions: number,
+  kMax: number = DEFAULT_K_MAX,
+): void {
+  if (totalSessions <= 0) return;
+  const approxStratumSessions = Math.ceil(totalSessions / NUM_STRATA);
+  for (const [itemId, totalCount] of itemExposures) {
+    if (totalCount <= 0) continue;
+    const approxPerStratum = Math.ceil(totalCount / NUM_STRATA);
+    const observedRate = approxPerStratum / approxStratumSessions;
+    const record = getOrCreateRecord(store, itemId);
+    for (let s = 0; s < NUM_STRATA; s++) {
+      record.strata[s].selected = approxPerStratum;
+      record.strata[s].totalSessions = approxStratumSessions;
+      // Pre-compute alpha: restrict over-exposed items, leave others fully open
+      record.strata[s].alpha =
+        observedRate > kMax ? Math.max(ALPHA_MIN, kMax / observedRate) : 1.0;
+    }
+  }
+  for (let s = 0; s < NUM_STRATA; s++) {
+    store.stratumSessionCounts[s] = Math.max(
+      store.stratumSessionCounts[s],
+      approxStratumSessions,
+    );
+  }
+}
+
 // ─── α-gate: acceptance probability sampling ─────────────────────────────────
 
 /**

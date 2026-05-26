@@ -29,6 +29,7 @@ import {
   recordSelection,
   createExposureStore,
   updateAlphas,
+  bootstrapDpStoreFromCounts,
   type ExposureStore as DPExposureStore,
 } from "./exposure-control-davey-parshall.js";
 
@@ -275,4 +276,16 @@ export function getCATSelector(profile: ProductLineProfile): CATSelector {
   const selector = new CATSelector(profile);
   _selectors.set(profile.name, selector);
   return selector;
+}
+
+/**
+ * Bootstrap the module-level Davey-Parshall store from DB item exposure counts.
+ * Call once at server startup after the ExposureStore bootstrap so over-exposed
+ * items receive appropriate α penalties instead of always defaulting to α=1.0.
+ */
+export function bootstrapDpStore(
+  itemExposures: ReadonlyMap<string, number>,
+  totalSessions: number,
+): void {
+  bootstrapDpStoreFromCounts(_dpStore, itemExposures, totalSessions);
 }

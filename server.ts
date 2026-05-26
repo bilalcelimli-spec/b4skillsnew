@@ -730,66 +730,171 @@ async function startServer() {
       }
 
       // ── Freemium placement test (demo mode) ───────────────────────────────────
-      // Use in-memory counter keyed by placementId to track item number
+      // Adaptive demo: tracks score per placement session and adjusts CEFR target.
+      // Items are shuffled deterministically per placement ID so every session
+      // shows a different order.  State stored on the app object to survive across
+      // the start → respond → respond … chain.
       if (!((res as any).__demoCounters)) (res as any).__demoCounters = {};
-      const _dc = (app as any).__demoCounters || ((app as any).__demoCounters = {} as Record<string, number>);
+      const _dc = (app as any).__demoCounters as Record<string, DemoState> ||
+                  ((app as any).__demoCounters = {} as Record<string, DemoState>);
+
+      // Full demo item pool — A1 through C1, 4 skills
+      const _DEMO_POOL = [
+        // ── A1 ──
+        { id: "dp-a1-1", skill: "GRAMMAR",    cefrLevel: "A1", content: { prompt: "I ___ a student.", options: ["am", "is", "are", "be"], correctIndex: 0 } },
+        { id: "dp-a1-2", skill: "VOCABULARY", cefrLevel: "A1", content: { prompt: "Which word means a place where people sleep?", options: ["kitchen", "office", "bedroom", "garage"], correctIndex: 2 } },
+        { id: "dp-a1-3", skill: "LISTENING",  cefrLevel: "A1", content: { prompt: "Someone says 'Good morning!' You reply:", options: ["Good night!", "Good morning!", "See you!", "Bye!"], correctIndex: 1 } },
+        // ── A2 ──
+        { id: "dp-a2-1", skill: "GRAMMAR",    cefrLevel: "A2", content: { prompt: "Which sentence is correct?", options: ["He don't like coffee.", "He doesn't like coffee.", "He not like coffee.", "He no like coffee."], correctIndex: 1 } },
+        { id: "dp-a2-2", skill: "VOCABULARY", cefrLevel: "A2", content: { prompt: "Which word means the opposite of 'difficult'?", options: ["hard", "easy", "complex", "tricky"], correctIndex: 1 } },
+        { id: "dp-a2-3", skill: "READING",    cefrLevel: "A2", content: { prompt: "The sign says 'No Entry'. What does it mean?", options: ["You can enter.", "You must stop.", "You cannot enter.", "You can exit."], correctIndex: 2 } },
+        { id: "dp-a2-4", skill: "LISTENING",  cefrLevel: "A2", content: { prompt: "A student missed a class. Which response is most polite?", options: ["Can I get the notes?", "Could I possibly borrow your notes?", "Give me the notes.", "I need the notes now."], correctIndex: 1 } },
+        // ── B1 ──
+        { id: "dp-b1-1", skill: "GRAMMAR",    cefrLevel: "B1", content: { prompt: "She ___ to work every day by bus.", options: ["go", "goes", "going", "gone"], correctIndex: 1 } },
+        { id: "dp-b1-2", skill: "VOCABULARY", cefrLevel: "B1", content: { prompt: "Choose the word that best completes: The scientist made a remarkable ___.", options: ["discovery", "discovering", "discovered", "discover"], correctIndex: 0 } },
+        { id: "dp-b1-3", skill: "READING",    cefrLevel: "B1", content: { prompt: "According to the passage, what improved last quarter?", passage: "A recent company report outlined how productivity had increased significantly over the last quarter, attributing the improvement to new workflow software.", options: ["Staff numbers", "Productivity", "Customer satisfaction", "Product quality"], correctIndex: 1 } },
+        { id: "dp-b1-4", skill: "GRAMMAR",    cefrLevel: "B1", content: { prompt: "By the time we arrived, they ___ already left.", options: ["have", "had", "has", "having"], correctIndex: 1 } },
+        { id: "dp-b1-5", skill: "VOCABULARY", cefrLevel: "B1", content: { prompt: "The word 'annual' means:", options: ["every month", "every week", "every year", "every day"], correctIndex: 2 } },
+        // ── B2 ──
+        { id: "dp-b2-1", skill: "GRAMMAR",    cefrLevel: "B2", content: { prompt: "If I ___ you, I would apologise immediately.", options: ["am", "was", "were", "be"], correctIndex: 2 } },
+        { id: "dp-b2-2", skill: "VOCABULARY", cefrLevel: "B2", content: { prompt: "Choose the most precise word: Despite the ___ evidence, the jury acquitted the defendant.", options: ["overwhelming", "some", "small", "little"], correctIndex: 0 } },
+        { id: "dp-b2-3", skill: "READING",    cefrLevel: "B2", content: { prompt: "What is the author's main argument?", passage: "Critics who dismiss social media as inherently harmful overlook the substantial body of research demonstrating its positive role in maintaining long-distance relationships and providing support networks for marginalised groups.", options: ["Social media causes harm.", "Social media is entirely positive.", "Social media has benefits that critics overlook.", "Social media research is inconclusive."], correctIndex: 2 } },
+        { id: "dp-b2-4", skill: "GRAMMAR",    cefrLevel: "B2", content: { prompt: "The report ___ before the deadline if the team had worked faster.", options: ["would finish", "would have finished", "will finish", "had finished"], correctIndex: 1 } },
+        // ── C1 ──
+        { id: "dp-c1-1", skill: "VOCABULARY", cefrLevel: "C1", content: { prompt: "Which word best replaces 'very tired' in a formal essay?", options: ["exhausted", "really tired", "super tired", "dead tired"], correctIndex: 0 } },
+        { id: "dp-c1-2", skill: "GRAMMAR",    cefrLevel: "C1", content: { prompt: "Select the sentence with correct subject-verb agreement:", options: ["Neither the manager nor the staff was informed.", "Neither the manager nor the staff were informed.", "Neither the manager nor the staff has informed.", "Neither the manager nor the staff are informed."], correctIndex: 1 } },
+        { id: "dp-c1-3", skill: "READING",    cefrLevel: "C1", content: { prompt: "What rhetorical device does the author use?", passage: "The policy is not merely impractical — it is, at its core, a monument to wishful thinking dressed in the language of reform.", options: ["Understatement", "Metaphor combined with irony", "Simile", "Alliteration"], correctIndex: 1 } },
+        { id: "dp-c1-4", skill: "VOCABULARY", cefrLevel: "C1", content: { prompt: "'Perspicacious' most nearly means:", options: ["stubborn", "generous", "having a keen insight", "overly cautious"], correctIndex: 2 } },
+      ] as const;
+      type DemoItem = { id: string; skill: string; cefrLevel: string; content: { prompt: string; passage?: string; options: readonly string[]; correctIndex: number } };
+      interface DemoState { count: number; correct: number; pool: DemoItem[]; }
+
+      // Seeded shuffle — deterministic per placement ID (LCG-based Fisher-Yates)
+      function demoSeededShuffle<T>(arr: readonly T[], seed: string): T[] {
+        let h = 2166136261 >>> 0;
+        for (let i = 0; i < seed.length; i++) {
+          h ^= seed.charCodeAt(i);
+          h = Math.imul(h, 16777619) >>> 0;
+        }
+        const result = [...arr];
+        for (let i = result.length - 1; i > 0; i--) {
+          h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+          const j = h % (i + 1);
+          [result[i], result[j]] = [result[j], result[i]];
+        }
+        return result;
+      }
+
+      // CEFR level → theta midpoint for result computation
+      const _DEMO_CEFR_THETA: Record<string, number> = { A1: -3.0, A2: -1.5, B1: 0.0, B2: 1.2, C1: 2.4 };
+      const _DEMO_CEFR_ORDER = ["A1", "A2", "B1", "B2", "C1"] as const;
+
+      // Pick next item: prefer items at or near current CEFR target and not yet seen
+      function pickNextDemoItem(pool: DemoItem[], usedIds: Set<string>, targetCefr: string): DemoItem | undefined {
+        const targetIdx = _DEMO_CEFR_ORDER.indexOf(targetCefr as typeof _DEMO_CEFR_ORDER[number]);
+        // Try exact level first, then adjacent levels
+        for (const offset of [0, -1, 1, -2, 2]) {
+          const cefrIdx = Math.max(0, Math.min(_DEMO_CEFR_ORDER.length - 1, targetIdx + offset));
+          const band = _DEMO_CEFR_ORDER[cefrIdx];
+          const candidate = pool.find(i => i.cefrLevel === band && !usedIds.has(i.id));
+          if (candidate) return candidate;
+        }
+        return pool.find(i => !usedIds.has(i.id));
+      }
+
+      const MAX_DEMO_ITEMS = 10;
 
       if (url === "/assessment/placement/start" && method === "POST") {
         const demoId = "demo-placement-" + Date.now();
-        _dc[demoId] = 0;
-        const mockItems = [
-          { id: "dp-1", skill: "GRAMMAR",    type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "She ___ to work every day by bus.",               options: ["go", "goes", "going", "gone"],          correctIndex: 1 } },
-          { id: "dp-2", skill: "VOCABULARY", type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "Which word means the opposite of 'difficult'?",   options: ["hard", "easy", "complex", "tricky"],    correctIndex: 1 } },
-          { id: "dp-3", skill: "READING",    type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "According to the passage, what improved last quarter?", passage: "A recent company report outlined how productivity had increased significantly over the last quarter, attributing the improvement to new workflow software.", options: ["Staff numbers", "Productivity", "Customer satisfaction", "Product quality"], correctIndex: 1 } },
-          { id: "dp-4", skill: "LISTENING",  type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "A student missed a class. Which response is most polite?", options: ["Can I get the notes?", "Could I possibly borrow your notes?", "Give me the notes.", "I need the notes now."], correctIndex: 1 } },
-          { id: "dp-5", skill: "GRAMMAR",    type: "MULTIPLE_CHOICE", cefrLevel: "B2", content: { prompt: "If I ___ you, I would apologise immediately.",     options: ["am", "was", "were", "be"],              correctIndex: 2 } },
-          { id: "dp-6", skill: "VOCABULARY", type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "Choose the word that best completes the sentence: The scientist made a remarkable ___.", options: ["discovery", "discovering", "discovered", "discover"], correctIndex: 0 } },
-          { id: "dp-7", skill: "GRAMMAR",    type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "Which sentence is correct?", options: ["He don't like coffee.", "He doesn't like coffee.", "He not like coffee.", "He no like coffee."], correctIndex: 1 } },
-        ];
-        return res.json({ placementId: demoId, firstItem: { ...mockItems[0], irtA: 1.2, irtB: 0.0, irtC: 0.2, assets: [] }, maxItems: 7 });
+        const shuffledPool: DemoItem[] = demoSeededShuffle([..._DEMO_POOL] as DemoItem[], demoId);
+        // Start at B1 (most likely level for an unknown candidate)
+        const firstItem = pickNextDemoItem(shuffledPool, new Set<string>(), "B1") ?? shuffledPool[0];
+        _dc[demoId] = { count: 0, correct: 0, pool: shuffledPool };
+        return res.json({
+          placementId: demoId,
+          firstItem: { ...firstItem, type: "MULTIPLE_CHOICE", irtA: 1.2, irtB: _DEMO_CEFR_THETA[firstItem.cefrLevel] ?? 0, irtC: 0.2, assets: [] },
+          maxItems: MAX_DEMO_ITEMS,
+        });
       }
       if (url.match(/^\/assessment\/placement\/[^/]+\/respond$/) && method === "POST") {
-        // Extract placementId from the URL
         const urlParts = url.split("/");
         const demoId = urlParts[urlParts.length - 2];
-        const count = (_dc[demoId] = (_dc[demoId] ?? 0) + 1);
-
-        if (count >= 7) {
-          delete _dc[demoId];
-          return res.json({ complete: true, result: {
-            placementId: demoId,
-            cefrLevel: "B1",
-            theta: 0.2,
-            sem: 0.4,
-            cefrConfidenceInterval: [-0.5, 0.9] as [number, number],
-            cefrRange: "A2\u2013B1",
-            itemsAdministered: 7,
-            completionMs: 240000,
-            skillBreakdown: {
-              GRAMMAR:    { total: 3, correct: 2 },
-              VOCABULARY: { total: 2, correct: 2 },
-              READING:    { total: 1, correct: 1 },
-              LISTENING:  { total: 1, correct: 1 },
-            },
-            upgradePrompt: {
-              message: "Get a full psychometric report with detailed skill breakdowns and a certified CEFR certificate.",
-              skills: ["Deep Psychometrics", "Certified Report", "Speaking & Writing AI Scoring"],
-              callToActionUrl: "#pricing"
-            }
-          }});
+        const state = _dc[demoId];
+        if (!state) {
+          return res.status(400).json({ error: "Unknown placement session" });
         }
 
-        const demoItems = [
-          { id: "dp-2", skill: "VOCABULARY", type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "Which word means the opposite of 'difficult'?",   options: ["hard", "easy", "complex", "tricky"],    correctIndex: 1 } },
-          { id: "dp-3", skill: "READING",    type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "According to the passage, what improved last quarter?", passage: "A recent company report outlined how productivity had increased significantly over the last quarter.", options: ["Staff numbers", "Productivity", "Customer satisfaction", "Product quality"], correctIndex: 1 } },
-          { id: "dp-4", skill: "LISTENING",  type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "A student missed a class. Which response is most polite?", options: ["Can I get the notes?", "Could I possibly borrow your notes?", "Give me the notes.", "I need the notes now."], correctIndex: 1 } },
-          { id: "dp-5", skill: "GRAMMAR",    type: "MULTIPLE_CHOICE", cefrLevel: "B2", content: { prompt: "If I ___ you, I would apologise immediately.",     options: ["am", "was", "were", "be"],              correctIndex: 2 } },
-          { id: "dp-6", skill: "VOCABULARY", type: "MULTIPLE_CHOICE", cefrLevel: "B1", content: { prompt: "Choose the word that best completes the sentence: The scientist made a remarkable ___.", options: ["discovery", "discovering", "discovered", "discover"], correctIndex: 0 } },
-          { id: "dp-7", skill: "GRAMMAR",    type: "MULTIPLE_CHOICE", cefrLevel: "A2", content: { prompt: "Which sentence is correct?", options: ["He don't like coffee.", "He doesn't like coffee.", "He not like coffee.", "He no like coffee."], correctIndex: 1 } },
-        ];
-        const nextRaw = demoItems[Math.min(count - 1, demoItems.length - 1)];
-        const nextItem = { ...nextRaw, irtA: 1.0, irtB: 0.2, irtC: 0.2, assets: [] };
-        return res.json({ complete: false, nextItem, itemsAdministered: count, currentCefrBand: "B1" });
+        // Score the response
+        const bodyData = req.body as { itemId?: string; answer?: number };
+        const lastItemId = bodyData?.itemId;
+        const lastItem = lastItemId ? state.pool.find(i => i.id === lastItemId) : undefined;
+        const isCorrect = typeof bodyData?.answer === "number" && lastItem
+          ? bodyData.answer === lastItem.content.correctIndex
+          : false;
+
+        state.count++;
+        if (isCorrect) state.correct++;
+
+        if (state.count >= MAX_DEMO_ITEMS) {
+          // Compute result: map score ratio to CEFR band
+          const ratio = state.correct / state.count;
+          const cefrIdx = Math.min(
+            _DEMO_CEFR_ORDER.length - 1,
+            Math.floor(ratio * _DEMO_CEFR_ORDER.length),
+          );
+          const cefrLevel = _DEMO_CEFR_ORDER[cefrIdx];
+          const theta = _DEMO_CEFR_THETA[cefrLevel] ?? 0;
+          delete _dc[demoId];
+          return res.json({
+            complete: true,
+            result: {
+              placementId: demoId,
+              cefrLevel,
+              theta,
+              sem: 0.4,
+              cefrConfidenceInterval: [theta - 0.7, theta + 0.7] as [number, number],
+              cefrRange: cefrIdx > 0 ? `${_DEMO_CEFR_ORDER[cefrIdx - 1]}–${cefrLevel}` : cefrLevel,
+              itemsAdministered: state.count,
+              completionMs: state.count * 30000,
+              skillBreakdown: {
+                GRAMMAR:    { total: state.pool.filter(i => i.skill === "GRAMMAR").length,    correct: Math.round(state.correct * 0.35) },
+                VOCABULARY: { total: state.pool.filter(i => i.skill === "VOCABULARY").length, correct: Math.round(state.correct * 0.30) },
+                READING:    { total: state.pool.filter(i => i.skill === "READING").length,    correct: Math.round(state.correct * 0.20) },
+                LISTENING:  { total: state.pool.filter(i => i.skill === "LISTENING").length,  correct: Math.round(state.correct * 0.15) },
+              },
+              upgradePrompt: {
+                message: "Get a full psychometric report with detailed skill breakdowns and a certified CEFR certificate.",
+                skills: ["Deep Psychometrics", "Certified Report", "Speaking & Writing AI Scoring"],
+                callToActionUrl: "#pricing",
+              },
+            },
+          });
+        }
+
+        // Adapt difficulty: step up if ≥ 70% correct, step down if < 40%
+        const usedIds = new Set(state.pool.slice(0, state.count).map(i => i.id));
+        const ratio = state.correct / state.count;
+        const currentAdminItems = state.pool.filter(i => usedIds.has(i.id));
+        const lastCefrIdx = currentAdminItems.length > 0
+          ? _DEMO_CEFR_ORDER.indexOf(currentAdminItems[currentAdminItems.length - 1].cefrLevel as typeof _DEMO_CEFR_ORDER[number])
+          : 2; // B1
+        let nextCefrIdx = lastCefrIdx;
+        if (ratio >= 0.70) nextCefrIdx = Math.min(_DEMO_CEFR_ORDER.length - 1, lastCefrIdx + 1);
+        else if (ratio < 0.40) nextCefrIdx = Math.max(0, lastCefrIdx - 1);
+        const targetCefr = _DEMO_CEFR_ORDER[nextCefrIdx];
+
+        const nextItem = pickNextDemoItem(state.pool, usedIds, targetCefr);
+        if (!nextItem) {
+          // Exhausted pool — complete early
+          delete _dc[demoId];
+          return res.json({ complete: true, result: { placementId: demoId, cefrLevel: "B1", theta: 0, sem: 0.5, cefrConfidenceInterval: [-0.5, 0.5] as [number, number], cefrRange: "A2–B1", itemsAdministered: state.count, completionMs: state.count * 30000, skillBreakdown: {}, upgradePrompt: { message: "Upgrade for a full report.", skills: [], callToActionUrl: "#pricing" } } });
+        }
+        return res.json({
+          complete: false,
+          nextItem: { ...nextItem, type: "MULTIPLE_CHOICE", irtA: 1.0, irtB: _DEMO_CEFR_THETA[nextItem.cefrLevel] ?? 0, irtC: 0.2, assets: [] },
+          itemsAdministered: state.count,
+          currentCefrBand: targetCefr,
+        });
       }
     }
     next();
@@ -1023,7 +1128,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.get("/api/items/exposure-report", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
     try {
       const items = await prisma.item.findMany({
-        select: { id: true, skill: true, cefrLevel: true, discrimination: true, active: true, status: true },
+        select: { id: true, skill: true, cefrLevel: true, discrimination: true, status: true },
       });
       const responses = await prisma.response.groupBy({
         by: ["itemId"],
@@ -1032,7 +1137,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const usageMap: Record<string, number> = {};
       for (const r of responses) usageMap[r.itemId] = r._count.itemId;
 
-      const totalActive = items.filter((i) => i.active).length;
+      const totalActive = items.filter((i) => i.status === "ACTIVE").length;
       const neverUsed = items.filter((i) => !usageMap[i.id]).length;
       const overExposureThreshold = 0.3;
       const totalResponses = Object.values(usageMap).reduce((a, b) => a + b, 0) || 1;
@@ -1060,7 +1165,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       for (const i of items) {
         if (!bySkill[i.skill]) bySkill[i.skill] = { total: 0, active: 0, pretest: 0, retired: 0 };
         bySkill[i.skill].total++;
-        if (i.active) bySkill[i.skill].active++;
+        if (i.status === "ACTIVE") bySkill[i.skill].active++;
         if (i.status === "PRETEST") bySkill[i.skill].pretest++;
         if (i.status === "RETIRED") bySkill[i.skill].retired++;
       }
@@ -1069,7 +1174,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       for (const i of items) {
         if (!byCefrLevel[i.cefrLevel]) byCefrLevel[i.cefrLevel] = { total: 0, active: 0 };
         byCefrLevel[i.cefrLevel].total++;
-        if (i.active) byCefrLevel[i.cefrLevel].active++;
+        if (i.status === "ACTIVE") byCefrLevel[i.cefrLevel].active++;
       }
 
       res.json({ totalActive, neverUsed, overExposed, overExposureThreshold, strata, bySkill, byCefrLevel });

@@ -17,6 +17,7 @@
 
 import { prisma } from "../prisma.js";
 import { bootstrapExposureFromSnapshot } from "./exposure-store.js";
+import { bootstrapDpStore } from "../selection/cat-selector.js";
 
 /**
  * Bootstrap the in-memory ExposureStore from the database's item.exposureCount
@@ -38,6 +39,7 @@ export async function bootstrapExposureFromDb(): Promise<void> {
     const totalSessions = Math.max(...items.map((i) => i.exposureCount));
 
     await bootstrapExposureFromSnapshot(exposureMap, totalSessions);
+    bootstrapDpStore(exposureMap, totalSessions);
 
     console.info(
       `[ExposureStore] bootstrapped ${items.length} items from DB ` +
