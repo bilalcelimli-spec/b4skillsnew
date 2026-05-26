@@ -89,8 +89,8 @@ describe("cefrConfidenceInterval()", () => {
 
 describe("createPlacementSession()", () => {
   it("creates a session with a unique UUID placementId", () => {
-    const s1 = createPlacementSession(true);
-    const s2 = createPlacementSession(true);
+    const s1 = createPlacementSession(true, "Test User", "test@test.com");
+    const s2 = createPlacementSession(true, "Test User", "test@test.com");
     expect(s1.placementId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     );
@@ -98,25 +98,25 @@ describe("createPlacementSession()", () => {
   });
 
   it("initialises theta and sem from config", () => {
-    const session = createPlacementSession(false);
+    const session = createPlacementSession(false, "Test User", "test@test.com");
     expect(session.theta).toBe(DEFAULT_PLACEMENT_CONFIG.startingTheta);
     expect(session.sem).toBe(DEFAULT_PLACEMENT_CONFIG.startingSem);
   });
 
   it("starts with empty responses and usedItemIds", () => {
-    const session = createPlacementSession(true);
+    const session = createPlacementSession(true, "Test User", "test@test.com");
     expect(session.responses).toHaveLength(0);
     expect(session.usedItemIds.size).toBe(0);
   });
 
   it("stores the consentToResearch flag", () => {
-    expect(createPlacementSession(true).consentToResearch).toBe(true);
-    expect(createPlacementSession(false).consentToResearch).toBe(false);
+    expect(createPlacementSession(true, "Test User", "test@test.com").consentToResearch).toBe(true);
+    expect(createPlacementSession(false, "Test User", "test@test.com").consentToResearch).toBe(false);
   });
 
   it("sets startedAt to approximately now", () => {
     const before = Date.now();
-    const session = createPlacementSession(true);
+    const session = createPlacementSession(true, "Test User", "test@test.com");
     expect(session.startedAt).toBeGreaterThanOrEqual(before);
     expect(session.startedAt).toBeLessThanOrEqual(Date.now());
   });
@@ -128,6 +128,8 @@ describe("shouldStopPlacement()", () => {
   function state(n: number, sem: number): PlacementSessionState {
     return {
       placementId: "test-id",
+      name: "Test User",
+      email: "test@test.com",
       theta: 0,
       sem,
       responses: Array.from({ length: n }, (_, i) => ({
@@ -136,6 +138,7 @@ describe("shouldStopPlacement()", () => {
         latencyMs: 5000,
       })),
       usedItemIds: new Set(),
+      itemMeta: new Map(),
       consentToResearch: false,
       startedAt: Date.now(),
     };
@@ -175,6 +178,8 @@ describe("shouldStopPlacement()", () => {
 describe("buildPlacementResult()", () => {
   const session: PlacementSessionState = {
     placementId: "placement-xyz",
+    name: "Test User",
+    email: "test@test.com",
     theta: 0.75,
     sem: 0.42,
     responses: [
@@ -186,6 +191,7 @@ describe("buildPlacementResult()", () => {
       { itemId: "i6", score: 1, latencyMs: 7000 },
     ],
     usedItemIds: new Set(["i1", "i2", "i3", "i4", "i5", "i6"]),
+    itemMeta: new Map(),
     consentToResearch: true,
     startedAt: Date.now() - 300_000, // 5 minutes ago
   };

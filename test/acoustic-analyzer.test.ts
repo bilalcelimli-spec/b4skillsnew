@@ -261,8 +261,8 @@ describe("Acoustic Fluency Scoring", () => {
   });
 
   it("should reward expressive pitch variation", () => {
-    const expressiveFeatures = { ...mockFeatures, pitchVariation: "expressive" };
-    const flatFeatures = { ...mockFeatures, pitchVariation: "flat" };
+    const expressiveFeatures = { ...mockFeatures, pitchVariation: "expressive" as const };
+    const flatFeatures = { ...mockFeatures, pitchVariation: "flat" as const };
 
     const expressiveScore = computeAcousticFluencyScore(expressiveFeatures, "B1");
     const flatScore = computeAcousticFluencyScore(flatFeatures, "B1");

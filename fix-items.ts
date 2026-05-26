@@ -214,7 +214,7 @@ async function fixWritingSampleAnswer() {
     if (!changed) continue;
     
     try {
-      await prisma.item.update({ where: { id: item.id }, data: { content: updates } });
+      await prisma.item.update({ where: { id: item.id }, data: { content: updates as any } });
       fixed++;
     } catch (e) {
       errors++;

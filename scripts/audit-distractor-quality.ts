@@ -267,7 +267,7 @@ async function main() {
                 revisionSuggested: true,
                 distractors: analysis.distractors,
               },
-            },
+            } as any,
           },
         });
       }

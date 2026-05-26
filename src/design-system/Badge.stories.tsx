@@ -22,7 +22,7 @@ export default meta;
 type Story = StoryObj<typeof Badge>;
 
 export const Default: Story = { args: { children: "Default" } };
-export const Brand: Story   = { args: { children: "Brand",   variant: "brand" } };
+export const Brand: Story   = { args: { children: "Brand",   variant: "info" } };
 export const Success: Story = { args: { children: "Passed",  variant: "success" } };
 export const Warning: Story = { args: { children: "Review",  variant: "warning" } };
 export const Error: Story   = { args: { children: "Failed",  variant: "error" } };
@@ -41,7 +41,7 @@ export const CefrLevels: Story = {
   render: () => (
     React.createElement("div", { style: { display: "flex", gap: 8 } },
       ...["A1","A2","B1","B2","C1","C2"].map((band) =>
-        React.createElement(Badge, { key: band, variant: "brand" }, band)
+        React.createElement(Badge, { key: band, variant: "info" }, band)
       )
     )
   ),

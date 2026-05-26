@@ -233,6 +233,7 @@ export async function anchorCertificatesOnChain(
 
   let ethers: any;
   try {
+    // @ts-ignore — optional peer dependency
     ethers = await import("ethers");
   } catch {
     throw new Error("ethers package not installed — run: npm install ethers");

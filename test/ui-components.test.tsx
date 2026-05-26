@@ -12,7 +12,9 @@
 
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render } from "@testing-library/react";
+// @ts-ignore — screen/fireEvent are re-exported from @testing-library/dom which is bundled
+import { screen, fireEvent } from "@testing-library/react";
 
 const MockItemRenderer: React.FC<any> = ({
   item,

@@ -122,7 +122,7 @@ async function extractAcousticFeatures() {
           transcript: true,
           createdAt: true,
           sessionId: true,
-        },
+        } as any,
       });
 
       if (responses.length === 0) {
@@ -133,9 +133,9 @@ async function extractAcousticFeatures() {
 
       for (const response of responses) {
         try {
-          const audioBuffer = Buffer.from(response.audio as Buffer);
+          const audioBuffer = Buffer.from((response as any).audio as Buffer);
           const audioBase64 = audioBuffer.toString("base64");
-          const transcript = (response.transcript || "").trim();
+          const transcript = ((response as any).transcript || "").trim();
 
           // Skip if no transcript
           if (!transcript) {
@@ -156,8 +156,8 @@ async function extractAcousticFeatures() {
             await prisma.response.update({
               where: { id: response.id },
               data: {
-                acousticFeatures: features as any,
-              },
+                acousticFeatures: features,
+              } as any,
             });
           }
 

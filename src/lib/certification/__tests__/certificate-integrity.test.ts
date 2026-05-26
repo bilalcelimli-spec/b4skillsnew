@@ -126,7 +126,7 @@ describe("verifyProof()", () => {
 
   it("returns false for unknown algorithm version", () => {
     const proof = generateProof(FIELDS);
-    const unknownAlg = { ...proof, alg: "HMAC-SHA512-v2" } as CertificateProof;
+    const unknownAlg = { ...proof, alg: "HMAC-SHA512-v2" } as unknown as CertificateProof;
     expect(verifyProof(FIELDS, unknownAlg)).toBe(false);
   });
 
