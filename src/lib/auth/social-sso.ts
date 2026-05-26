@@ -65,7 +65,7 @@ const GOOGLE_TOKEN_INFO_URL = "https://oauth2.googleapis.com/tokeninfo";
 const GOOGLE_JWKS_URL       = "https://www.googleapis.com/oauth2/v3/certs";
 const GOOGLE_CLIENT_ID      = process.env.GOOGLE_CLIENT_ID ?? "";
 const GOOGLE_CLIENT_SECRET  = process.env.GOOGLE_CLIENT_SECRET ?? "";
-const GOOGLE_REDIRECT_URI   = process.env.GOOGLE_REDIRECT_URI ?? "http://localhost:3001/api/auth/google/callback";
+const GOOGLE_REDIRECT_URI   = process.env.GOOGLE_REDIRECT_URI ?? "http://localhost:3001/api/auth/social/google/callback";
 
 function httpsGet(url: string): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -148,7 +148,7 @@ export async function googleCodeToProfile(code: string): Promise<SocialProfile> 
 const MS_CLIENT_ID     = process.env.MICROSOFT_CLIENT_ID ?? "";
 const MS_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET ?? "";
 const MS_TENANT        = process.env.MICROSOFT_TENANT_ID ?? "common";
-const MS_REDIRECT_URI  = process.env.MICROSOFT_REDIRECT_URI ?? "http://localhost:3001/api/auth/microsoft/callback";
+const MS_REDIRECT_URI  = process.env.MICROSOFT_REDIRECT_URI ?? "http://localhost:3001/api/auth/social/microsoft/callback";
 const MS_AUTH_BASE     = `https://login.microsoftonline.com/${MS_TENANT}/oauth2/v2.0`;
 
 export function microsoftAuthUrl(state: string): string {
@@ -193,7 +193,7 @@ export async function microsoftCodeToProfile(code: string): Promise<SocialProfil
 
 const LI_CLIENT_ID     = process.env.LINKEDIN_CLIENT_ID ?? "";
 const LI_CLIENT_SECRET = process.env.LINKEDIN_CLIENT_SECRET ?? "";
-const LI_REDIRECT_URI  = process.env.LINKEDIN_REDIRECT_URI ?? "http://localhost:3001/api/auth/linkedin/callback";
+const LI_REDIRECT_URI  = process.env.LINKEDIN_REDIRECT_URI ?? "http://localhost:3001/api/auth/social/linkedin/callback";
 
 export function linkedinAuthUrl(state: string): string {
   const params = new URLSearchParams({

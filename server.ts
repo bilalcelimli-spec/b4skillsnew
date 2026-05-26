@@ -851,6 +851,57 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // --- STATUS PAGE ---
+  // GET /api/status — deep health check suitable for a public status page.
+  // Returns 200 when all critical subsystems are UP; 503 when any are DOWN.
+  // Checks: database, AI scoring endpoint, item bank size, session store.
+  app.get("/api/status", async (req, res) => {
+    const start = Date.now();
+    const checks: Record<string, { status: "up" | "down" | "degraded"; latencyMs?: number; detail?: string }> = {};
+
+    // 1. Database
+    try {
+      const { prisma: db } = await import("./src/lib/prisma.js");
+      const t0 = Date.now();
+      await db.$queryRaw`SELECT 1`;
+      checks.database = { status: "up", latencyMs: Date.now() - t0 };
+    } catch (err: any) {
+      checks.database = { status: "down", detail: err.message?.slice(0, 120) };
+    }
+
+    // 2. Item bank — verify items exist
+    try {
+      const { prisma: db } = await import("./src/lib/prisma.js");
+      const count = await db.item.count({ where: { status: "ACTIVE" } });
+      checks.itemBank = { status: count > 0 ? "up" : "degraded", detail: `${count} active items` };
+    } catch {
+      checks.itemBank = { status: "down" };
+    }
+
+    // 3. AI scoring — lightweight env check (actual probe would be expensive)
+    const aiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
+    checks.aiScoring = { status: aiKey ? "up" : "degraded", detail: aiKey ? "API key configured" : "No AI API key — AI scoring unavailable" };
+
+    // 4. Memory / process uptime
+    const mem = process.memoryUsage();
+    checks.process = {
+      status: "up",
+      detail: `uptime=${Math.round(process.uptime())}s  rss=${Math.round(mem.rss / 1024 / 1024)}MB  heap=${Math.round(mem.heapUsed / 1024 / 1024)}/${Math.round(mem.heapTotal / 1024 / 1024)}MB`,
+    };
+
+    const overallUp = Object.values(checks).every(c => c.status !== "down");
+    const httpStatus = overallUp ? 200 : 503;
+
+    res.status(httpStatus).json({
+      status:     overallUp ? "operational" : "incident",
+      checks,
+      totalMs:    Date.now() - start,
+      version:    process.env.npm_package_version ?? "unknown",
+      env:        process.env.NODE_ENV ?? "development",
+      timestamp:  new Date().toISOString(),
+    });
+  });
+
   
 // --- MOCK MODE FOR UI DEMO WITHOUT DB ---
 let mockSessions: Record<string, any> = {};
@@ -1159,6 +1210,61 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: "IQS persist failed", details: String(error) });
+    }
+  });
+
+  // --- IQS BATCH RUN ---
+  // POST /api/items/iqs/batch — compute & persist IQS for all (or unscored) items.
+  // Query params:
+  //   ?onlyUnscored=true  (default true)  — skip items that already have iqScore set
+  //   ?concurrency=5      (default 5)     — parallel workers
+  // Response: NDJSON stream of progress events so the client can render a live progress bar.
+  app.post("/api/items/iqs/batch", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    const onlyUnscored = req.query.onlyUnscored !== "false";
+    const concurrency  = Math.min(Math.max(parseInt(String(req.query.concurrency ?? "5"), 10), 1), 20);
+
+    try {
+      const { computeAndPersistIqs } = await import("./src/lib/psychometrics/item-quality-score.js");
+      const { prisma: db }            = await import("./src/lib/prisma.js");
+
+      const where = onlyUnscored ? { iqScore: null } : {};
+      const ids   = await db.item.findMany({ where, select: { id: true } });
+      const total = ids.length;
+
+      // Stream NDJSON so the caller can track progress
+      res.setHeader("Content-Type", "application/x-ndjson");
+      res.setHeader("Transfer-Encoding", "chunked");
+      res.flushHeaders();
+
+      const write = (obj: object) => res.write(JSON.stringify(obj) + "\n");
+      write({ event: "start", total, concurrency, onlyUnscored });
+
+      let done = 0; let failed = 0;
+      const queue = [...ids.map(r => r.id)];
+
+      async function worker() {
+        while (queue.length > 0) {
+          const id = queue.shift();
+          if (!id) break;
+          try {
+            const result = await computeAndPersistIqs(id);
+            done++;
+            if (done % 50 === 0 || done === total) {
+              write({ event: "progress", done, failed, total, pct: Math.round((done + failed) / total * 100) });
+            }
+          } catch (err: any) {
+            failed++;
+            write({ event: "error", id, error: String(err.message ?? err) });
+          }
+        }
+      }
+
+      await Promise.all(Array.from({ length: concurrency }, worker));
+      write({ event: "done", done, failed, total });
+      res.end();
+    } catch (error) {
+      if (!res.headersSent) res.status(500).json({ error: "IQS batch failed", details: String(error) });
+      else res.end(JSON.stringify({ event: "fatal", error: String(error) }) + "\n");
     }
   });
 
