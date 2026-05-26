@@ -76,7 +76,6 @@ export async function selectAnchorItems(formLength: number, form: string): Promi
     // Find closest active item to this difficulty target
     const candidates = await prisma.item.findMany({
       where: {
-        active: true,
         status: "ACTIVE",
         difficulty: { gte: targetB - 0.5, lte: targetB + 0.5 },
       },

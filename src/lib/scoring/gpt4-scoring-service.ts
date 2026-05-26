@@ -70,9 +70,9 @@ export async function scoreWithGPT4(
   transcript?: string
 ): Promise<AIScore> {
   try {
-    const rubricPrompt = buildCefrRubricPrompt(targetCefrLevel, skill);
-    const knowledgeBlock = buildCefrScoringKnowledge(targetCefrLevel, skill);
-    const skillAddendum = buildSkillAwarePromptAddendum(skill);
+    const rubricPrompt = buildCefrRubricPrompt(targetCefrLevel, skill as "writing" | "speaking");
+    const knowledgeBlock = buildCefrScoringKnowledge(targetCefrLevel, skill as "writing" | "speaking");
+    const skillAddendum = buildSkillAwarePromptAddendum(skill, targetCefrLevel);
 
     const userPrompt = `
 ${rubricPrompt}

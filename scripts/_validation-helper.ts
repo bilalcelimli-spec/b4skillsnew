@@ -40,7 +40,7 @@ export function validateItemBatch(items: any[]): ValidationResult {
 export function reportValidationResults(
   valid: number,
   invalid: number,
-  errors: Array<{
+  failedItems: Array<{
     item: any;
     errors: string[];
   }>
@@ -48,7 +48,7 @@ export function reportValidationResults(
   console.log(`✅ Valid items: ${valid}`);
   if (invalid > 0) {
     console.error(`❌ Invalid items: ${invalid}`);
-    for (const { item, errors } of errors) {
+    for (const { item, errors } of failedItems) {
       console.error(`  ${item.itemCode || item.id || "unknown"}: ${errors.join("; ")}`);
     }
   }

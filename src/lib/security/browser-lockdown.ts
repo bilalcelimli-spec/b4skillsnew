@@ -163,10 +163,10 @@ export function createBrowserLockdown(sessionId: string, options: LockdownOption
   // ── DevTools detection (size heuristic + debugger timing trick) ────────────
 
   function startDevtoolsDetection() {
+    const threshold = 200; // ms; devtools freezes JS execution momentarily
     let lastCheck = Date.now();
 
     devtoolsCheckInterval = setInterval(() => {
-      const threshold = 200; // ms; devtools freezes JS execution momentarily
       const now = Date.now();
       if (now - lastCheck > threshold * 3) {
         report("DEVTOOLS_OPEN", "debugger timing heuristic");

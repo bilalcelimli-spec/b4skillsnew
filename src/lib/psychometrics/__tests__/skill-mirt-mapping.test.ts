@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { SkillType } from '../../assessment-engine/types.js';
 import {
   SKILL_LOADING_VECTORS,
   DIMENSION_LABELS,
@@ -82,7 +83,7 @@ describe('Skill Loading Vectors', () => {
 
 describe('getLoadingVector()', () => {
   it('should return correct loading vector for known skills', () => {
-    const readingLoadings = getLoadingVector('READING');
+    const readingLoadings = getLoadingVector(SkillType.READING);
     expect(readingLoadings).toEqual([0.80, 0.05, 0.10, 0.05]);
   });
 
@@ -112,19 +113,19 @@ describe('isValidLoadingVector()', () => {
 
 describe('getPrimaryDimension()', () => {
   it('should return 0 (receptive) for READING', () => {
-    expect(getPrimaryDimension('READING')).toBe(0);
+    expect(getPrimaryDimension(SkillType.READING)).toBe(0);
   });
 
   it('should return 1 (productive) for WRITING', () => {
-    expect(getPrimaryDimension('WRITING')).toBe(1);
+    expect(getPrimaryDimension(SkillType.WRITING)).toBe(1);
   });
 
   it('should return 2 (grammatical) for GRAMMAR', () => {
-    expect(getPrimaryDimension('GRAMMAR')).toBe(2);
+    expect(getPrimaryDimension(SkillType.GRAMMAR)).toBe(2);
   });
 
   it('should return highest-loading dimension', () => {
-    const dim = getPrimaryDimension('VOCABULARY');
+    const dim = getPrimaryDimension(SkillType.VOCABULARY);
     const vocabLoadings = SKILL_LOADING_VECTORS.VOCABULARY;
     expect(dim).toBe(vocabLoadings.indexOf(Math.max(...vocabLoadings)));
   });
@@ -296,14 +297,14 @@ describe('computeInformationBalance()', () => {
 
 describe('characterizeSkill()', () => {
   it('should correctly characterize READING as receptive-focused', () => {
-    const char = characterizeSkill('READING');
-    expect(char.skill).toBe('READING');
+    const char = characterizeSkill(SkillType.READING);
+    expect(char.skill).toBe(SkillType.READING);
     expect(char.primaryDimension).toBe('receptive');
     expect(char.specialization).toBe('highly_specialized');
   });
 
   it('should identify secondary dimensions', () => {
-    const char = characterizeSkill('READING');
+    const char = characterizeSkill(SkillType.READING);
     expect(char.secondaryDimensions).toContain('grammatical');
     // Strategic has loading exactly 0.05, which doesn't qualify as secondary (> 0.05)
     expect(char.secondaryDimensions).not.toContain('strategic');

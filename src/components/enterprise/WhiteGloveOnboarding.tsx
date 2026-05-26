@@ -18,8 +18,8 @@
 
 import React, { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { motion as m, AnimatePresence } from "../design-system/motion.js";
-import { Button, Progress, Card, Badge, Separator } from "../design-system/components.js";
+import { motion as m, AnimatePresence } from "../../design-system/motion.js";
+import { Button, Progress, Card, Badge, Separator } from "../../design-system/components.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -132,7 +132,7 @@ function StepWelcome({ orgName }: { orgName?: string }) {
       </p>
       <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
         {["Adaptive testing", "80+ languages", "CEFR certified", "GDPR compliant"].map((feat) => (
-          <Badge key={feat} variant="brand">{feat}</Badge>
+          <Badge key={feat} variant="info">{feat}</Badge>
         ))}
       </div>
     </div>
@@ -405,7 +405,7 @@ function StepIntegrations({ data, onChange }: { data: IntegrationConfig; onChang
           <label htmlFor="sso-enabled" style={{ fontWeight: 700, fontSize: "0.9375rem", color: "var(--text-primary)", cursor: "pointer" }}>
             Enable SSO (SAML 2.0 / OIDC)
           </label>
-          <Badge variant="brand" style={{ marginInlineStart: "auto" }}>Recommended</Badge>
+          <Badge variant="info" style={{ marginInlineStart: "auto" }}>Recommended</Badge>
         </div>
         {data.ssoEnabled && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -727,7 +727,7 @@ export function WhiteGloveOnboarding({ open, onClose, onLaunch }: WhiteGloveOnbo
               </Button>
             )
             : (
-              <Button variant="brand" size="md" onClick={goNext}>
+              <Button variant="primary" size="md" onClick={goNext}>
                 Next →
               </Button>
             )

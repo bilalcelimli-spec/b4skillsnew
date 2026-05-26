@@ -160,7 +160,7 @@ class OfflineAssessmentStorage {
       const tx = db.transaction(STORES.responses, "readonly");
       const store = tx.objectStore(STORES.responses);
       const index = store.index("synced");
-      const req = index.getAll(false);
+      const req = index.getAll(IDBKeyRange.only(0 as any));
       req.onsuccess = () => resolve(req.result ?? []);
       req.onerror = () => reject(req.error);
     });

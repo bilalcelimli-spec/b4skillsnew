@@ -158,7 +158,7 @@ export async function computeItemAnalysis(opts: {
 export async function computeReliabilityStats(): Promise<ReliabilityStats[]> {
   // Aggregate per-skill counts
   const skillGroups = await prisma.response.groupBy({
-    by: [],
+    by: ["sessionId" as any],
     _count: { id: true },
     _avg:   { score: true },
   });

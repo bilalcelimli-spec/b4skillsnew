@@ -129,7 +129,7 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
         sessionId: job.sessionId,
         itemId: job.itemId,
         type: job.skill as any,
-        content: job.value,
+        content: typeof job.value === "string" ? job.value : JSON.stringify(job.value),
         ...(aiResult && scoringDecision
           ? {
               aiResult: {
@@ -161,7 +161,7 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
         sessionId: job.sessionId,
         itemId: job.itemId,
         type: job.skill as any,
-        content: job.value,
+        content: typeof job.value === "string" ? job.value : JSON.stringify(job.value),
       });
     } catch (persistErr) {
       logger.error({ persistErr }, "async-scoring: failed to persist scoring failure");

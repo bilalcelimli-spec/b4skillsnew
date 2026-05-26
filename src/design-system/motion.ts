@@ -6,7 +6,7 @@
  */
 import { useReducedMotion } from "motion/react";
 import type { Variants, Transition } from "motion/react";
-export { motion, AnimatePresence, useMotionValue, useTransform, useSpring, useAnimate } from "motion/react";
+export { motion, AnimatePresence, useMotionValue, useTransform, useSpring, useAnimate, useReducedMotion } from "motion/react";
 
 // ── Spring presets ─────────────────────────────────────────────────────────
 

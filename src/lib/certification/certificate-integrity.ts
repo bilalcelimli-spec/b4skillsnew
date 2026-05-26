@@ -89,7 +89,7 @@ function getHmacSecret(): Buffer {
 export function canonicalJson(fields: CertificateCanonicalFields): string {
   const sorted = Object.keys(fields).sort().reduce<Record<string, unknown>>(
     (acc, key) => {
-      acc[key] = (fields as Record<string, unknown>)[key];
+      acc[key] = (fields as unknown as Record<string, unknown>)[key];
       return acc;
     },
     {}

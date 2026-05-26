@@ -21,7 +21,9 @@
 // @vitest-environment jsdom
 
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
+// @ts-ignore — screen is re-exported from @testing-library/dom which is bundled
+import { screen } from "@testing-library/react";
 import { axe } from "vitest-axe";
 // toHaveNoViolations is extended onto expect in test/setup-axe.ts via vitest-axe/matchers.js
 import { describe, it, expect, vi, beforeAll } from "vitest";

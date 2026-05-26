@@ -433,7 +433,6 @@ export const ScoringOrchestratorEnsemble = {
       // Call multi-rater ensemble
       const ensembleResult = await scoreSpeakingWithEnsemble(
         audioBase64,
-        mimeType,
         prompt,
         targetCefrLevel || "B1"
       );
@@ -568,7 +567,7 @@ export const ScoringOrchestratorEnsemble = {
     }
 
     try {
-      const ensembleResult = await scoreWritingWithEnsemble(text, prompt);
+      const ensembleResult = await scoreSpeakingWithEnsemble(text, prompt, "B1");
       return applyIntegrityToResult(
         convertEnsembleToOrchestrated(ensembleResult, "SPEAKING", integrity),
         integrity

@@ -149,8 +149,9 @@ async function buildReport(
     skillMap[skill].sumScore += r.score ?? (r.isCorrect ? 1 : 0);
   }
 
-  // Pull per-skill theta from ScoreReport if available
-  const skillBreakdown = (report?.skillBreakdown ?? {}) as Record<string, any>;
+  // Pull per-skill theta from ScoreReport.diagnosticReport if available
+  const diagnosticData = (report?.diagnosticReport ?? {}) as Record<string, any>;
+  const skillBreakdown = (diagnosticData?.skillBreakdown ?? diagnosticData) as Record<string, any>;
   const skills: SkillScore[] = Object.keys(skillBreakdown).map((sk) => {
     const s = skillBreakdown[sk];
     return {

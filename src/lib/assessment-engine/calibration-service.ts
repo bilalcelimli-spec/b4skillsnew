@@ -429,6 +429,7 @@ export class CalibrationService {
       a: currentParams.a,
       b: currentParams.b,
       c: currentParams.c,
+      calibratedAt: new Date().toISOString(),
     };
     const newSnapshot: IrtSnapshot = {
       itemId,
@@ -436,6 +437,7 @@ export class CalibrationService {
       a: calibResult.params.a,
       b: calibResult.params.b,
       c: calibResult.params.c,
+      calibratedAt: new Date().toISOString(),
     };
     const driftResult = computeItemDrift(oldSnapshot, newSnapshot);
 

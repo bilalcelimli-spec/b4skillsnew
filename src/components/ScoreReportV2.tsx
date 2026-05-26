@@ -352,7 +352,7 @@ export function ScoreReport({ data, onDownloadPDF, onShareCertificate, className
         {data.skills.map((s, i) => <SkillCard key={s.skill} skill={s} index={i} />)}
       </div>
 
-      <Separator style={{ margin: "24px 0" }} />
+      <div style={{ margin: "24px 0" }}><Separator /></div>
 
       {/* Strengths & improvements */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>

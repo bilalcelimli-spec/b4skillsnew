@@ -87,15 +87,15 @@ export const speakingContentSchema = z.object({
   question: z.string().min(5).optional(),
   responseTime: z.number().positive(),
   prepTime: z.number().positive(),
-  scoringRubric: z.record(z.any()).optional(),
-  rubric: z.record(z.any()).optional(),
+  scoringRubric: z.record(z.string(), z.any()).optional(),
+  rubric: z.record(z.string(), z.any()).optional(),
   taskType: z.string().optional(),
   cefrDescriptor: z.string().optional(),
 });
 
 // WRITING Specific (minimal validation as it's essay-based)
 export const writingContentSchema = baseContentSchema.extend({
-  rubric: z.record(z.any()).optional(),
+  rubric: z.record(z.string(), z.any()).optional(),
   maxWords: z.number().optional(),
   minWords: z.number().optional(),
 }).refine(
@@ -164,7 +164,7 @@ export async function validateItemBeforeSave(
     if (!validation.success) {
       const errors = validation.error.flatten();
       const messages = Object.entries(errors.fieldErrors)
-        .map(([field, msgs]) => `${field}: ${msgs?.join(", ")}`)
+        .map(([field, msgs]) => `${field}: ${(msgs as string[] | undefined)?.join(", ")}`)
         .join("; ");
 
       return {

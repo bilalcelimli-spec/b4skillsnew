@@ -48,7 +48,10 @@ export interface UseVoiceUIReturn {
 
 // ── Browser API shim ──────────────────────────────────────────────────────────
 
-function getSpeechRecognition(): typeof window.SpeechRecognition | null {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnySpeechRecognitionCtor = new () => any;
+
+function getSpeechRecognition(): AnySpeechRecognitionCtor | null {
   if (typeof window === "undefined") return null;
   return (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition ?? null;
 }
@@ -68,7 +71,8 @@ export function useVoiceUI(options: UseVoiceUIOptions = {}): UseVoiceUIReturn {
   const SpeechRecognition = getSpeechRecognition();
   const isSupported = SpeechRecognition !== null;
 
-  const recognitionRef = useRef<InstanceType<typeof window.SpeechRecognition> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
   const [state,      setState]      = useState<VoiceState>("idle");
   const [transcript, setTranscript] = useState("");
   const [confidence, setConfidence] = useState(0);
@@ -88,7 +92,8 @@ export function useVoiceUI(options: UseVoiceUIOptions = {}): UseVoiceUIReturn {
     rec.onstart = () => setState("listening");
     rec.onend   = () => setState((prev) => prev === "listening" ? "idle" : prev);
 
-    rec.onresult = (event: SpeechRecognitionEvent) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (event: any) => {
       const result = event.results[event.results.length - 1];
       const alt    = result[0];
       setTranscript(alt.transcript);
@@ -96,7 +101,8 @@ export function useVoiceUI(options: UseVoiceUIOptions = {}): UseVoiceUIReturn {
       onResult?.({ transcript: alt.transcript, confidence: alt.confidence ?? 1, isFinal: result.isFinal, lang });
     };
 
-    rec.onerror = (event: SpeechRecognitionErrorEvent) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onerror = (event: any) => {
       const msg = event.error;
       setLastError(msg);
       setState("error");
@@ -142,8 +148,8 @@ export interface VoiceNavigationHandlers {
   onBack?:         () => void;
 }
 
-/** Voice command definitions per language */
-const COMMANDS: Record<string, Record<string, (keyof VoiceNavigationHandlers)[]>> = {
+/** Voice command definitions per language: lang → handler → trigger phrases */
+const COMMANDS: Record<string, Partial<Record<keyof VoiceNavigationHandlers, string[]>>> = {
   "en": {
     onNext:         ["next question", "next", "go next"],
     onSubmit:       ["submit answer", "submit", "confirm answer"],

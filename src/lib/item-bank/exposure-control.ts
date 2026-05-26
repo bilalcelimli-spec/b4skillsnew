@@ -190,7 +190,7 @@ export function selectWithExposureControl(
 
 export async function generateExposureReport(): Promise<ExposureReport> {
   const items = await prisma.item.findMany({
-    where: { active: true },
+    where: { status: "ACTIVE" },
     select: { id: true, discrimination: true },
     orderBy: { discrimination: "asc" },
   });

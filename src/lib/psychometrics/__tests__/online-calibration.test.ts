@@ -43,7 +43,7 @@ const TRUE_PARAMS: IrtParameters = { a: 1.4, b: 0.3, c: 0.20 }; // slight drift
 const THETAS_300 = uniformThetas(300);
 const OBS_300: PretestObservation[] = THETAS_300.map(theta => ({
   theta,
-  score: probability(TRUE_PARAMS, { ...TRUE_PARAMS }) > 0.5 ? 1 : 0,
+  score: probability(theta, TRUE_PARAMS) > 0.5 ? 1 : 0,
 }));
 
 // 100 observations — below minN threshold
@@ -67,7 +67,7 @@ describe("calibratePretestItem", () => {
   it("returns stable=true when n >= minN with reasonable drift", () => {
     const obs: PretestObservation[] = uniformThetas(250).map(theta => ({
       theta,
-      score: probability(SEED_PARAMS, { ...SEED_PARAMS }) > 0.5 ? 1 : 0,
+      score: probability(theta, SEED_PARAMS) > 0.5 ? 1 : 0,
     }));
     const result = calibratePretestItem(SEED_PARAMS, obs);
     // With small drift, should be stable
@@ -95,7 +95,7 @@ describe("calibratePretestItem", () => {
   it("keeps c fixed regardless of n", () => {
     const obs: PretestObservation[] = uniformThetas(300).map(theta => ({
       theta,
-      score: probability(SEED_PARAMS, { ...SEED_PARAMS }) > 0.5 ? 1 : 0,
+      score: probability(theta, SEED_PARAMS) > 0.5 ? 1 : 0,
     }));
     const result = calibratePretestItem(SEED_PARAMS, obs);
     // c must always stay at seed value
@@ -105,7 +105,7 @@ describe("calibratePretestItem", () => {
   it("log-likelihood is finite", () => {
     const obs: PretestObservation[] = uniformThetas(250).map(theta => ({
       theta,
-      score: probability(SEED_PARAMS, { ...SEED_PARAMS }) > 0.5 ? 1 : 0,
+      score: probability(theta, SEED_PARAMS) > 0.5 ? 1 : 0,
     }));
     const result = calibratePretestItem(SEED_PARAMS, obs);
     expect(Number.isFinite(result.logLikelihood)).toBe(true);
@@ -127,7 +127,7 @@ describe("calibratePretestItem", () => {
     // n=250 — a should remain unchanged
     const obs250: PretestObservation[] = uniformThetas(250).map(theta => ({
       theta,
-      score: probability(SEED_PARAMS, { ...SEED_PARAMS }) > 0.5 ? 1 : 0,
+      score: probability(theta, SEED_PARAMS) > 0.5 ? 1 : 0,
     }));
     const r250 = calibratePretestItem(SEED_PARAMS, obs250);
     if (r250.stable) {
@@ -137,7 +137,7 @@ describe("calibratePretestItem", () => {
     // n=520 — a may change
     const obs520: PretestObservation[] = uniformThetas(520).map(theta => ({
       theta,
-      score: probability(TRUE_PARAMS, { ...TRUE_PARAMS }) > 0.5 ? 1 : 0,
+      score: probability(theta, TRUE_PARAMS) > 0.5 ? 1 : 0,
     }));
     const r520 = calibratePretestItem(SEED_PARAMS, obs520);
     expect(r520.n).toBe(520);

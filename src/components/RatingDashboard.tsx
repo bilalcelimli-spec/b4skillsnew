@@ -97,7 +97,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
 
   const overallScore = useCallback(() => {
     const dims = selectedTask?.type === "SPEAKING" ? RUBRIC_DIMS_SPEAKING : RUBRIC_DIMS_WRITING;
-    const sum = dims.reduce((acc, d) => acc + (rubric[d] ?? 5), 0);
+    const sum = (dims as readonly RubricDim[]).reduce((acc, d) => acc + (rubric[d] ?? 5), 0);
     return parseFloat((sum / dims.length / 10).toFixed(3)); // normalized 0-1
   }, [rubric, selectedTask]);
 

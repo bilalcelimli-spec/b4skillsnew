@@ -177,10 +177,10 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
       setOpenText("");
       setAudioBlob(null);
 
-      if (data.complete || data.done) {
+      if (data.complete) {
         handleComplete(data);
-      } else if (data.nextItem || data.item) {
-        setItem(data.nextItem ?? data.item);
+      } else if (data.nextItem) {
+        setItem(data.nextItem);
         itemStartRef.current = Date.now();
       } else {
         // Fetch next from GET endpoint

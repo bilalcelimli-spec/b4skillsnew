@@ -89,7 +89,7 @@ async function processMCQItems(): Promise<void> {
     console.log(`\n📚 Processing ${skill} items...`);
 
     const items = await prisma.item.findMany({
-      where: { skill },
+      where: { skill: skill as any },
       select: {
         id: true,
         itemCode: true,
@@ -126,7 +126,7 @@ async function processMCQItems(): Promise<void> {
 
     for (let idx = 0; idx < mcqItems.length; idx++) {
       const item = mcqItems[idx];
-      const content = item.content as MCQContent;
+      const content = item.content as unknown as MCQContent;
 
       if (!content.options || !Array.isArray(content.options)) {
         errors.push({
@@ -185,7 +185,7 @@ async function processMCQItems(): Promise<void> {
         } else {
           await prisma.item.update({
             where: { id: item.id },
-            data: { content: updatedContent },
+            data: { content: updatedContent as any },
           });
           console.log(
             `  ✅ ${item.itemCode}: correctAnswer=${correctAnswer}${!SKIP_SHUFFLE && needsIdUpdate ? " (shuffled)" : ""}`

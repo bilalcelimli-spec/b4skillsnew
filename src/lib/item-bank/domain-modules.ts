@@ -91,6 +91,7 @@ export const BUSINESS_ENGLISH: DomainSpec = {
         "Role-play a telephone negotiation",
         "Describe a business chart or graph",
       ],
+      textTypes: ["Presentation prompt", "Role-play scenario", "Chart description"],
       speakingPromptTypes: ["Presentation", "Role-play", "Chart description", "Discussion"],
     },
     GRAMMAR: {
@@ -172,6 +173,7 @@ export const ACADEMIC_ENGLISH: DomainSpec = {
         "Respond to follow-up questions on an academic topic",
         "Discuss two opposing academic viewpoints",
       ],
+      textTypes: ["Presentation prompt", "Academic discussion prompt", "Opinion question"],
       speakingPromptTypes: ["Prepared talk", "Academic discussion", "Opinion question", "Problem-solution"],
     },
     GRAMMAR: {
@@ -251,6 +253,7 @@ export const HEALTHCARE_ENGLISH: DomainSpec = {
         "Explain a diagnosis to a patient using plain language",
         "Give a SBAR-format clinical handover",
       ],
+      textTypes: ["Clinical scenario", "Patient consultation prompt", "Handover prompt"],
       speakingPromptTypes: ["Patient consultation", "Clinical handover", "Patient education", "Team discussion"],
     },
     GRAMMAR: {

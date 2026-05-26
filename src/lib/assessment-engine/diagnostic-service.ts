@@ -149,7 +149,6 @@ async function selectItemsForSkill(skill: Skill, usedIds: Set<string>, count: nu
   const items = await prisma.item.findMany({
     where: {
       skill:      skill as any,
-      active:     true,
       status:     "ACTIVE",
       id:         { notIn: [...usedIds] },
       // spread across difficulty
@@ -321,6 +320,7 @@ export class DiagnosticService {
         score,
         isPretest: false,
         latencyMs,
+        order: state.totalAnswered,
         metadata: { diagnosticSkill: foundSkill },
       },
     });

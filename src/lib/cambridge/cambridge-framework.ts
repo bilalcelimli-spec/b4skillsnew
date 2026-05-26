@@ -1221,7 +1221,9 @@ export interface CambridgeExamMeta {
   functionsSyllabus: string[];
 }
 
-export const CAMBRIDGE_EXAM_META: Record<CambridgeExam, CambridgeExamMeta> = {
+export const CAMBRIDGE_EXAM_META: Record<CambridgeExam, CambridgeExamMeta> = {} as Record<CambridgeExam, CambridgeExamMeta>;
+// Entries are populated below (STARTERS–PET) and again at the bottom of this file (FCE–CPE)
+Object.assign(CAMBRIDGE_EXAM_META, {
   STARTERS: {
     exam: "STARTERS",
     fullName: "Cambridge Young Learners English — Starters",
@@ -1494,7 +1496,7 @@ export const CAMBRIDGE_EXAM_META: Record<CambridgeExam, CambridgeExamMeta> = {
       "Discussing plans and ambitions",
     ],
   },
-};
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 5. LOOK-UP HELPERS

@@ -95,14 +95,14 @@ async function scoreWithAllRaters(
       name: "claude" as const,
       fn: () =>
         skill === "SPEAKING" && transcript
-          ? scoreSpeakingWithClaude(transcript, "audio/mpeg", taskPrompt, targetCefrLevel)
+          ? scoreSpeakingWithClaude(transcript, taskPrompt, targetCefrLevel)
           : scoreWritingWithClaude(candidateResponse, taskPrompt, targetCefrLevel),
     },
     {
       name: "gpt4" as const,
       fn: () =>
         skill === "SPEAKING" && transcript
-          ? scoreSpeakingWithGPT4(transcript, "audio/mpeg", taskPrompt, targetCefrLevel)
+          ? scoreSpeakingWithGPT4(transcript, taskPrompt, targetCefrLevel)
           : scoreWritingWithGPT4(candidateResponse, taskPrompt, targetCefrLevel),
     },
   ];

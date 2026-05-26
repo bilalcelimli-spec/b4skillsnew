@@ -46,7 +46,7 @@ async function fixCorrectAnswerByLetter() {
     try {
       await prisma.item.update({
         where: { id: item.id },
-        data: { content: { ...c, options: opts } },
+        data: { content: { ...c, options: opts } as any },
       });
       fixed++;
       if (fixed % 50 === 0) process.stdout.write(`  Fixed ${fixed}...\n`);
@@ -121,7 +121,7 @@ async function fixListeningUndefinedIds() {
             ...c,
             options: correctedOpts,
             correctAnswer: correctLetter ?? c.correctAnswer,
-          }
+          } as any
         },
       });
       fixed++;
@@ -171,7 +171,7 @@ async function fixSpeakingTimings() {
     try {
       await prisma.item.update({
         where: { id: item.id },
-        data: { content: updates },
+        data: { content: updates as any },
       });
       fixed++;
     } catch (e) {

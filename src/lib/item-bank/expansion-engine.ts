@@ -144,7 +144,7 @@ export class ItemBankExpansionEngine {
   /** Scan current bank and return snapshot against tier targets */
   async snapshot(tier: ItemTier = "TIER1"): Promise<BankSnapshot> {
     const items = await prisma.item.findMany({
-      select: { id: true, skill: true, cefrLevel: true, status: true, active: true, metadata: true },
+      select: { id: true, skill: true, cefrLevel: true, status: true, metadata: true },
     });
 
     const byStatus: Record<string, number> = {};
@@ -153,7 +153,7 @@ export class ItemBankExpansionEngine {
     const byModule: Record<string, number> = { GENERAL: 0, BUSINESS: 0, ACADEMIC: 0, HEALTHCARE: 0 };
 
     for (const it of items) {
-      const st = (it.status as string) ?? (it.active ? "ACTIVE" : "RETIRED");
+      const st = (it.status as string) ?? "DRAFT";
       byStatus[st] = (byStatus[st] ?? 0) + 1;
       bySkill[it.skill]       = (bySkill[it.skill]       ?? 0) + 1;
       byCefr[it.cefrLevel]    = (byCefr[it.cefrLevel]    ?? 0) + 1;
@@ -236,7 +236,7 @@ export class ItemBankExpansionEngine {
 
     await prisma.item.updateMany({
       where: { id: { in: eligible.map((e) => e.id) } },
-      data: { status: "ACTIVE", active: true },
+      data: { status: "ACTIVE" },
     });
 
     return eligible.map((e) => e.id);
@@ -246,14 +246,14 @@ export class ItemBankExpansionEngine {
   async retireItems(itemIds: string[], reason: string): Promise<void> {
     await prisma.item.updateMany({
       where: { id: { in: itemIds } },
-      data: { status: "RETIRED", active: false, metadata: { reason, retiredAt: new Date().toISOString() } as any },
+      data: { status: "RETIRED", metadata: { reason, retiredAt: new Date().toISOString() } as any },
     });
   }
 
   /** Build per-cell coverage heatmap (skill × CEFR) */
   async coverageHeatmap(): Promise<Record<string, Record<string, number>>> {
     const items = await prisma.item.findMany({
-      where: { active: true },
+      where: { status: "ACTIVE" },
       select: { skill: true, cefrLevel: true },
     });
     const map: Record<string, Record<string, number>> = {};
