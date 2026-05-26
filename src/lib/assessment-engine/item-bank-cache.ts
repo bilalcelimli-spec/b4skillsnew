@@ -30,6 +30,10 @@ export type CachedItem = {
   content: unknown;
   status: string;
   isPretest: boolean;
+  /** Topic/content tags — used for content-diversity filtering per section */
+  tags: string[];
+  /** Cumulative times this item has been administered — used for exposure penalty */
+  exposureCount: number;
 };
 
 interface CacheEntry {
@@ -103,6 +107,8 @@ export async function getCachedItems(
       content: true,
       status: true,
       isPretest: true,
+      tags: true,
+      exposureCount: true,
     },
   })) as CachedItem[];
 

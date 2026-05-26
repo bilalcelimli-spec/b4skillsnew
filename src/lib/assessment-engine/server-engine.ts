@@ -139,6 +139,8 @@ function dbItemToEngineItem(u: {
   content: unknown;
   status: string;
   isPretest: boolean;
+  tags?: string[];
+  exposureCount?: number;
 }): Item {
   const c = (u.content as Record<string, unknown> | null) || {};
   const ar = c.aReceptive;
@@ -155,7 +157,10 @@ function dbItemToEngineItem(u: {
     status: u.status as "DRAFT" | "REVIEW" | "ACTIVE" | "PRETEST" | "RETIRED",
     params,
     metadata: u.content as any,
-  };
+    // Pass-through for diversity filtering (not part of IRT computation)
+    tags: u.tags ?? [],
+    exposureCount: u.exposureCount ?? 0,
+  } as any;
 }
 
 async function loadItemMapByIds(itemIds: string[]): Promise<Record<string, Item>> {
@@ -714,12 +719,13 @@ export const AssessmentService = {
     const anchorDbItems = await prisma.item.findMany({
       where: {
         isAnchor: true,
-        skill: currentSkill as string,
+        skill: currentSkill as any,
         status: "ACTIVE",
         // notIn must be an array (never undefined) to avoid a Prisma validation error
         id: { notIn: usedIds },
       },
       take: 2,
+      orderBy: { exposureCount: "asc" },  // LRU: prefer least-recently-used anchors
     }).catch((err) => {
       logger.warn({ err: String(err), skill: currentSkill, sessionId }, "anchor injection skipped — likely missing isAnchor column; run migration 007");
       return [] as typeof anchorDbItems;
@@ -770,6 +776,64 @@ export const AssessmentService = {
       selectionPool,
       `${sessionId}:${currentSkill}:${sectionCount}`,
     );
+
+    // ── CONTENT-TAG DIVERSITY + ITEM-TYPE ROTATION ────────────────────────────
+    // 1. Collect tags and item types from the last 3 items administered in this
+    //    skill section so we can soft-deprioritize repeated content clusters.
+    // 2. If there are items with "fresh" tags, move them to the front of the
+    //    pool so tie-breaking in CAT composite scoring naturally prefers them.
+    //    If moving would empty the pool (all items share the same tag), we keep
+    //    the full pool (content diversity loses to measurement efficiency).
+    // 3. Similarly, if the last 2 items were both MULTIPLE_CHOICE and non-MCQ
+    //    items are available, move one to the front so it gets a fair chance.
+    {
+      const sectionItemIds = session.responses
+        .map((r) => ({ itemId: r.itemId, item: (itemById.get(r.itemId) as any) }))
+        .filter((x) => x.item && x.item.skill === currentSkill)
+        .slice(-3); // last 3 responses in this skill
+
+      // Extract recently-used content tags (e.g. passage IDs, topic clusters)
+      const recentContentTags = new Set<string>();
+      const recentTypes: string[] = [];
+      for (const { item } of sectionItemIds) {
+        const itemTags: string[] = (item as any).tags ?? [];
+        // "content:" prefixed tags mark passages/topics — track them
+        for (const t of itemTags) {
+          if (t.startsWith("content:") || t.startsWith("passage:") || t.startsWith("topic:")) {
+            recentContentTags.add(t);
+          }
+        }
+        if (item.type) recentTypes.push(item.type);
+      }
+
+      // Soft tag-diversity: prefer items without recently-used content tags
+      if (recentContentTags.size > 0) {
+        const freshPool = shuffledSelectionPool.filter((item) => {
+          const itemTags: string[] = (item as any).tags ?? [];
+          return !itemTags.some((t) => recentContentTags.has(t));
+        });
+        if (freshPool.length > 0) {
+          // Replace pool: fresh items first, then the rest (so composite tie-breaking prefers fresh)
+          const stalePool = shuffledSelectionPool.filter((item) => {
+            const itemTags: string[] = (item as any).tags ?? [];
+            return itemTags.some((t) => recentContentTags.has(t));
+          });
+          shuffledSelectionPool.length = 0;
+          shuffledSelectionPool.push(...freshPool, ...stalePool);
+        }
+      }
+
+      // Item-type rotation: if last 2 consecutive items were both MULTIPLE_CHOICE
+      // and non-MCQ alternatives exist, move one to the front as a priority candidate.
+      const last2Types = recentTypes.slice(-2);
+      if (last2Types.length === 2 && last2Types.every((t) => t === "MULTIPLE_CHOICE")) {
+        const altIdx = shuffledSelectionPool.findIndex((i) => i.type !== "MULTIPLE_CHOICE");
+        if (altIdx > 0) {
+          const [altItem] = shuffledSelectionPool.splice(altIdx, 1);
+          shuffledSelectionPool.unshift(altItem);
+        }
+      }
+    }
 
     // ── CAT SELECTION (composite α/β/γ/δ + shadow-test + sequencing) ─────────
     // Build administeredItems from pool (items already used in this session)
@@ -1088,14 +1152,15 @@ export const AssessmentService = {
     //   - focusLossCount = 0 (front-end may supply via a separate endpoint)
     // This is enough for the HMM to classify Engaged vs. Rapid-guess on RT alone.
     if (typeof clientLatencyMs === "number" && clientLatencyMs > 0) {
+      const now = Date.now();
       const newClickstreamEntry: ItemClickstream = {
         itemId,
-        responseTimeMs: clientLatencyMs,
-        keystrokes: 0,
-        mouseClicks: 0,
-        focusLossCount: 0,
-        revisitCount: 0,
-        events: [],
+        presentedAt: now - clientLatencyMs,
+        submittedAt: now,
+        clicks: [],
+        keystrokes: [],
+        focusLossIntervals: [],
+        scrollCount: 0,
       };
       // Fire-and-forget: append ONLY the clickstreams array via jsonb_set so this
       // write never overwrites concurrently-updated fields (e.g. sectionIndex set
@@ -1496,13 +1561,13 @@ export const AssessmentService = {
             {
               examineeId: sessionId,
               theta,
-              responses: currentResponses,
+              responses: currentResponses as CopyingResponse[],
               responseTimes: currentRTs,
             },
             ...recentSessions.slice(0, 20).map(s => ({
               examineeId: s.id,
               theta: s.theta ?? 0,
-              responses: s.responses.map(r => ({ itemId: r.itemId, score: (r.score ?? 0) > 0.5 ? 1 : 0 })),
+              responses: s.responses.map(r => ({ itemId: r.itemId, score: ((r.score ?? 0) > 0.5 ? 1 : 0) as 0 | 1 })),
               responseTimes: s.responses.reduce<Record<string, number>>((acc, r) => {
                 if (r.latencyMs) acc[r.itemId] = r.latencyMs;
                 return acc;
