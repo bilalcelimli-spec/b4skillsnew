@@ -32,6 +32,8 @@ import {
 } from "../src/lib/toefl-junior/toefl-junior-prompts";
 
 const prisma = new PrismaClient();
+import { installCreateGuard } from "./_validation-helper.js";
+installCreateGuard(prisma, "seed-toefl-junior-items");
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 // ─── CLI args ────────────────────────────────────────────────────────────────

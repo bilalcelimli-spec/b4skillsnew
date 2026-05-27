@@ -45,6 +45,8 @@ import { buildToeflJuniorPrompt } from "../src/lib/toefl-junior/toefl-junior-pro
 // ─── Infrastructure ──────────────────────────────────────────────────────────
 
 const prisma = new PrismaClient();
+import { installCreateGuard } from "./_validation-helper.js";
+installCreateGuard(prisma, "seed-suite-100-items");
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 const dryRun = process.argv.includes("--dry-run");
 

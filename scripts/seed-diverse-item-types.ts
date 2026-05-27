@@ -19,6 +19,8 @@
 
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma.js";
+import { installCreateGuard } from "./_validation-helper.js";
+installCreateGuard(prisma, "seed-diverse-item-types");
 
 const args    = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");

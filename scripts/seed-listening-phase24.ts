@@ -8,6 +8,7 @@
 
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
+import { validateOrExit } from "./_validation-helper.js";
 
 const MODULE_ID = 'specialized-listen-write-green-spaces';
 const PRODUCT_LINE = 'SPECIALIZED';
@@ -202,7 +203,8 @@ const items = [
 async function main() {
   console.log(`Seeding Listening Phase 24 — ${MODULE_TITLE} (${items.length} items — 4 MC + 1 productive)…`);
   let inserted = 0;
-  for (const item of items) {
+  const validItems = validateOrExit(items, "seed-listening-phase24");
+  for (const item of validItems) {
     await prisma.item.create({
       data: {
         type: 'MULTIPLE_CHOICE', skill: item.skill as any, cefrLevel: item.cefrLevel as any,

@@ -25,6 +25,8 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
+import { installCreateGuard } from "./_validation-helper.js";
+installCreateGuard(prisma, "seed-c2-comprehensive");
 const DRY_RUN = process.env.DRY_RUN === "1";
 const FORCE   = process.env.FORCE === "1";
 const SEED_TAG = "seed-c2-comprehensive-2026";

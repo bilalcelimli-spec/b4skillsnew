@@ -6,6 +6,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { validateOrExit } from "./_validation-helper.js";
 
 const prisma = new PrismaClient();
 
@@ -1346,10 +1347,11 @@ const items: ItemInput[] = [
 
 async function main() {
   console.log(`Seeding ${items.length} Junior Suite items...`);
+  const validItems = validateOrExit(items, "seed-junior-comprehensive");
   let count = 0;
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
+  for (let i = 0; i < validItems.length; i++) {
+    const item = validItems[i];
     const content = item.content as any;
     const skill = item.skill;
     const cefrLevel = item.cefrLevel;
@@ -1385,7 +1387,7 @@ async function main() {
       },
     });
     count++;
-    if (count % 20 === 0) console.log(`  ${count}/${items.length}...`);
+    if (count % 20 === 0) console.log(`  ${count}/${validItems.length}...`);
   }
 
   console.log(`\nDone! Seeded ${count} Junior Suite items.`);

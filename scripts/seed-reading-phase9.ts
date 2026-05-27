@@ -17,6 +17,7 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
+import { validateOrExit } from "./_validation-helper.js";
 
 const MODULE_ID    = "academia-reading-nature-expertise";
 const PRODUCT_LINE = "ACADEMIA";
@@ -170,7 +171,8 @@ async function main() {
   if (existing && process.env.FORCE !== "1") { console.log(`Module ${MODULE_ID} already seeded.`); return; }
   if (existing && process.env.FORCE === "1") { await prisma.item.deleteMany({ where: { tags: { has: MODULE_ID } } }); }
   let created = 0;
-  for (const item of items) {
+  const validItems = validateOrExit(items, "seed-reading-phase9");
+  for (const item of validItems) {
     await prisma.item.create({
       data: {
         type: "MULTIPLE_CHOICE", skill: item.skill as any, cefrLevel: item.cefrLevel as any,

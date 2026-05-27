@@ -15,6 +15,8 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
+import { installCreateGuard } from "./_validation-helper.js";
+installCreateGuard(prisma, "seed-vocab-phase2");
 const SEED_TAG = "seed-vocab-phase2";
 
 type Item = {

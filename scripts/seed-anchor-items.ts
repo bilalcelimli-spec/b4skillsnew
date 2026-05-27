@@ -16,6 +16,8 @@
 
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma.js";
+import { installCreateGuard } from "./_validation-helper.js";
+installCreateGuard(prisma, "seed-anchor-items");
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 const args        = process.argv.slice(2);

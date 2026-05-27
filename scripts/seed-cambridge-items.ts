@@ -33,6 +33,8 @@ import {
 } from "../src/lib/cambridge/cambridge-prompts";
 
 const prisma = new PrismaClient();
+import { installCreateGuard } from "./_validation-helper.js";
+installCreateGuard(prisma, "seed-cambridge-items");
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 // ─── CLI args ────────────────────────────────────────────────────────────────

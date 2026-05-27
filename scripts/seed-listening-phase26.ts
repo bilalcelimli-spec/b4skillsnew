@@ -13,6 +13,8 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
+import { installCreateGuard } from "./_validation-helper.js";
+installCreateGuard(prisma, "seed-listening-phase26");
 
 const SEED_TAG = "seed-listening-phase26";
 const DRY_RUN = process.env.DRY_RUN === "1";

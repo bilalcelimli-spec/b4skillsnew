@@ -2,6 +2,8 @@ import { PrismaClient } from '@prisma/client';
 import * as googleTTS from 'google-tts-api'; // For realistic audio generation
 
 const prisma = new PrismaClient();
+import { installCreateGuard } from "./_validation-helper.js";
+installCreateGuard(prisma, "seed-multimodal");
 
 async function main() {
   console.log("Generating audio & injecting multimodal images...");

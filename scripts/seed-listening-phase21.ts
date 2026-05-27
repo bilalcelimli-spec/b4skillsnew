@@ -7,6 +7,7 @@
 
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
+import { validateOrExit } from "./_validation-helper.js";
 
 const MODULE_ID = 'langschool-formative-a2-weekend';
 const PRODUCT_LINE = 'LANGUAGE_SCHOOLS';
@@ -198,7 +199,8 @@ const items = [
 async function main() {
   console.log(`Seeding Listening Phase 21 — ${MODULE_TITLE} (${items.length} items)…`);
   let inserted = 0;
-  for (const item of items) {
+  const validItems = validateOrExit(items, "seed-listening-phase21");
+  for (const item of validItems) {
     await prisma.item.create({
       data: {
         type: 'MULTIPLE_CHOICE', skill: item.skill as any, cefrLevel: item.cefrLevel as any,

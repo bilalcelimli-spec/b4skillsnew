@@ -12,6 +12,8 @@ import { PrismaClient, CefrLevel } from "@prisma/client";
 import { VOCAB_SYNTHETIC_200, type VocabStem } from "./data/vocab-synthetic-200.js";
 
 const prisma = new PrismaClient();
+import { installCreateGuard } from "./_validation-helper.js";
+installCreateGuard(prisma, "seed-vocab-200-sota");
 const SEED_TAG = "seed-vocab-200-sota";
 
 function irtA(cefr: CefrLevel): number {

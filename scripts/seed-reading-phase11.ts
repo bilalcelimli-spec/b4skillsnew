@@ -12,6 +12,7 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
+import { validateOrExit } from "./_validation-helper.js";
 
 const SEED_TAG    = "seed-reading-phase11";
 const MODULE_ID    = "langschool-reading-multitasking-myth";
@@ -212,7 +213,8 @@ async function main() {
   }
 
   let created = 0;
-  for (const item of items) {
+  const validItems = validateOrExit(items, "seed-reading-phase11");
+  for (const item of validItems) {
     await prisma.item.create({
       data: {
         type: "MULTIPLE_CHOICE",

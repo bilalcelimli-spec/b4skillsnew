@@ -18,6 +18,7 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
+import { validateOrExit } from "./_validation-helper.js";
 const SEED_TAG = "seed-writing-phase3";
 
 // ─── Rubrics ──────────────────────────────────────────────────────────────────
@@ -465,7 +466,8 @@ async function main() {
   }
 
   let n = 0;
-  for (const item of items) {
+  const validItems = validateOrExit(items, "seed-writing-phase3");
+  for (const item of validItems) {
     await prisma.item.create({
       data: {
         type: "WRITING_PROMPT",

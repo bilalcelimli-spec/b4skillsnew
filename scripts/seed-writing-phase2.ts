@@ -21,6 +21,7 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
+import { validateOrExit } from "./_validation-helper.js";
 const SEED_TAG = "seed-writing-phase2";
 
 const RUBRIC = {
@@ -595,7 +596,8 @@ async function main() {
   }
 
   let inserted = 0;
-  for (const item of items) {
+  const validItems = validateOrExit(items, "seed-writing-phase2");
+  for (const item of validItems) {
     await prisma.item.create({
       data: {
         skill: "WRITING",

@@ -12,6 +12,8 @@ import { PrismaClient, CefrLevel } from "@prisma/client";
 import { GRAMMAR_SYNTHETIC_196, type SyntheticStem } from "./data/grammar-synthetic-196.js";
 
 const prisma = new PrismaClient();
+import { installCreateGuard } from "./_validation-helper.js";
+installCreateGuard(prisma, "seed-grammar-300-sota");
 const SEED_TAG = "seed-grammar-300-sota";
 
 const PLS = [

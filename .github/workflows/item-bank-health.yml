@@ -51,6 +51,14 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      # ── Step 0: Item bank integrity validation (fail fast) ───────────────────
+      # Validates every item in the database against the structural Zod schemas.
+      # Fails the whole workflow if any active item has broken content shape —
+      # we don't want to publish a health report based on a corrupt bank.
+      - name: Validate Item Bank Integrity
+        run: npm run validate:items
+        continue-on-error: false
+
       # ── Step 1: Distractor analytics (always read-only in scheduled run) ──────
       - name: Distractor analytics
         id: distractor

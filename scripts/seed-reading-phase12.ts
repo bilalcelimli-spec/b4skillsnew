@@ -26,6 +26,7 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
+import { validateOrExit } from "./_validation-helper.js";
 const SEED_TAG = "seed-reading-phase12";
 
 // ─── MODULE 1: PRE_A1 — Zoo Signs ────────────────────────────────────────────
@@ -597,7 +598,8 @@ async function main() {
   }
 
   let n = 0;
-  for (const item of items) {
+  const validItems = validateOrExit(items, "seed-reading-phase12");
+  for (const item of validItems) {
     await prisma.item.create({
       data: {
         type: item.type as any,
