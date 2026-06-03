@@ -1,5 +1,11 @@
 import { PrismaClient } from '@prisma/client';
-import * as googleTTS from 'google-tts-api'; // For realistic audio generation
+// google-tts-api was removed (unmaintained, CVE-laden). Audio URLs are now
+// generated via @google-cloud/text-to-speech in the main server pipeline.
+// This seed script falls back to the Google Translate TTS URL pattern directly.
+function getAudioUrl(text: string): string {
+  const encoded = encodeURIComponent(text.slice(0, 200));
+  return `https://translate.google.com/translate_tts?ie=UTF-8&tl=en-GB&q=${encoded}&client=tw-ob`;
+}
 
 const prisma = new PrismaClient();
 import { installCreateGuard } from "./_validation-helper.js";
@@ -19,11 +25,7 @@ async function main() {
     // Convert [Audio: ...] to real MP3
     if (data.passage && data.passage.startsWith('[Audio:') && data.passage.endsWith(']')) {
       const textToSpeak = data.passage.slice(7, -1).trim().replace(/['"]/g, '');
-      const url = googleTTS.getAudioUrl(textToSpeak, {
-        lang: 'en-GB',
-        slow: false,
-        host: 'https://translate.google.com',
-      });
+      const url = getAudioUrl(textToSpeak);
       data.audioUrl = url;
       data.passage = `Listen to the audio clip.`; // change the passage text to generic
       updated = true;
@@ -54,7 +56,7 @@ async function main() {
       cefrLevel: 'C1',
       difficulty: 2.1,
       content: {
-        audioUrl: googleTTS.getAudioUrl("Neural networks adapt their synaptic weights somewhat similar to biological brains.", { lang: 'en-US', slow: false }),
+        audioUrl: getAudioUrl("Neural networks adapt their synaptic weights somewhat similar to biological brains."),
         prompt: "According to the audio, how do neural networks differ from traditional algorithms?",
         options: [
           { text: "They run faster on cloud servers.", isCorrect: false },
@@ -85,7 +87,7 @@ async function main() {
       cefrLevel: 'B1',
       difficulty: 0.5,
       content: {
-        audioUrl: googleTTS.getAudioUrl("Attention passengers. The 10:45 train to London Paddington is delayed by approximately 15 minutes due to signal failure.", { lang: 'en-GB', slow: true }),
+        audioUrl: getAudioUrl("Attention passengers. The 10:45 train to London Paddington is delayed by approximately 15 minutes due to signal failure."),
         prompt: "Why is the train delayed?",
         options: [
           { text: "Because of bad weather.", isCorrect: false },
