@@ -70,7 +70,11 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   // "Continue manually" button being clicked while the loop is still in-flight).
   const isFetchingNextRef = React.useRef(false);
 
-  const SECTION_ORDER = ['VOCABULARY', 'GRAMMAR', 'LISTENING', 'READING'];
+  // Default section list — overwritten by the server's sectionOrder field
+  // on /api/sessions/launch response. Kept as a sane fallback so the UI
+  // renders something coherent even if the server payload is missing the field.
+  const DEFAULT_SECTION_ORDER = ['VOCABULARY', 'GRAMMAR', 'READING', 'LISTENING', 'WRITING', 'SPEAKING'];
+  const [sectionOrder, setSectionOrder] = useState<string[]>(DEFAULT_SECTION_ORDER);
   const SECTION_LABELS: Record<string, string> = {
     VOCABULARY: 'Vocabulary',
     GRAMMAR: 'Grammar',
@@ -106,6 +110,13 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         setSessionId(data.sessionId);
         if (typeof data.maxDurationMs === "number") {
           setMaxDurationMs(data.maxDurationMs);
+        }
+        // Server is authoritative for the section breadcrumb — keeps the UI
+        // in lockstep with the active product-line profile (Primary, Junior,
+        // 15-Min Diagnostic, Academia, etc.). Falls back to DEFAULT_SECTION_ORDER
+        // if the field is absent.
+        if (Array.isArray(data.sectionOrder) && data.sectionOrder.length > 0) {
+          setSectionOrder(data.sectionOrder);
         }
         sessionStartRef.current = Date.now();
         fetchNextItem(data.sessionId);
@@ -518,22 +529,22 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         </div>
       </header>
 
-      {/* Section Progress Bar */}
-      <div className="bg-white border-b border-slate-100 px-6 py-2 flex items-center gap-2" role="navigation" aria-label="Test section progress">
-        {SECTION_ORDER.map((sec, i) => (
-          <div key={sec} className="flex items-center gap-1.5">
+      {/* Section Progress Bar — driven by sectionOrder from server response */}
+      <div className="bg-white border-b border-slate-100 px-6 py-2 flex items-center gap-2 overflow-x-auto" role="navigation" aria-label="Test section progress">
+        {sectionOrder.map((sec, i) => (
+          <div key={sec} className="flex items-center gap-1.5 shrink-0">
             <div
               aria-current={i === sectionIndex ? "step" : undefined}
               className={cn(
                 "flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full transition-all",
                 i < sectionIndex
-                  ? `${SECTION_COLORS[sec]} text-white opacity-70`
+                  ? `${SECTION_COLORS[sec] ?? 'bg-slate-400'} text-white opacity-70`
                   : i === sectionIndex
-                  ? `${SECTION_COLORS[sec]} text-white shadow-sm`
+                  ? `${SECTION_COLORS[sec] ?? 'bg-slate-500'} text-white shadow-sm`
                   : "bg-slate-100 text-slate-400"
               )}
             >
-              {SECTION_LABELS[sec]}
+              {SECTION_LABELS[sec] ?? sec}
               {sectionCounts[sec] ? (
                 <span className={cn(
                   "ml-1 px-1 rounded text-[9px] font-black leading-none",
@@ -543,7 +554,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
                 </span>
               ) : null}
             </div>
-            {i < SECTION_ORDER.length - 1 && (
+            {i < sectionOrder.length - 1 && (
               <ChevronRight size={12} className="text-slate-300" aria-hidden="true" />
             )}
           </div>

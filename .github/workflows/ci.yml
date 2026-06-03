@@ -78,6 +78,13 @@ jobs:
       - run: npm ci
       - name: Validate item schemas and structure
         run: npm run validate:items
+      - name: Verify skill-coverage per profile
+        # Critical now that WRITING/SPEAKING are mandatory in every product
+        # line — a gap in productive items would silently downgrade the
+        # user's exam. Fails the build if any profile × skill × CEFR cell
+        # has fewer than `minItems` ACTIVE items.
+        run: npm run verify:coverage
+        continue-on-error: false
 
   # ─────────────────────────────────────────────────────────────────────────────
   build:

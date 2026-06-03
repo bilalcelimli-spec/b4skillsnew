@@ -410,20 +410,24 @@ export const AssessmentService = {
         return { skill, count, minRequired, sufficient: count >= minRequired };
       })
     );
-    // WRITING and SPEAKING are optional productive skills — the CAT engine
-    // already handles empty pools with a graceful NO_ITEMS_LEFT_IN_SECTION
-    // force-advance, so insufficient productive items should never block launch.
-    const OPTIONAL_SKILLS = ["WRITING", "SPEAKING"];
+    // Q3 2026: WRITING/SPEAKING are now mandatory skills in every profile.
+    // Per-skill coverage gaps are still tolerated for productive skills because
+    // the CAT loop handles empty pools with a graceful NO_ITEMS_LEFT_IN_SECTION
+    // force-advance — but we DO emit a loud warning so admins notice the gap.
+    // Receptive skills with insufficient pool will block launch (a freemium
+    // user must not get a useless 3-question result).
+    const PRODUCTIVE_SKILLS = ["WRITING", "SPEAKING"];
     const insufficientCoreSections = itemCountsBySkill.filter(
-      (s) => !s.sufficient && !OPTIONAL_SKILLS.includes(s.skill as string)
+      (s) => !s.sufficient && !PRODUCTIVE_SKILLS.includes(s.skill as string)
     );
-    const insufficientOptionalSections = itemCountsBySkill.filter(
-      (s) => !s.sufficient && OPTIONAL_SKILLS.includes(s.skill as string)
+    const insufficientProductiveSections = itemCountsBySkill.filter(
+      (s) => !s.sufficient && PRODUCTIVE_SKILLS.includes(s.skill as string)
     );
-    if (insufficientOptionalSections.length > 0) {
+    if (insufficientProductiveSections.length > 0) {
       logger.warn(
-        { profileName: profile.name, insufficientOptionalSections },
-        "Item bank has insufficient WRITING/SPEAKING items — those sections will be skipped at runtime (non-blocking)"
+        { profileName: profile.name, insufficientProductiveSections },
+        "Item bank has insufficient WRITING/SPEAKING items — those sections will be skipped at runtime. " +
+        "Run `npm run verify:coverage` and seed productive items to restore full 6-skill coverage."
       );
     }
     if (insufficientCoreSections.length > 0) {
@@ -476,6 +480,11 @@ export const AssessmentService = {
       // The UI uses this only to show elapsed time as a fraction of the budget.
       maxDurationMs: profile.maxDurationMs,
       estimatedDurationMin: profile.estimatedDurationMin,
+      // Section breadcrumb is rendered from this list — keeps the UI in
+      // lockstep with whatever product-line profile is active (and frees us
+      // from hard-coding the 4/6-skill order in the frontend).
+      sectionOrder: profile.sectionOrder.map((s) => String(s)),
+      profileName: profile.name,
     };
   },
 

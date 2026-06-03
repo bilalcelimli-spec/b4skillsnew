@@ -263,21 +263,24 @@ const JUNIOR_SUITE: ProductLineProfile = {
 };
 
 /**
- * 15-Min Diagnostic — Quick CEFR placement (receptive skills only)
+ * 15-Min Diagnostic — Full 6-skill rapid CEFR placement
  *
- * DESIGN DECISION (2026-05 revision):
- *   Writing and Speaking tasks have been REMOVED from this profile.
- *   Rationale:
- *     1. Time: 1 Writing task = 15 min alone → 15-min budget exceeded
- *     2. Reliability: SEM target 0.45 unreachable with 4-item sections
- *     3. Purpose: This product is for rapid placement, not holistic profiling
- *
- *   If Writing/Speaking are required → use "Express Assessment (30-Min)" profile.
+ * Q3 2026 UPDATE: WRITING + SPEAKING re-enabled (1 task each) for full
+ *                 6-skill coverage. Estimated time grew from 15 → ~22 min.
+ *                 Productive tasks use lighter word/time budgets and run
+ *                 after receptive sections to keep the perceived flow snappy.
  *
  * Psychometric basis:
- *   SEM target 0.48 → I ≥ 4.3 → ≥ 7 MC items per skill (CAT-adjusted).
- *   Previous max=4 gave I ≈ 1.5 → SEM ≈ 0.82 — the stated 0.45 target was
- *   mathematically impossible. Target corrected to honest achievable value.
+ *   Receptive: SEM target 0.48 → I ≥ 4.3 → ≥ 7 MC items per skill (CAT-adjusted).
+ *   Productive (1 task each): GRM SEM ≈ 0.30 — a coarse but honest band estimate
+ *     suitable for placement (Cambridge BSE precedent).  If a candidate needs
+ *     a high-stakes productive score (ρ ≥ 0.85), upgrade to Express (30-Min)
+ *     or Academia — those profiles run 2-3 productive tasks each.
+ *
+ * Note (history): pre-Q3-2026 this profile only ran the 4 receptive skills
+ *   under the rationale that 1 writing task takes 15 minutes alone.  We now
+ *   ship a *trimmed* productive task spec (≤100 words / ≤45 seconds) so the
+ *   full 6-skill flow fits in ~22-25 min, keeping the rapid-placement promise.
  */
 const DIAGNOSTIC_15: ProductLineProfile = {
   name: "15-Min Diagnostic",
@@ -288,20 +291,30 @@ const DIAGNOSTIC_15: ProductLineProfile = {
     SkillType.GRAMMAR,
     SkillType.READING,
     SkillType.LISTENING,
+    SkillType.WRITING,
+    SkillType.SPEAKING,
   ],
   sectionConfig: {
     VOCABULARY: { minItems: 4, maxItems: 7, semThreshold: 0.46 },
     GRAMMAR:    { minItems: 4, maxItems: 7, semThreshold: 0.46 },
     READING:    { minItems: 4, maxItems: 7, semThreshold: 0.48 },
     LISTENING:  { minItems: 3, maxItems: 6, semThreshold: 0.50 },
+    WRITING:    { minItems: 1, maxItems: 2, semThreshold: 0.50 },
+    SPEAKING:   { minItems: 1, maxItems: 2, semThreshold: 0.50 },
   },
   blueprint: [
     { skill: SkillType.VOCABULARY, minCount: 4, maxCount: 7 },
     { skill: SkillType.GRAMMAR,    minCount: 4, maxCount: 7 },
     { skill: SkillType.READING,    minCount: 4, maxCount: 7 },
     { skill: SkillType.LISTENING,  minCount: 3, maxCount: 6 },
+    { skill: SkillType.WRITING,    minCount: 1, maxCount: 2 },
+    { skill: SkillType.SPEAKING,   minCount: 1, maxCount: 2 },
   ],
-  globalMaxItems: 22,
+  globalMaxItems: 26,
+  writingTaskSpecs: [
+    // Single short productive task — trimmed budget keeps total session ≤ 25 min.
+    { position: 1, minWords: 30, maxWords: 100, taskType: "short_response" },
+  ],
   globalSemThreshold: 0.46,
   maxExposureRate: 0.35,
   examSources: ["general"],
@@ -336,8 +349,9 @@ const DIAGNOSTIC_15: ProductLineProfile = {
   reportTemplate: "cefr_band",
   warmupItems: 2,
   warmupDifficultyOffset: 0.3,
-  estimatedDurationMin: [12, 18],
-  maxDurationMs: 1_620_000,
+  estimatedDurationMin: [22, 28],
+  // 28 min × 1.5 safety net
+  maxDurationMs: 2_520_000,
 };
 
 /**

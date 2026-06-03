@@ -59,12 +59,12 @@ export interface PlacementConfig {
 }
 
 export const DEFAULT_PLACEMENT_CONFIG: PlacementConfig = {
-  minItems: 10,
-  maxItems: 30,
+  minItems: 12,        // 6 skills × 2 items minimum each (FREEMIUM_MIN_ITEMS_PER_SKILL)
+  maxItems: 36,        // Room for 6-skill coverage + IRT convergence
   semThreshold: 0.35,
   startingTheta: 0.0,  // B1 — best starting point for a general English test
   startingSem: 1.2,    // Wide prior — we know nothing about the user
-  eligibleSkills: ["READING", "LISTENING", "GRAMMAR", "VOCABULARY"],
+  eligibleSkills: ["READING", "LISTENING", "GRAMMAR", "VOCABULARY", "WRITING", "SPEAKING"],
 };
 
 export interface PlacementResponse {
@@ -194,10 +194,6 @@ export function buildPlacementResult(
   const ci = cefrConfidenceInterval(state.theta, state.sem);
   const completionMs = Date.now() - state.startedAt;
 
-  const missingSkills = ["WRITING", "SPEAKING"].filter(
-    s => !DEFAULT_PLACEMENT_CONFIG.eligibleSkills.includes(s)
-  );
-
   const upgradeUrl = appBaseUrl
     ? `${appBaseUrl}/register?ref=placement&level=${cefrLevel}`
     : `/register?ref=placement&level=${cefrLevel}`;
@@ -221,8 +217,11 @@ export function buildPlacementResult(
     completionMs,
     skillBreakdown,
     upgradePrompt: {
-      message: `Your estimated level is ${cefrLevel}. Get a complete 4-skill report with speaking and writing assessment.`,
-      skills: missingSkills,
+      // Placement now covers all 6 skills — the upgrade pitches deeper
+      // analytics (error patterns, study plan, certificates) rather than
+      // "missing skills", which would be misleading.
+      message: `Your estimated level is ${cefrLevel}. Unlock the full psychometric report — detailed error analysis, per-CEFR can-do breakdown, and a personalised study plan.`,
+      skills: ["Detailed Psychometrics", "Error Analysis", "Personalised Study Plan"],
       callToActionUrl: upgradeUrl,
     },
   };

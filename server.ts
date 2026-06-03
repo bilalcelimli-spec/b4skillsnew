@@ -1048,7 +1048,19 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
             active: true
           }));
           mockSessions[sId] = { progress: 0, productLine, items: mappedItems.length ? mappedItems : [{ id: "fallback1", skill: "READING", type: "MULTIPLE_CHOICE", metadata: { prompt: "Default fallback item", options: ["A", "B", "C"], correctOption: "A" }, irtA:1, irtB:0, irtC:0 }] };
-          return res.json({ sessionId: sId, candidateId, organizationId, productLine, status: "STARTED", theta: 0, sem: 1, history: [] });
+          return res.json({
+            sessionId: sId,
+            candidateId,
+            organizationId,
+            productLine,
+            status: "STARTED",
+            theta: 0,
+            sem: 1,
+            history: [],
+            // DB-down fallback still advertises the full 6-skill order so the
+            // UI breadcrumb remains accurate even when the studioItems pool is empty.
+            sectionOrder: ["VOCABULARY", "GRAMMAR", "READING", "LISTENING", "WRITING", "SPEAKING"],
+          });
         }
         throw err;
       }
@@ -2369,10 +2381,15 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   ];
   const thetaToCefr = (theta: number) => CEFR_BANDS.find(b => theta >= b.minTheta)?.level ?? "A1";
 
-  // Freemium placement only tests receptive/grammar skills — SPEAKING and WRITING
-  // require AI scoring that is not available in the anonymous placement flow.
-  // If DB items for those skills exist they will simply never be selected here.
-  const FREEMIUM_PLACEMENT_SKILLS = ["GRAMMAR", "VOCABULARY", "READING", "LISTENING"];
+  // Freemium placement now covers ALL 6 macro skills (Q3 2026 expansion).
+  // Productive (WRITING/SPEAKING) responses are accepted as text/audio and IRT-
+  // scored on submission; deep AI scoring runs server-side via the scoring queue.
+  const FREEMIUM_PLACEMENT_SKILLS = ["GRAMMAR", "VOCABULARY", "READING", "LISTENING", "WRITING", "SPEAKING"];
+
+  // Each skill must collect at least this many items before the test may stop —
+  // ensures the 6-skill breakdown isn't lopsided toward whatever the IRT loop
+  // happened to favour. With 6 skills × 2 = 12 minimum responses out of 36 max.
+  const FREEMIUM_MIN_ITEMS_PER_SKILL = 2;
 
   const pickNextPlacementItem = (allItems: any[], usedIds: Set<string>, theta: number, skillBreakdown: Record<string, any> = {}) => {
     const available = allItems.filter(
@@ -2380,15 +2397,32 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     );
     if (!available.length) return null;
 
-    // Try to balance skills: prefer skills with fewer items administered so far
+    // ── Skill-coverage guard ──────────────────────────────────────────────
+    // If any skill in the placement set still hasn't met the per-skill
+    // minimum, force-pick from those under-served skills first. Otherwise
+    // pure IRT selection ignores WRITING/SPEAKING (item info is lower than
+    // for receptive MCQs at moderate θ), and the productive sections never
+    // appear in the freemium result.
     const skillCounts: Record<string, number> = {};
-    Object.entries(skillBreakdown).forEach(([s, data]) => { skillCounts[s] = (data as any).total; });
-    const values = Object.values(skillCounts);
-    const minSkillCount = values.length > 0 ? Math.min(...values as number[]) : 0;
-    
-    // Filter to skills that are within 1 item of the minimum count
-    const balancedAvailable = available.filter(it => (skillCounts[it.skill] || 0) <= minSkillCount + 1);
-    const set = balancedAvailable.length > 0 ? balancedAvailable : available;
+    for (const s of FREEMIUM_PLACEMENT_SKILLS) skillCounts[s] = 0;
+    Object.entries(skillBreakdown).forEach(([s, data]) => { skillCounts[s] = (data as any).total ?? 0; });
+
+    const underServed = FREEMIUM_PLACEMENT_SKILLS.filter(
+      s => skillCounts[s] < FREEMIUM_MIN_ITEMS_PER_SKILL && available.some(it => it.skill === s)
+    );
+
+    let set: any[];
+    if (underServed.length > 0) {
+      // Prefer the under-served skill with the fewest items so far, then IRT-pick.
+      const targetSkill = underServed.sort((a, b) => skillCounts[a] - skillCounts[b])[0];
+      set = available.filter(it => it.skill === targetSkill);
+    } else {
+      // All skills met the minimum — fall back to the original "min-count + 1" balancing.
+      const values = Object.values(skillCounts);
+      const minSkillCount = values.length > 0 ? Math.min(...values as number[]) : 0;
+      const balancedAvailable = available.filter(it => (skillCounts[it.skill] || 0) <= minSkillCount + 1);
+      set = balancedAvailable.length > 0 ? balancedAvailable : available;
+    }
 
     return set.reduce((best, it) => {
       const diff = Math.abs((it.irtB ?? it.difficulty ?? 0) - theta);
@@ -2448,12 +2482,19 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       placementSessions[pId] = {
         theta: startTheta, sem: 1.5, items: allItems,
         usedIds: new Set([firstItem.id]),
-        itemsAdministered: 0, maxItems: 30,
+        itemsAdministered: 0, maxItems: 36,
         name: name.trim(), email: email.trim().toLowerCase(),
         skillBreakdown: {},
       };
 
-      return res.json({ placementId: pId, firstItem, maxItems: 30 });
+      // sectionOrder lets the frontend render the section breadcrumb directly
+      // from the server response (no more hardcoded 4-skill list in the UI).
+      return res.json({
+        placementId: pId,
+        firstItem,
+        maxItems: 36,
+        sectionOrder: FREEMIUM_PLACEMENT_SKILLS,
+      });
     } catch (err) {
       console.error("PLACEMENT START ERROR", err);
       res.status(500).json({ error: "Failed to start placement test", details: String(err) });
@@ -2509,7 +2550,17 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         sess.sem = Math.max(0.1, 1 / Math.sqrt(Math.max(info, 0.01)));
       }
       sess.itemsAdministered++;
-      const done = sess.itemsAdministered >= sess.maxItems || sess.sem < 0.35;
+      // ── Stop condition (6-skill coverage required) ─────────────────────────
+      // The session may stop only when every skill in FREEMIUM_PLACEMENT_SKILLS
+      // has received its minimum number of items AND we're either out of
+      // questions or have hit our SEM target. This prevents the test from
+      // ending early on a stretch of low-θ items before WRITING/SPEAKING ran.
+      const allSkillsCovered = FREEMIUM_PLACEMENT_SKILLS.every(
+        s => (sess.skillBreakdown[s]?.total ?? 0) >= FREEMIUM_MIN_ITEMS_PER_SKILL
+      );
+      const reachedMax = sess.itemsAdministered >= sess.maxItems;
+      const semOk = sess.sem < 0.35;
+      const done = reachedMax || (allSkillsCovered && semOk);
 
       if (done) {
         const cefrLevel = thetaToCefr(sess.theta);
@@ -2532,8 +2583,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           completionMs,
           skillBreakdown: sess.skillBreakdown,
           upgradePrompt: {
-            message: "To get a detailed breakdown of your Grammar, Vocabulary, and Listening skills, try our comprehensive adaptive test.",
-            skills: ["Speaking", "Writing", "Deep Psychometrics"],
+            message: "Unlock the full psychometric report — detailed error analysis, per-CEFR can-do breakdown, and a personalised study plan.",
+            skills: ["Detailed Psychometrics", "Error Analysis", "Personalised Study Plan"],
             callToActionUrl: "#pricing"
           }
         };
@@ -2563,8 +2614,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           completionMs,
           skillBreakdown: sess.skillBreakdown,
           upgradePrompt: {
-            message: "To get a detailed breakdown of your Grammar, Vocabulary, and Listening skills, try our comprehensive adaptive test.",
-            skills: ["Speaking", "Writing", "Deep Psychometrics"],
+            message: "Unlock the full psychometric report — detailed error analysis, per-CEFR can-do breakdown, and a personalised study plan.",
+            skills: ["Detailed Psychometrics", "Error Analysis", "Personalised Study Plan"],
             callToActionUrl: "#pricing"
           }
         };

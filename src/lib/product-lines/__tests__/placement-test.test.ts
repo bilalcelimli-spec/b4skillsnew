@@ -145,30 +145,33 @@ describe("shouldStopPlacement()", () => {
   }
 
   it("does not stop before minItems even if SEM is low", () => {
-    const result = shouldStopPlacement(state(3, 0.2)); // 3 < minItems=6
+    // minItems is now 12 (6 skills × 2-item floor). 3 items must keep going.
+    const result = shouldStopPlacement(state(3, 0.2));
     expect(result.stop).toBe(false);
   });
 
   it("stops when maxItems reached", () => {
-    const result = shouldStopPlacement(state(12, 1.0));
+    // maxItems is now 36.
+    const result = shouldStopPlacement(state(36, 1.0));
     expect(result.stop).toBe(true);
     expect(result.reason).toBe("MAX_ITEMS_REACHED");
   });
 
   it("stops when SEM ≤ threshold after minItems", () => {
-    const result = shouldStopPlacement(state(6, 0.40)); // 0.40 ≤ 0.45
+    // Need ≥ minItems (12) before SEM rule can trigger.
+    const result = shouldStopPlacement(state(12, 0.30)); // 0.30 ≤ 0.35
     expect(result.stop).toBe(true);
     expect(result.reason).toBe("SEM_THRESHOLD_REACHED");
   });
 
   it("continues when SEM > threshold and n < maxItems", () => {
-    const result = shouldStopPlacement(state(7, 0.50)); // 0.50 > 0.45
+    const result = shouldStopPlacement(state(15, 0.50)); // 0.50 > 0.35
     expect(result.stop).toBe(false);
     expect(result.reason).toBeNull();
   });
 
   it("SEM exactly at threshold triggers stop", () => {
-    const result = shouldStopPlacement(state(6, 0.45)); // exactly 0.45
+    const result = shouldStopPlacement(state(12, 0.35)); // exactly 0.35
     expect(result.stop).toBe(true);
   });
 });
@@ -229,10 +232,14 @@ describe("buildPlacementResult()", () => {
     expect(ci[1]).toBeLessThan(ci[2]);
   });
 
-  it("upgradePrompt includes WRITING and SPEAKING skills", () => {
+  it("upgradePrompt pitches deeper analytics (no longer lists WRITING/SPEAKING as missing)", () => {
+    // Q3 2026: placement now covers all 6 skills, so the upgrade pitches
+    // deeper psychometrics rather than "missing" productive skills.
     const result = buildPlacementResult(session);
-    expect(result.upgradePrompt.skills).toContain("WRITING");
-    expect(result.upgradePrompt.skills).toContain("SPEAKING");
+    expect(result.upgradePrompt.skills).not.toContain("WRITING");
+    expect(result.upgradePrompt.skills).not.toContain("SPEAKING");
+    expect(result.upgradePrompt.skills.length).toBeGreaterThan(0);
+    expect(result.upgradePrompt.message.length).toBeGreaterThan(0);
   });
 
   it("upgradePrompt callToActionUrl contains the CEFR level", () => {
