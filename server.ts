@@ -630,10 +630,10 @@ async function startServer() {
         return res.json({ message: `Generated ${codes.length} codes`, codes: codes.map(c => c.code) });
       }
       if (url === "/codes/validate" && method === "POST") {
-        return res.json({ valid: true, examCode: { code: req.body?.code, productLine: "General", organizationId: "b4skills-demo" } });
+        return res.json({ valid: true, examCode: { code: req.body?.code, productLine: "General English", organizationId: "b4skills-demo" } });
       }
       if (url === "/codes/redeem" && method === "POST") {
-        return res.json({ success: true, organizationId: "b4skills-demo", productLine: "General" });
+        return res.json({ success: true, organizationId: "b4skills-demo", productLine: "General English" });
       }
 
       // ── Bulk candidate import ─────────────────────────────────────────────────────
@@ -1030,7 +1030,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         if (isDBError(err) || err.name === "PrismaClientInitializationError") {
           const { studioItems } = await import("./src/data/studioItems.js");
           const sId = "demo-session-" + Date.now();
-          const filteredItems = productLine && productLine !== "General" ? studioItems.filter((i: any) => i.productLine === productLine) : studioItems;
+          const filteredItems = productLine && productLine !== "General" && productLine !== "General English" ? studioItems.filter((i: any) => i.productLine === productLine) : studioItems;
           const mappedItems = filteredItems.map((it: any) => ({
             id: it.id,
             skill: it.skill,

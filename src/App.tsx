@@ -303,21 +303,21 @@ export default function App() {
                   </>
                 )}
 
-                {(!userProfile?.allowedProductLine || userProfile.allowedProductLine === "General" || userProfile.allowedProductLine === "general") && (
+                {(!userProfile?.allowedProductLine || userProfile.allowedProductLine === "General English" || userProfile.allowedProductLine === "General" || userProfile.allowedProductLine === "general") && (
                   <Card className="bg-indigo-600 text-white border-none shadow-indigo-200 shadow-xl rounded-[40px] overflow-hidden relative" style={{ backgroundColor: branding?.primaryColor }}>
                     <CardContent className="p-10 flex flex-col sm:flex-row items-center gap-10">
                       <div className="flex-1 text-center sm:text-left">
                         <h2 className="text-3xl font-black mb-3 uppercase tracking-tighter">
-                          {userProfile?.allowedProductLine === "general" ? "General Assessment" : "General English Proficiency Test"}
+                          General English Proficiency Test
                         </h2>
                         <p className="text-indigo-100 mb-8 leading-relaxed font-bold opacity-80">
-                          Our most popular adaptive assessment. Measures Reading, Listening, and Grammar across all CEFR levels.
+                          Our most popular adaptive assessment. Measures all 6 skills — Vocabulary, Grammar, Reading, Listening, Writing &amp; Speaking — across all CEFR levels.
                         </p>
-                        <Button 
-                          size="lg" 
+                        <Button
+                          size="lg"
                           className="bg-white text-indigo-600 hover:bg-indigo-50 border-none shadow-lg h-14 px-8 rounded-2xl font-black uppercase tracking-widest text-sm"
                           style={{ color: branding?.primaryColor }}
-                          onClick={() => startNewTest("General")}
+                          onClick={() => startNewTest("General English")}
                         >
                           Start Assessment
                         </Button>
@@ -336,11 +336,13 @@ export default function App() {
                     "Primary (7-10)",
                     "Junior Suite (11-14)",
                     "15-Min Diagnostic",
+                    "Express Assessment (30-Min)",
+                    "General English",
                     "Academia",
                     "Corporate",
                     "Language Schools",
                     "Specialized / Integrated Skills"
-                  ].filter(pl => !userProfile?.allowedProductLine || userProfile.allowedProductLine === pl).map(pl => (
+                  ].filter(pl => !userProfile?.allowedProductLine || userProfile.allowedProductLine === pl || userProfile.allowedProductLine === "General" || userProfile.allowedProductLine === "general").map(pl => (
                     <Card key={pl} className="border-slate-200 shadow-sm rounded-2xl hover:border-indigo-400 hover:shadow-indigo-100 transition-all cursor-pointer group" onClick={() => startNewTest(pl)}>
                       <CardContent className="p-4 flex flex-col items-center justify-center gap-2 text-center">
                         <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
