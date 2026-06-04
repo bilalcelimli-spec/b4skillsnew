@@ -165,9 +165,10 @@ const PRIMARY: ProductLineProfile = {
     // max 10: I ≤ 10×0.52×0.70 = 3.64 → SEM ≤ 0.52 at plateau ✓
     LISTENING:  { minItems: 6,  maxItems: 10, semThreshold: 0.50 },
     READING:    { minItems: 6,  maxItems: 10, semThreshold: 0.50 },
-    // FIB items: I_peak ≈ 0.91 → 5 items gives I ≈ 3.2 → SEM ≈ 0.56
-    GRAMMAR:    { minItems: 5,  maxItems: 8,  semThreshold: 0.48 },
-    VOCABULARY: { minItems: 5,  maxItems: 8,  semThreshold: 0.48 },
+    // FIB items: I_peak ≈ 0.91 → 6/10 items → SEM ≈ 0.44 (en verimli + bol havuz)
+    // Vocab/grammar artırıldı: bankanın en zengin becerileri, en güçlü CEFR ayırt edici.
+    GRAMMAR:    { minItems: 6,  maxItems: 10, semThreshold: 0.44 },
+    VOCABULARY: { minItems: 6,  maxItems: 10, semThreshold: 0.44 },
     // 2–3 GRM tasks → I ≈ 22–33 combined → SEM ≈ 0.17–0.21; reliable subscore
     WRITING:    { minItems: 2,  maxItems: 3,  semThreshold: 0.55 },
     SPEAKING:   { minItems: 2,  maxItems: 3,  semThreshold: 0.55 },
@@ -175,12 +176,12 @@ const PRIMARY: ProductLineProfile = {
   blueprint: [
     { skill: SkillType.LISTENING,  minCount: 6,  maxCount: 10 },
     { skill: SkillType.READING,    minCount: 6,  maxCount: 10 },
-    { skill: SkillType.GRAMMAR,    minCount: 5,  maxCount: 8  },
-    { skill: SkillType.VOCABULARY, minCount: 5,  maxCount: 8  },
+    { skill: SkillType.GRAMMAR,    minCount: 6,  maxCount: 10 },
+    { skill: SkillType.VOCABULARY, minCount: 6,  maxCount: 10 },
     { skill: SkillType.WRITING,    minCount: 2,  maxCount: 3  },
     { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 3  },
   ],
-  globalMaxItems: 42,
+  globalMaxItems: 46,
   // Age-appropriate word limits for 7-10 year olds
   writingTaskSpecs: [
     { position: 1, minWords: 30,  maxWords: 50,  taskType: "short_response" },
@@ -193,9 +194,9 @@ const PRIMARY: ProductLineProfile = {
   reportTemplate: "yle",
   warmupItems: 3,
   warmupDifficultyOffset: 0.5,
-  estimatedDurationMin: [28, 42],
-  // 42 min × 1.5 safety net (young learners may need extra time)
-  maxDurationMs: 3_780_000,
+  estimatedDurationMin: [30, 46],
+  // 46 min × 1.5 safety net (young learners may need extra time)
+  maxDurationMs: 4_140_000,
 };
 
 /**
@@ -224,8 +225,9 @@ const JUNIOR_SUITE: ProductLineProfile = {
   ],
   sectionConfig: {
     LISTENING:  { minItems: 6,  maxItems: 14, semThreshold: 0.40 },
-    GRAMMAR:    { minItems: 6,  maxItems: 12, semThreshold: 0.40 },
-    VOCABULARY: { minItems: 6,  maxItems: 12, semThreshold: 0.38 },
+    // Vocab/grammar 8/14'e yükseltildi: en verimli beceriler + bol havuz → SEM 0.36
+    GRAMMAR:    { minItems: 8,  maxItems: 14, semThreshold: 0.36 },
+    VOCABULARY: { minItems: 8,  maxItems: 14, semThreshold: 0.36 },
     READING:    { minItems: 6,  maxItems: 14, semThreshold: 0.40 },
     // min 2 tasks: mandatory for reliable productive skill subscore
     WRITING:    { minItems: 2,  maxItems: 3,  semThreshold: 0.50 },
@@ -233,13 +235,13 @@ const JUNIOR_SUITE: ProductLineProfile = {
   },
   blueprint: [
     { skill: SkillType.LISTENING,  minCount: 6,  maxCount: 14 },
-    { skill: SkillType.GRAMMAR,    minCount: 6,  maxCount: 12 },
-    { skill: SkillType.VOCABULARY, minCount: 6,  maxCount: 12 },
+    { skill: SkillType.GRAMMAR,    minCount: 8,  maxCount: 14 },
+    { skill: SkillType.VOCABULARY, minCount: 8,  maxCount: 14 },
     { skill: SkillType.READING,    minCount: 6,  maxCount: 14 },
     { skill: SkillType.WRITING,    minCount: 2,  maxCount: 3  },
     { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 3  },
   ],
-  globalMaxItems: 56,
+  globalMaxItems: 60,
   writingTaskSpecs: [
     { position: 1, minWords: 40,  maxWords: 60,  taskType: "short_response" },
     { position: 2, minWords: 80,  maxWords: 120, taskType: "paragraph_response" },
@@ -259,18 +261,23 @@ const JUNIOR_SUITE: ProductLineProfile = {
   reportTemplate: "toefl_junior",
   warmupItems: 3,
   warmupDifficultyOffset: 0.5,
-  estimatedDurationMin: [55, 75],
-  // 75 min × 1.5 safety net
-  maxDurationMs: 6_750_000,
+  estimatedDurationMin: [57, 79],
+  // 79 min × 1.5 safety net
+  maxDurationMs: 7_110_000,
 };
 
 /**
- * 15-Min Diagnostic — Full 6-skill rapid CEFR placement
+ * 15-Min Diagnostic — Full 6-skill CEFR placement
  *
  * Q3 2026 UPDATE: WRITING + SPEAKING re-enabled (1 task each) for full
  *                 6-skill coverage. Estimated time grew from 15 → ~22 min.
- *                 Productive tasks use lighter word/time budgets and run
- *                 after receptive sections to keep the perceived flow snappy.
+ *
+ * Q4 2026 UPDATE: vocab/grammar (en verimli + en zengin beceriler) 4/7 → 7/12
+ *                 yükseltildi, SEM 0.46 → 0.38. Doğruluk önceliklendirildi;
+ *                 süre ~30-40 dk'ya çıktı. İsim ("15-Min") artık nominal — registry
+ *                 key + exam-code value olduğu için korundu, yeniden adlandırma
+ *                 verilmiş kodları kırar. Hızlı placement gereken müşteriler için
+ *                 alternatif: Express (30-Min) zaten daha hafif vocab/grammar taşır.
  *
  * Psychometric basis:
  *   Receptive: SEM target 0.48 → I ≥ 4.3 → ≥ 7 MC items per skill (CAT-adjusted).
@@ -297,22 +304,23 @@ const DIAGNOSTIC_15: ProductLineProfile = {
     SkillType.SPEAKING,
   ],
   sectionConfig: {
-    VOCABULARY: { minItems: 4, maxItems: 7, semThreshold: 0.46 },
-    GRAMMAR:    { minItems: 4, maxItems: 7, semThreshold: 0.46 },
-    READING:    { minItems: 4, maxItems: 7, semThreshold: 0.48 },
-    LISTENING:  { minItems: 3, maxItems: 6, semThreshold: 0.50 },
-    WRITING:    { minItems: 1, maxItems: 2, semThreshold: 0.50 },
-    SPEAKING:   { minItems: 1, maxItems: 2, semThreshold: 0.50 },
+    // Vocab/grammar 7/12'ye yükseltildi (doğruluk önceliği): SEM 0.46 → 0.38
+    VOCABULARY: { minItems: 7, maxItems: 12, semThreshold: 0.38 },
+    GRAMMAR:    { minItems: 7, maxItems: 12, semThreshold: 0.38 },
+    READING:    { minItems: 4, maxItems: 7,  semThreshold: 0.48 },
+    LISTENING:  { minItems: 3, maxItems: 6,  semThreshold: 0.50 },
+    WRITING:    { minItems: 1, maxItems: 2,  semThreshold: 0.50 },
+    SPEAKING:   { minItems: 1, maxItems: 2,  semThreshold: 0.50 },
   },
   blueprint: [
-    { skill: SkillType.VOCABULARY, minCount: 4, maxCount: 7 },
-    { skill: SkillType.GRAMMAR,    minCount: 4, maxCount: 7 },
-    { skill: SkillType.READING,    minCount: 4, maxCount: 7 },
-    { skill: SkillType.LISTENING,  minCount: 3, maxCount: 6 },
-    { skill: SkillType.WRITING,    minCount: 1, maxCount: 2 },
-    { skill: SkillType.SPEAKING,   minCount: 1, maxCount: 2 },
+    { skill: SkillType.VOCABULARY, minCount: 7, maxCount: 12 },
+    { skill: SkillType.GRAMMAR,    minCount: 7, maxCount: 12 },
+    { skill: SkillType.READING,    minCount: 4, maxCount: 7  },
+    { skill: SkillType.LISTENING,  minCount: 3, maxCount: 6  },
+    { skill: SkillType.WRITING,    minCount: 1, maxCount: 2  },
+    { skill: SkillType.SPEAKING,   minCount: 1, maxCount: 2  },
   ],
-  globalMaxItems: 26,
+  globalMaxItems: 36,
   writingTaskSpecs: [
     // Single short productive task — trimmed budget keeps total session ≤ 25 min.
     { position: 1, minWords: 30, maxWords: 100, taskType: "short_response" },
@@ -351,9 +359,9 @@ const DIAGNOSTIC_15: ProductLineProfile = {
   reportTemplate: "cefr_band",
   warmupItems: 2,
   warmupDifficultyOffset: 0.3,
-  estimatedDurationMin: [22, 28],
-  // 28 min × 1.5 safety net
-  maxDurationMs: 2_520_000,
+  estimatedDurationMin: [30, 40],
+  // 40 min × 1.5 safety net
+  maxDurationMs: 3_600_000,
 };
 
 /**
@@ -379,22 +387,23 @@ const EXPRESS_30: ProductLineProfile = {
     SkillType.SPEAKING,
   ],
   sectionConfig: {
-    VOCABULARY: { minItems: 5, maxItems: 8,  semThreshold: 0.42 },
-    GRAMMAR:    { minItems: 5, maxItems: 8,  semThreshold: 0.42 },
+    // Vocab/grammar 7/11'e yükseltildi: en verimli beceriler → SEM 0.42 → 0.39
+    VOCABULARY: { minItems: 7, maxItems: 11, semThreshold: 0.39 },
+    GRAMMAR:    { minItems: 7, maxItems: 11, semThreshold: 0.39 },
     READING:    { minItems: 5, maxItems: 9,  semThreshold: 0.43 },
     LISTENING:  { minItems: 4, maxItems: 7,  semThreshold: 0.44 },
     WRITING:    { minItems: 2, maxItems: 3,  semThreshold: 0.50 },
     SPEAKING:   { minItems: 2, maxItems: 3,  semThreshold: 0.50 },
   },
   blueprint: [
-    { skill: SkillType.VOCABULARY, minCount: 5, maxCount: 8 },
-    { skill: SkillType.GRAMMAR,    minCount: 5, maxCount: 8 },
-    { skill: SkillType.READING,    minCount: 5, maxCount: 9 },
-    { skill: SkillType.LISTENING,  minCount: 4, maxCount: 7 },
-    { skill: SkillType.WRITING,    minCount: 2, maxCount: 3 },
-    { skill: SkillType.SPEAKING,   minCount: 2, maxCount: 3 },
+    { skill: SkillType.VOCABULARY, minCount: 7, maxCount: 11 },
+    { skill: SkillType.GRAMMAR,    minCount: 7, maxCount: 11 },
+    { skill: SkillType.READING,    minCount: 5, maxCount: 9  },
+    { skill: SkillType.LISTENING,  minCount: 4, maxCount: 7  },
+    { skill: SkillType.WRITING,    minCount: 2, maxCount: 3  },
+    { skill: SkillType.SPEAKING,   minCount: 2, maxCount: 3  },
   ],
-  globalMaxItems: 38,
+  globalMaxItems: 44,
   writingTaskSpecs: [
     { position: 1, minWords: 40,  maxWords: 60,  taskType: "short_response" },
     { position: 2, minWords: 80,  maxWords: 120, taskType: "paragraph_response" },
@@ -406,9 +415,9 @@ const EXPRESS_30: ProductLineProfile = {
   reportTemplate: "cefr_band",
   warmupItems: 2,
   warmupDifficultyOffset: 0.3,
-  estimatedDurationMin: [28, 42],
-  // 42 min × 1.5 safety net
-  maxDurationMs: 3_780_000,
+  estimatedDurationMin: [30, 46],
+  // 46 min × 1.5 safety net
+  maxDurationMs: 4_140_000,
 };
 
 /**
@@ -437,9 +446,9 @@ const GENERAL_ENGLISH: ProductLineProfile = {
     SkillType.SPEAKING,
   ],
   sectionConfig: {
-    // SEM 0.42 → I ≥ 5.7 → 9 MC item optimal; min 6 (başlangıç SEM bant)
-    VOCABULARY: { minItems: 6, maxItems: 10, semThreshold: 0.42 },
-    GRAMMAR:    { minItems: 6, maxItems: 10, semThreshold: 0.42 },
+    // Vocab/grammar 8/13'e yükseltildi (en verimli + en güçlü CEFR ayırt edici): SEM 0.38
+    VOCABULARY: { minItems: 8, maxItems: 13, semThreshold: 0.38 },
+    GRAMMAR:    { minItems: 8, maxItems: 13, semThreshold: 0.38 },
     READING:    { minItems: 6, maxItems: 11, semThreshold: 0.41 },
     LISTENING:  { minItems: 6, maxItems: 10, semThreshold: 0.42 },
     // 2-3 GRM task: I ≈ 22-33 → SEM ≈ 0.17-0.21; ρ ≥ 0.82 (iki görev standardı)
@@ -447,14 +456,14 @@ const GENERAL_ENGLISH: ProductLineProfile = {
     SPEAKING:   { minItems: 2, maxItems: 3,  semThreshold: 0.50 },
   },
   blueprint: [
-    { skill: SkillType.VOCABULARY, minCount: 6,  maxCount: 10 },
-    { skill: SkillType.GRAMMAR,    minCount: 6,  maxCount: 10 },
+    { skill: SkillType.VOCABULARY, minCount: 8,  maxCount: 13 },
+    { skill: SkillType.GRAMMAR,    minCount: 8,  maxCount: 13 },
     { skill: SkillType.READING,    minCount: 6,  maxCount: 11 },
     { skill: SkillType.LISTENING,  minCount: 6,  maxCount: 10 },
     { skill: SkillType.WRITING,    minCount: 2,  maxCount: 3  },
     { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 3  },
   ],
-  globalMaxItems: 47,
+  globalMaxItems: 53,
   writingTaskSpecs: [
     { position: 1, minWords: 40,  maxWords: 60,  taskType: "short_response" },
     { position: 2, minWords: 80,  maxWords: 120, taskType: "paragraph_response" },
@@ -466,9 +475,9 @@ const GENERAL_ENGLISH: ProductLineProfile = {
   reportTemplate: "cefr_band",
   warmupItems: 2,
   warmupDifficultyOffset: 0.3,
-  estimatedDurationMin: [40, 58],
-  // 58 dk × 1.5 güvenlik tamponu
-  maxDurationMs: 5_220_000,
+  estimatedDurationMin: [42, 62],
+  // 62 dk × 1.5 güvenlik tamponu
+  maxDurationMs: 5_580_000,
 };
 
 /**
@@ -565,9 +574,9 @@ const CORPORATE: ProductLineProfile = {
   sectionConfig: {
     READING:    { minItems: 7,  maxItems: 12, semThreshold: 0.37 },
     LISTENING:  { minItems: 7,  maxItems: 12, semThreshold: 0.37 },
-    // FIB: I_peak ≈ 0.91 → 9 items → I ≈ 5.7 → SEM ≈ 0.42 (meets 0.38 target)
-    GRAMMAR:    { minItems: 5,  maxItems: 9,  semThreshold: 0.38 },
-    VOCABULARY: { minItems: 5,  maxItems: 9,  semThreshold: 0.36 },
+    // Vocab/grammar 7/12'ye yükseltildi (iş kararı doğruluğu): FIB I_peak ≈ 0.91 → SEM 0.35
+    GRAMMAR:    { minItems: 7,  maxItems: 12, semThreshold: 0.35 },
+    VOCABULARY: { minItems: 7,  maxItems: 12, semThreshold: 0.35 },
     // 2–3 tasks: Task 1 short message, Task 2 business email, Task 3 report/proposal
     WRITING:    { minItems: 2,  maxItems: 3,  semThreshold: 0.40 },
     SPEAKING:   { minItems: 2,  maxItems: 3,  semThreshold: 0.40 },
@@ -575,12 +584,12 @@ const CORPORATE: ProductLineProfile = {
   blueprint: [
     { skill: SkillType.READING,    minCount: 7,  maxCount: 12 },
     { skill: SkillType.LISTENING,  minCount: 7,  maxCount: 12 },
-    { skill: SkillType.GRAMMAR,    minCount: 5,  maxCount: 9  },
-    { skill: SkillType.VOCABULARY, minCount: 5,  maxCount: 9  },
+    { skill: SkillType.GRAMMAR,    minCount: 7,  maxCount: 12 },
+    { skill: SkillType.VOCABULARY, minCount: 7,  maxCount: 12 },
     { skill: SkillType.WRITING,    minCount: 2,  maxCount: 3  },
     { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 3  },
   ],
-  globalMaxItems: 49,
+  globalMaxItems: 55,
   writingTaskSpecs: [
     { position: 1, minWords: 40,  maxWords: 60,  taskType: "short_response" },
     { position: 2, minWords: 80,  maxWords: 120, taskType: "paragraph_response" },
@@ -592,9 +601,9 @@ const CORPORATE: ProductLineProfile = {
   reportTemplate: "corporate",
   warmupItems: 2,
   warmupDifficultyOffset: 0.4,
-  estimatedDurationMin: [50, 65],
-  // 65 min × 1.5 safety net
-  maxDurationMs: 5_850_000,
+  estimatedDurationMin: [52, 69],
+  // 69 min × 1.5 safety net
+  maxDurationMs: 6_210_000,
 };
 
 /**
@@ -623,8 +632,9 @@ const LANGUAGE_SCHOOLS: ProductLineProfile = {
     SkillType.SPEAKING,
   ],
   sectionConfig: {
-    VOCABULARY: { minItems: 6,  maxItems: 12, semThreshold: 0.40 },
-    GRAMMAR:    { minItems: 6,  maxItems: 10, semThreshold: 0.40 },
+    // Vocab/grammar 8/14'e yükseltildi (en zengin beceriler, kapsamlı ölçüm): SEM 0.36
+    VOCABULARY: { minItems: 8,  maxItems: 14, semThreshold: 0.36 },
+    GRAMMAR:    { minItems: 8,  maxItems: 14, semThreshold: 0.36 },
     READING:    { minItems: 6,  maxItems: 12, semThreshold: 0.40 },
     // CRITICAL fix: min raised from 3 → 6; SEM 0.67 → 0.55 at minimum
     LISTENING:  { minItems: 6,  maxItems: 10, semThreshold: 0.40 },
@@ -632,14 +642,14 @@ const LANGUAGE_SCHOOLS: ProductLineProfile = {
     SPEAKING:   { minItems: 2,  maxItems: 3,  semThreshold: 0.48 },
   },
   blueprint: [
-    { skill: SkillType.VOCABULARY, minCount: 6,  maxCount: 12 },
-    { skill: SkillType.GRAMMAR,    minCount: 6,  maxCount: 10 },
+    { skill: SkillType.VOCABULARY, minCount: 8,  maxCount: 14 },
+    { skill: SkillType.GRAMMAR,    minCount: 8,  maxCount: 14 },
     { skill: SkillType.READING,    minCount: 6,  maxCount: 12 },
     { skill: SkillType.LISTENING,  minCount: 6,  maxCount: 10 },
     { skill: SkillType.WRITING,    minCount: 2,  maxCount: 3  },
     { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 3  },
   ],
-  globalMaxItems: 52,
+  globalMaxItems: 58,
   writingTaskSpecs: [
     { position: 1, minWords: 40,  maxWords: 60,  taskType: "short_response" },
     { position: 2, minWords: 80,  maxWords: 120, taskType: "paragraph_response" },
@@ -651,9 +661,9 @@ const LANGUAGE_SCHOOLS: ProductLineProfile = {
   reportTemplate: "cefr_band",
   warmupItems: 2,
   warmupDifficultyOffset: 0.4,
-  estimatedDurationMin: [55, 75],
-  // 75 min × 1.5 safety net
-  maxDurationMs: 6_750_000,
+  estimatedDurationMin: [57, 79],
+  // 79 min × 1.5 safety net
+  maxDurationMs: 7_110_000,
 };
 
 /**
@@ -687,9 +697,9 @@ const SPECIALIZED_INTEGRATED: ProductLineProfile = {
     // SEM 0.35 → I ≥ 8.2 → 12 MC item optimal; uzun pasaj görevler information biriktirir
     READING:    { minItems: 7,  maxItems: 14, semThreshold: 0.35 },
     LISTENING:  { minItems: 7,  maxItems: 12, semThreshold: 0.35 },
-    // Alan-spesifik dil bilgisi: FIB ağırlıklı → I_peak ≈ 0.91; 9 item → SEM ≈ 0.35
-    GRAMMAR:    { minItems: 5,  maxItems: 9,  semThreshold: 0.38 },
-    VOCABULARY: { minItems: 5,  maxItems: 9,  semThreshold: 0.36 },
+    // Vocab/grammar 7/12'ye yükseltildi (yüksek-riskli, alan-spesifik): FIB I_peak ≈ 0.91 → SEM 0.35
+    GRAMMAR:    { minItems: 7,  maxItems: 12, semThreshold: 0.35 },
+    VOCABULARY: { minItems: 7,  maxItems: 12, semThreshold: 0.35 },
     // 2-3 görev; word budget arttırıldı (domain-specific üretim daha uzun)
     WRITING:    { minItems: 2,  maxItems: 3,  semThreshold: 0.40 },
     SPEAKING:   { minItems: 2,  maxItems: 3,  semThreshold: 0.40 },
@@ -697,12 +707,12 @@ const SPECIALIZED_INTEGRATED: ProductLineProfile = {
   blueprint: [
     { skill: SkillType.READING,    minCount: 7,  maxCount: 14 },
     { skill: SkillType.LISTENING,  minCount: 7,  maxCount: 12 },
-    { skill: SkillType.GRAMMAR,    minCount: 5,  maxCount: 9  },
-    { skill: SkillType.VOCABULARY, minCount: 5,  maxCount: 9  },
+    { skill: SkillType.GRAMMAR,    minCount: 7,  maxCount: 12 },
+    { skill: SkillType.VOCABULARY, minCount: 7,  maxCount: 12 },
     { skill: SkillType.WRITING,    minCount: 2,  maxCount: 3  },
     { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 3  },
   ],
-  globalMaxItems: 55,
+  globalMaxItems: 61,
   writingTaskSpecs: [
     { position: 1, minWords: 50,  maxWords: 80,  taskType: "short_response" },
     { position: 2, minWords: 120, maxWords: 180, taskType: "paragraph_response" },
@@ -722,9 +732,9 @@ const SPECIALIZED_INTEGRATED: ProductLineProfile = {
   reportTemplate: "cefr_band",
   warmupItems: 2,
   warmupDifficultyOffset: 0.4,
-  estimatedDurationMin: [60, 85],
-  // 85 dk × 1.5 güvenlik tamponu
-  maxDurationMs: 7_650_000,
+  estimatedDurationMin: [62, 89],
+  // 89 dk × 1.5 güvenlik tamponu
+  maxDurationMs: 8_010_000,
 };
 
 // ─── Registry ─────────────────────────────────────────────────────────────────
