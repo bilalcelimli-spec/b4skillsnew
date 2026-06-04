@@ -46,9 +46,11 @@ export type ProductLineName =
   | "Junior Suite (11-14)"
   | "15-Min Diagnostic"
   | "Express Assessment (30-Min)"
+  | "General English"
   | "Academia"
   | "Corporate"
-  | "Language Schools";
+  | "Language Schools"
+  | "Specialized / Integrated Skills";
 
 export interface SectionStoppingConfig {
   minItems: number;
@@ -410,6 +412,66 @@ const EXPRESS_30: ProductLineProfile = {
 };
 
 /**
+ * General English — Standart 6-beceri bütünleşik CEFR değerlendirmesi
+ *
+ * Sistemin varsayılan genel-amaçlı sınavı. 15-Min Diagnostic'ten (22-28 dk)
+ * daha kapsamlı, Language Schools'tan (55-75 dk) daha kısa. Tüm yaş grupları
+ * ve özel bir alan veya sertifikasyon ihtiyacı olmayanlar için tasarlandı.
+ *
+ * Psikometrik temel:
+ *   SEM hedef 0.41 → I ≥ 5.9 → reseptif beceri başına min 9 MC item.
+ *   Üretken beceriler: 2-3 GRM görevi → I ≈ 22-33 → SEM ≈ 0.17-0.21.
+ *   Saf CAT (MST yok): basit iş akışı, item havuzu tagging gerektirmez.
+ *   Süre: 40-58 dk (1,5× güvenlik tamponuyla hard ceiling 87 dk).
+ */
+const GENERAL_ENGLISH: ProductLineProfile = {
+  name: "General English",
+  cefrRange: ["A1", "C1"],
+  ageRange: [12, 99],
+  sectionOrder: [
+    SkillType.VOCABULARY,
+    SkillType.GRAMMAR,
+    SkillType.READING,
+    SkillType.LISTENING,
+    SkillType.WRITING,
+    SkillType.SPEAKING,
+  ],
+  sectionConfig: {
+    // SEM 0.42 → I ≥ 5.7 → 9 MC item optimal; min 6 (başlangıç SEM bant)
+    VOCABULARY: { minItems: 6, maxItems: 10, semThreshold: 0.42 },
+    GRAMMAR:    { minItems: 6, maxItems: 10, semThreshold: 0.42 },
+    READING:    { minItems: 6, maxItems: 11, semThreshold: 0.41 },
+    LISTENING:  { minItems: 6, maxItems: 10, semThreshold: 0.42 },
+    // 2-3 GRM task: I ≈ 22-33 → SEM ≈ 0.17-0.21; ρ ≥ 0.82 (iki görev standardı)
+    WRITING:    { minItems: 2, maxItems: 3,  semThreshold: 0.50 },
+    SPEAKING:   { minItems: 2, maxItems: 3,  semThreshold: 0.50 },
+  },
+  blueprint: [
+    { skill: SkillType.VOCABULARY, minCount: 6,  maxCount: 10 },
+    { skill: SkillType.GRAMMAR,    minCount: 6,  maxCount: 10 },
+    { skill: SkillType.READING,    minCount: 6,  maxCount: 11 },
+    { skill: SkillType.LISTENING,  minCount: 6,  maxCount: 10 },
+    { skill: SkillType.WRITING,    minCount: 2,  maxCount: 3  },
+    { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 3  },
+  ],
+  globalMaxItems: 47,
+  writingTaskSpecs: [
+    { position: 1, minWords: 40,  maxWords: 60,  taskType: "short_response" },
+    { position: 2, minWords: 80,  maxWords: 120, taskType: "paragraph_response" },
+    { position: 3, minWords: 200, maxWords: 270, taskType: "extended_response" },
+  ],
+  globalSemThreshold: 0.41,
+  maxExposureRate: 0.30,
+  examSources: ["general"],
+  reportTemplate: "cefr_band",
+  warmupItems: 2,
+  warmupDifficultyOffset: 0.3,
+  estimatedDurationMin: [40, 58],
+  // 58 dk × 1.5 güvenlik tamponu
+  maxDurationMs: 5_220_000,
+};
+
+/**
  * Academia — Academic English, IELTS Academic style
  *
  * MST 3-stage; all four macro skills including Writing and Speaking.
@@ -594,16 +656,89 @@ const LANGUAGE_SCHOOLS: ProductLineProfile = {
   maxDurationMs: 6_750_000,
 };
 
+/**
+ * Specialized / Integrated Skills — Alan-spesifik kapsamlı değerlendirme
+ *
+ * Kurumsal ve akademik bağlamlarda (EAP / ESP) 6 becerinin tamamını ölçer.
+ * MST 2-aşamalı yönlendirme ile B1/B2 ve C1+ bantlarında hassas ölçüm sağlar.
+ * Academia (yalnızca 4 beceri) ile Corporate (6 beceri, iş-odaklı) arasında
+ * esneklik sunar; her iki havuzdan da item çeker.
+ *
+ * Psikometrik temel:
+ *   MST yönlendirme: 12 item → routing SEM ≈ 0.46 → misrouting ≤ %10.
+ *   Reseptif beceriler: SEM ≤ 0.35 → I ≥ 8.2 → min 12 MC item; max 14.
+ *   Üretken beceriler: 2-3 görev → SEM ≈ 0.18-0.21; ρ ≥ 0.85 (üniversite std).
+ *   Genel SEM hedef 0.33 → yüksek-riskli kurumsal/akademik yerleştirme yeterli.
+ *   Süre: 60-85 dk (1,5× güvenlik tamponuyla hard ceiling 127 dk).
+ */
+const SPECIALIZED_INTEGRATED: ProductLineProfile = {
+  name: "Specialized / Integrated Skills",
+  cefrRange: ["B1", "C2"],
+  ageRange: [16, 99],
+  sectionOrder: [
+    SkillType.READING,
+    SkillType.LISTENING,
+    SkillType.GRAMMAR,
+    SkillType.VOCABULARY,
+    SkillType.WRITING,
+    SkillType.SPEAKING,
+  ],
+  sectionConfig: {
+    // SEM 0.35 → I ≥ 8.2 → 12 MC item optimal; uzun pasaj görevler information biriktirir
+    READING:    { minItems: 7,  maxItems: 14, semThreshold: 0.35 },
+    LISTENING:  { minItems: 7,  maxItems: 12, semThreshold: 0.35 },
+    // Alan-spesifik dil bilgisi: FIB ağırlıklı → I_peak ≈ 0.91; 9 item → SEM ≈ 0.35
+    GRAMMAR:    { minItems: 5,  maxItems: 9,  semThreshold: 0.38 },
+    VOCABULARY: { minItems: 5,  maxItems: 9,  semThreshold: 0.36 },
+    // 2-3 görev; word budget arttırıldı (domain-specific üretim daha uzun)
+    WRITING:    { minItems: 2,  maxItems: 3,  semThreshold: 0.40 },
+    SPEAKING:   { minItems: 2,  maxItems: 3,  semThreshold: 0.40 },
+  },
+  blueprint: [
+    { skill: SkillType.READING,    minCount: 7,  maxCount: 14 },
+    { skill: SkillType.LISTENING,  minCount: 7,  maxCount: 12 },
+    { skill: SkillType.GRAMMAR,    minCount: 5,  maxCount: 9  },
+    { skill: SkillType.VOCABULARY, minCount: 5,  maxCount: 9  },
+    { skill: SkillType.WRITING,    minCount: 2,  maxCount: 3  },
+    { skill: SkillType.SPEAKING,   minCount: 2,  maxCount: 3  },
+  ],
+  globalMaxItems: 55,
+  writingTaskSpecs: [
+    { position: 1, minWords: 50,  maxWords: 80,  taskType: "short_response" },
+    { position: 2, minWords: 120, maxWords: 180, taskType: "paragraph_response" },
+    { position: 3, minWords: 240, maxWords: 300, taskType: "extended_response" },
+  ],
+  globalSemThreshold: 0.33,
+  maxExposureRate: 0.25,
+  examSources: ["academia", "corporate", "specialized", "general"],
+  mst: {
+    enabled: true,
+    stages: 2,
+    routingItemCount: 12, // 12 routing item → routing SEM ≈ 0.46; misrouting ≤ %10
+    routingCuts: [0.5],  // θ < 0.5 → B1-B2 track; θ ≥ 0.5 → C1+ track
+    trackLabels: ["B1-B2", "C1+"],
+    trackCefrRanges: [["B1", "B2"], ["C1", "C2"]],
+  },
+  reportTemplate: "cefr_band",
+  warmupItems: 2,
+  warmupDifficultyOffset: 0.4,
+  estimatedDurationMin: [60, 85],
+  // 85 dk × 1.5 güvenlik tamponu
+  maxDurationMs: 7_650_000,
+};
+
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
 export const PRODUCT_LINE_PROFILES: Record<ProductLineName, ProductLineProfile> = {
-  "Primary (7-10)":             PRIMARY,
-  "Junior Suite (11-14)":       JUNIOR_SUITE,
-  "15-Min Diagnostic":          DIAGNOSTIC_15,
-  "Express Assessment (30-Min)": EXPRESS_30,
-  "Academia":                   ACADEMIA,
-  "Corporate":                  CORPORATE,
-  "Language Schools":           LANGUAGE_SCHOOLS,
+  "Primary (7-10)":                  PRIMARY,
+  "Junior Suite (11-14)":            JUNIOR_SUITE,
+  "15-Min Diagnostic":               DIAGNOSTIC_15,
+  "Express Assessment (30-Min)":     EXPRESS_30,
+  "General English":                 GENERAL_ENGLISH,
+  "Academia":                        ACADEMIA,
+  "Corporate":                       CORPORATE,
+  "Language Schools":                LANGUAGE_SCHOOLS,
+  "Specialized / Integrated Skills": SPECIALIZED_INTEGRATED,
 };
 
 /**
@@ -614,5 +749,10 @@ export function getProfile(productLine?: string | null): ProductLineProfile {
   if (productLine && productLine in PRODUCT_LINE_PROFILES) {
     return PRODUCT_LINE_PROFILES[productLine as ProductLineName];
   }
-  return PRODUCT_LINE_PROFILES["15-Min Diagnostic"];
+  // Geriye dönük uyumluluk: eski exam code'lar "General" değeriyle üretilmişti.
+  if (productLine === "General") {
+    return PRODUCT_LINE_PROFILES["General English"];
+  }
+  // Bilinmeyen veya boş productLine → General English (önceki 15-Min Diagnostic yerine)
+  return PRODUCT_LINE_PROFILES["General English"];
 }
