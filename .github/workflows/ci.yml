@@ -85,6 +85,12 @@ jobs:
         # has fewer than `minItems` ACTIVE items.
         run: npm run verify:coverage
         continue-on-error: false
+      - name: Verify IRT health (no zero-information items)
+        # An ACTIVE item with discrimination a ≤ 0 produces zero Fisher
+        # information and is invisible to the MFI-based CAT selector, silently
+        # degrading adaptivity. Fails the build if any such item exists.
+        run: npm run verify:irt
+        continue-on-error: false
 
   # ─────────────────────────────────────────────────────────────────────────────
   build:

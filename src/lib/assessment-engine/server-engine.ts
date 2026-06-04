@@ -141,6 +141,7 @@ function dbItemToEngineItem(u: {
   isPretest: boolean;
   tags?: string[];
   exposureCount?: number;
+  iqScore?: number | null;
 }): Item {
   const c = (u.content as Record<string, unknown> | null) || {};
   const ar = c.aReceptive;
@@ -156,6 +157,8 @@ function dbItemToEngineItem(u: {
     isPretest: u.isPretest || u.status === "PRETEST",
     status: u.status as "DRAFT" | "REVIEW" | "ACTIVE" | "PRETEST" | "RETIRED",
     params,
+    // Quality signal for the CAT composite scorer (soft-gate); null = neutral.
+    iqScore: u.iqScore ?? null,
     metadata: u.content as any,
     // Pass-through for diversity filtering (not part of IRT computation)
     tags: u.tags ?? [],

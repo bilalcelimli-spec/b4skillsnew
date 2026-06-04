@@ -46,6 +46,8 @@
     "validate:seeds": "tsx scripts/validate-seeds.ts",
     "validate:seeds:strict": "tsx scripts/validate-seeds.ts --strict",
     "verify:coverage": "tsx scripts/verify-skill-coverage.ts",
+    "verify:irt": "tsx scripts/verify-irt-health.ts",
+    "backfill:irt-priors": "tsx scripts/backfill-irt-priors.ts",
     "db:job:calibrate-pretest": "tsx scripts/jobs/auto-calibrate-pretest.ts",
     "db:job:retire-items": "tsx scripts/jobs/item-retirement-job.ts",
     "db:job:detect-dif": "tsx scripts/jobs/dif-detection-job.ts",

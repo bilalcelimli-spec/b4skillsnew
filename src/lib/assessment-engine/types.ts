@@ -45,6 +45,8 @@ export interface Item {
   params: IrtParameters;
   isPretest?: boolean; // If true, this item is for calibration and doesn't affect theta
   status?: "DRAFT" | "REVIEW" | "ACTIVE" | "PRETEST" | "RETIRED"; // Item status (Phase 3+)
+  /** Item Quality Score (0–100). Used as a soft quality signal in CAT selection. */
+  iqScore?: number | null;
   metadata?: Record<string, any>;
   assets?: Asset[];
 }

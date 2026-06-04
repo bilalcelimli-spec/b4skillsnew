@@ -14,7 +14,13 @@
  *   JOBS_QWK_INTERVAL_MS          — AI scoring QWK guard      (default: 1 day)
  *   JOBS_CALIBRATION_INTERVAL_MS  — Pretest calibration sweep (default: 7 days)
  *   JOBS_EXPOSURE_INTERVAL_MS     — Exposure auto-retire scan  (default: 1 day)
+ *   JOBS_DISTRACTOR_INTERVAL_MS   — Distractor health scan     (default: 7 days)
  *   JOBS_STARTUP_DELAY_MS         — Wait before first run     (default: 60 s)
+ *
+ * Quality-loop env:
+ *   DISTRACTOR_REVIEW_MIN_N       — Min responses before an item can be auto-
+ *                                   pulled to REVIEW for negative discrimination
+ *                                   (default: 30; lower-N items get flags only)
  */
 
 import { logger } from "../observability/index.js";
@@ -33,6 +39,7 @@ let driftRunning = false;
 let qwkRunning = false;
 let calibrationRunning = false;
 let exposureRunning = false;
+let distractorRunning = false;
 
 // ─── DIF Batch Detection ──────────────────────────────────────────────────────
 
@@ -374,6 +381,103 @@ async function runExposureAutoRetire(): Promise<void> {
   }
 }
 
+// ─── Distractor Health Scan ───────────────────────────────────────────────────
+
+/**
+ * Empirical distractor-quality scan — closes the item-quality feedback loop.
+ *
+ * The platform already computes real per-option point-biserials and selection
+ * rates in DistractorAnalysisService (item-analysis/distractor-analysis.ts), but
+ * historically that only fed the research export. This job wires it into the
+ * operational item lifecycle:
+ *
+ *   • Every analysable item (sampleSize ≥ 10) gets its flags/grade written to
+ *     metadata.distractorHealth (informational — surfaced in admin dashboards).
+ *   • Items with enough data (≥ DISTRACTOR_REVIEW_MIN_N) that show a NEGATIVE
+ *     point-biserial on the key (grade "F" / NEGATIVE_DISCRIMINATION) are pulled
+ *     to REVIEW status — a negative key correlation usually means a miskey or a
+ *     genuinely ambiguous item, so it should leave the active pool until fixed.
+ *
+ * Low-stakes posture: only negative-discrimination items are auto-pulled. Merely
+ * weak/non-functioning distractors are flagged, not retired (we don't want to
+ * punch measurement holes while the bank is still small).
+ */
+async function runDistractorHealthScan(): Promise<void> {
+  if (distractorRunning) {
+    logger.info("scheduled-jobs: distractor health scan already running — skipping");
+    return;
+  }
+  distractorRunning = true;
+  const t0 = Date.now();
+  logger.info("scheduled-jobs: distractor health scan starting");
+  try {
+    const { prisma } = await import("../prisma.js");
+    const { DistractorAnalysisService } = await import(
+      "../item-analysis/distractor-analysis.js"
+    );
+
+    const reviewMinN = Number(process.env.DISTRACTOR_REVIEW_MIN_N ?? 30);
+
+    // analyzeAllItems() already filters to sampleSize ≥ 10 ACTIVE/PRETEST items.
+    const reports = await DistractorAnalysisService.analyzeAllItems();
+
+    let flagged = 0;
+    let pulledToReview = 0;
+
+    for (const r of reports) {
+      const nonFunctioning = r.distractorAnalysis.filter(
+        (d: any) => !d.isCorrect && d.quality === "non-functioning"
+      ).length;
+
+      const health = {
+        analyzedAt: new Date().toISOString(),
+        sampleSize: r.sampleSize,
+        grade: r.grade,
+        pointBiserial: r.pointBiserial,
+        flags: r.flags,
+        nonFunctioningDistractors: nonFunctioning,
+      };
+
+      // Negative key discrimination on enough data → likely miskey/ambiguity.
+      const negativeKey =
+        r.grade === "F" || r.flags.includes("NEGATIVE_DISCRIMINATION");
+      const shouldReview = negativeKey && r.sampleSize >= reviewMinN;
+
+      try {
+        const existing = await prisma.item.findUnique({
+          where: { id: r.itemId },
+          select: { metadata: true, status: true },
+        });
+        const newMeta = {
+          ...((existing?.metadata as any) ?? {}),
+          distractorHealth: health,
+        };
+
+        const data: any = { metadata: newMeta };
+        // Only flip ACTIVE → REVIEW; never touch PRETEST/RETIRED here.
+        if (shouldReview && existing?.status === "ACTIVE") {
+          data.status = "REVIEW";
+          pulledToReview++;
+        }
+
+        await prisma.item.update({ where: { id: r.itemId }, data });
+        if (r.flags.length > 0) flagged++;
+      } catch {
+        // Skip individual item errors — never abort the whole sweep.
+      }
+    }
+
+    logger.info(
+      { analyzed: reports.length, flagged, pulledToReview, ms: Date.now() - t0 },
+      "scheduled-jobs: distractor health scan complete"
+    );
+  } catch (err) {
+    logger.error({ err }, "scheduled-jobs: distractor health scan failed");
+  } finally {
+    distractorRunning = false;
+  }
+}
+
 /**
  * Start all scheduled jobs. Safe to call multiple times — subsequent calls are no-ops.
  */
@@ -388,6 +492,7 @@ export function startScheduledJobs(): void {
   const qwkInterval        = ms("JOBS_QWK_INTERVAL_MS",          24 * 60 * 60 * 1000);
   const calibInterval      = ms("JOBS_CALIBRATION_INTERVAL_MS",  SEVEN_DAYS_MS);
   const exposureInterval   = ms("JOBS_EXPOSURE_INTERVAL_MS",     24 * 60 * 60 * 1000);
+  const distractorInterval = ms("JOBS_DISTRACTOR_INTERVAL_MS",   SEVEN_DAYS_MS);
 
   logger.info(
     {
@@ -398,6 +503,7 @@ export function startScheduledJobs(): void {
       qwkIntervalHours:      qwkInterval       / 3_600_000,
       calibIntervalDays:     calibInterval     / 86_400_000,
       exposureIntervalHours: exposureInterval  / 3_600_000,
+      distractorIntervalDays: distractorInterval / 86_400_000,
     },
     "scheduled-jobs: registering scheduled jobs"
   );
@@ -432,4 +538,9 @@ export function startScheduledJobs(): void {
     runExposureAutoRetire();
     setInterval(runExposureAutoRetire, exposureInterval);
   }, startupDelay + 25_000);
+
+  setTimeout(() => {
+    runDistractorHealthScan();
+    setInterval(runDistractorHealthScan, distractorInterval);
+  }, startupDelay + 30_000);
 }

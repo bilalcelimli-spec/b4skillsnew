@@ -30,11 +30,18 @@ import type { IrtParameters } from "../assessment-engine/types.js";
 
 // ─── Config constants ─────────────────────────────────────────────────────────
 
-/** Minimum responses to attempt any EM update. */
-const MIN_N = Number(process.env.CALIBRATION_MIN_N ?? 200);
+/**
+ * Minimum responses to attempt any EM update.
+ *
+ * Default lowered to 80 for the low-stakes / pilot posture: with limited live
+ * traffic the classic Stocking (1990) n≥200 rule would mean items never leave
+ * their cold-start priors. 80 gives a usable (if noisier) empirical update for
+ * formative use; raise via CALIBRATION_MIN_N for higher-stakes deployments.
+ */
+const MIN_N = Number(process.env.CALIBRATION_MIN_N ?? 80);
 
-/** Minimum responses before promotion to ACTIVE is allowed. */
-const PROMOTE_N = Number(process.env.CALIBRATION_PROMOTE_N ?? 500);
+/** Minimum responses before promotion to ACTIVE is allowed (pilot default 150). */
+const PROMOTE_N = Number(process.env.CALIBRATION_PROMOTE_N ?? 150);
 
 /**
  * Maximum |Δb| across the last 2 stable runs to consider the item truly stable
@@ -256,6 +263,15 @@ export class PretestCalibrationPipeline {
       }
     }
 
+    // ── Prior-param ACTIVE items ────────────────────────────────────────────
+    // Items backfilled with cold-start norm priors (metadata.paramSource ===
+    // "prior") are delivered operationally while still carrying *estimated*
+    // rather than *calibrated* parameters. Once enough real (isPretest:false)
+    // responses accumulate, replace the priors with empirical estimates and
+    // re-tag paramSource → "calibrated". These items are already ACTIVE, so
+    // there is no promotion step — a stable run upgrades the params in place.
+    await PretestCalibrationPipeline._calibratePriorActiveItems(triggerSource, result);
+
     result.durationMs = Date.now() - t0;
 
     logger.info(
@@ -264,6 +280,139 @@ export class PretestCalibrationPipeline {
     );
 
     return result;
+  }
+
+  /**
+   * Calibrate ACTIVE items still on cold-start priors using their operational
+   * (non-pretest) responses. Mutates `result` in place.
+   */
+  private static async _calibratePriorActiveItems(
+    triggerSource: string,
+    result: CalibrationPipelineResult
+  ): Promise<void> {
+    // Fetch ACTIVE items and keep only those tagged paramSource === "prior".
+    // (JSON-path filtering varies by DB; filter in JS for portability — at pilot
+    // scale the ACTIVE set is small.)
+    const activeItems = await prisma.item.findMany({
+      where: { status: "ACTIVE" },
+      select: {
+        id: true,
+        discrimination: true,
+        difficulty: true,
+        guessing: true,
+        metadata: true,
+      },
+    });
+    const priorItems = activeItems.filter(
+      (it) => (it.metadata as any)?.paramSource === "prior"
+    );
+    if (priorItems.length === 0) return;
+
+    // Count operational responses per prior item in one pass.
+    const counts = await prisma.response.groupBy({
+      by: ["itemId"],
+      where: {
+        itemId: { in: priorItems.map((it) => it.id) },
+        isPretest: false,
+        session: { status: "COMPLETED" },
+      },
+      _count: { _all: true },
+    });
+    const countMap = new Map(counts.map((r) => [r.itemId, r._count._all]));
+    const eligible = priorItems.filter((it) => (countMap.get(it.id) ?? 0) >= MIN_N);
+
+    logger.info(
+      { priorActive: priorItems.length, eligible: eligible.length, triggerSource },
+      "calibration-pipeline: prior-ACTIVE calibration pass"
+    );
+
+    for (const item of eligible) {
+      try {
+        const responses = await prisma.response.findMany({
+          where: {
+            itemId: item.id,
+            isPretest: false,
+            isCorrect: { not: null },
+            session: { status: "COMPLETED", theta: { not: null } },
+          },
+          select: { isCorrect: true, session: { select: { theta: true } } },
+        });
+
+        const observations: PretestObservation[] = responses
+          .filter((r): r is typeof r & { session: { theta: number } } =>
+            r.session?.theta != null && r.isCorrect != null
+          )
+          .map((r) => ({ theta: r.session.theta, score: (r.isCorrect ? 1 : 0) as 0 | 1 }));
+
+        if (observations.length < MIN_N) continue;
+
+        const currentParams: IrtParameters = {
+          a: item.discrimination ?? 1.0,
+          b: item.difficulty ?? 0.0,
+          c: item.guessing ?? 0.25,
+        };
+
+        const calResult = calibratePretestItem(currentParams, observations, { minN: MIN_N });
+        result.itemsCalibrated++;
+
+        const lastRun = await prisma.calibrationRun.findFirst({
+          where: { itemId: item.id, stable: true },
+          orderBy: { runAt: "desc" },
+          select: { bEstimate: true, aEstimate: true, cEstimate: true },
+        });
+
+        await prisma.calibrationRun.create({
+          data: {
+            itemId: item.id,
+            triggerSource,
+            nResponses: observations.length,
+            nPretest: 0,
+            prevA: lastRun?.aEstimate ?? currentParams.a,
+            prevB: lastRun?.bEstimate ?? currentParams.b,
+            prevC: lastRun?.cEstimate ?? currentParams.c,
+            aEstimate: calResult.params.a,
+            bEstimate: calResult.params.b,
+            cEstimate: calResult.params.c,
+            deltaB: calResult.deltaB,
+            deltaA: calResult.deltaA,
+            logLikelihood: calResult.logLikelihood ?? null,
+            stable: calResult.stable,
+            rejectionReason: calResult.rejectionReason ?? null,
+            promotedToActive: false,
+          },
+        });
+
+        if (!calResult.stable) {
+          result.itemsRejected++;
+          continue;
+        }
+
+        result.itemsStable++;
+
+        // Stable → upgrade params in place and re-tag as calibrated.
+        const newMeta = {
+          ...((item.metadata as any) ?? {}),
+          paramSource: "calibrated",
+          calibratedAt: new Date().toISOString(),
+        };
+        await prisma.item.update({
+          where: { id: item.id },
+          data: {
+            discrimination: calResult.params.a,
+            difficulty: calResult.params.b,
+            guessing: calResult.params.c,
+            metadata: newMeta as any,
+          },
+        });
+        logger.info(
+          { itemId: item.id, n: observations.length, b: calResult.params.b.toFixed(3), a: calResult.params.a.toFixed(3) },
+          "calibration-pipeline: prior-ACTIVE item calibrated (prior → calibrated)"
+        );
+      } catch (err) {
+        result.errors++;
+        logger.error({ err, itemId: item.id }, "calibration-pipeline: error on prior-ACTIVE item");
+      }
+    }
   }
 
   /**

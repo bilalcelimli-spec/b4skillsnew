@@ -48,6 +48,21 @@ const BETA  = 0.20; // Exposure penalty weight
 const GAMMA = 0.20; // Blueprint urgency weight
 const DELTA = 0.10; // Recency penalty weight
 
+// ─── Quality (IQS) soft-gate ───────────────────────────────────────────────
+// IQS is applied as a *multiplier* on the composite score, not a hard gate
+// (this is a low-stakes formative context — we never want to make a measurement
+// hole by excluding an item outright). A perfect item (IQS 100) keeps its full
+// score; a borderline item (IQS 60) is damped to 0.92×, so higher-quality items
+// surface more often without distorting measurement efficiency. Items without an
+// IQS yet (null) are treated as neutral (1.0).
+//   q(iqs) = IQS_FLOOR + (1 − IQS_FLOOR) · (iqs / 100)
+const IQS_FLOOR = 0.80;
+function qualityMultiplier(iqScore: number | null | undefined): number {
+  if (iqScore == null) return 1.0;
+  const clamped = Math.max(0, Math.min(100, iqScore));
+  return IQS_FLOOR + (1 - IQS_FLOOR) * (clamped / 100);
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ShadowItem extends Item {
@@ -231,12 +246,16 @@ export class CATSelector {
       // Recency penalty: approximated as 0 (session-level data not available here).
       const recencyPenalty = 0;
 
+      // Quality soft-gate: damp lower-IQS items so better-written questions
+      // surface more often (low-stakes signal, never a hard exclusion).
+      const q = qualityMultiplier(item.iqScore);
+
       const composite =
-        ALPHA * fisherInfo
-        + klBoost
-        - BETA  * exposurePenalty * fisherInfo
-        + GAMMA * urgency * fisherInfo
-        - DELTA * recencyPenalty;
+        (ALPHA * fisherInfo
+          + klBoost
+          - BETA  * exposurePenalty * fisherInfo
+          + GAMMA * urgency * fisherInfo
+          - DELTA * recencyPenalty) * q;
 
       return { item, composite, fisherInfo, selectionMethod };
     });

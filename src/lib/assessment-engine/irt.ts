@@ -6,11 +6,36 @@ import { IrtParameters } from "./types";
  */
 
 /**
+ * Defensible floor for the discrimination (a) parameter.
+ *
+ * Why this exists: a sizeable slice of the seeded item bank was created with
+ * synthetic/hand-assigned parameters where `a` was left at 0 (see
+ * scripts/seed-grammar-300-sota.ts). With a=0 the logistic collapses to a flat
+ * line and Fisher information I(θ)=a²·… is identically 0, which makes the
+ * Maximum-Fisher-Information CAT selector blind to those items (selection
+ * silently degrades to exposure/blueprint/random ordering).
+ *
+ * This floor is a *safety net* so no item is ever invisible to the engine.
+ * The real fix is scripts/backfill-irt-priors.ts, which assigns proper
+ * norm-based a/c priors; this guard only catches anything that slips through.
+ *
+ * 0.7 ≈ the low end of the empirical a-range across CEFR norms
+ * (IRT_PARAMETER_NORMS in item-writing-framework.ts: a.target 0.9–1.3).
+ */
+export const DEFAULT_A = 0.7;
+
+/** Clamp discrimination to a positive floor so an item always carries information. */
+function effectiveA(a: number): number {
+  return a > 0 ? a : DEFAULT_A;
+}
+
+/**
  * Probability of a correct response (P) given ability (theta) and item parameters (a, b, c)
  * P(theta) = c + (1 - c) / (1 + exp(-a * (theta - b)))
  */
 export function probability(theta: number, params: IrtParameters): number {
-  const { a, b, c } = params;
+  const { b, c } = params;
+  const a = effectiveA(params.a);
   const exponent = -a * (theta - b);
   const logistic = 1 / (1 + Math.exp(exponent));
   return c + (1 - c) * logistic;
@@ -25,7 +50,11 @@ export function probability(theta: number, params: IrtParameters): number {
  */
 export function information(theta: number, params: IrtParameters): number {
   const p = probability(theta, params);
-  const { a, c } = params;
+  const { c } = params;
+  // Apply the same positive floor as probability() so a synthetic a=0 item
+  // still contributes Fisher information instead of being invisible to the
+  // MFI selector. See DEFAULT_A note above.
+  const a = effectiveA(params.a);
 
   // Use epsilon margins instead of hard 0/1 to avoid masking numerical instability
   // and to correctly return 0 only when the item genuinely provides no discrimination
