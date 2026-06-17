@@ -96,6 +96,27 @@ async function startServer() {
   });
   app.use(genericPostLimiter);
 
+  // --- SECURITY: Global rate-limit for all requests (bot / crawler protection) ---
+  // Allows ~200 req/min per IP — enough for real users, blocks aggressive scrapers.
+  const globalLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many requests, please slow down." },
+  });
+  app.use(globalLimiter);
+
+  // --- SECURITY: Block known headless/automated user-agents ---
+  const BLOCKED_UA_PATTERN = /HeadlessChrome|python-requests|curl\/|wget\/|scrapy|zgrab|masscan|nikto|sqlmap|nmap/i;
+  app.use((req, res, next) => {
+    const ua = req.headers["user-agent"] || "";
+    if (BLOCKED_UA_PATTERN.test(ua)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    next();
+  });
+
   // --- AUTH ROUTES ---
       const JWT_SECRET = process.env.JWT_SECRET || "super-secret-default-key";
       const REFRESH_SECRET = process.env.REFRESH_SECRET || "super-secret-refresh-key";
