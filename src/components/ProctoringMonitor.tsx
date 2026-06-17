@@ -129,7 +129,33 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
   useEffect(() => {
     const startCamera = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        // Prefer the built-in physical camera — avoid virtual cameras (OBS, ManyCam, etc.)
+        const VIRTUAL_CAM_PATTERN = /obs|manycam|virtual|vcam|snap camera|droidcam|epoccam|camo|iriun|mmhmm|xsplit|splitcam/i;
+
+        let deviceId: string | undefined;
+        try {
+          // enumerateDevices requires a prior getUserMedia call to populate labels
+          // Use facingMode first to get labels, then pick the best device
+          const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          tempStream.getTracks().forEach(t => t.stop());
+
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoInputs = devices.filter(d => d.kind === "videoinput");
+
+          // Pick the first device whose label does NOT match a known virtual camera pattern
+          const physicalCam = videoInputs.find(d => d.label && !VIRTUAL_CAM_PATTERN.test(d.label));
+          if (physicalCam) {
+            deviceId = physicalCam.deviceId;
+          }
+        } catch {
+          // enumerateDevices failed — fall back to default camera below
+        }
+
+        const constraints: MediaStreamConstraints = deviceId
+          ? { video: { deviceId: { exact: deviceId } } }
+          : { video: { facingMode: "user" } };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           setCameraActive(true);
