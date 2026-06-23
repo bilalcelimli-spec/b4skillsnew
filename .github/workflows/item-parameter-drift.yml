@@ -210,7 +210,7 @@ jobs:
       # ── Issue on moderate drift ───────────────────────────────────────────
       - name: Create issue for Class-B drift
         if: steps.ipd.outputs.has_moderate == 'true' && github.event.inputs.dry_run != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const date = new Date().toISOString().split('T')[0];
@@ -254,7 +254,7 @@ jobs:
       # ── Issue on severe drift ─────────────────────────────────────────────
       - name: Create issue for Class-C drift
         if: steps.ipd.outputs.has_severe == 'true' && github.event.inputs.dry_run != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const date = new Date().toISOString().split('T')[0];
@@ -322,7 +322,7 @@ jobs:
       # ── Failure issue ─────────────────────────────────────────────────────
       - name: Create issue on workflow failure
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.issues.create({
