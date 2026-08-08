@@ -118,8 +118,10 @@ async function startServer() {
   });
 
   // --- AUTH ROUTES ---
-      const JWT_SECRET = process.env.JWT_SECRET || "super-secret-default-key";
-      const REFRESH_SECRET = process.env.REFRESH_SECRET || "super-secret-refresh-key";
+  if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET environment variable is not set — refusing to start");
+  if (!process.env.REFRESH_SECRET) throw new Error("REFRESH_SECRET environment variable is not set — refusing to start");
+  const JWT_SECRET = process.env.JWT_SECRET;
+  const REFRESH_SECRET = process.env.REFRESH_SECRET;
 
   const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -1857,6 +1859,72 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // --- PHASE 8: ENTERPRISE & GLOBAL ---
+
+  // ── SSE: scoring status stream for async AI responses (Writing / Speaking) ──
+  // GET /api/sessions/:id/scoring-status — client subscribes; server pushes events
+  // when the AI scoring queue updates the response row.
+  // Events: { event: "status", data: { responseId, status, cefrLevel?, score? } }
+  // Event: { event: "complete", data: { sessionId } }  — fired once all responses scored.
+  app.get("/api/sessions/:id/scoring-status", authMiddleware, async (req, res) => {
+    const { id } = req.params;
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const SSE_TIMEOUT_MS = 120_000; // 2 min hard limit
+    const POLL_INTERVAL_MS = 3_000;
+
+    const writeEvent = (event: string, data: object) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    let elapsed = 0;
+    const timer = setInterval(async () => {
+      elapsed += POLL_INTERVAL_MS;
+      try {
+        const responses = await prisma.response.findMany({
+          where: { sessionId: id, item: { skill: { in: ["WRITING", "SPEAKING"] } } },
+          select: { id: true, metadata: true },
+        });
+
+        const pending = responses.filter(r => !(r.metadata as any)?.aiScore && !(r.metadata as any)?.pendingAsyncScore === false);
+        const scored  = responses.filter(r => (r.metadata as any)?.aiScore != null);
+
+        for (const r of scored) {
+          const meta = r.metadata as any;
+          writeEvent("status", {
+            responseId: r.id,
+            status: "scored",
+            cefrLevel: meta.cefrLevel,
+            score: meta.aiScore,
+          });
+        }
+
+        const allScored = responses.length > 0 && pending.length === 0;
+        if (allScored || elapsed >= SSE_TIMEOUT_MS) {
+          if (elapsed >= SSE_TIMEOUT_MS && pending.length > 0) {
+            writeEvent("timeout", { message: "Scoring is taking longer than expected. Results will be sent by email." });
+          } else {
+            writeEvent("complete", { sessionId: id });
+          }
+          clearInterval(timer);
+          res.end();
+        }
+      } catch {
+        // DB error — keep trying until timeout
+      }
+    }, POLL_INTERVAL_MS);
+
+    const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 30_000);
+
+    req.on("close", () => {
+      clearInterval(timer);
+      clearInterval(heartbeat);
+    });
+  });
+
   app.patch("/api/organizations/:id/branding", async (req, res) => {
     const { id } = req.params;
     const branding = req.body;

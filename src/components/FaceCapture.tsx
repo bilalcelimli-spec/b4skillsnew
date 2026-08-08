@@ -10,7 +10,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { Camera, Loader2, ShieldCheck, AlertTriangle, RefreshCw } from "lucide-react";
+import { Camera, Loader2, ShieldCheck, AlertTriangle, RefreshCw, XCircle } from "lucide-react";
 import { Button } from "./ui/Button";
 import { cn } from "../lib/utils";
 
@@ -19,7 +19,7 @@ interface FaceCaptureProps {
   onCaptureDone: () => void;
 }
 
-type Phase = "init" | "preview" | "capturing" | "uploading" | "done" | "error";
+type Phase = "init" | "preview" | "capturing" | "uploading" | "done" | "error" | "upload_failed";
 
 export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDone }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -28,6 +28,9 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
   const [phase, setPhase] = useState<Phase>("init");
   const [countdown, setCountdown] = useState(3);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Track upload attempts — after 3 failures the session is cancelled.
+  const uploadAttemptsRef = useRef(0);
+  const MAX_UPLOAD_ATTEMPTS = 3;
 
   // Start camera
   const startCamera = async () => {
@@ -104,9 +107,21 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
       setPhase("done");
       setTimeout(onCaptureDone, 1200);
     } catch {
-      // Treat upload failure as non-blocking — proceed to test
-      setPhase("done");
-      setTimeout(onCaptureDone, 1200);
+      uploadAttemptsRef.current += 1;
+      if (uploadAttemptsRef.current >= MAX_UPLOAD_ATTEMPTS) {
+        // Hard block after 3 failures — session cannot proceed.
+        setPhase("upload_failed");
+        setErrorMsg(
+          "Identity verification failed after 3 attempts. Your session has been cancelled. Please contact support."
+        );
+      } else {
+        // Restart camera so the candidate can try again.
+        setPhase("error");
+        setErrorMsg(
+          `Identity verification failed (attempt ${uploadAttemptsRef.current}/${MAX_UPLOAD_ATTEMPTS}). Please try again.`
+        );
+        startCamera();
+      }
     }
   };
 
@@ -186,9 +201,11 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
           )}
 
           {/* Error */}
-          {phase === "error" && (
+          {(phase === "error" || phase === "upload_failed") && (
             <div className="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center gap-3 px-6 text-center">
-              <AlertTriangle className="w-8 h-8 text-amber-400" />
+              {phase === "upload_failed"
+                ? <XCircle className="w-8 h-8 text-red-400" />
+                : <AlertTriangle className="w-8 h-8 text-amber-400" />}
               <span className="text-xs text-slate-300">{errorMsg}</span>
             </div>
           )}
@@ -215,18 +232,19 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
           {phase === "error" && (
             <>
               <Button
-                onClick={startCamera}
+                onClick={() => { setErrorMsg(null); startCamera(); }}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl py-3"
               >
-                <RefreshCw size={16} className="mr-2" /> Tekrar Dene
-              </Button>
-              <Button
-                onClick={onCaptureDone}
-                className="w-full bg-transparent border border-slate-200 text-slate-500 hover:bg-slate-50 font-bold rounded-xl py-3 text-sm"
-              >
-                Atla (devam et)
+                <RefreshCw size={16} className="mr-2" /> Tekrar Dene ({uploadAttemptsRef.current}/{MAX_UPLOAD_ATTEMPTS})
               </Button>
             </>
+          )}
+
+          {/* Hard-block: session cancelled after 3 failed uploads */}
+          {phase === "upload_failed" && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-center text-sm text-red-700 font-medium">
+              Oturumunuz iptal edildi. Lütfen destek ekibiyle iletişime geçin.
+            </div>
           )}
 
           {(phase === "init" || phase === "capturing" || phase === "uploading" || phase === "done") && (

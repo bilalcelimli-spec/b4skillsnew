@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { ProctoringEventType } from "../lib/proctoring/proctoring-service";
 import { ShieldAlert, Video, Mic, Eye, MonitorOff, AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -17,6 +17,12 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Face-detection model reference (TensorFlow.js BlazeFace or MediaPipe)
+  const faceModelRef = useRef<any>(null);
+  const faceDetectionActiveRef = useRef(false);
+  // Track consecutive frames with no face for debounced alert
+  const noFaceFrameCountRef = useRef(0);
+  const NO_FACE_FRAME_THRESHOLD = 5; // ~15 s at 3 fps
 
   // ── 0. Request fullscreen on mount ──────────────────────────────────────
   useEffect(() => {
@@ -160,6 +166,62 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
           videoRef.current.srcObject = stream;
           setCameraActive(true);
         }
+
+        // ── Real face detection via TensorFlow.js BlazeFace ──────────────────
+        // Falls back to proctoring-light mode if the model cannot be loaded
+        // (e.g. slow network, CSP restriction).
+        let modelLoaded = false;
+        try {
+          // Dynamic import so the heavy model is only fetched when proctoring starts.
+          const [tf, blazeface] = await Promise.all([
+            import("@tensorflow/tfjs"),
+            import("@tensorflow-models/blazeface"),
+          ]);
+          await tf.ready();
+          faceModelRef.current = await blazeface.load();
+          modelLoaded = true;
+        } catch (modelErr) {
+          console.warn("[proctoring] Face detection model unavailable — running in proctoring-light mode:", modelErr);
+        }
+
+        if (modelLoaded) {
+          // Run inference at ~3 fps to balance accuracy vs. CPU load.
+          faceDetectionActiveRef.current = true;
+          const runDetection = async () => {
+            if (!faceDetectionActiveRef.current || !videoRef.current || !faceModelRef.current) return;
+            const video = videoRef.current;
+            if (video.readyState >= 2 && !video.paused) {
+              try {
+                const predictions: any[] = await faceModelRef.current.estimateFaces(video, false);
+                if (predictions.length === 0) {
+                  noFaceFrameCountRef.current++;
+                  if (noFaceFrameCountRef.current >= NO_FACE_FRAME_THRESHOLD) {
+                    onEvent(ProctoringEventType.NO_FACE, "HIGH", { consecutiveFrames: noFaceFrameCountRef.current });
+                    setWarning("No face detected. Please ensure your face is visible to the camera.");
+                    captureScreenshot("NO_FACE");
+                    noFaceFrameCountRef.current = 0; // reset to avoid flooding events
+                  }
+                } else {
+                  noFaceFrameCountRef.current = 0;
+                  if (predictions.length > 1) {
+                    onEvent(ProctoringEventType.MULTIPLE_FACES, "HIGH", { faceCount: predictions.length });
+                    setWarning("Multiple faces detected. Please ensure you are alone.");
+                    captureScreenshot("MULTIPLE_FACES");
+                  }
+                }
+              } catch {
+                // Inference error — skip this frame silently
+              }
+            }
+            if (faceDetectionActiveRef.current) {
+              setTimeout(runDetection, 3000); // 3 fps
+            }
+          };
+          runDetection();
+        } else {
+          // Proctoring-light: only alert based on tab-switch / visibility events
+          console.log("[proctoring] Running in proctoring-light mode (no ML face detection).");
+        }
       } catch (err) {
         console.error("Camera access denied");
         onEvent(ProctoringEventType.NO_FACE, "HIGH", { error: "Camera access denied" });
@@ -168,18 +230,8 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
 
     startCamera();
 
-    // Mock Face Detection Interval
-    const interval = setInterval(() => {
-      // Simulate random face detection events for demo
-      if (Math.random() < 0.01) {
-        onEvent(ProctoringEventType.MULTIPLE_FACES, "HIGH");
-        setWarning("Multiple faces detected. Please ensure you are alone.");
-        captureScreenshot("MULTIPLE_FACES");
-      }
-    }, 10000);
-
     return () => {
-      clearInterval(interval);
+      faceDetectionActiveRef.current = false;
       if (videoRef.current?.srcObject) {
         const stream = videoRef.current.srcObject as MediaStream;
         stream.getTracks().forEach(track => track.stop());

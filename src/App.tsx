@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { thetaToCefr, CEFR_META } from "./lib/cefr/cefr-framework";
 import { CefrLevelCard } from "./components/CefrLevelCard";
 
@@ -25,6 +26,8 @@ import { motion } from "motion/react";
 import { cn } from "./lib/utils";
 
 export default function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showLanding, setShowLanding] = useState(true);
@@ -35,6 +38,39 @@ export default function App() {
   const [testCompleted, setTestCompleted] = useState<{ theta: number; cefr: string; sessionId: string } | null>(null);
   const [branding, setBranding] = useState<any>(null);
   const [certificate, setCertificate] = useState<any>(null);
+
+  // Sync URL → state on first load (deep-link support)
+  useEffect(() => {
+    const path = location.pathname;
+    const examMatch = path.match(/^\/exam\/(.+)/);
+    const reportMatch = path.match(/^\/report\/(.+)/);
+    if (examMatch) {
+      // Deep-link to exam — session will be resumed once the user is authenticated
+    } else if (reportMatch) {
+      setActiveTab("results");
+    } else if (path === "/admin") {
+      setActiveTab("admin");
+    } else if (path === "/dashboard") {
+      setActiveTab("dashboard");
+    }
+  }, []);
+
+  // Sync state → URL
+  useEffect(() => {
+    if (activeSession?.sessionId) {
+      navigate(`/exam/${activeSession.sessionId}`, { replace: true });
+    } else if (testCompleted?.sessionId) {
+      navigate(`/report/${testCompleted.sessionId}`, { replace: true });
+    } else if (!showLanding && user) {
+      const tabPath: Record<string, string> = {
+        admin: "/admin", dashboard: "/dashboard", rating: "/rating",
+        institutional: "/institutional", results: "/results",
+        items: "/items", profile: "/profile", settings: "/settings",
+        psychometrics: "/psychometrics",
+      };
+      navigate(tabPath[activeTab] ?? "/dashboard", { replace: true });
+    }
+  }, [activeTab, activeSession, testCompleted, user]);
 
   useEffect(() => {
     const fetchUser = async (retryRefresh = true) => {

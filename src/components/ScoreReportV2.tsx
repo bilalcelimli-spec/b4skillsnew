@@ -374,13 +374,28 @@ export function ScoreReport({ data, onDownloadPDF, onShareCertificate, className
         </div>
       </div>
 
-      {/* Footer */}
-      <div style={{ marginTop: 28, padding: "14px 18px", borderRadius: "var(--radius-lg)", background: "var(--bg-subtle)", border: "1px solid var(--border)" }}>
-        <p style={{ fontSize: "0.6875rem", color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
-          LinguAdapt Adaptive Assessment · IRT 3PL scoring · CEFR-aligned ·{" "}
-          {data.certificateId ? `Certificate ID: ${data.certificateId}` : `Session: ${data.sessionId}`} ·{" "}
-          Completed {new Date(data.completedAt).toLocaleString()}
-        </p>
+      {/* Footer with QR code + HMAC report ID */}
+      <div style={{ marginTop: 28, padding: "14px 18px", borderRadius: "var(--radius-lg)", background: "var(--bg-subtle)", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 16 }}>
+        {/* QR code linking to public verification page */}
+        <img
+          src={`https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(`${typeof window !== "undefined" ? window.location.origin : ""}/verify/${data.certificateId ?? data.sessionId}`)}`}
+          alt="Verification QR Code"
+          width={72}
+          height={72}
+          style={{ borderRadius: 8, flexShrink: 0, border: "1px solid var(--border)" }}
+        />
+        <div>
+          <p style={{ fontSize: "0.6875rem", color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
+            LinguAdapt Adaptive Assessment · IRT 3PL scoring · CEFR-aligned ·{" "}
+            {data.certificateId ? `Certificate ID: ${data.certificateId}` : `Session: ${data.sessionId}`} ·{" "}
+            Completed {new Date(data.completedAt).toLocaleString()}
+          </p>
+          <p style={{ fontSize: "0.625rem", color: "var(--text-muted)", margin: "4px 0 0", lineHeight: 1.4 }}>
+            Scan QR code or visit{" "}
+            <strong>{typeof window !== "undefined" ? window.location.origin : ""}/verify/{data.certificateId ?? data.sessionId}</strong>{" "}
+            to verify authenticity. This report is cryptographically signed.
+          </p>
+        </div>
       </div>
     </div>
   );

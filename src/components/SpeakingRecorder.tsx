@@ -37,6 +37,24 @@ export const SpeakingRecorder: React.FC<SpeakingRecorderProps> = ({
     };
   }, [audioUrl]);
 
+  // Spacebar = start/stop recording; R = re-record when playback available
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (isUploading) return;
+      if (e.code === "Space" && e.target === document.body) {
+        e.preventDefault();
+        if (isRecording) stopRecording();
+        else if (!audioBlob) startRecording();
+      } else if (e.code === "KeyR" && audioBlob && !isRecording) {
+        e.preventDefault();
+        setAudioBlob(null);
+        setAudioUrl(null);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [isRecording, audioBlob, isUploading]);
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });

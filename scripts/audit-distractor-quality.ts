@@ -340,3 +340,79 @@ main().catch(async (err) => {
   await prisma.$disconnect();
   process.exit(1);
 });
+
+// ─── Statistical p-value / r_pbis audit (ETS/Cambridge standard) ─────────────
+// Run independently via: STATISTICAL=1 npx tsx scripts/audit-distractor-quality.ts
+
+if (process.env.STATISTICAL === "1") {
+  (async () => {
+    const MIN_N = parseInt(process.env.MIN_RESPONSES ?? "50");
+    const ITEM_PBIS_MIN = 0.30;
+    const DISTRACTOR_PBIS_MAX = 0.0;
+
+    function pointBiserial(scores: number[], continuous: number[]): number {
+      const n = scores.length;
+      if (n < 10) return NaN;
+      const mean_t = continuous.reduce((a, b) => a + b, 0) / n;
+      const std_t = Math.sqrt(
+        continuous.reduce((a, b) => a + Math.pow(b - mean_t, 2), 0) / n,
+      );
+      if (std_t === 0) return 0;
+      const n1 = scores.filter((s) => s === 1).length;
+      const n0 = n - n1;
+      if (!n1 || !n0) return NaN;
+      const p = n1 / n;
+      const q = 1 - p;
+      const mean_1 =
+        continuous.filter((_, i) => scores[i] === 1).reduce((a, b) => a + b, 0) /
+        n1;
+      return ((mean_1 - mean_t) / std_t) * Math.sqrt(p / q);
+    }
+
+    const items = await prisma.item.findMany({
+      where: { status: "ACTIVE", type: "MULTIPLE_CHOICE" },
+      include: {
+        responses: {
+          select: { value: true, session: { select: { currentTheta: true } } },
+        },
+      },
+    });
+
+    const flags: object[] = [];
+    for (const item of items) {
+      const rs = item.responses.filter((r) => r.session?.currentTheta != null);
+      if (rs.length < MIN_N) continue;
+      const content = item.content as any;
+      const opts = content?.options as any[] | undefined;
+      if (!Array.isArray(opts) || opts.length < 2) continue;
+      const ci: number =
+        content?.correctIndex ??
+        opts.findIndex((o: any) => typeof o === "object" && o?.isCorrect);
+      if (ci < 0) continue;
+      const thetas = rs.map((r) => r.session!.currentTheta as number);
+      const isCorrect = rs.map((r) => (Number(r.value) === ci ? 1 : 0));
+      const pValue = isCorrect.reduce((a, b) => a + b, 0) / isCorrect.length;
+      const itemPbis = pointBiserial(isCorrect, thetas);
+      if (!isNaN(itemPbis) && itemPbis < ITEM_PBIS_MIN)
+        flags.push({ type: "ITEM_LOW_DISCRIMINATION", itemId: item.id, pbis: +itemPbis.toFixed(3), n: rs.length });
+      if (pValue > 0.85)
+        flags.push({ type: "ITEM_TOO_EASY", itemId: item.id, pValue: +pValue.toFixed(3), n: rs.length });
+      for (let di = 0; di < opts.length; di++) {
+        if (di === ci) continue;
+        const sel = rs.map((r) => (Number(r.value) === di ? 1 : 0));
+        if (sel.reduce((a, b) => a + b, 0) < 5) continue;
+        const dPbis = pointBiserial(sel, thetas);
+        if (!isNaN(dPbis) && dPbis >= DISTRACTOR_PBIS_MAX)
+          flags.push({ type: "DISTRACTOR_POSITIVE_PBIS", itemId: item.id, distractorIndex: di, pbis: +dPbis.toFixed(3) });
+      }
+    }
+
+    const outPath = `logs/pbis-audit-${new Date().toISOString().slice(0, 10)}.jsonl`;
+    require("fs").mkdirSync("logs", { recursive: true });
+    for (const f of flags)
+      require("fs").appendFileSync(outPath, JSON.stringify(f) + "\n");
+    console.log(`[pbis-audit] ${flags.length} flags → ${outPath}`);
+    await prisma.$disconnect();
+    process.exit(0);
+  })();
+}

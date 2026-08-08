@@ -66,7 +66,15 @@
 @media print {
   .no-print             { display: none !important; }
   body                  { background: white; color: black; font-size: 11pt; }
-  .score-report         { padding: 0 !important; max-width: 100% !important; }
+  .score-report         { padding: 0 !important; max-width: 100% !important; box-shadow: none !important; }
   .celebration-banner   { display: none !important; }
+  /* Force page break before the skill breakdown section */
+  .page-break-before    { page-break-before: always; }
+  /* Prevent orphaned headings */
+  h1, h2, h3            { page-break-after: avoid; }
+  /* Ensure QR code is visible on the last page */
+  .report-footer        { page-break-inside: avoid; }
+  /* Hide navigation bars, sidebars, etc. */
+  header, nav, aside, footer:not(.report-footer) { display: none !important; }
 }
 

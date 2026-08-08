@@ -160,14 +160,15 @@ export const CEFR_META: Record<CefrLevel, CefrLevelMeta> = Object.fromEntries(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. THETA ↔ CEFR MAPPING (canonical — shared by engine, frontend, server)
+// Cambridge Research Notes 2012 cut-scores on [-4, 4] IRT scale
 // ─────────────────────────────────────────────────────────────────────────────
 export const CEFR_THETA_THRESHOLDS: Record<string, number> = {
-  PRE_A1: -3.0,
-  A1:     -1.75,
-  A2:     -0.5,
+  PRE_A1: -4.0,
+  A1:     -2.5,
+  A2:     -1.0,
   B1:      0.5,
-  B2:      1.5,
-  C1:      2.5,
+  B2:      2.0,
+  C1:      3.5,
 };
 
 export function thetaToCefr(theta: number): CefrLevel {
@@ -206,24 +207,34 @@ export const CAN_DO_DESCRIPTORS: CanDoDescriptor[] = [
     descriptors: [
       "Can understand familiar names, words and very simple sentences (notices, posters, catalogues).",
       "Can recognise numbers, prices and times.",
+      "Can understand basic personal information in short simple documents (ID cards, registration forms).",
     ]
   },
   { level: "A1", domain: "listening",
     descriptors: [
       "Can understand very slow, carefully articulated speech with long pauses.",
       "Can follow very basic spoken instructions.",
+      "Can recognise familiar words and phrases in short, simple messages.",
     ]
   },
   { level: "A1", domain: "writing",
     descriptors: [
       "Can write a short, simple postcard.",
       "Can fill in forms with personal details.",
+      "Can write simple isolated phrases using picture prompts.",
     ]
   },
   { level: "A1", domain: "speaking",
     descriptors: [
       "Can produce simple isolated phrases about people and places.",
       "Can ask and answer simple questions about personal details.",
+      "Can use basic greetings and leave-takings.",
+    ]
+  },
+  { level: "A1", domain: "interaction",
+    descriptors: [
+      "Can ask and answer questions about personal details (name, address, age).",
+      "Can participate in a very basic exchange if the other person speaks slowly and clearly.",
     ]
   },
   // ------- A2 -------
@@ -231,24 +242,34 @@ export const CAN_DO_DESCRIPTORS: CanDoDescriptor[] = [
     descriptors: [
       "Can read short, simple texts (personal letters, menus, schedules) containing high-frequency vocabulary.",
       "Can understand short instructions and signs.",
+      "Can find specific predictable information in simple everyday material (advertisements, prospectuses).",
     ]
   },
   { level: "A2", domain: "listening",
     descriptors: [
       "Can understand phrases and expressions related to areas of immediate priority.",
       "Can grasp the main point in short, clear messages.",
+      "Can understand simple technical information (directions, operation of equipment).",
     ]
   },
   { level: "A2", domain: "writing",
     descriptors: [
       "Can write short, simple notes related to matters in areas of immediate need.",
       "Can write a very simple personal letter.",
+      "Can write simple sentences about family, friends and living conditions.",
     ]
   },
   { level: "A2", domain: "speaking",
     descriptors: [
       "Can describe family, living conditions, education and present/past job.",
       "Can use connected phrases to describe experiences and events.",
+      "Can communicate in simple and routine tasks on familiar and routine matters.",
+    ]
+  },
+  { level: "A2", domain: "interaction",
+    descriptors: [
+      "Can handle very short social exchanges using common polite forms of greeting.",
+      "Can ask and answer questions and exchange ideas in simple social situations.",
     ]
   },
   // ------- B1 -------
@@ -256,98 +277,138 @@ export const CAN_DO_DESCRIPTORS: CanDoDescriptor[] = [
     descriptors: [
       "Can understand texts that consist mainly of high-frequency everyday or job-related language.",
       "Can understand narratives and personal letters where the writer is describing feelings and wishes.",
+      "Can identify the main conclusions in clearly signalled argumentative texts.",
     ]
   },
   { level: "B1", domain: "listening",
     descriptors: [
       "Can understand the main points of clear standard speech on familiar matters.",
       "Can follow a lecture or talk within own field if the topic is familiar.",
+      "Can understand straightforward factual information about common topics (work, school, leisure).",
     ]
   },
   { level: "B1", domain: "writing",
     descriptors: [
       "Can write straightforward connected text on topics within familiar fields.",
       "Can write personal letters describing experiences and impressions.",
+      "Can write simple descriptions of events and personal experiences.",
     ]
   },
   { level: "B1", domain: "speaking",
     descriptors: [
       "Can keep going comprehensibly even though pausing for grammatical and lexical planning.",
       "Can express the main point with reasonable precision.",
+      "Can briefly give reasons and explanations for opinions and plans.",
+    ]
+  },
+  { level: "B1", domain: "interaction",
+    descriptors: [
+      "Can deal with most travel situations in the target language area.",
+      "Can enter into conversation with reasonable ease on topics that are familiar or of personal interest.",
     ]
   },
   // ------- B2 -------
   { level: "B2", domain: "reading",
     descriptors: [
-      "Can read articles and reports concerned with contemporary problems.",
+      "Can read articles and reports concerned with contemporary problems in which the writers adopt particular stances or viewpoints.",
       "Can understand contemporary literary prose.",
+      "Can scan quickly through long and complex texts, locating relevant details.",
     ]
   },
   { level: "B2", domain: "listening",
     descriptors: [
       "Can understand extended speech and lectures and follow complex lines of argument.",
       "Can understand most TV news and current affairs programmes.",
+      "Can understand standard spoken language even in a noisy environment.",
     ]
   },
   { level: "B2", domain: "writing",
     descriptors: [
-      "Can write clear, detailed text on a wide range of subjects.",
-      "Can write an essay or report, passing on information or giving reasons for or against.",
+      "Can write clear, detailed text on a wide range of subjects related to areas of interest.",
+      "Can write an essay or report, passing on information or giving reasons for or against a particular point of view.",
+      "Can synthesise information and arguments from a number of sources.",
     ]
   },
   { level: "B2", domain: "speaking",
     descriptors: [
-      "Can interact spontaneously and fluently with native speakers without strain.",
-      "Can present clear, detailed descriptions on a wide range of subjects.",
+      "Can interact spontaneously and fluently with native speakers without strain for either party.",
+      "Can present clear, detailed descriptions on a wide range of subjects including own areas of interest.",
+      "Can develop an argument systematically with appropriate highlighting of significant points.",
+    ]
+  },
+  { level: "B2", domain: "interaction",
+    descriptors: [
+      "Can take an active part in discussion in familiar contexts, accounting for and sustaining views.",
+      "Can carry out a prepared interview and follow up interesting replies spontaneously.",
     ]
   },
   // ------- C1 -------
   { level: "C1", domain: "reading",
     descriptors: [
       "Can understand long, complex factual and literary texts, appreciating distinctions of style.",
-      "Can understand specialised articles outside own field.",
+      "Can understand specialised articles and longer technical instructions, even when not related to own field.",
+      "Can understand in detail complex texts on abstract, academic or professional topics.",
     ]
   },
   { level: "C1", domain: "listening",
     descriptors: [
-      "Can understand extended speech even when it is not clearly structured.",
-      "Can understand TV programs and films without too much effort.",
+      "Can understand extended speech even when it is not clearly structured and when relationships are only implied.",
+      "Can understand TV programmes and films without too much effort.",
+      "Can follow complex academic or professional discussions with relative ease.",
     ]
   },
   { level: "C1", domain: "writing",
     descriptors: [
       "Can express ideas fluently and spontaneously without much obvious searching for expressions.",
       "Can use language flexibly and effectively for social, academic and professional purposes.",
+      "Can produce well-structured, detailed text on complex subjects, showing controlled use of organisational patterns.",
     ]
   },
   { level: "C1", domain: "speaking",
     descriptors: [
-      "Can describe or narrate, integrating sub-themes and developing points.",
-      "Can handle abstract and linguistically demanding subjects with sophistication.",
+      "Can describe or narrate, integrating sub-themes, developing particular points and rounding off with an appropriate conclusion.",
+      "Can handle abstract, linguistically demanding subjects with sophistication including identifying nuance.",
+      "Can produce fluent, well-structured discourse with little hesitation.",
+    ]
+  },
+  { level: "C1", domain: "interaction",
+    descriptors: [
+      "Can express ideas and opinions with precision and relate contribution skillfully to those of other speakers.",
+      "Can select a suitable phrase from a readily available range to preface remarks to hold the floor.",
     ]
   },
   // ------- C2 -------
   { level: "C2", domain: "reading",
     descriptors: [
       "Can understand virtually every form of written language including abstract and structurally complex texts.",
+      "Can understand dense, conceptually demanding text at the level of a native educated adult.",
     ]
   },
   { level: "C2", domain: "listening",
     descriptors: [
       "Can understand any native speaker, accounting for regional accents.",
       "Can follow complex speeches, arguments and academic lectures without effort.",
+      "Can understand nuanced intonation and implicit meaning in extended discourse.",
     ]
   },
   { level: "C2", domain: "writing",
     descriptors: [
-      "Can write clear, smoothly flowing, complex letters, reports or articles with appropriate style.",
+      "Can write clear, smoothly flowing, complex letters, reports or articles with an appropriate and effective style.",
       "Can write summaries and reviews of professional or literary works.",
+      "Can write with full command of idiomatic and colloquial usage.",
     ]
   },
   { level: "C2", domain: "speaking",
     descriptors: [
       "Can convey finer shades of meaning precisely using a wide lexical range.",
-      "Can reformulate ideas in differing linguistic forms to give emphasis or restate.",
+      "Can reformulate ideas in differing linguistic forms to give emphasis, differentiate and eliminate ambiguity.",
+      "Can produce highly idiomatic and nuanced speech appropriate to any context.",
+    ]
+  },
+  { level: "C2", domain: "interaction",
+    descriptors: [
+      "Can interact with ease, precision and spontaneity at the level of a proficient native speaker.",
+      "Can adapt effortlessly to the interlocutor's cultural and linguistic norms.",
     ]
   },
 ];

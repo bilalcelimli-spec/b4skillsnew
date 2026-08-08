@@ -52,8 +52,8 @@ export default function DiagnosticReport({ data, candidateName }: Props) {
 
     return skills.map((s, i) => {
       const angle = i * angleStep - Math.PI / 2;
-      // Normalize theta from [-3, 3] to [0, 1]
-      const normalized = Math.max(0, Math.min(1, (s.theta + 3) / 6));
+      // Normalize theta from [-4, 4] to [0, 1] — Cambridge Research Notes 2012 range
+      const normalized = Math.max(0, Math.min(1, (s.theta + 4) / 8));
       const x = cx + r * normalized * Math.cos(angle);
       const y = cy + r * normalized * Math.sin(angle);
       return { x, y, skill: s.skill, label: SKILL_LABELS[s.skill] || s.skill, normalized };

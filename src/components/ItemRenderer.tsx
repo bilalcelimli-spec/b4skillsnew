@@ -291,6 +291,29 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
       // READING — sticky question panel: passage scrolls, question stays anchored
       const isReadingWithPassage = itemSkill === "READING" && !!displayPassage;
 
+      // Keyboard shortcut: 1-4 selects option, Enter confirms, Escape clears
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      useEffect(() => {
+        const numOptions = content.options?.length ?? 0;
+        const handleKey = (e: KeyboardEvent) => {
+          if (disabled) return;
+          const num = parseInt(e.key);
+          if (num >= 1 && num <= numOptions) {
+            e.preventDefault();
+            setSelectedOption(num - 1);
+          } else if (e.key === "Enter" && selectedOption !== null) {
+            e.preventDefault();
+            const opt = content.options[selectedOption];
+            const answer = (opt && typeof opt === "object" && opt.id) ? opt.id : selectedOption;
+            onResponse(answer);
+          } else if (e.key === "Escape") {
+            setSelectedOption(null);
+          }
+        };
+        window.addEventListener("keydown", handleKey);
+        return () => window.removeEventListener("keydown", handleKey);
+      }, [selectedOption, disabled, content.options]);
+
       const optionButtons = (
         <div className="grid grid-cols-1 gap-3" role="radiogroup" aria-labelledby="item-prompt">
           {content.options?.map((option: any, index: number) => {
@@ -321,6 +344,10 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                     {String.fromCharCode(65 + index)}
                   </div>
                   <span className="font-bold text-slate-700 uppercase tracking-tight text-sm">{optionText}</span>
+                  {/* Keyboard shortcut badge */}
+                  <span className="ml-auto text-[10px] font-mono text-slate-300 select-none" aria-hidden="true">
+                    {index + 1}
+                  </span>
                 </div>
               </button>
             );
