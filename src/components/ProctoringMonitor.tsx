@@ -174,8 +174,8 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
         try {
           // Dynamic import so the heavy model is only fetched when proctoring starts.
           const [tf, blazeface] = await Promise.all([
-            import("@tensorflow/tfjs"),
-            import("@tensorflow-models/blazeface"),
+            import(/* @vite-ignore */ "@tensorflow/tfjs"),
+            import(/* @vite-ignore */ "@tensorflow-models/blazeface"),
           ]);
           await tf.ready();
           faceModelRef.current = await blazeface.load();
