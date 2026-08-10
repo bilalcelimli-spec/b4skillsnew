@@ -56,18 +56,26 @@ describe("CEFR_META", () => {
 // ─── thetaToCefr ─────────────────────────────────────────────────────────────
 
 describe("thetaToCefr", () => {
-  it("maps theta below -3.0 to PRE_A1", () => {
-    expect(thetaToCefr(-4)).toBe("PRE_A1");
-    expect(thetaToCefr(-3.1)).toBe("PRE_A1");
+  it("maps theta below -4.0 (PRE_A1 threshold) to PRE_A1", () => {
+    expect(thetaToCefr(-5)).toBe("PRE_A1");
+    expect(thetaToCefr(-4.1)).toBe("PRE_A1");
+    // At threshold -4.0 itself maps to A1 (strict <)
+    expect(thetaToCefr(-4)).toBe("A1");
   });
 
   it("maps midpoints correctly", () => {
-    expect(thetaToCefr(-2.5)).toBe("A1");
-    expect(thetaToCefr(-1.1)).toBe("A2");
+    // A1 band: [-4.0, -2.5)
+    expect(thetaToCefr(-3.25)).toBe("A1");
+    // A2 band: [-2.5, -1.0)
+    expect(thetaToCefr(-1.75)).toBe("A2");
+    // B1 band: [-1.0, 0.5)
     expect(thetaToCefr(0)).toBe("B1");
+    // B2 band: [0.5, 2.0)
     expect(thetaToCefr(1)).toBe("B2");
-    expect(thetaToCefr(2)).toBe("C1");
-    expect(thetaToCefr(3)).toBe("C2");
+    // C1 band: [2.0, 3.5)
+    expect(thetaToCefr(2.5)).toBe("C1");
+    // C2: theta >= 3.5
+    expect(thetaToCefr(3.5)).toBe("C2");
   });
 
   it("maps exactly at thresholds to next level", () => {
@@ -80,7 +88,8 @@ describe("thetaToCefr", () => {
   });
 
   it("covers all 7 levels across a full range", () => {
-    const mapped = new Set([-4, -2.5, -1.1, 0, 1, 2, 3].map(thetaToCefr));
+    // One sample from each band: PRE_A1, A1, A2, B1, B2, C1, C2
+    const mapped = new Set([-5, -3.25, -1.75, 0, 1, 2.5, 4].map(thetaToCefr));
     expect(mapped.size).toBe(7);
   });
 });
