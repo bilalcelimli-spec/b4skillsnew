@@ -49,16 +49,22 @@ export interface PipelineItem {
   };
 }
 
-/** Minimum criteria for activating a pretest item */
+/**
+ * Minimum criteria for activating a pretest item.
+ * Thresholds aligned with ETS/Cambridge industry standards:
+ *   minPretestResponses: n≥200 for reliable 3PL IRT calibration (Lord, 1980)
+ *   minPointBiserial: r≥0.30 per ETS Technical Report 2019
+ *   minDiscrimination: a≥0.5 per Cambridge ESOL item banking guidelines
+ */
 const ACTIVATION_CRITERIA = {
-  minPretestResponses: 50,
+  minPretestResponses: 200,
   minDiscrimination: 0.5,
   maxDiscrimination: 3.0,
   minPValue: 0.1,
-  maxPValue: 0.95,
-  maxOutfit: 2.0,
-  maxInfit: 1.5,
-  minPointBiserial: 0.15,
+  maxPValue: 0.90,
+  maxOutfit: 1.5,
+  maxInfit: 1.3,
+  minPointBiserial: 0.30,
 };
 
 export const ItemGenerationPipeline = {

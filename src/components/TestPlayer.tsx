@@ -476,18 +476,34 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
             {t("admin.analytics")}
           </Button>
 
-          {/* Adaptive timing display: elapsed time + precision arc */}
+          {/* Adaptive timing display: remaining time + precision arc */}
           <div className="flex items-center gap-3">
-            {/* Elapsed time (counts up) */}
-            <div
-              className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-xl font-mono font-bold text-slate-700"
-              role="timer"
-              aria-label="Time elapsed"
-              title="Time elapsed — the assessment ends when your level is determined"
-            >
-              <Clock size={18} className="text-slate-400" />
-              {formatTime(elapsedSeconds)}
-            </div>
+            {/* Remaining time countdown */}
+            {(() => {
+              const maxSec = Math.floor(maxDurationMs / 1000);
+              const remaining = Math.max(0, maxSec - elapsedSeconds);
+              const isWarning = remaining <= 300; // last 5 minutes
+              const isCritical = remaining <= 60;  // last 1 minute
+              return (
+                <div
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-xl font-mono font-bold transition-colors",
+                    isCritical
+                      ? "bg-red-100 text-red-700 animate-pulse"
+                      : isWarning
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-slate-100 text-slate-700"
+                  )}
+                  role="timer"
+                  aria-label={`Time remaining: ${formatTime(remaining)}`}
+                  aria-live={isWarning ? "polite" : undefined}
+                  title="Time remaining in this assessment"
+                >
+                  <Clock size={18} className={isCritical ? "text-red-500" : isWarning ? "text-amber-500" : "text-slate-400"} />
+                  {formatTime(remaining)}
+                </div>
+              );
+            })()}
 
             {/* Precision meter: SEM-based progress toward stopping threshold */}
             {(() => {

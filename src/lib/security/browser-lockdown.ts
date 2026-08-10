@@ -200,10 +200,29 @@ export function createBrowserLockdown(sessionId: string, options: LockdownOption
 
   // ── Engage / Disengage ──────────────────────────────────────────────────────
 
+  function detectAutomationFlags() {
+    // Detect Playwright/Selenium/Puppeteer via navigator.webdriver flag and CDP properties
+    if (
+      (navigator as any).webdriver === true ||
+      !!(window as any).__selenium_evaluate ||
+      !!(window as any).__webdriver_evaluate ||
+      !!(window as any).__fxdriver_evaluate ||
+      !!(window as any).__driver_unwrapped ||
+      !!(window as any).__webdriver_script_fn ||
+      !!(window as any)._phantom ||
+      !!(window as any).callPhantom ||
+      !!(window as any).__nightmare ||
+      !!(document as any).__selenium_unwrapped
+    ) {
+      report("TAB_SWITCH", "automation_framework_detected");
+    }
+  }
+
   async function engage() {
     if (engaged) return;
     engaged = true;
 
+    detectAutomationFlags();
     await requestFullscreen();
     detectScreenShare();
     startDevtoolsDetection();

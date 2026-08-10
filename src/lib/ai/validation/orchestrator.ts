@@ -215,6 +215,11 @@ async function runWithGuard(
   }
 }
 
+// Gates that require LLM/external-API calls to run correctly.
+// If any of these error, we must not auto-publish — safety-net against
+// API outages letting unvetted items reach the live bank.
+const LLM_BACKED_GATES = new Set(["key-uniqueness", "bias-fairness"]);
+
 function decideOverallVerdict(
   gates: GateResult[],
   counts: { critical: number; major: number; minor: number; info: number }
@@ -229,6 +234,12 @@ function decideOverallVerdict(
 
   // Any FAIL → REJECT (critical-free FAIL is unusual; treat as serious)
   if (failGates.length > 0) return "REJECT";
+
+  // If any LLM-backed gate errored (API down, timeout, quota), force REVIEW.
+  // These gates cannot be skipped silently — their checks are mandatory for
+  // bias and key-uniqueness safety. Item stays in REVIEW until re-run succeeds.
+  const llmGateErrored = errorGates.some((g) => LLM_BACKED_GATES.has(g.gate));
+  if (llmGateErrored) return "REVIEW";
 
   // If every blocking gate errored → can't make a decision, push to REVIEW
   if (errorGates.length >= blockingGates.length) return "REVIEW";

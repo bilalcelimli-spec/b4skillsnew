@@ -261,6 +261,100 @@ function ExternalEquivalents({ data }: { data: ScoreReportData }) {
   );
 }
 
+// ── CEFR Can-Do descriptors (CEFR 2001 / Council of Europe) ──────────────────
+
+const CEFR_CAN_DO: Record<string, { overall: string; reading: string; listening: string; writing: string; speaking: string }> = {
+  A1: {
+    overall: "Can understand and use familiar everyday expressions and very basic phrases.",
+    reading: "Can understand very short, simple texts: a single phrase at a time, picking up familiar names and basic words.",
+    listening: "Can recognise familiar words and very basic phrases concerning oneself and immediate environment when people speak slowly and clearly.",
+    writing: "Can write a short, simple postcard. Can fill in forms with personal details.",
+    speaking: "Can interact in a simple way if the other person talks slowly and clearly and is prepared to help.",
+  },
+  A2: {
+    overall: "Can understand sentences and frequently used expressions related to areas of most immediate relevance.",
+    reading: "Can read very short, simple texts. Can find specific, predictable information in simple everyday material.",
+    listening: "Can understand phrases and the highest frequency vocabulary related to areas of most immediate personal relevance.",
+    writing: "Can write short, simple notes and messages. Can write a very simple personal letter.",
+    speaking: "Can communicate in simple and routine tasks requiring a simple and direct exchange of information on familiar topics.",
+  },
+  B1: {
+    overall: "Can understand the main points of clear standard input on familiar matters regularly encountered in work, school and leisure.",
+    reading: "Can read straightforward factual texts on subjects related to my field and interest with a satisfactory level of comprehension.",
+    listening: "Can understand the main points of clear standard speech on familiar matters regularly encountered in work, school, leisure.",
+    writing: "Can write simple connected text on topics which are familiar or of personal interest. Can write personal letters describing experiences.",
+    speaking: "Can deal with most situations likely to arise whilst travelling in an area where the language is spoken. Can enter unprepared into conversation on familiar topics.",
+  },
+  B2: {
+    overall: "Can understand the main ideas of complex text on both concrete and abstract topics, including technical discussions in the field of specialisation.",
+    reading: "Can read articles and reports concerned with contemporary problems in which the writers adopt particular stances or viewpoints.",
+    listening: "Can understand extended speech and lectures and follow even complex lines of argument provided the topic is reasonably familiar.",
+    writing: "Can write clear, detailed text on a wide range of subjects related to interests. Can write essays or reports, passing on information or giving reasons for or against a particular point of view.",
+    speaking: "Can interact with a degree of fluency and spontaneity that makes regular interaction with native speakers quite possible without strain for either party.",
+  },
+  C1: {
+    overall: "Can understand a wide range of demanding, longer texts and recognise implicit meaning.",
+    reading: "Can understand in detail lengthy, complex texts, whether or not they relate to area of speciality, provided difficult sections can be reread.",
+    listening: "Can understand extended speech even when it is not clearly structured and when relationships are only implied and not signalled explicitly.",
+    writing: "Can express ideas fluently and spontaneously without much obvious searching for expressions. Can use language flexibly and effectively for social, academic and professional purposes.",
+    speaking: "Can express ideas fluently and spontaneously without much obvious searching for expressions. Can use language flexibly and effectively for social, academic and professional purposes.",
+  },
+  C2: {
+    overall: "Can understand with ease virtually everything heard or read. Can express themselves spontaneously, very fluently and precisely.",
+    reading: "Can read with ease virtually all forms of the written language, including abstract, structurally or linguistically complex texts.",
+    listening: "Has no difficulty in understanding any kind of spoken language, whether live or broadcast, even when delivered at fast native speed.",
+    writing: "Can write clear, smoothly-flowing text in an appropriate style. Can write complex letters, reports or articles which present a case with an effective logical structure.",
+    speaking: "Can take part effortlessly in any conversation or discussion and have a good familiarity with idiomatic expressions and colloquialisms.",
+  },
+};
+
+function CanDoDescriptors({ overallBand, skills }: { overallBand: string; skills: SkillResult[] }) {
+  const desc = CEFR_CAN_DO[overallBand];
+  if (!desc) return null;
+
+  const skillDescMap: Record<string, keyof typeof desc> = {
+    READING: "reading", LISTENING: "listening", WRITING: "writing", SPEAKING: "speaking",
+  };
+
+  return (
+    <Card padding="md" shadow="sm" style={{ marginTop: 16 }}>
+      <h3 style={{ fontWeight: 600, fontSize: "0.9375rem", margin: "0 0 10px", color: "var(--text-primary)" }}>
+        What you can do at {overallBand}
+      </h3>
+      <p style={{ fontSize: "0.8125rem", color: "var(--text-secondary)", lineHeight: 1.6, margin: "0 0 12px", fontStyle: "italic" }}>
+        {desc.overall}
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+        {skills
+          .filter((s) => skillDescMap[s.skill])
+          .map((s) => {
+            const key = skillDescMap[s.skill];
+            const skillDesc = CEFR_CAN_DO[s.cefrBand]?.[key] ?? desc[key];
+            return (
+              <div
+                key={s.skill}
+                style={{
+                  padding: "10px 12px", borderRadius: "var(--radius-md)",
+                  background: "var(--bg-subtle)", border: "1px solid var(--border)",
+                }}
+              >
+                <p style={{ fontSize: "0.6875rem", fontWeight: 700, color: "var(--text-muted)", margin: "0 0 4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  {SKILL_LABELS[s.skill]} · {s.cefrBand}
+                </p>
+                <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>
+                  {skillDesc}
+                </p>
+              </div>
+            );
+          })}
+      </div>
+      <p style={{ fontSize: "0.6875rem", color: "var(--text-muted)", marginTop: 10 }}>
+        Source: Common European Framework of Reference for Languages (CEFR), Council of Europe, 2001/2020.
+      </p>
+    </Card>
+  );
+}
+
 // ── Main ScoreReport component ────────────────────────────────────────────────
 
 export interface ScoreReportProps {
@@ -351,6 +445,9 @@ export function ScoreReport({ data, onDownloadPDF, onShareCertificate, className
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
         {data.skills.map((s, i) => <SkillCard key={s.skill} skill={s} index={i} />)}
       </div>
+
+      {/* Can-Do descriptors */}
+      <CanDoDescriptors overallBand={data.overallBand} skills={data.skills} />
 
       <div style={{ margin: "24px 0" }}><Separator /></div>
 

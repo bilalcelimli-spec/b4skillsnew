@@ -47,15 +47,20 @@ const DEFAULT_CONFIG: SecurityConfig = {
 // CSP generation
 // ---------------------------------------------------------------------------
 
-function buildCSP(config: SecurityConfig): string {
+function buildCSP(config: SecurityConfig, nonce?: string): string {
   const origins = config.trustedOrigins.map((o) => `'${o}'`).join(" ");
+  // 'strict-dynamic' makes nonce-loaded scripts trusted; allows TF.js/BlazeFace dynamic imports.
+  // 'unsafe-inline' is kept ONLY as fallback for browsers that don't support strict-dynamic/nonces;
+  // modern browsers ignore it when nonce or strict-dynamic is present (ignored per spec §7.2.3).
+  const nonceDirective = nonce ? `'nonce-${nonce}'` : "";
   const directives = [
     `default-src 'self'`,
-    `script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://js.stripe.com`,
-    `style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com`,
+    `script-src 'self' ${nonceDirective} 'strict-dynamic' https://js.stripe.com`,
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
     `font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net`,
     `img-src 'self' data: blob: https: ${origins}`,
     `connect-src 'self' https://api.stripe.com https://sentry.io wss: ${origins}`,
+    `worker-src 'self' blob:`,
     `frame-src https://js.stripe.com`,
     `object-src 'none'`,
     `base-uri 'self'`,
@@ -73,8 +78,10 @@ export function securityHeaders(config: Partial<SecurityConfig> = {}) {
   const cfg = { ...DEFAULT_CONFIG, ...config };
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    // CSP
-    res.setHeader("Content-Security-Policy", buildCSP(cfg));
+    // CSP — generate a fresh nonce per request for inline script whitelisting
+    const nonce = crypto.randomUUID().replace(/-/g, "");
+    (req as any).cspNonce = nonce;
+    res.setHeader("Content-Security-Policy", buildCSP(cfg, nonce));
     // Strict-Transport-Security (HSTS)
     res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
     // X-Frame-Options
