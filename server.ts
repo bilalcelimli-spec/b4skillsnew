@@ -1094,6 +1094,96 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // POST /api/sessions/:id/identity-snapshot
+  // Stores a candidate's identity photo (base64 JPEG) taken at exam start.
+  // S3 upload is optional — set IDENTITY_SNAPSHOT_BUCKET env var to enable.
+  // If S3 is not configured the snapshot URL is omitted but the exam is never blocked.
+  app.post("/api/sessions/:id/identity-snapshot", async (req, res) => {
+    const { id } = req.params;
+    const { frame, failureReason } = req.body as {
+      frame?: string | null;
+      failureReason?: string;
+    };
+
+    // Candidate hit max retries — record the failure and unblock the exam
+    if (!frame && failureReason) {
+      try {
+        if (!id.startsWith("demo-session-")) {
+          const existing = await prisma.session.findUnique({
+            where: { id },
+            select: { metadata: true },
+          });
+          await prisma.session.update({
+            where: { id },
+            data: {
+              metadata: {
+                ...(typeof existing?.metadata === "object" && existing.metadata !== null
+                  ? (existing.metadata as Record<string, unknown>)
+                  : {}),
+                identitySnapshotFailed: true,
+                identitySnapshotFailureReason: failureReason,
+                identitySnapshotAt: new Date().toISOString(),
+              },
+            },
+          });
+        }
+      } catch (_) { /* non-fatal */ }
+      return res.json({ success: true, skipped: true });
+    }
+
+    if (!frame || typeof frame !== "string") {
+      return res.status(400).json({ error: "Missing frame" });
+    }
+
+    try {
+      const base64Data = frame.replace(/^data:image\/\w+;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+
+      let photoUrl: string | null = null;
+
+      const bucket = process.env.IDENTITY_SNAPSHOT_BUCKET;
+      if (bucket) {
+        const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3") as any;
+        const s3 = new S3Client({ region: process.env.AWS_REGION ?? "eu-west-1" });
+        const key = `identity/${id}/${Date.now()}.jpg`;
+        await s3.send(new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: buffer,
+          ContentType: "image/jpeg",
+        }));
+        photoUrl = `https://${bucket}.s3.amazonaws.com/${key}`;
+      }
+
+      if (!id.startsWith("demo-session-")) {
+        const existing = await prisma.session.findUnique({
+          where: { id },
+          select: { metadata: true },
+        });
+        await prisma.session.update({
+          where: { id },
+          data: {
+            metadata: {
+              ...(typeof existing?.metadata === "object" && existing.metadata !== null
+                ? (existing.metadata as Record<string, unknown>)
+                : {}),
+              identitySnapshotUrl: photoUrl ?? "stored-server-side",
+              identitySnapshotAt: new Date().toISOString(),
+            },
+          },
+        });
+      }
+
+      return res.json({ success: true, url: photoUrl });
+    } catch (error) {
+      console.error("[identity-snapshot] failed:", error);
+      return res.status(500).json({
+        error: "Failed to store identity snapshot",
+        details: String(error),
+      });
+    }
+  });
+
   app.get("/api/sessions/:id/next", async (req, res) => {
     try {
       const { id } = req.params;
@@ -1846,12 +1936,33 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         cefrLevel,
         theta: session.currentTheta,
         progress: session.responsesCount || 0,
-        skills: {
-          reading: Math.random() * 100,
-          listening: Math.random() * 100,
-          writing: Math.random() * 100,
-          speaking: Math.random() * 100
-        }
+        skills: await (async () => {
+          // Compute skill scores from actual response data
+          const responses = await prisma.response.findMany({
+            where: { sessionId: id },
+            include: { item: { select: { skill: true, type: true } } },
+          });
+          const skillBuckets: Record<string, { correct: number; total: number }> = {};
+          for (const r of responses) {
+            const skill = (r.item?.skill ?? "UNKNOWN").toLowerCase();
+            if (!skillBuckets[skill]) skillBuckets[skill] = { correct: 0, total: 0 };
+            skillBuckets[skill].total++;
+            // Numeric score > 0.5 or value === correctIndex treated as correct
+            const val = r.value as any;
+            const score = typeof val === "number" ? val : (val?.score ?? 0);
+            if (score > 0) skillBuckets[skill].correct++;
+          }
+          const pct = (sk: string) =>
+            skillBuckets[sk]
+              ? Math.round((skillBuckets[sk].correct / skillBuckets[sk].total) * 100)
+              : null;
+          return {
+            reading: pct("reading"),
+            listening: pct("listening"),
+            writing: pct("writing"),
+            speaking: pct("speaking"),
+          };
+        })()
       });
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch session insights" });

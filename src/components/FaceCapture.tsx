@@ -97,28 +97,35 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
     stopCamera();
     setPhase("uploading");
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15_000);
+
     try {
       const res = await fetch(`/api/sessions/${sessionId}/identity-snapshot`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ frame: dataUrl }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       if (!res.ok) throw new Error("Upload failed");
       setPhase("done");
       setTimeout(onCaptureDone, 1200);
-    } catch {
+    } catch (err: any) {
+      clearTimeout(timeoutId);
       uploadAttemptsRef.current += 1;
       if (uploadAttemptsRef.current >= MAX_UPLOAD_ATTEMPTS) {
-        // Hard block after 3 failures — session cannot proceed.
         setPhase("upload_failed");
         setErrorMsg(
-          "Identity verification failed after 3 attempts. Your session has been cancelled. Please contact support."
+          "Kimlik doğrulama 3 denemede başarısız oldu. Sınavı fotoğrafsız başlatabilir veya destek ile iletişime geçebilirsiniz."
         );
       } else {
-        // Restart camera so the candidate can try again.
+        const isTimeout = err?.name === "AbortError";
         setPhase("error");
         setErrorMsg(
-          `Identity verification failed (attempt ${uploadAttemptsRef.current}/${MAX_UPLOAD_ATTEMPTS}). Please try again.`
+          isTimeout
+            ? `Bağlantı zaman aşımına uğradı (deneme ${uploadAttemptsRef.current}/${MAX_UPLOAD_ATTEMPTS}). Tekrar deneyin.`
+            : `Kimlik doğrulama başarısız (deneme ${uploadAttemptsRef.current}/${MAX_UPLOAD_ATTEMPTS}). Tekrar deneyin.`
         );
         startCamera();
       }
@@ -240,10 +247,29 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
             </>
           )}
 
-          {/* Hard-block: session cancelled after 3 failed uploads */}
+          {/* After 3 failed uploads — allow the candidate to continue without a photo */}
           {phase === "upload_failed" && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-center text-sm text-red-700 font-medium">
-              Oturumunuz iptal edildi. Lütfen destek ekibiyle iletişime geçin.
+            <div className="space-y-3">
+              <Button
+                onClick={async () => {
+                  try {
+                    await fetch(`/api/sessions/${sessionId}/identity-snapshot`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ frame: null, failureReason: "max_retries_exceeded" }),
+                    });
+                  } catch { /* non-fatal — proceed regardless */ }
+                  onCaptureDone();
+                }}
+                className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl py-3"
+              >
+                Sınavı Başlat (Fotoğrafsız)
+              </Button>
+              <p className="text-center text-[10px] text-slate-400 leading-relaxed">
+                Sorun devam ederse{" "}
+                <span className="font-bold text-slate-500">destek@b4skills.com</span>{" "}
+                adresinden bize ulaşın.
+              </p>
             </div>
           )}
 

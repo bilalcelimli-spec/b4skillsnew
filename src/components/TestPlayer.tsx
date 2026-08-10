@@ -58,6 +58,9 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'analyzing' | 'success' | 'error'>('idle');
   const [showPractice, setShowPractice] = useState(true);
   const [showFaceCapture, setShowFaceCapture] = useState(true);
+  // True once /api/sessions/launch resolves — gates FaceCapture so it always
+  // gets the real sessionId, never the "pre-session" fallback.
+  const [sessionReady, setSessionReady] = useState(false);
   const [sectionTransition, setSectionTransition] = useState<{ completedSection: string; nextSection: string; sectionIndex: number; totalSections: number } | null>(null);
   const [currentSection, setCurrentSection] = useState<string>('VOCABULARY');
   const [sectionIndex, setSectionIndex] = useState<number>(0);
@@ -108,6 +111,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         }
         
         setSessionId(data.sessionId);
+        setSessionReady(true);
         if (typeof data.maxDurationMs === "number") {
           setMaxDurationMs(data.maxDurationMs);
         }
@@ -423,11 +427,23 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     );
   }
 
-  // Face capture (identity verification) before practice mode
+  // Face capture (identity verification) before practice mode.
+  // Wait for session launch to complete so FaceCapture always uploads to the
+  // real sessionId — never to the "pre-session" fallback.
   if (showFaceCapture) {
+    if (!sessionReady) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4 text-slate-500">
+            <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+            <span className="text-sm font-medium">Sınav hazırlanıyor…</span>
+          </div>
+        </div>
+      );
+    }
     return (
       <FaceCapture
-        sessionId={sessionId ?? "pre-session"}
+        sessionId={sessionId!}
         onCaptureDone={() => setShowFaceCapture(false)}
       />
     );
