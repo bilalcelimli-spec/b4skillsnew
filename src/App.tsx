@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useScoringStatus } from "./hooks/useScoringStatus";
 import { thetaToCefr, CEFR_META } from "./lib/cefr/cefr-framework";
 import { CefrLevelCard } from "./components/CefrLevelCard";
 
@@ -38,6 +39,8 @@ export default function App() {
   const [testCompleted, setTestCompleted] = useState<{ theta: number; cefr: string; sessionId: string } | null>(null);
   const [branding, setBranding] = useState<any>(null);
   const [certificate, setCertificate] = useState<any>(null);
+  // SSE stream for async Writing/Speaking scoring — active after test completes
+  const scoringStatus = useScoringStatus(testCompleted?.sessionId ?? null);
 
   // Sync URL → state on first load (deep-link support)
   useEffect(() => {
@@ -326,15 +329,34 @@ export default function App() {
                           </div>
                         </div>
                       </div>
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         className="bg-white text-emerald-600 hover:bg-emerald-50 border-none h-12 px-6 rounded-xl font-black uppercase tracking-widest text-xs"
                         onClick={() => setActiveTab("results")}
+                        disabled={scoringStatus.state === "streaming" || scoringStatus.state === "connecting"}
                       >
-                        View Certificate
+                        {scoringStatus.state === "streaming" || scoringStatus.state === "connecting"
+                          ? "Scoring…"
+                          : "View Certificate"}
                       </Button>
                     </CardContent>
                   </Card>
+                  {/* Async scoring status banner for Writing / Speaking */}
+                  {(scoringStatus.state === "connecting" || scoringStatus.state === "streaming") && (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-center gap-3 px-5 py-3 bg-indigo-50 border border-indigo-200 rounded-2xl text-sm text-indigo-700 font-medium"
+                    >
+                      <span className="animate-spin inline-block w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full" aria-hidden="true" />
+                      Writing &amp; Speaking responses are being scored by AI — results will appear shortly.
+                    </div>
+                  )}
+                  {scoringStatus.state === "timeout" && (
+                    <div role="alert" className="flex items-center gap-3 px-5 py-3 bg-amber-50 border border-amber-200 rounded-2xl text-sm text-amber-700 font-medium">
+                      ⚠️ {scoringStatus.message}
+                    </div>
+                  )}
                   <CefrLevelCard level={testCompleted.cefr as any} theta={testCompleted.theta} className="mt-0" />
                   </>
                 )}
