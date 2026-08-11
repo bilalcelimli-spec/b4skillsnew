@@ -219,7 +219,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
           <p className="text-3xl font-black" style={{ color: cefrColor }}>
             {thetaToBeps(report.finalTheta)}
           </p>
-          <p className="text-[10px] text-slate-400 mt-1">θ {report.finalTheta >= 0 ? "+" : ""}{report.finalTheta.toFixed(2)} · ±{report.finalSem.toFixed(2)} SEM</p>
+          <p className="text-[10px] text-slate-400 mt-1">θ {(report.finalTheta ?? 0) >= 0 ? "+" : ""}{(report.finalTheta ?? 0).toFixed(2)} · ±{(report.finalSem ?? 0).toFixed(2)} SEM</p>
           <ThetaBar theta={report.finalTheta} sem={report.finalSem} color={cefrColor} />
         </div>
         <div className="rounded-xl border border-slate-200 p-4 bg-white col-span-2">
@@ -272,17 +272,17 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
             <div className="grid grid-cols-3 gap-3 text-center">
               <div>
                 <p className="text-lg font-bold font-mono" style={{ color: cefrColor }}>
-                  {report.finalTheta.toFixed(2)}
+                  {(report.finalTheta ?? 0).toFixed(2)}
                 </p>
                 <p className="text-xs text-slate-500">θ estimate</p>
               </div>
               <div>
-                <p className="text-lg font-bold font-mono text-slate-800">±{report.finalSem.toFixed(3)}</p>
+                <p className="text-lg font-bold font-mono text-slate-800">±{(report.finalSem ?? 0).toFixed(3)}</p>
                 <p className="text-xs text-slate-500">SEM</p>
               </div>
               <div>
-                <p className={`text-lg font-bold ${report.finalSem < 0.35 ? "text-green-700" : report.finalSem < 0.45 ? "text-amber-700" : "text-red-700"}`}>
-                  {report.finalSem < 0.35 ? "High" : report.finalSem < 0.45 ? "Medium" : "Low"}
+                <p className={`text-lg font-bold ${(report.finalSem ?? 1) < 0.35 ? "text-green-700" : (report.finalSem ?? 1) < 0.45 ? "text-amber-700" : "text-red-700"}`}>
+                  {(report.finalSem ?? 1) < 0.35 ? "High" : (report.finalSem ?? 1) < 0.45 ? "Medium" : "Low"}
                 </p>
                 <p className="text-xs text-slate-500">Precision</p>
               </div>

@@ -8,7 +8,9 @@ import { AuthPage } from "./components/AuthPage";
 import { CodeEntryPage } from "./components/CodeEntryPage";
 type User = { uid: string; email: string; displayName?: string; role?: string };
 const signOut = async () => {
-  await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+  try {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+  } catch { /* cookie temizlense bile reload yapılmalı */ }
   window.location.reload();
 };
 
@@ -63,6 +65,10 @@ export default function App() {
       else if (path === "/rating") setActiveTab("rating");
       else if (path === "/institutional") setActiveTab("institutional");
       else if (path === "/profile") setActiveTab("profile");
+      else if (path === "/items") setActiveTab("items");
+      else if (path === "/settings") setActiveTab("settings");
+      else if (path === "/psychometrics") setActiveTab("psychometrics");
+      else if (path === "/results") setActiveTab("results");
       else setActiveTab("dashboard");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

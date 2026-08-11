@@ -25,7 +25,7 @@ interface SkillScore {
 
 interface Props {
   skillScores: Record<string, SkillScore>;
-  overallTheta: number;
+  overallTheta: number | null | undefined;
   className?: string;
 }
 
@@ -54,8 +54,9 @@ interface GapItem {
   priority: number;
 }
 
-function computeGaps(skillScores: Record<string, SkillScore>, overallTheta: number): GapItem[] {
-  const overallLevel = thetaToCefr(overallTheta);
+function computeGaps(skillScores: Record<string, SkillScore>, overallTheta: number | null | undefined): GapItem[] {
+  const safeTheta = overallTheta ?? 0;
+  const overallLevel = thetaToCefr(safeTheta);
   const target = nextCefrLevel(overallLevel);
   if (!target) return [];
 
@@ -67,7 +68,7 @@ function computeGaps(skillScores: Record<string, SkillScore>, overallTheta: numb
 
   for (const skill of skills) {
     const score = skillScores[skill];
-    const theta = score?.theta ?? overallTheta;
+    const theta = score?.theta ?? safeTheta;
     const currentLevel = thetaToCefr(theta);
     const skillTarget = nextCefrLevel(currentLevel) ?? target;
 
@@ -95,7 +96,7 @@ function computeGaps(skillScores: Record<string, SkillScore>, overallTheta: numb
 }
 
 export function NextLevelGap({ skillScores, overallTheta, className }: Props) {
-  const overallLevel = thetaToCefr(overallTheta);
+  const overallLevel = thetaToCefr(overallTheta ?? 0);
   const target = nextCefrLevel(overallLevel);
 
   if (!target) {

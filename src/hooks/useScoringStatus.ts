@@ -22,16 +22,23 @@ export type ScoringSessionStatus =
   | { state: "error" };
 
 export function useScoringStatus(sessionId: string | null): ScoringSessionStatus {
-  const [status, setStatus] = useState<ScoringSessionStatus>({ state: "connecting" });
+  // Default to "complete" so buttons are enabled when there is no active session.
+  // The effect transitions to "connecting" only when a real sessionId is provided.
+  const [status, setStatus] = useState<ScoringSessionStatus>({ state: "complete" });
   const itemsRef = useRef<Map<string, ScoringItemStatus>>(new Map());
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      setStatus({ state: "complete" });
+      itemsRef.current.clear();
+      return;
+    }
     if (typeof EventSource === "undefined") {
       setStatus({ state: "error" });
       return;
     }
+    setStatus({ state: "connecting" });
 
     const es = new EventSource(`/api/sessions/${sessionId}/scoring-status`, {
       withCredentials: true,

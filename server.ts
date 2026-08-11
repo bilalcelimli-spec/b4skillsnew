@@ -1972,7 +1972,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // ── GET /api/sessions/:id/adaptive-report ────────────────────────────────────
   // Returns the full AdaptiveReport used by CandidateAdaptiveReport.tsx.
   // Aggregates: session metadata, per-response data, skill scores, BEPS, Can-Do.
-  app.get("/api/sessions/:id/adaptive-report", async (req, res) => {
+  app.get("/api/sessions/:id/adaptive-report", authMiddleware, async (req: any, res) => {
     const { id } = req.params;
     try {
       const { thetaToCefr, thetaToBeps, getCanDo } = await import("./src/lib/cefr/cefr-framework.js");

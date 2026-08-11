@@ -550,7 +550,8 @@ export function cefrToToefl(level: CefrLevel): string {
  * Convert IRT theta (logit scale, typically −4 to +4) to BEPS 0–1000.
  * Linear mapping: theta −4 → 0, theta +4 → 1000.
  */
-export function thetaToBeps(theta: number): number {
+export function thetaToBeps(theta: number | null | undefined): number {
+  if (theta == null || !isFinite(theta)) return 0;
   const clamped = Math.max(-4, Math.min(4, theta));
   return Math.round(((clamped + 4) / 8) * 1000);
 }
