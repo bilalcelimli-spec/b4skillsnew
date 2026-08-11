@@ -1969,6 +1969,160 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // ── GET /api/sessions/:id/adaptive-report ────────────────────────────────────
+  // Returns the full AdaptiveReport used by CandidateAdaptiveReport.tsx.
+  // Aggregates: session metadata, per-response data, skill scores, BEPS, Can-Do.
+  app.get("/api/sessions/:id/adaptive-report", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const { thetaToCefr, thetaToBeps, getCanDo } = await import("./src/lib/cefr/cefr-framework.js");
+
+      if (!dbAvailable) {
+        // Demo mode stub
+        const theta = 0.8;
+        const sem   = 0.38;
+        const level = thetaToCefr(theta);
+        return res.json({
+          sessionId: id,
+          candidateName: "Demo Candidate",
+          completedAt: new Date().toISOString(),
+          finalTheta: theta,
+          finalSem: sem,
+          beps: thetaToBeps(theta),
+          cefrLevel: level,
+          stopReason: "SEM_TARGET_REACHED",
+          totalItems: 22,
+          skillScores: [
+            { skill: "READING",    theta: 1.0,  cefrLevel: "B2" },
+            { skill: "LISTENING",  theta: 0.6,  cefrLevel: "B2" },
+            { skill: "GRAMMAR",    theta: 0.7,  cefrLevel: "B2" },
+            { skill: "VOCABULARY", theta: 0.9,  cefrLevel: "B2" },
+          ],
+          responses: [],
+          canDo: getCanDo(level),
+        });
+      }
+
+      const session = await prisma.session.findUnique({
+        where: { id },
+        include: {
+          responses: {
+            orderBy: { order: "asc" },
+            include: { item: { select: { skill: true, cefrLevel: true, type: true, content: true } } },
+          },
+          scoreReport: true,
+        },
+      }) as any;
+
+      if (!session) return res.status(404).json({ error: "Session not found" });
+
+      const theta: number = session.finalTheta ?? session.currentTheta ?? 0;
+      const sem:   number = session.finalSem   ?? session.currentSem   ?? 0.5;
+      const level = thetaToCefr(theta);
+      const beps  = thetaToBeps(theta);
+
+      // Build per-response entries
+      const responses = (session.responses ?? []).map((r: any) => ({
+        itemId:    r.itemId,
+        skill:     r.item?.skill    ?? "UNKNOWN",
+        cefrLevel: r.item?.cefrLevel ?? "B1",
+        isCorrect: r.isCorrect   ?? null,
+        score:     r.score       ?? null,
+        thetaAfter: r.thetaAfter ?? theta,
+        semAfter:   r.semAfter   ?? sem,
+        latencyMs:  r.responseTimeMs ?? 0,
+        rubricScores: r.rubricScores ?? undefined,
+        aiFeedback:   r.aiFeedback   ?? undefined,
+      }));
+
+      // Aggregate skill-level ability estimates from scoreReport or response data
+      const skillMap: Record<string, { thetas: number[]; cefrLevel: string }> = {};
+      for (const r of responses) {
+        if (!skillMap[r.skill]) skillMap[r.skill] = { thetas: [], cefrLevel: r.cefrLevel };
+        if (r.thetaAfter != null) skillMap[r.skill].thetas.push(r.thetaAfter);
+      }
+      const skillScores = Object.entries(skillMap).map(([skill, { thetas, cefrLevel: cl }]) => {
+        const t = thetas.length ? thetas[thetas.length - 1] : theta;
+        return { skill, theta: t, cefrLevel: thetaToCefr(t) };
+      });
+
+      // Supplement from scoreReport if available
+      const sr = session.scoreReport as any;
+      if (sr?.skillScores) {
+        try {
+          const parsed = typeof sr.skillScores === "string" ? JSON.parse(sr.skillScores) : sr.skillScores;
+          for (const [sk, val] of Object.entries(parsed as Record<string, any>)) {
+            const existing = skillScores.find((s) => s.skill === sk.toUpperCase());
+            if (existing) {
+              existing.theta = val.theta ?? existing.theta;
+              existing.cefrLevel = thetaToCefr(existing.theta);
+            } else {
+              const t2 = val.theta ?? theta;
+              skillScores.push({ skill: sk.toUpperCase(), theta: t2, cefrLevel: thetaToCefr(t2) });
+            }
+          }
+        } catch {}
+      }
+
+      res.json({
+        sessionId: id,
+        candidateId:   session.userId,
+        candidateName: session.user?.name ?? session.user?.email ?? undefined,
+        completedAt:   (session.completedAt ?? session.updatedAt ?? new Date()).toISOString(),
+        finalTheta: theta,
+        finalSem:   sem,
+        beps,
+        cefrLevel:  level,
+        stopReason: session.stopReason ?? "COMPLETED",
+        totalItems: responses.length,
+        skillScores,
+        responses,
+        canDo: getCanDo(level),
+        integrityRisk: session.integrityRisk ?? "LOW",
+        productLine:   session.productLine   ?? undefined,
+      });
+    } catch (err) {
+      console.error("adaptive-report error:", err);
+      res.status(500).json({ error: "Failed to build adaptive report", details: String(err) });
+    }
+  });
+
+  // ── GET /api/sessions/:id/learning-path ──────────────────────────────────────
+  app.get("/api/sessions/:id/learning-path", authMiddleware, async (req: any, res) => {
+    const { id } = req.params;
+    try {
+      if (!dbAvailable) {
+        // Demo stub: 7-day / 30-day / 90-day milestones
+        return res.json({
+          sessionId: id,
+          currentCefrLevel: "B1",
+          targetCefrLevel: "B2",
+          estimatedWeeksToTarget: 12,
+          prioritySkills: ["writing", "speaking", "reading"],
+          weeklyGoal: { sessions: 3, minutesPerDay: 20 },
+          milestones: [
+            { id: "m1", title: "Grammar Consolidation", description: "Master B1 conditional and passive structures.", targetCefrLevel: "B1", targetSkill: "grammar", estimatedDays: 14, prerequisiteMilestoneIds: [], completionCriteria: { minScore: 0.75, minSessions: 4 } },
+            { id: "m2", title: "Reading Fluency", description: "Read longer texts and identify main ideas accurately.", targetCefrLevel: "B2", targetSkill: "reading", estimatedDays: 21, prerequisiteMilestoneIds: ["m1"], completionCriteria: { minScore: 0.70, minSessions: 5 } },
+            { id: "m3", title: "Extended Writing", description: "Write structured essays and reports of 200+ words.", targetCefrLevel: "B2", targetSkill: "writing", estimatedDays: 30, prerequisiteMilestoneIds: ["m1"], completionCriteria: { minScore: 0.65, minSessions: 6 } },
+          ],
+        });
+      }
+
+      const session = await prisma.session.findUnique({
+        where: { id },
+        include: { responses: { orderBy: { order: "asc" }, include: { item: { select: { skill: true } } } } },
+      }) as any;
+      if (!session) return res.status(404).json({ error: "Session not found" });
+
+      const { learningPathEngine } = await import("./src/lib/recommendations/learning-path-engine.js");
+      const path = await learningPathEngine.generatePersonalisedPath(session.userId);
+      return res.json({ sessionId: id, ...path });
+    } catch (err) {
+      console.error("learning-path error:", err);
+      res.status(500).json({ error: "Failed to generate learning path", details: String(err) });
+    }
+  });
+
   // --- PHASE 8: ENTERPRISE & GLOBAL ---
 
   // ── SSE: scoring status stream for async AI responses (Writing / Speaking) ──

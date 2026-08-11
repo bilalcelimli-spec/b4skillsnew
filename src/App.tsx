@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useScoringStatus } from "./hooks/useScoringStatus";
-import { thetaToCefr, CEFR_META } from "./lib/cefr/cefr-framework";
+import { thetaToCefr, thetaToBeps, CEFR_META } from "./lib/cefr/cefr-framework";
 import { CefrLevelCard } from "./components/CefrLevelCard";
 
 import { AuthPage } from "./components/AuthPage";
@@ -18,6 +18,8 @@ import { UnifiedAdminConsole } from "./components/admin/UnifiedAdminConsole";
 import { RatingDashboard } from "./components/RatingDashboard";
 import { InstitutionalDashboard } from "./components/InstitutionalDashboard";
 import { CertificateView } from "./components/CertificateView";
+import { CandidateAdaptiveReport } from "./components/CandidateAdaptiveReport";
+import { AssessmentModeSelector } from "./components/AssessmentModeSelector";
 import { TestPlayer } from "./components/TestPlayer";
 import { LandingPage } from "./components/LandingPage";
 import { ItemBankManager } from "./components/ItemBankManager";
@@ -277,6 +279,11 @@ export default function App() {
           <RatingDashboard />
         ) : activeTab === "institutional" && isOrgAdmin ? (
           <InstitutionalDashboard organizationId={userProfile?.organizationId} />
+        ) : activeTab === "results" && testCompleted?.sessionId ? (
+          <CandidateAdaptiveReport
+            sessionId={testCompleted.sessionId}
+            onClose={() => setActiveTab("dashboard")}
+          />
         ) : activeTab === "results" && certificate ? (
           <CertificateView certificate={certificate} branding={branding} />
         ) : activeTab === "profile" ? (
@@ -324,8 +331,8 @@ export default function App() {
                             <div className="text-3xl font-black">{testCompleted.cefr}</div>
                           </div>
                           <div className="bg-white/20 px-4 py-2 rounded-2xl backdrop-blur-sm">
-                            <div className="text-[10px] font-black uppercase tracking-widest text-emerald-200">Ability (θ)</div>
-                            <div className="text-3xl font-black">{testCompleted.theta.toFixed(2)}</div>
+                            <div className="text-[10px] font-black uppercase tracking-widest text-emerald-200">BEPS Score</div>
+                            <div className="text-3xl font-black">{thetaToBeps(testCompleted.theta)}</div>
                           </div>
                         </div>
                       </div>
@@ -361,56 +368,10 @@ export default function App() {
                   </>
                 )}
 
-                {(!userProfile?.allowedProductLine || userProfile.allowedProductLine === "General English" || userProfile.allowedProductLine === "General" || userProfile.allowedProductLine === "general") && (
-                  <Card className="bg-indigo-600 text-white border-none shadow-indigo-200 shadow-xl rounded-[40px] overflow-hidden relative" style={{ backgroundColor: branding?.primaryColor }}>
-                    <CardContent className="p-10 flex flex-col sm:flex-row items-center gap-10">
-                      <div className="flex-1 text-center sm:text-left">
-                        <h2 className="text-3xl font-black mb-3 uppercase tracking-tighter">
-                          General English Proficiency Test
-                        </h2>
-                        <p className="text-indigo-100 mb-8 leading-relaxed font-bold opacity-80">
-                          Our most popular adaptive assessment. Measures all 6 skills — Vocabulary, Grammar, Reading, Listening, Writing &amp; Speaking — across all CEFR levels.
-                        </p>
-                        <Button
-                          size="lg"
-                          className="bg-white text-indigo-600 hover:bg-indigo-50 border-none shadow-lg h-14 px-8 rounded-2xl font-black uppercase tracking-widest text-sm"
-                          style={{ color: branding?.primaryColor }}
-                          onClick={() => startNewTest("General English")}
-                        >
-                          Start Assessment
-                        </Button>
-                      </div>
-                      <div className="hidden sm:block">
-                        <div className="w-40 h-40 bg-indigo-500/30 rounded-[40px] flex items-center justify-center backdrop-blur-sm border border-indigo-400/30 rotate-6">
-                          <GraduationCap size={80} className="text-white/80" />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {[
-                    "Primary (7-10)",
-                    "Junior Suite (11-14)",
-                    "15-Min Diagnostic",
-                    "Express Assessment (30-Min)",
-                    "General English",
-                    "Academia",
-                    "Corporate",
-                    "Language Schools",
-                    "Specialized / Integrated Skills"
-                  ].filter(pl => !userProfile?.allowedProductLine || userProfile.allowedProductLine === pl || userProfile.allowedProductLine === "General" || userProfile.allowedProductLine === "general").map(pl => (
-                    <Card key={pl} className="border-slate-200 shadow-sm rounded-2xl hover:border-indigo-400 hover:shadow-indigo-100 transition-all cursor-pointer group" onClick={() => startNewTest(pl)}>
-                      <CardContent className="p-4 flex flex-col items-center justify-center gap-2 text-center">
-                        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                          <GraduationCap size={20} />
-                        </div>
-                        <div className="font-bold text-slate-900 group-hover:text-indigo-600 text-xs uppercase tracking-widest leading-tight">{pl}</div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                <AssessmentModeSelector
+                  onSelect={(productLine) => startNewTest(productLine)}
+                  allowedProductLine={userProfile?.allowedProductLine}
+                />
 
                 <section>
                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Recent Activity</h3>

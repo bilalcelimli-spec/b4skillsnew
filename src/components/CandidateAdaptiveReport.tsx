@@ -14,8 +14,11 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { RefreshCw, CheckCircle2, XCircle, ChevronRight, TrendingUp, BarChart2, ListChecks } from "lucide-react";
-import { getCanDo, type CanDoDescriptor } from "../lib/cefr/cefr-framework";
+import { RefreshCw, CheckCircle2, XCircle, ChevronRight, TrendingUp, BarChart2, ListChecks, Lightbulb } from "lucide-react";
+import { getCanDo, thetaToBeps, type CanDoDescriptor } from "../lib/cefr/cefr-framework";
+import { NextLevelGap } from "./NextLevelGap";
+import { ErrorIntelligenceMap } from "./ErrorIntelligenceMap";
+import { LearningPathView } from "./LearningPathView";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
   ResponsiveContainer, Area, AreaChart, Legend,
@@ -123,7 +126,7 @@ interface Props {
 export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
   const [report, setReport] = useState<AdaptiveReport | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"overview" | "items" | "trajectory" | "cando" | "growth">("overview");
+  const [tab, setTab] = useState<"overview" | "insights" | "items" | "trajectory" | "cando" | "growth">("overview");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [sessionHistory, setSessionHistory] = useState<any[]>([]);
   const [growthFromId, setGrowthFromId] = useState<string>("");
@@ -164,6 +167,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
   const cefrColor = CEFR_COLORS[report.cefrLevel] ?? "#64748b";
   const TABS = [
     { id: "overview"   as const, label: "Overview" },
+    { id: "insights"   as const, label: "Insights" },
     { id: "items"      as const, label: `Items (${report.totalItems})` },
     { id: "trajectory" as const, label: "θ Trajectory" },
     { id: "cando"      as const, label: "Can-Do" },
@@ -208,15 +212,15 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
         </div>
       </div>
 
-      {/* Theta summary */}
+      {/* Theta + BEPS summary */}
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-xl border border-slate-200 p-4 bg-white">
-          <p className="text-xs text-slate-500 mb-1">Final θ</p>
-          <p className="text-2xl font-bold font-mono" style={{ color: cefrColor }}>
-            {report.finalTheta >= 0 ? "+" : ""}{report.finalTheta.toFixed(3)}
+          <p className="text-xs text-slate-500 mb-1">BEPS Score</p>
+          <p className="text-3xl font-black" style={{ color: cefrColor }}>
+            {thetaToBeps(report.finalTheta)}
           </p>
+          <p className="text-[10px] text-slate-400 mt-1">θ {report.finalTheta >= 0 ? "+" : ""}{report.finalTheta.toFixed(2)} · ±{report.finalSem.toFixed(2)} SEM</p>
           <ThetaBar theta={report.finalTheta} sem={report.finalSem} color={cefrColor} />
-          <p className="text-xs text-slate-400 mt-1">±{report.finalSem.toFixed(3)} SEM</p>
         </div>
         <div className="rounded-xl border border-slate-200 p-4 bg-white col-span-2">
           <p className="text-xs font-medium text-slate-600 mb-3">Skill Profile (6D MIRT)</p>
@@ -283,6 +287,32 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
                 <p className="text-xs text-slate-500">Precision</p>
               </div>
             </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* ── INSIGHTS: Error Map + Gap Analysis + Learning Path ──────────── */}
+      {tab === "insights" && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+          <div className="border border-slate-200 rounded-xl p-5 bg-white">
+            <div className="flex items-center gap-2 mb-4">
+              <Lightbulb size={16} className="text-amber-500" />
+              <h3 className="text-sm font-bold text-slate-700">Error Intelligence</h3>
+            </div>
+            <ErrorIntelligenceMap responses={report.responses as any} />
+          </div>
+
+          <div className="border border-slate-200 rounded-xl p-5 bg-white">
+            <NextLevelGap
+              skillScores={Object.fromEntries(
+                report.skillScores.map((s) => [s.skill.toLowerCase(), { theta: s.theta, sem: 0.3 }])
+              )}
+              overallTheta={report.finalTheta}
+            />
+          </div>
+
+          <div className="border border-slate-200 rounded-xl p-5 bg-white">
+            <LearningPathView sessionId={sessionId} />
           </div>
         </motion.div>
       )}

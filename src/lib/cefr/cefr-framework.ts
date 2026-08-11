@@ -542,6 +542,45 @@ export function cefrToToefl(level: CefrLevel): string {
   return `${meta.toefl.min}–${meta.toefl.max}`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. BEPS SCALE (b4skills English Proficiency Score, 0–1000)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Convert IRT theta (logit scale, typically −4 to +4) to BEPS 0–1000.
+ * Linear mapping: theta −4 → 0, theta +4 → 1000.
+ */
+export function thetaToBeps(theta: number): number {
+  const clamped = Math.max(-4, Math.min(4, theta));
+  return Math.round(((clamped + 4) / 8) * 1000);
+}
+
+/** Convert BEPS back to theta (inverse of thetaToBeps). */
+export function bepsToTheta(beps: number): number {
+  return (Math.max(0, Math.min(1000, beps)) / 1000) * 8 - 4;
+}
+
+/** Human-readable BEPS band label (aligned with CEFR group names). */
+export function bepsLabel(beps: number): string {
+  if (beps < 125) return "Beginner";
+  if (beps < 281) return "Elementary";
+  if (beps < 438) return "Pre-Intermediate";
+  if (beps < 563) return "Intermediate";
+  if (beps < 688) return "Upper-Intermediate";
+  if (beps < 813) return "Advanced";
+  return "Mastery";
+}
+
+/**
+ * Return the 95 % confidence interval for BEPS given theta and SEM.
+ * Returns [lo, hi] on the 0–1000 scale.
+ */
+export function bepsConfidenceInterval(theta: number, sem: number): [number, number] {
+  const lo = thetaToBeps(theta - 1.96 * sem);
+  const hi = thetaToBeps(theta + 1.96 * sem);
+  return [lo, hi];
+}
+
 /** Returns a rich AI scoring prompt addendum specific to the CEFR level for writing/speaking. */
 export function buildCefrRubricPrompt(level: CefrLevel, domain: "writing" | "speaking"): string {
   const rubric = getRubric(level, domain);
