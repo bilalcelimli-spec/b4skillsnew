@@ -44,21 +44,29 @@ export default function App() {
   // SSE stream for async Writing/Speaking scoring — active after test completes
   const scoringStatus = useScoringStatus(testCompleted?.sessionId ?? null);
 
-  // Sync URL → state on first load (deep-link support)
+  // Sync URL → state (runs on every location change, incl. browser back/forward)
   useEffect(() => {
     const path = location.pathname;
     const examMatch = path.match(/^\/exam\/(.+)/);
     const reportMatch = path.match(/^\/report\/(.+)/);
     if (examMatch) {
-      // Deep-link to exam — session will be resumed once the user is authenticated
+      // exam deep-link — session resumed after auth
     } else if (reportMatch) {
       setActiveTab("results");
-    } else if (path === "/admin") {
-      setActiveTab("admin");
-    } else if (path === "/dashboard") {
-      setActiveTab("dashboard");
+    } else {
+      // Leaving a report/exam URL: clear transient session state so the
+      // state→URL effect doesn't fight the browser back button and push
+      // the user back to /report/… or /exam/…
+      setTestCompleted(null);
+      setActiveSession(null);
+      if (path === "/admin") setActiveTab("admin");
+      else if (path === "/rating") setActiveTab("rating");
+      else if (path === "/institutional") setActiveTab("institutional");
+      else if (path === "/profile") setActiveTab("profile");
+      else setActiveTab("dashboard");
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   // Sync state → URL
   useEffect(() => {
@@ -193,6 +201,17 @@ export default function App() {
   const isRater = profRole === "RATER" || isAdmin;
   const isOrgAdmin = ["ORG_ADMIN", "INST_ADMIN"].includes(profRole) || isAdmin;
 
+  // Clears stale session state when the user explicitly switches away from results.
+  // Prevents the state→URL effect from fighting browser back by re-pushing /report/…
+  type Tab = typeof activeTab;
+  const goToTab = (tab: Tab) => {
+    if (tab !== "results") {
+      setTestCompleted(null);
+      setCertificate(null);
+    }
+    setActiveTab(tab);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar */}
@@ -208,47 +227,47 @@ export default function App() {
         </div>
         
         <nav className="space-y-2 flex-1">
-          <SidebarItem 
-            icon={<LayoutDashboard size={20} />} 
-            label="Dashboard" 
-            active={activeTab === "dashboard"} 
-            onClick={() => setActiveTab("dashboard")}
+          <SidebarItem
+            icon={<LayoutDashboard size={20} />}
+            label="Dashboard"
+            active={activeTab === "dashboard"}
+            onClick={() => goToTab("dashboard")}
           />
           {isAdmin && (
-            <SidebarItem 
-              icon={<ShieldAlert size={20} />} 
-              label="Admin Console" 
-              active={activeTab === "admin"} 
-              onClick={() => setActiveTab("admin")}
+            <SidebarItem
+              icon={<ShieldAlert size={20} />}
+              label="Admin Console"
+              active={activeTab === "admin"}
+              onClick={() => goToTab("admin")}
             />
           )}
           {isRater && (
-            <SidebarItem 
-              icon={<ClipboardList size={20} />} 
-              label="Rating Queue" 
-              active={activeTab === "rating"} 
-              onClick={() => setActiveTab("rating")}
+            <SidebarItem
+              icon={<ClipboardList size={20} />}
+              label="Rating Queue"
+              active={activeTab === "rating"}
+              onClick={() => goToTab("rating")}
             />
           )}
           {isOrgAdmin && (
-            <SidebarItem 
-              icon={<BarChart3 size={20} />} 
-              label="Institutional" 
-              active={activeTab === "institutional"} 
-              onClick={() => setActiveTab("institutional")}
+            <SidebarItem
+              icon={<BarChart3 size={20} />}
+              label="Institutional"
+              active={activeTab === "institutional"}
+              onClick={() => goToTab("institutional")}
             />
           )}
-          <SidebarItem 
-            icon={<FileText size={20} />} 
-            label="My Results" 
-            active={activeTab === "results"} 
-            onClick={() => setActiveTab("results")}
+          <SidebarItem
+            icon={<FileText size={20} />}
+            label="My Results"
+            active={activeTab === "results"}
+            onClick={() => goToTab("results")}
           />
-          <SidebarItem 
-            icon={<UserCircle size={20} />} 
-            label="Profile" 
-            active={activeTab === "profile"} 
-            onClick={() => setActiveTab("profile")}
+          <SidebarItem
+            icon={<UserCircle size={20} />}
+            label="Profile"
+            active={activeTab === "profile"}
+            onClick={() => goToTab("profile")}
           />
         </nav>
 
@@ -282,7 +301,7 @@ export default function App() {
         ) : activeTab === "results" && testCompleted?.sessionId ? (
           <CandidateAdaptiveReport
             sessionId={testCompleted.sessionId}
-            onClose={() => setActiveTab("dashboard")}
+            onClose={() => { setTestCompleted(null); setActiveTab("dashboard"); }}
           />
         ) : activeTab === "results" && certificate ? (
           <CertificateView certificate={certificate} branding={branding} />
