@@ -1642,7 +1642,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         }
         const content = (item.content as Record<string, any>) ?? {};
         const ttsScript: string | undefined = content.ttsScript;
-        const moduleId: string | undefined = content.moduleId ?? id;
+        const moduleId: string = (content.moduleId as string | undefined) ?? id;
         if (!ttsScript) {
           return res.status(400).json({ error: "Item has no ttsScript in content. Generate or add a ttsScript first." });
         }
