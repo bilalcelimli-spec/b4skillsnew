@@ -59,14 +59,15 @@ async function startServer() {
         const seedEmail = process.env.ADMIN_SEED_EMAIL;
         const seedPassword = process.env.ADMIN_SEED_PASSWORD;
         if (seedEmail && seedPassword) {
-        const { default: bcryptSeed } = await import("bcrypt");
-        const adminHash = await bcryptSeed.hash(seedPassword, 10);
-        await prisma.user.upsert({
-          where: { email: seedEmail },
-          update: {},
-          create: { email: seedEmail, name: "Admin", password: adminHash, role: "SUPER_ADMIN", organizationId: "b4skills-demo" }
-        });
-        console.log("✅ Admin seed OK");
+          const { default: bcryptSeed } = await import("bcrypt");
+          const adminHash = await bcryptSeed.hash(seedPassword, 10);
+          await prisma.user.upsert({
+            where: { email: seedEmail },
+            // Always sync the password from env — ensures ADMIN_SEED_PASSWORD changes take effect
+            update: { password: adminHash },
+            create: { email: seedEmail, name: "Admin", password: adminHash, role: "SUPER_ADMIN", organizationId: "b4skills-demo" }
+          });
+          console.log("✅ Admin seed OK");
         }
       } catch (seedErr) {
         console.warn("⚠️  Admin seed failed:", seedErr);
@@ -137,12 +138,32 @@ async function startServer() {
   const JWT_SECRET = process.env.JWT_SECRET;
   const REFRESH_SECRET = process.env.REFRESH_SECRET;
 
+  // Login limiter — Redis-backed when REDIS_URL is set (works across instances),
+  // falls back to per-process in-memory store when Redis is unavailable.
+  let loginLimiterStore: import("express-rate-limit").Store | undefined;
+  if (process.env.REDIS_URL) {
+    try {
+      const { default: Redis } = await import("ioredis");
+      const { RedisStore } = await import("rate-limit-redis");
+      const redisClient = new Redis(process.env.REDIS_URL, { lazyConnect: true, enableOfflineQueue: false });
+      await redisClient.connect().catch(() => {});
+      loginLimiterStore = new RedisStore({
+        sendCommand: (args_0: string, ...args: string[]) => redisClient.call(args_0, ...args) as any,
+        prefix: "rl_login:",
+      });
+      console.log("✅ loginLimiter backed by Redis");
+    } catch {
+      console.warn("⚠️  Redis unavailable — loginLimiter using in-memory store");
+    }
+  }
+
   const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // Limit each IP to 5 requests per `window` (here, per 15 minutes)
+    max: 5,
     message: { error: 'Too many login attempts from this IP, please try again after 15 minutes' },
     standardHeaders: true,
     legacyHeaders: false,
+    store: loginLimiterStore,
   });
 
   const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
