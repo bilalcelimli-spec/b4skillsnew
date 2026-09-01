@@ -85,7 +85,9 @@ async function startServer() {
 
   // --- SECURITY: Block known scanner / probe paths (WordPress, PHP, xmlrpc, etc.) ---
   const BLOCKED_PROBE_PATTERN = /\.(php|asp|aspx|jsp|cgi|env|git|svn|htaccess|htpasswd|DS_Store|config|bak|old|sql|xml)$/i;
-  const BLOCKED_PROBE_PATHS = /\/(wp-admin|wp-login|wp-content|wp-includes|xmlrpc|phpmyadmin|phpinfo|admin|install\.php|setup\.php|\.well-known\/security)/i;
+  // Note: 'admin' intentionally removed — our SPA has a legitimate /admin route.
+  // WordPress-specific admin paths (wp-admin, phpmyadmin) are still blocked.
+  const BLOCKED_PROBE_PATHS = /\/(wp-admin|wp-login|wp-content|wp-includes|xmlrpc|phpmyadmin|phpinfo|install\.php|setup\.php|\.well-known\/security)/i;
 
   app.use((req, res, next) => {
     if (BLOCKED_PROBE_PATTERN.test(req.path) || BLOCKED_PROBE_PATHS.test(req.path)) {
