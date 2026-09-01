@@ -102,6 +102,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         const res = await fetch("/api/sessions/launch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ candidateId, organizationId, productLine })
         });
         const data = await res.json();
@@ -124,8 +125,9 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         }
         sessionStartRef.current = Date.now();
         fetchNextItem(data.sessionId);
-      } catch (err) {
-        setError("Failed to initialize assessment session. Please check your database connection.");
+      } catch (err: any) {
+        const msg = err?.message || "Unknown error";
+        setError(`Assessment could not start: ${msg}`);
         setLoading(false);
       }
     };

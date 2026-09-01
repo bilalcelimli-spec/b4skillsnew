@@ -1174,9 +1174,16 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         throw err;
       }
       res.json(session);
-    } catch (error) {
+    } catch (error: any) {
       console.error("LAUNCH ERROR", error);
-      res.status(500).json({ error: "Failed to launch session" });
+      // Surface configuration errors (item bank, billing) clearly — they are
+      // operational issues the admin needs to act on, not security-sensitive info.
+      const msg: string = error?.message ?? "";
+      const isConfigError = msg.includes("Item bank is insufficient") ||
+                            msg.includes("Insufficient credits") ||
+                            msg.includes("profile") ||
+                            msg.includes("product line");
+      res.status(500).json({ error: isConfigError ? msg : "Failed to launch session" });
     }
   });
 
