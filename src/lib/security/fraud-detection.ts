@@ -153,7 +153,8 @@ async function rtAnomalySignal(
 
 async function similaritySignal(
   sessionId: string,
-  candidateId: string
+  candidateId: string,
+  organizationId: string
 ): Promise<{ score: number; mostSimilarSessionId: string | null }> {
   // Fetch current session's item order + responses
   const currentResponses = await prisma.response.findMany({
@@ -172,6 +173,7 @@ async function similaritySignal(
   const recentSessions = await prisma.session.findMany({
     where: {
       id: { not: sessionId },
+      organizationId,
       status: "COMPLETED",
       completedAt: {
         gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // last 30 days
@@ -276,14 +278,14 @@ function compositeToTier(score: number): FraudRiskTier {
 export async function analyzeSessionFraud(sessionId: string): Promise<FraudReport> {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { candidateId: true },
+    select: { candidateId: true, organizationId: true },
   });
 
   if (!session) throw new Error(`Session ${sessionId} not found`);
 
   const [rt, sim, ip] = await Promise.all([
     rtAnomalySignal(sessionId),
-    similaritySignal(sessionId, session.candidateId),
+    similaritySignal(sessionId, session.candidateId, session.organizationId),
     ipClusterSignal(sessionId),
   ]);
 

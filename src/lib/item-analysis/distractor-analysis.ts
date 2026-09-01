@@ -129,12 +129,15 @@ export const DistractorAnalysisService = {
   /**
    * Analyze a single item with all response data
    */
-  async analyzeItem(itemId: string): Promise<ItemAnalysisReport> {
+  async analyzeItem(itemId: string, organizationId?: string): Promise<ItemAnalysisReport> {
     const item = await prisma.item.findUnique({ where: { id: itemId } });
     if (!item) throw new Error(`Item ${itemId} not found`);
 
     const responses = await prisma.response.findMany({
-      where: { itemId },
+      where: {
+        itemId,
+        ...(organizationId ? { session: { organizationId } } : {}),
+      },
       include: { session: true },
     });
 
@@ -272,7 +275,7 @@ export const DistractorAnalysisService = {
   /**
    * Batch analyze all active items
    */
-  async analyzeAllItems(): Promise<ItemAnalysisReport[]> {
+  async analyzeAllItems(organizationId?: string): Promise<ItemAnalysisReport[]> {
     const items = await prisma.item.findMany({
       where: { status: { in: ["ACTIVE", "PRETEST"] } },
       select: { id: true },
@@ -281,7 +284,7 @@ export const DistractorAnalysisService = {
     const reports: ItemAnalysisReport[] = [];
     for (const item of items) {
       try {
-        const report = await this.analyzeItem(item.id);
+        const report = await this.analyzeItem(item.id, organizationId);
         if (report.sampleSize >= 10) {
           reports.push(report);
         }

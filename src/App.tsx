@@ -43,6 +43,7 @@ export default function App() {
   const [testCompleted, setTestCompleted] = useState<{ theta: number; cefr: string; sessionId: string } | null>(null);
   const [branding, setBranding] = useState<any>(null);
   const [certificate, setCertificate] = useState<any>(null);
+  const [recentSessions, setRecentSessions] = useState<any[]>([]);
   // SSE stream for async Writing/Speaking scoring — active after test completes
   const scoringStatus = useScoringStatus(testCompleted?.sessionId ?? null);
 
@@ -122,6 +123,17 @@ export default function App() {
                 setBranding(b);
               }
             } catch (err) {}
+          }
+
+          // Load recent activity for the dashboard
+          try {
+            const histRes = await fetch(`/api/candidates/${data.user.uid}/history`);
+            if (histRes.ok) {
+              const sessions = await histRes.json();
+              setRecentSessions(Array.isArray(sessions) ? sessions.slice(0, 5) : []);
+            }
+          } catch (_err) {
+            // Non-blocking — dashboard still renders without history
           }
         }
       } catch (err) {
@@ -482,18 +494,17 @@ export default function App() {
                 <section>
                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Recent Activity</h3>
                   <div className="space-y-4">
-                    <ActivityItem 
-                      title="Placement Test" 
-                      date="Oct 12, 2025" 
-                      score="B2" 
-                      status="Verified"
-                    />
-                    <ActivityItem 
-                      title="Business English Module" 
-                      date="Sep 28, 2025" 
-                      score="C1" 
-                      status="Verified"
-                    />
+                    {recentSessions.length === 0 ? (
+                      <p className="text-sm text-slate-400 font-medium py-4 text-center">No assessments taken yet. Start your first test above!</p>
+                    ) : recentSessions.map((s: any) => (
+                      <ActivityItem
+                        key={s.id}
+                        title={s.metadata?.productLine || "Assessment"}
+                        date={s.completedAt ? new Date(s.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "In progress"}
+                        score={s.scoreReport?.overallCefr ?? s.cefrLevel ?? "—"}
+                        status={s.status === "COMPLETED" ? "Verified" : s.status === "IN_PROGRESS" ? "In Progress" : s.status}
+                      />
+                    ))}
                   </div>
                 </section>
               </div>
@@ -502,12 +513,24 @@ export default function App() {
                 <Card className="rounded-[32px] border-slate-100 shadow-sm">
                   <CardHeader className="font-black uppercase tracking-widest text-xs text-slate-400">Your Progress</CardHeader>
                   <CardContent>
-                    <div className="space-y-6">
-                      <SkillProgress label="Reading" value={75} level="B2" />
-                      <SkillProgress label="Listening" value={88} level="C1" />
-                      <SkillProgress label="Writing" value={62} level="B1+" />
-                      <SkillProgress label="Speaking" value={70} level="B2" />
-                    </div>
+                    {(() => {
+                      const latest = recentSessions.find(s => s.status === "COMPLETED" && s.scoreReport);
+                      if (!latest) return <p className="text-sm text-slate-400 font-medium py-2">Complete an assessment to see your skill breakdown.</p>;
+                      const r = latest.scoreReport;
+                      const toVal = (score: number | null) => score != null ? Math.round(score * 100) : null;
+                      const skills = [
+                        { label: "Reading",   value: toVal(r.readingScore),   level: r.readingCefr   },
+                        { label: "Listening", value: toVal(r.listeningScore), level: r.listeningCefr },
+                        { label: "Writing",   value: toVal(r.writingScore),   level: r.writingCefr   },
+                        { label: "Speaking",  value: toVal(r.speakingScore),  level: r.speakingCefr  },
+                      ].filter(s => s.value != null);
+                      if (skills.length === 0) return <p className="text-sm text-slate-400 font-medium py-2">Skill data not yet available.</p>;
+                      return (
+                        <div className="space-y-6">
+                          {skills.map(s => <SkillProgress key={s.label} label={s.label} value={s.value!} level={s.level ?? "—"} />)}
+                        </div>
+                      );
+                    })()}
                   </CardContent>
                 </Card>
 

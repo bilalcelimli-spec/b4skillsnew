@@ -352,7 +352,8 @@ async function startServer() {
       data: { resetPasswordToken: resetToken, resetPasswordExpires: resetExpires }
     });
 
-    const resetLink = `http://localhost:5173/reset-password?token=${resetToken}`;
+    const appUrl = process.env.APP_URL ?? "http://localhost:3001";
+    const resetLink = `${appUrl}/reset-password?token=${resetToken}`;
     await sendMockEmail(user.email, "Password Reset", `Click here to reset: ${resetLink}`);
     
     return res.json({ message: 'If email exists, reset link sent.' });
