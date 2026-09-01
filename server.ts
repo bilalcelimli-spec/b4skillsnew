@@ -1877,7 +1877,22 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         create: { userId: upsertedUser.id, metadata: { school, className } }
       });
 
-      res.json({ success: true, organizationId: examCode.organizationId, productLine: examCode.productLine });
+      // 4. Issue JWT so the candidate can immediately start a session
+      const accessToken = jwt.sign({ userId: upsertedUser.id }, JWT_SECRET, { expiresIn: '15m' });
+      const refreshToken = jwt.sign({ userId: upsertedUser.id }, REFRESH_SECRET, { expiresIn: '7d' });
+      await prisma.user.update({
+        where: { id: upsertedUser.id },
+        data: { refreshToken }
+      });
+      setAuthCookies(res, accessToken, refreshToken);
+
+      res.json({
+        success: true,
+        organizationId: examCode.organizationId,
+        productLine: examCode.productLine,
+        candidateId: upsertedUser.id,
+        displayName: upsertedUser.name,
+      });
     } catch(err) {
       res.status(500).json({ error: "Redeem failed"});
     }

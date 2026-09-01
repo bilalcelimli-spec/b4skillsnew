@@ -199,9 +199,9 @@ export default function App() {
   }
 
   if (showCodeEntry) {
-    return <CodeEntryPage onBack={() => { setShowCodeEntry(false); setShowLanding(true); }} onSuccess={(productLine, orgId, email) => {
-      setUser({ uid: "cand_" + Date.now(), email } as any);
-      setUserProfile({ role: "candidate", organizationId: orgId, allowedProductLine: productLine });
+    return <CodeEntryPage onBack={() => { setShowCodeEntry(false); setShowLanding(true); }} onSuccess={(productLine, orgId, email, candidateId, name) => {
+      setUser({ uid: candidateId, email, displayName: `${name}` } as any);
+      setUserProfile({ uid: candidateId, email, role: "CANDIDATE", organizationId: orgId, allowedProductLine: productLine });
       setShowCodeEntry(false);
     }} />;
   }
