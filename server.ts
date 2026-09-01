@@ -100,18 +100,22 @@ async function startServer() {
     max: 20,
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.path.startsWith("/api/"),
+    skip: (req) => req.path.startsWith("/api/") || req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS",
   });
   app.use(genericPostLimiter);
 
-  // --- SECURITY: Global rate-limit for all requests (bot / crawler protection) ---
-  // Allows ~200 req/min per IP — enough for real users, blocks aggressive scrapers.
+  // --- SECURITY: Global rate-limit for /api/ requests (bot / crawler protection) ---
+  // Only applies to API routes — static assets and Vite HMR are never rate-limited.
+  // In development the limit is relaxed so rapid page reloads don't trigger 429s.
   const globalLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 minute
-    max: 200,
+    max: 300,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: "Too many requests, please slow down." },
+    // Only throttle API calls — static assets and Vite HMR are exempt.
+    // Also skip entirely in development to avoid false positives from rapid reloads.
+    skip: (req) => !req.path.startsWith("/api/") || process.env.NODE_ENV !== "production",
   });
   app.use(globalLimiter);
 
