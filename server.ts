@@ -3545,7 +3545,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     } catch (err: any) {
       const msg = err?.message ?? String(err);
       if (msg.includes("OPENAI_API_KEY")) return res.status(503).json({ error: "Whisper not configured — OPENAI_API_KEY missing" });
-      res.status(500).json({ error: "Transcription failed", details: msg });
+      res.status(500).json({ error: "Transcription failed" });
     }
   });
 
@@ -3561,7 +3561,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const httpStatus = result.status === "healthy" ? 200 : 503;
         res.status(httpStatus).json(result);
       } catch (err: any) {
-        res.status(503).json({ healthy: false, error: String(err?.message ?? err) });
+        res.status(503).json({ healthy: false, error: "Health check failed" });
       }
     });
 
@@ -3571,7 +3571,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const slo = uptimeTracker.sloStatus();
         res.json({ ...result, slo });
       } catch (err: any) {
-        res.status(503).json({ healthy: false, error: String(err?.message ?? err) });
+        res.status(503).json({ healthy: false, error: "Health check failed" });
       }
     });
 
@@ -3604,7 +3604,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const event = buildAuditEvent({ category: "ACCESS_CONTROL", severity: "INFO", actor, action, resource, organizationId, ipAddress: ipAddress ?? req.ip, userAgent: userAgent ?? req.headers["user-agent"] ?? "", outcomeSuccess: outcomeSuccess !== false });
         res.json(event);
       } catch (err: any) {
-        res.status(500).json({ error: String(err?.message ?? err) });
+        res.status(500).json({ error: "Internal server error" });
       }
     });
   }
@@ -3905,7 +3905,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         await canvas.agsGradePassback(lineItemUrl, ltiUserId, Number(score), Number(pointsPossible ?? 100), comment);
         return res.json({ ok: true });
       } catch (err: any) {
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     });
 
@@ -3921,7 +3921,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         await moodle.agsGradePassback({ courseId, assignmentId, moodleUserId, score: Number(score), maxScore, comment });
         return res.json({ ok: true });
       } catch (err: any) {
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     });
 
@@ -3989,7 +3989,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         if (!report) return res.status(404).json({ error: "Session not found" });
         return res.json(report);
       } catch (err: any) {
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     });
 
@@ -4004,7 +4004,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const result = await ScoreReportService.getCandidateHistory(req.params.candidateId, resolvedOrgId, baseUrl(req), limit, offset);
         return res.json(result);
       } catch (err: any) {
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     });
 
@@ -4017,7 +4017,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const result = await ScoreReportService.getOrgAggregate(req.params.orgId, baseUrl(req));
         return res.json(result);
       } catch (err: any) {
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     });
 
@@ -4033,7 +4033,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const reports = await ScoreReportService.batchReports(sessionIds, callerOrgId, baseUrl(req));
         return res.json({ data: reports, meta: { generated_at: new Date().toISOString(), count: reports.length } });
       } catch (err: any) {
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     });
 
@@ -4047,7 +4047,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         await prisma.organization.update({ where: { id: orgId }, data: { apiKeyDigest: digest } as any });
         return res.json({ key, note: "Store this key securely — it will not be shown again." });
       } catch (err: any) {
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     });
   }
@@ -4066,7 +4066,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const result = await DiagnosticService.launch(userId, orgId);
         return res.status(201).json(result);
       } catch (err: any) {
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     });
 
@@ -4103,7 +4103,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const result = await ValidityPolicyService.publicVerify(req.params.sessionId);
         return res.json(result);
       } catch (err: any) {
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     });
 
@@ -4126,7 +4126,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const results = await ValidityPolicyService.getExpiringSessions(orgId, days);
         return res.json({ data: results, meta: { count: results.length, withinDays: days } });
       } catch (err: any) {
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     });
 
@@ -4136,7 +4136,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const result = await ValidityPolicyService.markExpiredSessions();
         return res.json({ ok: true, ...result });
       } catch (err: any) {
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     });
 
@@ -4147,7 +4147,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const result = await ValidityPolicyService.publicVerify(req.params.certId);
         return res.json(result);
       } catch (err: any) {
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     });
   }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useScoringStatus } from "./hooks/useScoringStatus";
 import { thetaToCefr, thetaToBeps, CEFR_META } from "./lib/cefr/cefr-framework";
@@ -16,16 +16,25 @@ const signOut = async () => {
 
 import { Button } from "./components/ui/Button";
 import { Card, CardContent, CardHeader } from "./components/ui/Card";
-import { UnifiedAdminConsole } from "./components/admin/UnifiedAdminConsole";
-import { RatingDashboard } from "./components/RatingDashboard";
-import { InstitutionalDashboard } from "./components/InstitutionalDashboard";
-import { CertificateView } from "./components/CertificateView";
-import { CandidateAdaptiveReport } from "./components/CandidateAdaptiveReport";
-import { AssessmentModeSelector } from "./components/AssessmentModeSelector";
-import { TestPlayer } from "./components/TestPlayer";
-import { LandingPage } from "./components/LandingPage";
-import { ItemBankManager } from "./components/ItemBankManager";
-import { CandidateProfile } from "./components/CandidateProfile";
+
+// Heavy role-specific components — lazy-loaded so candidates never download admin/rater code
+const UnifiedAdminConsole    = lazy(() => import("./components/admin/UnifiedAdminConsole").then(m => ({ default: m.UnifiedAdminConsole })));
+const RatingDashboard        = lazy(() => import("./components/RatingDashboard").then(m => ({ default: m.RatingDashboard })));
+const InstitutionalDashboard = lazy(() => import("./components/InstitutionalDashboard").then(m => ({ default: m.InstitutionalDashboard })));
+const CertificateView        = lazy(() => import("./components/CertificateView").then(m => ({ default: m.CertificateView })));
+const CandidateAdaptiveReport = lazy(() => import("./components/CandidateAdaptiveReport").then(m => ({ default: m.CandidateAdaptiveReport })));
+const AssessmentModeSelector  = lazy(() => import("./components/AssessmentModeSelector").then(m => ({ default: m.AssessmentModeSelector })));
+const TestPlayer             = lazy(() => import("./components/TestPlayer").then(m => ({ default: m.TestPlayer })));
+const LandingPage            = lazy(() => import("./components/LandingPage").then(m => ({ default: m.LandingPage })));
+const ItemBankManager        = lazy(() => import("./components/ItemBankManager").then(m => ({ default: m.ItemBankManager })));
+const CandidateProfile       = lazy(() => import("./components/CandidateProfile").then(m => ({ default: m.CandidateProfile })));
+
+// Shared loading fallback
+const PageLoader = () => (
+  <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600" />
+  </div>
+);
 import { LogIn, LogOut, GraduationCap, LayoutDashboard, FileText, Settings, ShieldCheck, User as UserIcon, ShieldAlert, CheckCircle2, ClipboardList, Building2, BarChart3, Award, Database, UserCircle, Sliders, BoxSelect, Menu, X } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "./lib/utils";
@@ -196,7 +205,11 @@ export default function App() {
   }
 
   if (!user && showLanding) {
-    return <LandingPage onStart={() => setShowLanding(false)} onCodeEntry={() => { setShowLanding(false); setShowCodeEntry(true); }} />;
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <LandingPage onStart={() => setShowLanding(false)} onCodeEntry={() => { setShowLanding(false); setShowCodeEntry(true); }} />
+      </Suspense>
+    );
   }
 
   if (!user) {
@@ -205,12 +218,14 @@ export default function App() {
 
   if (activeSession) {
     return (
-      <TestPlayer 
-        organizationId={activeSession.orgId} 
-        candidateId={user.uid} 
-        productLine={activeSession.productLine}
-        onComplete={handleTestComplete}
-      />
+      <Suspense fallback={<PageLoader />}>
+        <TestPlayer
+          organizationId={activeSession.orgId}
+          candidateId={user.uid}
+          productLine={activeSession.productLine}
+          onComplete={handleTestComplete}
+        />
+      </Suspense>
     );
   }
 
@@ -392,20 +407,32 @@ export default function App() {
           </button>
         </div>
         {activeTab === "admin" && isAdmin ? (
-          <UnifiedAdminConsole orgId={userProfile?.organizationId} />
+          <Suspense fallback={<PageLoader />}>
+            <UnifiedAdminConsole orgId={userProfile?.organizationId} />
+          </Suspense>
         ) : activeTab === "rating" && isRater ? (
-          <RatingDashboard />
+          <Suspense fallback={<PageLoader />}>
+            <RatingDashboard />
+          </Suspense>
         ) : activeTab === "institutional" && isOrgAdmin ? (
-          <InstitutionalDashboard organizationId={userProfile?.organizationId} />
+          <Suspense fallback={<PageLoader />}>
+            <InstitutionalDashboard organizationId={userProfile?.organizationId} />
+          </Suspense>
         ) : activeTab === "results" && testCompleted?.sessionId ? (
-          <CandidateAdaptiveReport
-            sessionId={testCompleted.sessionId}
-            onClose={() => { setTestCompleted(null); setActiveTab("dashboard"); }}
-          />
+          <Suspense fallback={<PageLoader />}>
+            <CandidateAdaptiveReport
+              sessionId={testCompleted.sessionId}
+              onClose={() => { setTestCompleted(null); setActiveTab("dashboard"); }}
+            />
+          </Suspense>
         ) : activeTab === "results" && certificate ? (
-          <CertificateView certificate={certificate} branding={branding} />
+          <Suspense fallback={<PageLoader />}>
+            <CertificateView certificate={certificate} branding={branding} />
+          </Suspense>
         ) : activeTab === "profile" ? (
-          <CandidateProfile user={userProfile} onLogout={() => signOut()} />
+          <Suspense fallback={<PageLoader />}>
+            <CandidateProfile user={userProfile} onLogout={() => signOut()} />
+          </Suspense>
         ) : (
           <>
             <header className="flex items-center justify-between mb-12">
@@ -486,10 +513,12 @@ export default function App() {
                   </>
                 )}
 
-                <AssessmentModeSelector
-                  onSelect={(productLine) => startNewTest(productLine)}
-                  allowedProductLine={userProfile?.allowedProductLine}
-                />
+                <Suspense fallback={<div className="h-32 bg-slate-100 rounded-3xl animate-pulse" />}>
+                  <AssessmentModeSelector
+                    onSelect={(productLine) => startNewTest(productLine)}
+                    allowedProductLine={userProfile?.allowedProductLine}
+                  />
+                </Suspense>
 
                 <section>
                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Recent Activity</h3>

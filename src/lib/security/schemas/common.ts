@@ -2,7 +2,12 @@ import { z } from "zod";
 
 export const Email = z.string().trim().toLowerCase().email().max(254);
 
-export const Password = z.string().min(8).max(200);
+export const Password = z
+  .string()
+  .min(8, "Password must be at least 8 characters")
+  .max(200)
+  .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+  .regex(/[0-9]/, "Password must contain at least one digit");
 
 export const Id = z.string().trim().min(1).max(100);
 
