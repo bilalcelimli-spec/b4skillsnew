@@ -81,6 +81,11 @@ export const ItemBankManager: React.FC = () => {
   const [audioGenerating, setAudioGenerating] = useState<Record<string, boolean>>({});
   const [audioReady, setAudioReady] = useState<Record<string, string>>({}); // itemId → audioUrl
 
+  // Per-item video linking state
+  const [videoLinkInput, setVideoLinkInput] = useState<Record<string, string>>({}); // itemId → draft URL
+  const [videoLinking, setVideoLinking] = useState<Record<string, boolean>>({});
+  const [videoLinked, setVideoLinked] = useState<Record<string, string>>({}); // itemId → confirmed URL
+
   useEffect(() => {
     fetchItems();
   }, []);
@@ -186,6 +191,28 @@ export const ItemBankManager: React.FC = () => {
       alert(`Audio generation failed: ${err.message}`);
     } finally {
       setAudioGenerating(prev => ({ ...prev, [itemId]: false }));
+    }
+  };
+
+  const handleLinkVideo = async (itemId: string) => {
+    const url = videoLinkInput[itemId]?.trim();
+    if (!url) return;
+    setVideoLinking(prev => ({ ...prev, [itemId]: true }));
+    try {
+      const res = await fetch(`/api/items/${itemId}/assets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ type: "VIDEO", url }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Failed to link video");
+      setVideoLinked(prev => ({ ...prev, [itemId]: url }));
+      setVideoLinkInput(prev => ({ ...prev, [itemId]: "" }));
+      fetchItems();
+    } catch (err: any) {
+      alert(`Video link failed: ${err.message}`);
+    } finally {
+      setVideoLinking(prev => ({ ...prev, [itemId]: false }));
     }
   };
 
@@ -378,6 +405,61 @@ export const ItemBankManager: React.FC = () => {
                   );
                 })()}
 
+                {/* SPEAKING video row */}
+                {item.skill === "SPEAKING" && (() => {
+                  const videoAsset = item.assets?.find(a => a.type === "VIDEO");
+                  const confirmedUrl = videoLinked[item.id] ?? videoAsset?.url;
+                  const isLinking = !!videoLinking[item.id];
+                  const brief = item.content?.videoScenarioBrief as string | undefined;
+                  return (
+                    <div className="mb-3 space-y-2">
+                      {brief && (
+                        <div className="p-3 bg-violet-50 rounded-xl">
+                          <p className="text-[9px] font-black text-violet-400 uppercase tracking-widest mb-1">Video Scenario Brief</p>
+                          <p className="text-[10px] text-violet-700 leading-relaxed line-clamp-2">{brief}</p>
+                        </div>
+                      )}
+                      {confirmedUrl ? (
+                        <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-xl">
+                          <Video size={12} className="text-slate-400 shrink-0" />
+                          <span className="text-[10px] text-slate-500 truncate font-medium flex-1">{confirmedUrl}</span>
+                          <button
+                            onClick={() => setVideoLinked(prev => { const n = { ...prev }; delete n[item.id]; return n; })}
+                            className="text-slate-300 hover:text-rose-400 transition-colors"
+                            title="Remove video link"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <input
+                            type="url"
+                            placeholder="Paste video URL (HLS/MP4)…"
+                            value={videoLinkInput[item.id] ?? ""}
+                            onChange={e => setVideoLinkInput(prev => ({ ...prev, [item.id]: e.target.value }))}
+                            onKeyDown={e => e.key === "Enter" && handleLinkVideo(item.id)}
+                            className="flex-1 px-3 py-1.5 text-[10px] bg-slate-50 border border-slate-100 rounded-xl font-medium placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                          />
+                          <button
+                            onClick={() => handleLinkVideo(item.id)}
+                            disabled={isLinking || !videoLinkInput[item.id]?.trim()}
+                            className={cn(
+                              "flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0",
+                              isLinking || !videoLinkInput[item.id]?.trim()
+                                ? "bg-slate-100 text-slate-300 cursor-not-allowed"
+                                : "bg-violet-50 text-violet-600 hover:bg-violet-100"
+                            )}
+                          >
+                            {isLinking ? <Loader2 size={10} className="animate-spin" /> : <Video size={10} />}
+                            {isLinking ? "Linking…" : "Link"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <div className="flex items-center justify-between pt-5 border-t border-slate-50">
                   <div className="flex items-center gap-6">
                     <div className="text-center">
@@ -503,6 +585,21 @@ export const ItemBankManager: React.FC = () => {
                   </div>
                 )}
 
+                {generateSpec.skill === "SPEAKING" && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sub-skill</label>
+                    <select
+                      className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm"
+                      value={generateSpec.subSkill}
+                      onChange={e => setGenerateSpec(s => ({ ...s, subSkill: e.target.value }))}
+                    >
+                      {["monologue","interactive","transactional","discussion"].map(ss => (
+                        <option key={ss} value={ss}>{ss.charAt(0).toUpperCase() + ss.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Topic (optional)</label>
                   <input
@@ -528,6 +625,19 @@ export const ItemBankManager: React.FC = () => {
                     </div>
                     <Volume2 size={16} className="ml-auto text-amber-500" />
                   </label>
+                )}
+
+                {generateSpec.skill === "SPEAKING" && (
+                  <div className="p-4 bg-violet-50 rounded-2xl space-y-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Video size={13} className="text-violet-500" />
+                      <p className="text-[11px] font-black text-violet-800 uppercase tracking-widest">Video scenario output</p>
+                    </div>
+                    <p className="text-[10px] text-violet-600 leading-relaxed">
+                      AI generates a <strong>video scenario brief</strong> + <strong>interlocutor audio fallback</strong>.
+                      After creation, paste your CDN video URL in the item card to activate video mode.
+                    </p>
+                  </div>
                 )}
 
                 {generateResult && (
