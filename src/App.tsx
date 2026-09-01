@@ -26,7 +26,7 @@ import { TestPlayer } from "./components/TestPlayer";
 import { LandingPage } from "./components/LandingPage";
 import { ItemBankManager } from "./components/ItemBankManager";
 import { CandidateProfile } from "./components/CandidateProfile";
-import { LogIn, LogOut, GraduationCap, LayoutDashboard, FileText, Settings, ShieldCheck, User as UserIcon, ShieldAlert, CheckCircle2, ClipboardList, Building2, BarChart3, Award, Database, UserCircle, Sliders, BoxSelect } from "lucide-react";
+import { LogIn, LogOut, GraduationCap, LayoutDashboard, FileText, Settings, ShieldCheck, User as UserIcon, ShieldAlert, CheckCircle2, ClipboardList, Building2, BarChart3, Award, Database, UserCircle, Sliders, BoxSelect, Menu, X } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "./lib/utils";
 
@@ -207,6 +207,8 @@ export default function App() {
   const isRater = profRole === "RATER" || isAdmin;
   const isOrgAdmin = ["ORG_ADMIN", "INST_ADMIN"].includes(profRole) || isAdmin;
 
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   // Clears stale session state when the user explicitly switches away from results.
   // Prevents the state→URL effect from fighting browser back by re-pushing /report/…
   type Tab = typeof activeTab;
@@ -220,7 +222,66 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
-      {/* Sidebar */}
+      {/* ── Mobile Navigation Drawer ── */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/60"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-hidden="true"
+          />
+          {/* Drawer */}
+          <aside
+            className="relative w-72 max-w-[80vw] bg-slate-900 text-white p-6 flex flex-col h-full overflow-y-auto"
+            style={{ backgroundColor: branding?.secondaryColor || "#0f172a" }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+          >
+            <div className="flex items-center justify-between mb-10">
+              {branding?.logoUrl ? (
+                <img src={branding.logoUrl} alt="Logo" className="w-8 h-8 rounded" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="bg-[#9b276c] text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight inline-flex items-center">
+                  <span style={{ textShadow: '0 0 8px rgba(253, 224, 71, 0.8), 0 0 15px rgba(253, 224, 71, 0.4)' }}>b4skills</span>
+                </div>
+              )}
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                aria-label="Close menu"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <nav className="space-y-2 flex-1">
+              <SidebarItem icon={<LayoutDashboard size={20} />} label="Dashboard" active={activeTab === "dashboard"} onClick={() => { goToTab("dashboard"); setMobileMenuOpen(false); }} />
+              {isAdmin && <SidebarItem icon={<ShieldAlert size={20} />} label="Admin Console" active={activeTab === "admin"} onClick={() => { goToTab("admin"); setMobileMenuOpen(false); }} />}
+              {isRater && <SidebarItem icon={<ClipboardList size={20} />} label="Rating Queue" active={activeTab === "rating"} onClick={() => { goToTab("rating"); setMobileMenuOpen(false); }} />}
+              {isOrgAdmin && <SidebarItem icon={<BarChart3 size={20} />} label="Institutional" active={activeTab === "institutional"} onClick={() => { goToTab("institutional"); setMobileMenuOpen(false); }} />}
+              <SidebarItem icon={<FileText size={20} />} label="My Results" active={activeTab === "results"} onClick={() => { goToTab("results"); setMobileMenuOpen(false); }} />
+              <SidebarItem icon={<UserCircle size={20} />} label="Profile" active={activeTab === "profile"} onClick={() => { goToTab("profile"); setMobileMenuOpen(false); }} />
+            </nav>
+            <div className="pt-6 border-t border-slate-800">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shrink-0" style={{ backgroundColor: branding?.primaryColor || "#6366f1" }}>
+                  {user.displayName?.[0]}
+                </div>
+                <div className="overflow-hidden">
+                  <div className="font-bold truncate text-sm uppercase tracking-tight">{user.displayName}</div>
+                  <div className="text-[10px] text-slate-400 truncate font-bold uppercase tracking-widest">{user.email}</div>
+                </div>
+              </div>
+              <button onClick={() => signOut()} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest w-full">
+                <LogOut size={18} /> Sign Out
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* Sidebar (desktop only) */}
       <aside className="w-64 bg-slate-900 text-white p-6 hidden md:flex flex-col" style={{ backgroundColor: branding?.secondaryColor || "#0f172a" }}>
         <div className="flex items-center gap-2 mb-12">
           {branding?.logoUrl ? (
@@ -297,7 +358,27 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className={cn("flex-1 overflow-y-auto", activeTab === "admin" && isAdmin ? "p-4" : "p-8")}>
+      <main className={cn("flex-1 overflow-y-auto min-w-0", activeTab === "admin" && isAdmin ? "p-4" : "p-6 md:p-8")}>
+        {/* Mobile top bar */}
+        <div className="flex items-center justify-between mb-6 md:hidden">
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            className="p-2 rounded-xl bg-slate-900 text-white"
+            aria-label="Open navigation menu"
+          >
+            <Menu size={20} />
+          </button>
+          {branding?.logoUrl ? (
+            <img src={branding.logoUrl} alt="Logo" className="h-7 rounded" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="bg-[#9b276c] text-white font-bold text-base px-2.5 py-0.5 -skew-x-6 rounded-sm tracking-tight inline-flex items-center">
+              <span style={{ textShadow: '0 0 8px rgba(253, 224, 71, 0.8)' }}>b4skills</span>
+            </div>
+          )}
+          <button onClick={() => signOut()} className="p-2 rounded-xl bg-slate-100 text-slate-600" aria-label="Sign out">
+            <LogOut size={18} />
+          </button>
+        </div>
         {activeTab === "admin" && isAdmin ? (
           <UnifiedAdminConsole orgId={userProfile?.organizationId} />
         ) : activeTab === "rating" && isRater ? (

@@ -28,6 +28,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
   const [displayName, setDisplayName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [resetToken, setResetToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);  const [pendingFeature, setPendingFeature] = useState<string | null>(null);
@@ -63,21 +64,28 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
     if (mode === "forgot") {
       if (!email.trim()) { setError("Please enter your email address."); return; }
       setLoading(true);
-      setTimeout(() => {
-        setSuccessMessage("Password reset email sent! Check your inbox.");
+      try {
+        const res = await fetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim() })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to send reset email');
+        setSuccessMessage("If that email exists, a reset link has been sent. Check your inbox.");
         setMode("verify");
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
         setLoading(false);
-      }, 1000);
+      }
       return;
     }
 
     if (mode === "verify") {
-      setLoading(true);
-      setTimeout(() => {
-        setSuccessMessage("Code verified! You can now reset your password.");
-        setMode("reset");
-        setLoading(false);
-      }, 1000);
+      if (!resetToken.trim()) { setError("Please enter the reset token from your email."); return; }
+      setSuccessMessage("Token accepted. Please set your new password.");
+      setMode("reset");
       return;
     }
 
@@ -85,11 +93,22 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
       if (password !== confirmPassword) { setError("Passwords do not match."); return; }
       if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
       setLoading(true);
-      setTimeout(() => {
+      try {
+        const res = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: resetToken.trim(), password })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to reset password');
         setSuccessMessage("Password successfully reset! You can now sign in.");
+        setResetToken("");
         setMode("signin");
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
         setLoading(false);
-      }, 1000);
+      }
       return;
     }
 
@@ -200,14 +219,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
               {mode === "signin" && "Welcome back"}
               {mode === "signup" && "Create your account"}
               {mode === "forgot" && "Reset your password"}
-              {mode === "verify" && "Verify your email"}
+              {mode === "verify" && "Enter reset token"}
               {mode === "reset" && "Set new password"}
             </h1>
             <p className="text-slate-500 mt-2 font-medium text-sm">
               {mode === "signin" && "Enter your details below to access your dashboard."}
               {mode === "signup" && "Start assessing with precision today."}
               {mode === "forgot" && "We'll send you an email with a link to reset it."}
-              {mode === "verify" && "Enter the verification code sent to your email."}
+              {mode === "verify" && "Paste the token from the reset link in your email."}
               {mode === "reset" && "Choose a new strong password for your account."}
             </p>
           </div>
@@ -299,14 +318,19 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
                 {mode === "verify" && (
                   <div className="mb-4">
                     <label htmlFor="code" className="block text-sm font-bold text-slate-700 mb-1.5">
-                      Verification Code
+                      Reset Token
                     </label>
+                    <p className="text-xs text-slate-500 mb-2">
+                      Copy the token from the reset link in your email.
+                    </p>
                     <div className="relative">
                       <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                       <Input
                         id="code"
                         type="text"
-                        placeholder="Enter 6-digit code"
+                        placeholder="Paste your reset token"
+                        value={resetToken}
+                        onChange={(e) => setResetToken(e.target.value)}
                         className="pl-10 h-12 bg-white border-slate-200 focus-visible:ring-slate-900 text-[15px]"
                         required
                       />

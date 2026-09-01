@@ -13,6 +13,9 @@ import nodemailer from "nodemailer";
 import { prisma } from "./src/lib/prisma.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
 import { SecretsManager } from "./src/lib/secrets/secrets-manager.js";
+import { buildCorsMiddleware, buildHelmetMiddleware } from "./src/lib/security/http-security.js";
+import { RegisterBody, LoginBody, ForgotPasswordBody, ResetPasswordBody } from "./src/lib/security/schemas/auth.js";
+import { SessionLaunchBody, SessionRespondBody, SessionCompleteBody, SessionFeedbackBody } from "./src/lib/security/schemas/sessions.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -53,14 +56,18 @@ async function startServer() {
           update: {},
           create: { id: "b4skills-demo", name: "b4skills", slug: "b4skills-demo" }
         });
+        const seedEmail = process.env.ADMIN_SEED_EMAIL;
+        const seedPassword = process.env.ADMIN_SEED_PASSWORD;
+        if (seedEmail && seedPassword) {
         const { default: bcryptSeed } = await import("bcrypt");
-        const adminHash = await bcryptSeed.hash("Admin@b4skills2025", 10);
+        const adminHash = await bcryptSeed.hash(seedPassword, 10);
         await prisma.user.upsert({
-          where: { email: "admin@b4skills.com" },
+          where: { email: seedEmail },
           update: {},
-          create: { email: "admin@b4skills.com", name: "Admin", password: adminHash, role: "SUPER_ADMIN", organizationId: "b4skills-demo" }
+          create: { email: seedEmail, name: "Admin", password: adminHash, role: "SUPER_ADMIN", organizationId: "b4skills-demo" }
         });
         console.log("✅ Admin seed OK");
+        }
       } catch (seedErr) {
         console.warn("⚠️  Admin seed failed:", seedErr);
       }
@@ -70,7 +77,8 @@ async function startServer() {
     }
   }
 
-  app.use(cors({ origin: true, credentials: true }));
+  app.use(buildHelmetMiddleware());
+  app.use(buildCorsMiddleware());
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.use(cookieParser());
@@ -146,6 +154,36 @@ async function startServer() {
     }
   };
 
+  /**
+   * Verifies the authenticated user owns the session (candidateId matches) or has an elevated role.
+   * Must be used after authMiddleware. Passes for demo sessions (no DB).
+   */
+  const assertSessionOwnership = async (req: any, res: any, sessionId: string): Promise<boolean> => {
+    if (sessionId.startsWith("demo-session-") || !dbAvailable) return true;
+    const userId: string | undefined = req.user?.id;
+    const role: string | undefined = req.user?.role;
+    const adminRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "PROCTOR", "RATER"];
+    if (role && adminRoles.includes(role)) return true;
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return false; }
+    const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { candidateId: true } });
+    if (!session) { res.status(404).json({ error: "Session not found" }); return false; }
+    if (session.candidateId !== userId) { res.status(403).json({ error: "Forbidden" }); return false; }
+    return true;
+  };
+
+  /**
+   * Parse and validate a request body against a Zod schema.
+   * Returns the parsed data or sends a 400 and returns null.
+   */
+  const validate = <T>(schema: { safeParse: (v: unknown) => { success: boolean; data?: T; error?: any } }, body: unknown, res: any): T | null => {
+    const result = schema.safeParse(body);
+    if (!result.success) {
+      res.status(400).json({ error: "Invalid request body", issues: result.error.issues.map((i: any) => ({ path: i.path.join("."), message: i.message })) });
+      return null;
+    }
+    return result.data as T;
+  };
+
   const setAuthCookies = (res: any, accessToken: string, refreshToken: string) => {
     const isProd = process.env.NODE_ENV === 'production';
     res.cookie('accessToken', accessToken, {
@@ -164,8 +202,9 @@ async function startServer() {
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, displayName } = req.body;
-      if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+      const body = validate(RegisterBody, req.body, res);
+      if (!body) return;
+      const { email, password, displayName } = body;
       let user = await prisma.user.findUnique({ where: { email } });
       if (user) return res.status(400).json({ error: 'User already exists' });
       
@@ -187,14 +226,16 @@ async function startServer() {
       setAuthCookies(res, accessToken, refreshToken);
       return res.json({ token: accessToken, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      console.error("[auth/register]", err);
+      return res.status(500).json({ error: "Registration failed. Please try again." });
     }
   });
 
   app.post("/api/auth/login", loginLimiter, async (req, res) => {
     try {
-      const { email, password } = req.body;
-      if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+      const body = validate(LoginBody, req.body, res);
+      if (!body) return;
+      const { email, password } = body;
       const user = await prisma.user.findUnique({
         where: { email },
         select: { id: true, email: true, name: true, password: true, role: true, organizationId: true, refreshToken: true },
@@ -213,7 +254,8 @@ async function startServer() {
       setAuthCookies(res, accessToken, refreshToken);
       return res.json({ token: accessToken, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role, organizationId: user.organizationId || null } });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      console.error("[auth/login]", err);
+      return res.status(500).json({ error: "Login failed. Please try again." });
     }
   });
 
@@ -296,8 +338,9 @@ async function startServer() {
   };
 
   app.post("/api/auth/forgot-password", async (req, res) => {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'Email required' });
+    const body = validate(ForgotPasswordBody, req.body, res);
+    if (!body) return;
+    const { email } = body;
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.json({ message: 'If email exists, reset link sent.' }); // Generic response
 
@@ -316,8 +359,9 @@ async function startServer() {
   });
 
   app.post("/api/auth/reset-password", async (req, res) => {
-    const { token, newPassword } = req.body;
-    if (!token || !newPassword) return res.status(400).json({ error: 'Missing required fields' });
+    const body = validate(ResetPasswordBody, req.body, res);
+    if (!body) return;
+    const { token, password: newPassword } = body;
     
     const user = await prisma.user.findFirst({
       where: { resetPasswordToken: token, resetPasswordExpires: { gt: new Date() } }
@@ -472,6 +516,12 @@ async function startServer() {
   // If no database is available, we intercept admin routes and serve mock data
   app.use("/api", (req, res, next) => {
     if (!dbAvailable) {
+      // In production, never fall back to a permissive demo mode.
+      // Return 503 so operators know the DB is down.
+      if (process.env.NODE_ENV === "production") {
+        return res.status(503).json({ error: "Service temporarily unavailable. Please try again later." });
+      }
+
       const url = req.url;
       const method = req.method;
 
@@ -596,7 +646,7 @@ async function startServer() {
       }
       if (url.includes("/organizations/") && url.includes("/api-keys")) {
         if (method === "GET") return res.json([{ id: "ak-1", name: "Production Key", key: "b4s_prod_xxxxxx", createdAt: new Date(Date.now() - 604800000).toISOString() }]);
-        if (method === "POST") return res.json({ id: "ak-" + Date.now(), name: req.body.name, key: "b4s_" + Math.random().toString(36).substr(2, 16), createdAt: new Date().toISOString() });
+        if (method === "POST") return res.json({ id: "ak-" + Date.now(), name: req.body.name, key: "b4s_" + crypto.randomBytes(12).toString("hex"), createdAt: new Date().toISOString() });
         if (method === "DELETE") return res.json({ success: true });
       }
 
@@ -647,7 +697,7 @@ async function startServer() {
         const { productLine: pl = "General", count: cnt = 1, prefix = "E" } = req.body || {};
         const codes: { code: string }[] = [];
         for (let i = 0; i < Math.min(Number(cnt), 500); i++) {
-          const ran = Math.random().toString(36).substring(2, 6).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+          const ran = crypto.randomBytes(4).toString("hex").toUpperCase() + crypto.randomBytes(4).toString("hex").toUpperCase();
           codes.push({ code: `${prefix}-${ran}` });
         }
         return res.json({ message: `Generated ${codes.length} codes`, codes: codes.map(c => c.code) });
@@ -950,15 +1000,10 @@ async function startServer() {
         }
       }
 
-      // 2. Fall back to x-user-email header (legacy/internal)
+      // 2. Fall back to x-user-email header (legacy/internal — DB lookup required)
       const userEmailHeader = req.headers["x-user-email"];
       const userEmail = Array.isArray(userEmailHeader) ? userEmailHeader[0] : userEmailHeader;
       if (!userEmail) return res.status(401).json({ error: "Unauthorized" });
-
-      if (userEmail === "bilalcelimli@gmail.com" || !dbAvailable) {
-        req.user = { role: "SUPER_ADMIN", organizationId: "default-org" };
-        return next();
-      }
 
       const user = await prisma.user.findUnique({
         where: { email: userEmail as string },
@@ -1039,9 +1084,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 // --- ASSESSMENT SESSION API ---
   const { AssessmentService } = await import("./src/lib/assessment-engine/server-engine.js");
 
-  app.post("/api/sessions/launch", async (req, res) => {
+  app.post("/api/sessions/launch", authMiddleware, async (req, res) => {
     try {
-      const { candidateId, organizationId, productLine } = req.body;
+      const body = validate(SessionLaunchBody, req.body, res);
+      if (!body) return;
+      const { candidateId, organizationId, productLine } = body;
       let session;
       try {
         session = await AssessmentService.launchSession(
@@ -1090,7 +1137,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.json(session);
     } catch (error) {
       console.error("LAUNCH ERROR", error);
-      res.status(500).json({ error: "Failed to launch session", details: String(error) });
+      res.status(500).json({ error: "Failed to launch session" });
     }
   });
 
@@ -1098,7 +1145,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // Stores a candidate's identity photo (base64 JPEG) taken at exam start.
   // S3 upload is optional — set IDENTITY_SNAPSHOT_BUCKET env var to enable.
   // If S3 is not configured the snapshot URL is omitted but the exam is never blocked.
-  app.post("/api/sessions/:id/identity-snapshot", async (req, res) => {
+  app.post("/api/sessions/:id/identity-snapshot", authMiddleware, async (req, res) => {
     const { id } = req.params;
     const { frame, failureReason } = req.body as {
       frame?: string | null;
@@ -1179,12 +1226,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       console.error("[identity-snapshot] failed:", error);
       return res.status(500).json({
         error: "Failed to store identity snapshot",
-        details: String(error),
       });
     }
   });
 
-  app.get("/api/sessions/:id/next", async (req, res) => {
+  app.get("/api/sessions/:id/next", authMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
       let next;
@@ -1207,10 +1253,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/sessions/:id/respond", async (req, res) => {
+  app.post("/api/sessions/:id/respond", authMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
-      const { itemId, value, latencyMs } = req.body;
+      if (!(await assertSessionOwnership(req, res, id))) return;
+      const body = validate(SessionRespondBody, req.body, res);
+      if (!body) return;
+      const { itemId, value, latencyMs } = body;
       let result;
       try {
         result = await AssessmentService.submitResponse(id, itemId, value, latencyMs);
@@ -1228,7 +1277,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.get("/api/sessions/:id/status", async (req, res) => {
+  app.get("/api/sessions/:id/status", authMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
       let status;
@@ -1309,7 +1358,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // --- ITEM BANK API ---
-  app.get("/api/items", async (req, res) => {
+  app.get("/api/items", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER", "INST_ADMIN"]), async (req, res) => {
     try {
       const items = await AssessmentService.getAllItems();
       res.json(items);
@@ -1318,7 +1367,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/items", async (req, res) => {
+  app.post("/api/items", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
     try {
       const item = await AssessmentService.createItem(req.body);
       res.json(item);
@@ -1328,15 +1377,43 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // --- ITEM GENERATION (AI) — Single spec ---
-  app.post("/api/items/generate", async (req, res) => {
+  // Optional body field: autoGenerateAudio: boolean
+  //   When true and skill === LISTENING, triggers TTS generation for each item
+  //   that has a ttsScript, patches audioUrl, and returns audioResults in the response.
+  app.post("/api/items/generate", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
     try {
       const { itemGenerator } = await import("./src/lib/language-skills/ai-item-generator.js");
-      const spec = req.body;
+      const { autoGenerateAudio, ...spec } = req.body;
       if (!spec.skill || !spec.level || !spec.format) {
         return res.status(400).json({ error: "skill, level, and format are required" });
       }
-      spec.quantity = Math.min(Number(spec.quantity) || 1, 5); // Cap at 5 per request
+      spec.quantity = Math.min(Number(spec.quantity) || 1, 5);
       const result = await itemGenerator.generate(spec);
+
+      // Optional: generate TTS audio for LISTENING items immediately after generation
+      if (autoGenerateAudio && spec.skill === "LISTENING" && dbAvailable) {
+        const audioResults: Record<string, unknown>[] = [];
+        try {
+          const { generateListeningAudio } = await import("./src/lib/audio/tts-generator.js");
+          for (const item of result.items) {
+            if (item.ttsScript && item.moduleId) {
+              const audio = await generateListeningAudio({
+                moduleId: item.moduleId,
+                ttsScript: item.ttsScript,
+                cefrLevel: item.cefrLevel,
+                productLine: (spec as any).productLine,
+              });
+              (item as any).audioUrl = audio.audioUrl;
+              audioResults.push({ moduleId: item.moduleId, ...audio });
+            }
+          }
+        } catch (audioErr) {
+          console.error("[generate] autoGenerateAudio failed:", audioErr);
+          // Non-fatal — items still returned without audio
+        }
+        return res.json({ ...result, audioResults });
+      }
+
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: "Item generation failed", details: String(error) });
@@ -1344,7 +1421,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // --- ITEM GENERATION (AI) — Bulk (multiple specs) ---
-  app.post("/api/items/generate/bulk", async (req, res) => {
+  app.post("/api/items/generate/bulk", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
     try {
       const { itemGenerator } = await import("./src/lib/language-skills/ai-item-generator.js");
       const { specs } = req.body;
@@ -1368,7 +1445,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // --- ITEM GENERATION PREVIEW (generate without persisting to bank) ---
-  app.post("/api/items/preview", async (req, res) => {
+  app.post("/api/items/preview", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
     try {
       const { itemGenerator } = await import("./src/lib/language-skills/ai-item-generator.js");
       const spec = req.body;
@@ -1385,7 +1462,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // --- ITEM QUALITY VALIDATION ---
-  app.get("/api/items/:id/validate", async (req, res) => {
+  app.get("/api/items/:id/validate", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
     try {
       const { id } = req.params;
       const { validateItem } = await import("./src/lib/language-skills/item-quality-validator.js");
@@ -1409,7 +1486,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // --- ITEM QUALITY SCORE (IQS) ---
   // GET  /api/items/:id/iqs  — compute IQS for a persisted item (does NOT persist)
   // POST /api/items/:id/iqs  — compute IQS AND write iqScore back to DB
-  app.get("/api/items/:id/iqs", async (req, res) => {
+  app.get("/api/items/:id/iqs", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
     try {
       const { id } = req.params;
       const { calculateIqs } = await import("./src/lib/psychometrics/item-quality-score.js");
@@ -1498,7 +1575,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.put("/api/items/:id", async (req, res) => {
+  app.put("/api/items/:id", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
     try {
       const { id } = req.params;
       const item = await AssessmentService.updateItem(id, req.body);
@@ -1508,7 +1585,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.delete("/api/items/:id", async (req, res) => {
+  app.delete("/api/items/:id", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
     try {
       const { id } = req.params;
       await AssessmentService.deleteItem(id);
@@ -1518,7 +1595,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/items/:id/assets", async (req, res) => {
+  app.post("/api/items/:id/assets", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
     try {
       const { id } = req.params;
       const asset = await AssessmentService.addItemAsset(id, req.body);
@@ -1527,6 +1604,56 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.status(500).json({ error: "Failed to add asset" });
     }
   });
+
+  // --- IN-APP LISTENING AUDIO GENERATION (Gemini 2.5 Flash TTS) ---
+  // Reads item.content.ttsScript + item.content.moduleId from DB,
+  // generates WAV, saves to public/audio/, patches content.audioUrl.
+  app.post(
+    "/api/items/:id/generate-audio",
+    authMiddleware,
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]),
+    async (req: any, res) => {
+      const { id } = req.params;
+      try {
+        if (!dbAvailable) {
+          return res.status(503).json({ error: "Audio generation requires a database connection" });
+        }
+        const { prisma: db } = await import("./src/lib/prisma.js");
+        const item = await db.item.findUnique({ where: { id } });
+        if (!item) return res.status(404).json({ error: "Item not found" });
+        if (item.skill !== "LISTENING") {
+          return res.status(400).json({ error: "Audio generation is only available for LISTENING items" });
+        }
+        const content = (item.content as Record<string, any>) ?? {};
+        const ttsScript: string | undefined = content.ttsScript;
+        const moduleId: string | undefined = content.moduleId ?? id;
+        if (!ttsScript) {
+          return res.status(400).json({ error: "Item has no ttsScript in content. Generate or add a ttsScript first." });
+        }
+        const { generateListeningAudio } = await import("./src/lib/audio/tts-generator.js");
+        const result = await generateListeningAudio({
+          moduleId,
+          ttsScript,
+          cefrLevel: item.cefrLevel,
+          productLine: content.productLine,
+        });
+        // Patch audioUrl back into item content
+        await db.item.update({
+          where: { id },
+          data: { content: { ...content, audioUrl: result.audioUrl, moduleId } },
+        });
+        res.json({
+          audioUrl: result.audioUrl,
+          durationSeconds: result.durationSeconds,
+          voiceName: result.voiceName,
+          fileSizeKb: result.fileSizeKb,
+        });
+      } catch (err: any) {
+        console.error("[generate-audio]", err);
+        res.status(500).json({ error: "Audio generation failed", details: err.message });
+      }
+    }
+  );
 
   app.delete("/api/assets/:id", async (req, res) => {
     try {
@@ -1604,7 +1731,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // --- ONBOARDING API ---
   const { BulkOnboardingService } = await import("./src/lib/onboarding/bulk-onboarding-service.js");
 
-  app.post("/api/onboarding/bulk", async (req, res) => {
+  app.post("/api/onboarding/bulk", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
     try {
       const { candidates } = req.body;
       if (!Array.isArray(candidates)) return res.status(400).json({ error: "Invalid candidates list" });
@@ -1637,7 +1764,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const generated = new Date();
       for(let i = 0; i < count; i++) {
         // Generate a random string 8 chars
-        const ran = Math.random().toString(36).substring(2, 6).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+        const ran = crypto.randomBytes(4).toString("hex").toUpperCase() + crypto.randomBytes(4).toString("hex").toUpperCase();
         codes.push(`${prefix}-${ran}`);
       }
       
@@ -1798,7 +1925,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // --- PHASE 6: COMMERCIALIZATION & ECOSYSTEM ---
-  app.post("/api/payments/checkout", async (req, res) => {
+  app.post("/api/payments/checkout", authMiddleware, async (req, res) => {
     const { userId, organizationId, credits } = req.body;
     try {
       const { PaymentService } = await import("./src/lib/payments/payment-service.js");
@@ -1812,7 +1939,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.post("/api/payments/webhook", express.raw({ type: "application/json" }), async (req, res) => {
     try {
       const { PaymentService } = await import("./src/lib/payments/payment-service.js");
-      const event = JSON.parse(req.body.toString());
+      const sig = req.headers["stripe-signature"];
+      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+      if (!webhookSecret) {
+        console.error("STRIPE_WEBHOOK_SECRET is not set — rejecting webhook");
+        return res.status(400).send("Webhook configuration error");
+      }
+      if (!sig) return res.status(400).send("Missing stripe-signature header");
+      const event = PaymentService.constructWebhookEvent(req.body as Buffer, sig, webhookSecret);
       await PaymentService.handleWebhook(event);
       res.json({ received: true });
     } catch (err) {
@@ -1828,7 +1962,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       const settings = (org.settings as any) || {};
       if (webhookUrl !== undefined) settings.webhookUrl = webhookUrl;
-      if (generateApiKey) settings.apiKey = `sk_live_${Math.random().toString(36).substring(2, 15)}`;
+      if (generateApiKey) settings.apiKey = `sk_live_${crypto.randomBytes(24).toString("hex")}`;
 
       await prisma.organization.update({
         where: { id: organizationId },
@@ -1852,9 +1986,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/sessions/:id/complete", async (req, res) => {
+  app.post("/api/sessions/:id/complete", authMiddleware, async (req, res) => {
     const { id } = req.params;
     try {
+      if (!(await assertSessionOwnership(req, res, id))) return;
       await prisma.session.update({
         where: { id },
         data: { status: "COMPLETED", completedAt: new Date() },
@@ -1870,7 +2005,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // --- PHASE 7: ADVANCED AI & MULTIMODAL ---
-  app.post("/api/ai/score/speaking-multimodal", async (req, res) => {
+  app.post("/api/ai/score/speaking-multimodal", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
     const { audioBase64, mimeType, prompt } = req.body;
     try {
       const { GeminiScoringService } = await import("./src/lib/scoring/gemini-scoring-service.js");
@@ -1881,9 +2016,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.get("/api/sessions/:id/responses", async (req, res) => {
+  app.get("/api/sessions/:id/responses", authMiddleware, async (req, res) => {
     const { id } = req.params;
     try {
+      if (!(await assertSessionOwnership(req, res, id))) return;
       const responses = await prisma.response.findMany({
         where: { sessionId: id },
         include: { item: true },
@@ -1918,9 +2054,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.get("/api/sessions/:id/insights", async (req, res) => {
+  app.get("/api/sessions/:id/insights", authMiddleware, async (req, res) => {
     const { id } = req.params;
     try {
+      if (!(await assertSessionOwnership(req, res, id))) return;
       const session = await prisma.session.findUnique({
         where: { id },
         include: { scoreReport: true }
@@ -2190,7 +2327,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     });
   });
 
-  app.patch("/api/organizations/:id/branding", async (req, res) => {
+  app.patch("/api/organizations/:id/branding", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
     const { id } = req.params;
     const branding = req.body;
     const adminId = req.headers["x-admin-id"] as string; // Mock admin ID for now
@@ -2220,7 +2357,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/organizations/:id/candidates/bulk-import", async (req, res) => {
+  app.post("/api/organizations/:id/candidates/bulk-import", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
     const { id } = req.params;
     const { candidates } = req.body;
     const adminId = req.headers["x-admin-id"] as string;
@@ -2476,7 +2613,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.get("/api/organizations/:id/sso-config", async (req, res) => {
+  app.get("/api/organizations/:id/sso-config", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
     const { id } = req.params;
     try {
       const org = await (prisma.organization as any).findUnique({
@@ -2490,7 +2627,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // --- PHASE 10: POLISHING & ANALYTICS ---
-  app.post("/api/sessions/:id/feedback", async (req, res) => {
+  app.post("/api/sessions/:id/feedback", authMiddleware, async (req, res) => {
     const { id } = req.params;
     const { rating, comment, category, organizationId } = req.body;
     try {
@@ -2509,9 +2646,15 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.get("/api/candidates/:id/history", async (req, res) => {
+  app.get("/api/candidates/:id/history", authMiddleware, async (req: any, res) => {
     const { id } = req.params;
     try {
+      const userId: string | undefined = req.user?.id;
+      const role: string | undefined = req.user?.role;
+      const adminRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "PROCTOR"];
+      if (userId !== id && !(role && adminRoles.includes(role))) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const sessions = await prisma.session.findMany({
         where: { candidateId: id },
         include: { scoreReport: true },

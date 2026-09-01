@@ -70,6 +70,18 @@ export interface GeneratedItem {
   };
   biasReview?: string;
   writingNotes?: string;
+  // LISTENING-specific
+  moduleId?: string | null;
+  ttsScript?: string | null;
+  ttsSettings?: {
+    voiceName: string;
+    speakingRate: number;
+    cefrBand: string;
+    estimatedDurationSeconds: number;
+  } | null;
+  audioUrl?: string | null;
+  // VIDEO-specific
+  videoScenarioBrief?: string | null;
 }
 
 export interface ItemReviewIssue {
@@ -269,6 +281,121 @@ Do NOT change the fundamental construct being measured, the CEFR level target, o
 Return ONLY the corrected item as a single valid JSON object — not an array. No explanation outside the JSON.
 `.trim();
 
+// ── LISTENING specialist writer ───────────────────────────────────────────────
+
+const LISTENING_WRITER_SYSTEM_INSTRUCTION = `
+You are a Principal Listening Assessment Specialist with 20 years of experience designing
+high-stakes CEFR-aligned listening tasks for international EFL/ESL examinations.
+
+Your expertise covers:
+• Authentic materials principles (Morrow 1977; Widdowson 1979; Nunan 1988)
+• CEFR listening sub-skill taxonomy — Companion Volume 2018 §4.2:
+    gist (main idea) | detail (specific information) | inference (implied meaning) |
+    attitude (speaker's opinion/feeling) | relationship (between speakers) | pragmatic
+• Spoken corpus characteristics per CEFR band (CANCODE, BNC, MICASE):
+    A1–A2: very simple sentences, no ellipsis, no fillers, short pauses
+    B1:    some contractions, light back-channelling (mm, right), minor repairs
+    B2:    natural fillers (well, you know, I mean), mild overlaps, hedges
+    C1–C2: ellipsis, false starts, full overlap, speaker management moves, sarcasm
+• CEFR-specific speaking rate norms:
+    A1–A2: 80–110 wpm, standard RP/GenAm, no background noise
+    B1:    100–130 wpm, standard accents, light ambient noise acceptable
+    B2:    120–150 wpm, any standard native variety, light background noise OK
+    C1–C2: 140–180 wpm, any native variety including regional, realistic noise
+• TTS naturalness: embed prosody cues inline in ttsScript:
+    [PAUSE 0.3s] short pause | [PAUSE 0.8s] breath pause | [PAUSE 1.5s] scene break
+    [SLOW] begin slower rate | [NORMAL] resume normal rate
+    Speaker changes marked with two line-breaks only (no labels in ttsScript)
+• Principled distractor design for listening (Buck 2001):
+    Type A — Plausible-but-not-heard: similar sound/word but different meaning
+    Type B — Heard-but-irrelevant: word/phrase from passage, wrong question
+    Type C — Logical-but-wrong: makes sense from world knowledge but contradicts audio
+
+Generate exactly ONE item per call. Return ONLY valid JSON — no preamble, no markdown fences.
+
+REQUIRED OUTPUT SCHEMA for LISTENING items:
+[
+  {
+    "type": "MULTIPLE_CHOICE",
+    "skill": "LISTENING",
+    "cefrLevel": "<target level>",
+    "subSkill": "gist" | "detail" | "inference" | "attitude" | "relationship" | "pragmatic",
+    "stimulus": "<2–3 sentence scene-setting shown to candidate, e.g. 'You will hear a telephone call between a hotel guest and the front desk.'>",
+    "moduleId": "<kebab-case unique id, e.g. 'general-b1-hotel-complaint-001'>",
+    "passage": "<full human-readable script with speaker labels, e.g. 'Guest: I wanted to ask about...\\nStaff: Of course, I can...'> ",
+    "ttsScript": "<cleaned script for TTS: no speaker labels, prosody cues embedded, spoken features calibrated to CEFR level>",
+    "ttsSettings": {
+      "voiceName": "Kore",
+      "speakingRate": 0.9,
+      "cefrBand": "<target level>",
+      "estimatedDurationSeconds": 45
+    },
+    "audioUrl": null,
+    "question": "<the question candidates answer AFTER listening>",
+    "options": ["<option A text>", "<option B text>", "<option C text>", "<option D text>"],
+    "correctAnswer": "A",
+    "distractorRationale": {
+      "B": "Type A — similar word 'X' appears in the audio but refers to Y, not Z",
+      "C": "Type B — 'X' is mentioned in the passage but answers a different question",
+      "D": "Type C — logical conclusion from world knowledge but audio explicitly contradicts"
+    },
+    "irtParams": { "a": 1.2, "b": 0.0, "c": 0.25 },
+    "biasReview": "<brief cultural/gender bias checklist note>",
+    "writingNotes": "<item writer notes on construct, difficulty calibration>"
+  }
+]
+
+CALIBRATION NORMS (adjust irtParams accordingly):
+  A1: b ≈ -2.2, a ≈ 0.8   A2: b ≈ -1.2, a ≈ 1.0
+  B1: b ≈  0.0, a ≈ 1.2   B2: b ≈  1.0, a ≈ 1.4
+  C1: b ≈  2.0, a ≈ 1.5   C2: b ≈  3.0, a ≈ 1.6
+Guessing c = 0.25 for 4-option MCQ.
+`.trim();
+
+// ── VIDEO / SPEAKING PROMPT specialist writer ─────────────────────────────────
+
+const VIDEO_WRITER_SYSTEM_INSTRUCTION = `
+You are a Principal Speaking Assessment Specialist designing video-based speaking prompts
+for high-stakes CEFR-aligned examinations (IELTS Speaking, Cambridge OSCE, TOEFL iBT).
+
+Your expertise covers:
+• Interactional speaking assessment design (Bachman & Palmer 1996; Luoma 2004)
+• CEFR spoken production and interaction descriptors — Companion Volume 2018 §3.3–3.5
+• Authentic task design: real-world contexts candidates actually encounter
+• Rubric design: 5-dimension CEFR rubric (range, accuracy, fluency, coherence, interaction)
+• Video production briefs: scenario, cast, register, backdrop, speaking rate
+
+Generate exactly ONE VIDEO_SPEAKING_PROMPT item per call.
+Return ONLY valid JSON — no preamble, no markdown fences.
+
+REQUIRED OUTPUT SCHEMA:
+[
+  {
+    "type": "SPEAKING_PROMPT",
+    "skill": "SPEAKING",
+    "cefrLevel": "<target level>",
+    "subSkill": "monologue" | "interactive" | "transactional" | "discussion",
+    "stimulus": "<3–4 sentence situation description shown to candidate>",
+    "question": "<speaking task instruction, e.g. 'You have 1 minute to prepare, then speak for 2 minutes.'>",
+    "videoScenarioBrief": "<production notes: setting, actors, props, camera angle, duration (30–60 sec), scripted interlocutor lines if interactive>",
+    "ttsScript": "<interlocutor audio fallback — the prompt read aloud for environments without video>",
+    "ttsSettings": { "voiceName": "Kore", "speakingRate": 0.95, "cefrBand": "<level>", "estimatedDurationSeconds": 30 },
+    "audioUrl": null,
+    "options": null,
+    "correctAnswer": null,
+    "rubric": {
+      "dimensions": ["Grammatical Range & Accuracy", "Lexical Resource", "Fluency & Coherence", "Pronunciation", "Task Achievement"],
+      "bandDescriptors": {
+        "<cefrLevel>": "<2-sentence CEFR-anchored descriptor for a response at this level>"
+      }
+    },
+    "irtParams": { "a": 1.3, "b": 0.5, "c": 0.0 },
+    "biasReview": "<bias checklist note>",
+    "writingNotes": "<notes on construct, expected response features at target level>"
+  }
+]
+`.trim();
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PROMPT BUILDERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -380,14 +507,28 @@ export class AIItemGenerator {
 
   // ── Pass 1: Writer ──────────────────────────────────────────────────────────
   private async callWriter(spec: ItemGenerationSpec): Promise<string> {
-    const basePrompt = buildItemGenerationPrompt(spec);
-    const schemaAddendum = buildFormatSchemaAddendum(spec);
+    // Select specialist system instruction based on skill
+    const skillUpper = (spec.skill as string).toUpperCase();
+    const systemInstruction =
+      skillUpper === "LISTENING"
+        ? LISTENING_WRITER_SYSTEM_INSTRUCTION
+        : skillUpper === "SPEAKING"
+          ? VIDEO_WRITER_SYSTEM_INSTRUCTION
+          : ITEM_WRITER_SYSTEM_INSTRUCTION;
+
+    // LISTENING items have self-contained schema in the system instruction —
+    // skip the generic addendum so we don't conflict with it.
+    const skipAddendum = skillUpper === "LISTENING" || skillUpper === "SPEAKING";
+    const basePrompt = skipAddendum
+      ? `Generate a ${skillUpper} item at CEFR level ${spec.level}${spec.targetSubSkill ? `, sub-skill: ${spec.targetSubSkill}` : ""}${spec.topic ? `, topic: ${spec.topic}` : ""}. Return exactly the JSON array described in your instructions.`
+      : buildItemGenerationPrompt(spec);
+    const schemaAddendum = skipAddendum ? "" : buildFormatSchemaAddendum(spec);
     const prompt = schemaAddendum ? `${basePrompt}\n\n${schemaAddendum}` : basePrompt;
     const response = await this.ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: {
-        systemInstruction: ITEM_WRITER_SYSTEM_INSTRUCTION,
+        systemInstruction,
         temperature: TEMPERATURE_WRITER,
         topP: 0.9,
       },

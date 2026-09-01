@@ -1,25 +1,24 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader } from "./ui/Card";
 import { Button } from "./ui/Button";
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Edit2, 
-  Trash2, 
-  FileText, 
-  Mic, 
-  CheckCircle2, 
-  AlertCircle,
+import {
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  FileText,
+  Mic,
   MoreVertical,
-  Layers,
   BrainCircuit,
   X,
   Save,
   Image as ImageIcon,
   Music,
   Video,
-  Link as LinkIcon
+  Sparkles,
+  Volume2,
+  Loader2,
+  CheckCircle2,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
@@ -42,6 +41,24 @@ interface Item {
   assets?: Asset[];
 }
 
+interface GenerateSpec {
+  skill: string;
+  level: string;
+  format: string;
+  topic: string;
+  subSkill: string;
+  autoGenerateAudio: boolean;
+}
+
+const SKILL_FORMATS: Record<string, string[]> = {
+  READING:    ["MULTIPLE_CHOICE", "GAP_FILL_CLOSED", "CLOZE_PASSAGE", "SUMMARY_COMPLETION"],
+  LISTENING:  ["MULTIPLE_CHOICE"],
+  WRITING:    ["WRITING_EMAIL", "WRITING_ESSAY", "WRITING_REPORT"],
+  SPEAKING:   ["SPEAKING_MONOLOGUE", "SPEAKING_PROMPT"],
+  GRAMMAR:    ["MULTIPLE_CHOICE", "GAP_FILL_OPEN", "DRAG_DROP"],
+  VOCABULARY: ["MULTIPLE_CHOICE", "GAP_FILL_CLOSED", "MATCHING"],
+};
+
 export const ItemBankManager: React.FC = () => {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +67,19 @@ export const ItemBankManager: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Partial<Item> | null>(null);
   const [newAsset, setNewAsset] = useState({ type: "IMAGE", url: "" });
+
+  // AI generation state
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+  const [generateSpec, setGenerateSpec] = useState<GenerateSpec>({
+    skill: "LISTENING", level: "B1", format: "MULTIPLE_CHOICE",
+    topic: "", subSkill: "detail", autoGenerateAudio: true,
+  });
+  const [generating, setGenerating] = useState(false);
+  const [generateResult, setGenerateResult] = useState<{ message: string; audioUrl?: string } | null>(null);
+
+  // Per-item audio generation state
+  const [audioGenerating, setAudioGenerating] = useState<Record<string, boolean>>({});
+  const [audioReady, setAudioReady] = useState<Record<string, string>>({}); // itemId → audioUrl
 
   useEffect(() => {
     fetchItems();
@@ -97,12 +127,65 @@ export const ItemBankManager: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this item?")) return;
-    
+
     try {
       const res = await fetch(`/api/items/${id}`, { method: "DELETE" });
       if (res.ok) fetchItems();
     } catch (err) {
       console.error("Failed to delete item");
+    }
+  };
+
+  const handleGenerateWithAI = async () => {
+    setGenerating(true);
+    setGenerateResult(null);
+    try {
+      const res = await fetch("/api/items/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          skill: generateSpec.skill,
+          level: generateSpec.level,
+          format: generateSpec.format,
+          topic: generateSpec.topic || undefined,
+          targetSubSkill: generateSpec.subSkill || undefined,
+          quantity: 1,
+          autoGenerateAudio: generateSpec.autoGenerateAudio && generateSpec.skill === "LISTENING",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Generation failed");
+
+      const approved = data.approvedCount ?? 0;
+      const audioUrl = data.audioResults?.[0]?.audioUrl;
+      setGenerateResult({
+        message: `${approved} item${approved !== 1 ? "s" : ""} generated successfully.${audioUrl ? " Audio ready." : ""}`,
+        audioUrl,
+      });
+      fetchItems();
+    } catch (err: any) {
+      setGenerateResult({ message: `Error: ${err.message}` });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleGenerateAudio = async (itemId: string) => {
+    setAudioGenerating(prev => ({ ...prev, [itemId]: true }));
+    try {
+      const res = await fetch(`/api/items/${itemId}/generate-audio`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Audio generation failed");
+      setAudioReady(prev => ({ ...prev, [itemId]: data.audioUrl }));
+      fetchItems();
+    } catch (err: any) {
+      alert(`Audio generation failed: ${err.message}`);
+    } finally {
+      setAudioGenerating(prev => ({ ...prev, [itemId]: false }));
     }
   };
 
@@ -160,7 +243,13 @@ export const ItemBankManager: React.FC = () => {
           <p className="text-slate-500 mt-1 font-medium">Manage psychometric items, rubrics, and adaptive parameters.</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button 
+          <Button
+            onClick={() => { setIsGenerateModalOpen(true); setGenerateResult(null); }}
+            className="gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 h-11 px-6 rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-100"
+          >
+            <Sparkles size={16} /> Generate with AI
+          </Button>
+          <Button
             onClick={() => {
               setEditingItem({
                 skill: "READING",
@@ -255,6 +344,40 @@ export const ItemBankManager: React.FC = () => {
                   </div>
                 </div>
 
+                {/* LISTENING audio row */}
+                {item.skill === "LISTENING" && (() => {
+                  const hasAudio = !!(item.content?.audioUrl ?? audioReady[item.id]);
+                  const isGenerating = !!audioGenerating[item.id];
+                  const audioUrl = audioReady[item.id] ?? item.content?.audioUrl;
+                  return (
+                    <div className="flex items-center gap-2 mb-3">
+                      {hasAudio ? (
+                        <audio
+                          controls
+                          src={audioUrl}
+                          className="h-8 w-full rounded-lg"
+                          style={{ height: 32 }}
+                        />
+                      ) : (
+                        <button
+                          onClick={() => handleGenerateAudio(item.id)}
+                          disabled={isGenerating}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all w-full justify-center",
+                            isGenerating
+                              ? "bg-amber-50 text-amber-400 cursor-not-allowed"
+                              : "bg-amber-50 text-amber-600 hover:bg-amber-100"
+                          )}
+                        >
+                          {isGenerating
+                            ? <><Loader2 size={12} className="animate-spin" /> Generating audio…</>
+                            : <><Volume2 size={12} /> Generate Audio</>}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <div className="flex items-center justify-between pt-5 border-t border-slate-50">
                   <div className="flex items-center gap-6">
                     <div className="text-center">
@@ -272,20 +395,17 @@ export const ItemBankManager: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => {
-                        setEditingItem(item);
-                        setIsModalOpen(true);
-                      }}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setEditingItem(item); setIsModalOpen(true); }}
                       className="h-10 w-10 p-0 rounded-xl bg-slate-50 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all"
                     >
                       <Edit2 size={16} />
                     </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => handleDelete(item.id)}
                       className="h-10 w-10 p-0 rounded-xl bg-slate-50 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all"
                     >
@@ -298,6 +418,152 @@ export const ItemBankManager: React.FC = () => {
           ))}
         </div>
       )}
+
+      {/* AI Generation Modal */}
+      <AnimatePresence>
+        {isGenerateModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsGenerateModalOpen(false)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-lg bg-white rounded-[40px] shadow-2xl overflow-hidden"
+            >
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
+                    <Sparkles size={18} className="text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Generate with AI</h2>
+                    <p className="text-[11px] text-slate-400 font-medium">3-persona Gemini pipeline · World-class ELT standards</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsGenerateModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-5">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Skill</label>
+                    <select
+                      className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm"
+                      value={generateSpec.skill}
+                      onChange={e => {
+                        const skill = e.target.value;
+                        const fmt = SKILL_FORMATS[skill]?.[0] ?? "MULTIPLE_CHOICE";
+                        setGenerateSpec(s => ({ ...s, skill, format: fmt }));
+                      }}
+                    >
+                      {["READING","LISTENING","WRITING","SPEAKING","GRAMMAR","VOCABULARY"].map(s => (
+                        <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">CEFR Level</label>
+                    <select
+                      className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm"
+                      value={generateSpec.level}
+                      onChange={e => setGenerateSpec(s => ({ ...s, level: e.target.value }))}
+                    >
+                      {["A1","A2","B1","B2","C1","C2"].map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Format</label>
+                  <select
+                    className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm"
+                    value={generateSpec.format}
+                    onChange={e => setGenerateSpec(s => ({ ...s, format: e.target.value }))}
+                  >
+                    {(SKILL_FORMATS[generateSpec.skill] ?? ["MULTIPLE_CHOICE"]).map(f => (
+                      <option key={f} value={f}>{f.replace(/_/g, " ")}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {generateSpec.skill === "LISTENING" && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sub-skill</label>
+                    <select
+                      className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm"
+                      value={generateSpec.subSkill}
+                      onChange={e => setGenerateSpec(s => ({ ...s, subSkill: e.target.value }))}
+                    >
+                      {["gist","detail","inference","attitude","relationship","pragmatic"].map(ss => (
+                        <option key={ss} value={ss}>{ss.charAt(0).toUpperCase() + ss.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Topic (optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. job interview, hotel complaint, academic lecture…"
+                    className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl font-medium text-sm"
+                    value={generateSpec.topic}
+                    onChange={e => setGenerateSpec(s => ({ ...s, topic: e.target.value }))}
+                  />
+                </div>
+
+                {generateSpec.skill === "LISTENING" && (
+                  <label className="flex items-center gap-3 p-4 bg-amber-50 rounded-2xl cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={generateSpec.autoGenerateAudio}
+                      onChange={e => setGenerateSpec(s => ({ ...s, autoGenerateAudio: e.target.checked }))}
+                      className="w-4 h-4 accent-amber-500"
+                    />
+                    <div>
+                      <p className="text-[11px] font-black text-amber-800 uppercase tracking-widest">Auto-generate audio</p>
+                      <p className="text-[10px] text-amber-600">Gemini 2.5 Flash TTS — runs after item creation (~10s)</p>
+                    </div>
+                    <Volume2 size={16} className="ml-auto text-amber-500" />
+                  </label>
+                )}
+
+                {generateResult && (
+                  <div className={cn(
+                    "p-4 rounded-2xl text-[11px] font-bold flex items-center gap-2",
+                    generateResult.message.startsWith("Error")
+                      ? "bg-rose-50 text-rose-700"
+                      : "bg-emerald-50 text-emerald-700"
+                  )}>
+                    <CheckCircle2 size={14} />
+                    {generateResult.message}
+                    {generateResult.audioUrl && (
+                      <audio controls src={generateResult.audioUrl} className="ml-auto h-7" />
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+                <Button variant="ghost" onClick={() => setIsGenerateModalOpen(false)} className="font-bold uppercase tracking-widest text-xs">
+                  Close
+                </Button>
+                <Button
+                  onClick={handleGenerateWithAI}
+                  disabled={generating}
+                  className="gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 h-12 px-8 rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-100 disabled:opacity-60"
+                >
+                  {generating
+                    ? <><Loader2 size={16} className="animate-spin" /> {generateSpec.autoGenerateAudio && generateSpec.skill === "LISTENING" ? "Generating item + audio…" : "Generating…"}</>
+                    : <><Sparkles size={16} /> Generate</>}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Create/Edit Modal */}
       {isModalOpen && (
