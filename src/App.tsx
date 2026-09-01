@@ -54,6 +54,7 @@ export default function App() {
   const [branding, setBranding] = useState<any>(null);
   const [certificate, setCertificate] = useState<any>(null);
   const [recentSessions, setRecentSessions] = useState<any[]>([]);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   // SSE stream for async Writing/Speaking scoring — active after test completes
   const scoringStatus = useScoringStatus(testCompleted?.sessionId ?? null);
 
@@ -235,10 +236,7 @@ export default function App() {
   const isRater = profRole === "RATER" || isAdmin;
   const isOrgAdmin = ["ORG_ADMIN", "INST_ADMIN"].includes(profRole) || isAdmin;
 
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
   // Clears stale session state when the user explicitly switches away from results.
-  // Prevents the state→URL effect from fighting browser back by re-pushing /report/…
   type Tab = typeof activeTab;
   const goToTab = (tab: Tab) => {
     if (tab !== "results") {
