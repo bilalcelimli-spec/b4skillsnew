@@ -10,8 +10,9 @@ type User = { uid: string; email: string; displayName?: string; role?: string };
 const signOut = async () => {
   try {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-  } catch { /* cookie temizlense bile reload yapılmalı */ }
-  window.location.reload();
+  } catch { /* proceed regardless — server cleared cookie */ }
+  // Navigate to root to avoid URL sync re-setting activeTab to "admin" etc.
+  window.location.href = "/";
 };
 
 import { Button } from "./components/ui/Button";

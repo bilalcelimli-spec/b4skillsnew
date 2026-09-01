@@ -260,6 +260,8 @@ async function startServer() {
   });
 
   app.post("/api/auth/logout", async (req, res) => {
+    const isProd = process.env.NODE_ENV === 'production';
+    const cookieOpts = { httpOnly: true, secure: isProd, sameSite: 'lax' as const };
     const rf = req.cookies.refreshToken;
     if (rf) {
       try {
@@ -275,8 +277,9 @@ async function startServer() {
         // Token is invalid/tampered — proceed with cookie clearing anyway
       }
     }
-    res.clearCookie('accessToken');
-    res.clearCookie('refreshToken');
+    // Must match the same attributes used in setAuthCookies so browsers accept the deletion
+    res.clearCookie('accessToken', cookieOpts);
+    res.clearCookie('refreshToken', cookieOpts);
     return res.json({ success: true });
   });
 
@@ -559,7 +562,10 @@ async function startServer() {
         } catch { return res.status(401).json({ error: "Invalid refresh token" }); }
       }
       if (url === "/auth/logout" && method === "POST") {
-        res.clearCookie("accessToken"); res.clearCookie("refreshToken");
+        const _isProd = process.env.NODE_ENV === 'production';
+        const _opts = { httpOnly: true, secure: _isProd, sameSite: 'lax' as const };
+        res.clearCookie("accessToken", _opts);
+        res.clearCookie("refreshToken", _opts);
         return res.json({ success: true });
       }
 
