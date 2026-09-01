@@ -262,12 +262,17 @@ async function startServer() {
   app.post("/api/auth/logout", async (req, res) => {
     const rf = req.cookies.refreshToken;
     if (rf) {
-      const decoded: any = jwt.decode(rf);
-      if (decoded && decoded.userId) {
-        await prisma.user.updateMany({
-           where: { id: decoded.userId, refreshToken: rf },
-           data: { refreshToken: null }
-        }).catch(() => {});
+      try {
+        // Verify the token (clockTolerance allows already-expired tokens to still log out cleanly)
+        const decoded: any = jwt.verify(rf, REFRESH_SECRET, { clockTolerance: 60 * 60 * 24 * 7 });
+        if (decoded?.userId) {
+          await prisma.user.updateMany({
+            where: { id: decoded.userId, refreshToken: rf },
+            data: { refreshToken: null }
+          }).catch(() => {});
+        }
+      } catch {
+        // Token is invalid/tampered — proceed with cookie clearing anyway
       }
     }
     res.clearCookie('accessToken');
@@ -1354,7 +1359,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       res.json({ totalActive, neverUsed, overExposed, overExposureThreshold, strata, bySkill, byCefrLevel });
     } catch (err) {
-      res.status(500).json({ error: "Failed to compute exposure report", details: String(err) });
+      res.status(500).json({ error: "Failed to compute exposure report"});
     }
   });
 
@@ -1417,7 +1422,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       res.json(result);
     } catch (error) {
-      res.status(500).json({ error: "Item generation failed", details: String(error) });
+      res.status(500).json({ error: "Item generation failed"});
     }
   });
 
@@ -1441,7 +1446,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const results = await itemGenerator.generateBulk(specs);
       res.json({ results, totalSpecs: specs.length });
     } catch (error) {
-      res.status(500).json({ error: "Bulk generation failed", details: String(error) });
+      res.status(500).json({ error: "Bulk generation failed"});
     }
   });
 
@@ -1458,7 +1463,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       // Return just the first item with full pipeline data — does NOT save to DB
       res.json({ preview: result.items[0] ?? null, generationModel: result.generationModel });
     } catch (error) {
-      res.status(500).json({ error: "Preview generation failed", details: String(error) });
+      res.status(500).json({ error: "Preview generation failed"});
     }
   });
 
@@ -1480,7 +1485,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       });
       res.json(report);
     } catch (error) {
-      res.status(500).json({ error: "Validation failed", details: String(error) });
+      res.status(500).json({ error: "Validation failed"});
     }
   });
 
@@ -1506,7 +1511,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       });
       res.json(result);
     } catch (error) {
-      res.status(500).json({ error: "IQS calculation failed", details: String(error) });
+      res.status(500).json({ error: "IQS calculation failed"});
     }
   });
 
@@ -1517,7 +1522,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const result = await computeAndPersistIqs(id);
       res.json(result);
     } catch (error) {
-      res.status(500).json({ error: "IQS persist failed", details: String(error) });
+      res.status(500).json({ error: "IQS persist failed"});
     }
   });
 
@@ -1562,7 +1567,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
             }
           } catch (err: any) {
             failed++;
-            write({ event: "error", id, error: String(err.message ?? err) });
+            write({ event: "error", id, error: "Processing failed" });
           }
         }
       }
@@ -1571,8 +1576,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       write({ event: "done", done, failed, total });
       res.end();
     } catch (error) {
-      if (!res.headersSent) res.status(500).json({ error: "IQS batch failed", details: String(error) });
-      else res.end(JSON.stringify({ event: "fatal", error: String(error) }) + "\n");
+      if (!res.headersSent) res.status(500).json({ error: "IQS batch failed"});
+      else res.end(JSON.stringify({ event: "fatal", error: "Internal server error" }) + "\n");
     }
   });
 
@@ -1651,12 +1656,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         });
       } catch (err: any) {
         console.error("[generate-audio]", err);
-        res.status(500).json({ error: "Audio generation failed", details: err.message });
+        res.status(500).json({ error: "Audio generation failed"});
       }
     }
   );
 
-  app.delete("/api/assets/:id", async (req, res) => {
+  app.delete("/api/assets/:id", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
     try {
       const { id } = req.params;
       await AssessmentService.deleteAsset(id);
@@ -1669,7 +1674,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // --- RATING QUEUE API ---
   const { RatingQueueService } = await import("./src/lib/scoring/rating-queue.js");
 
-  app.get("/api/rating/tasks", async (req, res) => {
+  app.get("/api/rating/tasks", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
     try {
       const { status } = req.query;
       const tasks = await RatingQueueService.getTasks(status as any);
@@ -1679,7 +1684,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/rating/tasks/:id/claim", async (req, res) => {
+  app.post("/api/rating/tasks/:id/claim", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
     try {
       const { id } = req.params;
       const { raterId } = req.body;
@@ -1690,7 +1695,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/rating/tasks/:id/submit", async (req, res) => {
+  app.post("/api/rating/tasks/:id/submit", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
     try {
       const { id } = req.params;
       const { score, feedback } = req.body;
@@ -1718,7 +1723,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // --- REPORTING API ---
   const { ReportingService } = await import("./src/lib/reporting/reporting-service.js");
 
-  app.get("/api/analytics/cohort", async (req, res) => {
+  app.get("/api/analytics/cohort", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
     try {
       const { organizationId } = req.query;
       if (!organizationId) return res.status(400).json({ error: "Organization ID required" });
@@ -1781,7 +1786,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.json({ message: `Generated ${created.count} codes`, codes });
     } catch(err) {
       console.error("Exam Code Generation Error:", err);
-      res.status(500).json({ error: "Fail to generate codes", details: String(err) });
+      res.status(500).json({ error: "Fail to generate codes"});
     }
   });
 
@@ -1795,7 +1800,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       
       res.json({ valid: true, examCode });
     } catch(err) {
-      res.status(500).json({ error: "Validate failed", details: String(err) });
+      res.status(500).json({ error: "Validate failed"});
     }
   });
 
@@ -1834,7 +1839,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       res.json({ success: true, organizationId: examCode.organizationId, productLine: examCode.productLine });
     } catch(err) {
-      res.status(500).json({ error: "Redeem failed", details: String(err) });
+      res.status(500).json({ error: "Redeem failed"});
     }
   });
 
@@ -1900,7 +1905,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
   const { ProctoringService } = await import("./src/lib/proctoring/proctoring-service.js");
 
-  app.post("/api/proctoring/event", async (req, res) => {
+  app.post("/api/proctoring/event", authMiddleware, async (req, res) => {
     try {
       const { sessionId, type, severity, metadata } = req.body;
       // Map string severity to Int as defined in the Prisma schema (1=Low, 3=Medium, 5=High)
@@ -1915,7 +1920,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.get("/api/proctoring/report/:sessionId", async (req, res) => {
+  app.get("/api/proctoring/report/:sessionId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req, res) => {
     try {
       const { sessionId } = req.params;
       const report = await ProctoringService.getTrustReport(sessionId);
@@ -1955,7 +1960,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.put("/api/ecosystem/config", async (req, res) => {
+  app.put("/api/ecosystem/config", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
     const { organizationId, webhookUrl, generateApiKey } = req.body;
     try {
       const org = await prisma.organization.findUnique({ where: { id: organizationId } });
@@ -1976,7 +1981,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/proctoring/audit", async (req, res) => {
+  app.post("/api/proctoring/audit", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req, res) => {
     const { sessionId } = req.body;
     try {
       const { AnomalyDetectionService } = await import("./src/lib/proctoring/anomaly-detection-service.js");
@@ -2032,7 +2037,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/ai/generate-item", async (req, res) => {
+  app.post("/api/ai/generate-item", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
     const { skill, level, type } = req.body;
     try {
       const { ItemGeneratorService } = await import("./src/lib/assessment-engine/item-generator.js");
@@ -2043,7 +2048,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/ai/edit-item", async (req, res) => {
+  app.post("/api/ai/edit-item", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
     const { currentItemContent, instruction } = req.body;
     try {
       const { ItemGeneratorService } = await import("./src/lib/assessment-engine/item-generator.js");
@@ -2221,7 +2226,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       });
     } catch (err) {
       console.error("adaptive-report error:", err);
-      res.status(500).json({ error: "Failed to build adaptive report", details: String(err) });
+      res.status(500).json({ error: "Failed to build adaptive report"});
     }
   });
 
@@ -2257,7 +2262,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       return res.json({ sessionId: id, ...path });
     } catch (err) {
       console.error("learning-path error:", err);
-      res.status(500).json({ error: "Failed to generate learning path", details: String(err) });
+      res.status(500).json({ error: "Failed to generate learning path"});
     }
   });
 
@@ -2670,7 +2675,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // --- CERTIFICATION API ---
   const { CertificateService } = await import("./src/lib/certification/certificate-service.js");
 
-  app.post("/api/certificates/generate", async (req, res) => {
+  app.post("/api/certificates/generate", authMiddleware, async (req, res) => {
     try {
       const { sessionData, candidateProfile, branding } = req.body;
       const cert = await CertificateService.generateCertificate(sessionData, candidateProfile, branding);
@@ -2692,7 +2697,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // Mock AI Scoring Endpoint (Simulation)
-  app.post("/api/score/ai", async (req, res) => {
+  app.post("/api/score/ai", authMiddleware, async (req, res) => {
     try {
       const { type, content } = req.body;
 
@@ -2972,7 +2977,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       if (!allItems.length) return res.status(503).json({ error: "No items available" });
 
-      const pId = "placement-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+      const pId = "placement-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
       const startTheta = 0.0;
       const firstItem = pickNextPlacementItem(allItems, new Set(), startTheta, {});
       if (!firstItem) return res.status(503).json({ error: "No items available" });
@@ -2995,7 +3000,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       });
     } catch (err) {
       console.error("PLACEMENT START ERROR", err);
-      res.status(500).json({ error: "Failed to start placement test", details: String(err) });
+      res.status(500).json({ error: "Failed to start placement test"});
     }
   });
 
@@ -3128,7 +3133,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         currentCefrBand: thetaToCefr(sess.theta),
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to process response", details: String(err) });
+      res.status(500).json({ error: "Failed to process response"});
     }
   });
 
@@ -3139,7 +3144,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const stats = await cohortAnalytics.getCohortStats(req.params.orgId);
       res.json(stats);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   // ── Q3: Report Generator ──────────────────────────────────────────────────
@@ -3153,7 +3158,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.setHeader("Content-Type", mimeType);
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       return res.send(buffer);
-    } catch (err) { res.status(500).json({ error: "Report generation failed", details: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Report generation failed"}); }
   });
 
   app.get("/api/reports/cohort/:orgId", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -3164,7 +3169,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.setHeader("Content-Type", mimeType);
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       return res.send(buffer);
-    } catch (err) { res.status(500).json({ error: "Cohort report generation failed", details: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Cohort report generation failed"}); }
   });
 
   // ── Q3: Privacy Manager ───────────────────────────────────────────────────
@@ -3174,7 +3179,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const settings = await privacyManager.getPrivacySettings(req.params.userId);
       res.json(settings);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.post("/api/privacy/consent/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -3183,7 +3188,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const user = (req as any).user;
       await privacyManager.updateConsent(req.params.userId, consents, { ipAddress: req.ip!, userAgent: req.headers["user-agent"] ?? "" });
       res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.post("/api/privacy/export/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -3191,7 +3196,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const actorId = (req as any).user?.id ?? "system";
       const bundle = await privacyManager.requestDataExport(req.params.userId, actorId);
       res.json(bundle);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.post("/api/privacy/delete/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -3200,7 +3205,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const { reason } = req.body;
       const deletion = await privacyManager.requestDeletion(req.params.userId, actorId, reason);
       res.json(deletion);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.get("/api/privacy/audit/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -3208,7 +3213,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const limit = parseInt(req.query.limit as string) || 50;
       const log = await privacyManager.getAuditLog(req.params.userId, limit);
       res.json(log);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   // ── Q5: Learning Trajectory ───────────────────────────────────────────────
@@ -3220,14 +3225,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const skill = req.query.skill as string | undefined;
       const trajectory = await trajectoryAnalyzer.analyzeTrajectory(req.params.candidateId, skill as any);
       res.json(trajectory);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.get("/api/analytics/trajectory/:candidateId/multi", authMiddleware, async (req: express.Request, res: express.Response) => {
     try {
       const trajectories = await trajectoryAnalyzer.analyzeMultiSkillTrajectory(req.params.candidateId);
       res.json(trajectories);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.get("/api/analytics/trajectory/:candidateId/vs-cohort", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -3236,7 +3241,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (!orgId) return res.status(400).json({ error: "orgId required" });
       const comparison = await trajectoryAnalyzer.compareCandidateVsCohort(req.params.candidateId, orgId as string);
       res.json(comparison);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   // ── Q5: Item Difficulty ───────────────────────────────────────────────────
@@ -3247,7 +3252,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const report = await diffEstimator.computeItemDifficultyReport(req.params.itemId);
       res.json(report);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.get("/api/analytics/difficulty", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -3256,7 +3261,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const limit = parseInt(req.query.limit as string) || 100;
       const reports = await diffEstimator.batchEstimate(skill as any, limit);
       res.json(reports);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   // ── Q5: Learning Path & Spaced Repetition ────────────────────────────────
@@ -3270,7 +3275,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const target = req.query.targetCefrLevel as string | undefined;
       const path = await pathEngine.generatePersonalisedPath(req.params.candidateId, target as any);
       res.json(path);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.get("/api/recommendations/review-queue/:candidateId", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -3278,14 +3283,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       await spacedRep.syncFromSessions(req.params.candidateId);
       const queue = await spacedRep.getReviewQueue(req.params.candidateId);
       res.json(queue);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.post("/api/recommendations/review/:candidateId", authMiddleware, async (req: express.Request, res: express.Response) => {
     try {
       const result = await spacedRep.recordReview(req.body);
       res.json(result);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.get("/api/recommendations/review/:candidateId/forecast", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -3295,7 +3300,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const days = parseInt(req.query.days as string) || 30;
       const forecast = spacedRep.forecastRetention([...queue.dueItems, ...queue.upcomingItems], days);
       res.json(forecast);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   // ── Q5: Data Warehouse / BI ───────────────────────────────────────────────
@@ -3306,7 +3311,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const metrics = await dataExporter.getBIMetrics(req.params.orgId);
       res.json(metrics);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.post("/api/bi/export/:orgId", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -3322,7 +3327,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.setHeader("Content-Type", result.format === "csv" ? "text/csv" : "application/octet-stream");
       res.setHeader("Content-Disposition", `attachment; filename="export-${req.params.orgId}.${result.format}"`);
       res.send(result.data);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   // ── Q6: SLA Manager ──────────────────────────────────────────────────────
@@ -3332,7 +3337,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const report = await slaManager.generateMonthlyReport(req.params.orgId);
       res.json(report);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.get("/api/sla/:orgId/range", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -3341,7 +3346,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const to   = new Date(req.query.to   as string || Date.now());
       const report = await slaManager.evaluateSLACompliance(req.params.orgId, from, to);
       res.json(report);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   // ── Q7: Webhook Manager ───────────────────────────────────────────────────
@@ -3352,7 +3357,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const endpoint = await webhookManager.registerWebhook(req.body);
       res.status(201).json(endpoint);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.get("/api/webhooks/logs", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -3360,14 +3365,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const { webhookId, limit } = req.query;
       const logs = await webhookManager.getDeliveryLog(webhookId as string, parseInt(limit as string) || 100);
       res.json(logs);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.get("/api/webhooks/stats/:orgId", authMiddleware, async (req: express.Request, res: express.Response) => {
     try {
       const stats = await webhookManager.getDeliveryStats(req.params.orgId);
       res.json(stats);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   // ── Q6: Accessibility / WCAG ──────────────────────────────────────────────
@@ -3381,7 +3386,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const result = wcagChecker.audit(html, level ?? "AA");
       const report = wcagChecker.generateReport(result);
       res.json({ ...result, report });
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   // ── Q6: Brand Manager ────────────────────────────────────────────────────
@@ -3392,14 +3397,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const config = await brandManager.getBrandConfig(req.params.orgId);
       const css = brandManager.generateCssVariables(config);
       res.json({ config, css });
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.get("/api/brand/by-domain/:domain", async (req: express.Request, res: express.Response) => {
     try {
       const config = await brandManager.getBrandConfigByDomain(req.params.domain);
       res.json(config);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   // ── Q8: Cultural Framework ───────────────────────────────────────────────
@@ -3412,13 +3417,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const instructionalStyle = getInstructionalStyle(ctx);
       const feedbackStyle = getFeedbackStyle(ctx);
       res.json({ ...ctx, instructionalStyle, feedbackStyle });
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.get("/api/cultural/profiles", async (_req: express.Request, res: express.Response) => {
     try {
       res.json(getAllCulturalProfiles());
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   // ── Q8: Cultural Sensitivity Filter ──────────────────────────────────────
@@ -3431,7 +3436,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (!text) return res.status(400).json({ error: "text required" });
       const report = sensitivityFilter.evaluate(text, regions ?? []);
       res.json(report);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.post("/api/cultural/filter/check", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -3440,7 +3445,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (!text || !region) return res.status(400).json({ error: "text and region required" });
       const safe = sensitivityFilter.isSafeForRegion(text, region);
       res.json({ safe, region, textLength: text.length });
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   // ── Q8: Regional Compliance ───────────────────────────────────────────────
@@ -3451,7 +3456,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const config = getComplianceConfig(req.params.region as any);
       if (!config) return res.status(404).json({ error: "Unknown region" });
       res.json(config);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.post("/api/cultural/compliance/:region/check-eligibility", async (req: express.Request, res: express.Response) => {
@@ -3459,7 +3464,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const { attemptsThisYear, daysSinceLastAttempt } = req.body;
       const result = isTestingAllowed(req.params.region as any, attemptsThisYear ?? 0, daysSinceLastAttempt ?? 999);
       res.json(result);
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.post("/api/cultural/compliance/:region/format-score", async (req: express.Request, res: express.Response) => {
@@ -3468,7 +3473,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (score === undefined) return res.status(400).json({ error: "score required" });
       const formatted = formatScore(score, req.params.region as any);
       res.json({ formatted, region: req.params.region, rawScore: score });
-    } catch (err) { res.status(500).json({ error: String(err) }); }
+    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   // ── Multi-Region: attach region middleware ──────────────────────────────
@@ -3489,7 +3494,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // ── Anti-cheat ML v1 ────────────────────────────────────────────────────
   const { computeAnticheatReport } = await import("./src/lib/proctoring/anticheat-ml.js");
 
-  app.post("/api/proctoring/anticheat", async (req, res) => {
+  app.post("/api/proctoring/anticheat", authMiddleware, async (req, res) => {
     try {
       const telemetry = req.body;
       if (!telemetry?.sessionId) return res.status(400).json({ error: "sessionId required" });
@@ -3505,7 +3510,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       }
       res.json(report);
     } catch (err) {
-      res.status(500).json({ error: "Anti-cheat analysis failed", details: String(err) });
+      res.status(500).json({ error: "Anti-cheat analysis failed"});
     }
   });
 
@@ -3518,7 +3523,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       }
       res.json({ sessionId, message: "Submit telemetry via POST /api/proctoring/anticheat to compute report" });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -3529,7 +3534,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     message: { error: "Too many speaking submissions, please wait." },
   });
 
-  app.post("/api/speaking/transcribe", whisperRateLimit, async (req, res) => {
+  app.post("/api/speaking/transcribe", whisperRateLimit, authMiddleware, async (req, res) => {
     try {
       const { audio, filename = "recording.webm", prompt = "", includeTimestamps = false } = req.body;
       if (!audio) return res.status(400).json({ error: "audio (base64) required" });
@@ -3663,7 +3668,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         if (!Array.isArray(items)) { res.status(400).json({ error: "items must be an array" }); return; }
         const reports = await expansionEngine.runQualityBatch(items as any);
         res.json(reports);
-      } catch (err) { res.status(500).json({ error: String(err) }); }
+      } catch (err) { res.status(500).json({ error: "Internal server error" }); }
     });
 
     app.post("/api/admin/item-bank/promote", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
@@ -3671,13 +3676,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const minN = typeof req.body?.minN === "number" ? req.body.minN : 200;
         const promoted = await expansionEngine.promoteCalibrated(minN);
         res.json({ promoted });
-      } catch (err) { res.status(500).json({ error: String(err) }); }
+      } catch (err) { res.status(500).json({ error: "Internal server error" }); }
     });
 
     app.get("/api/admin/item-bank/coverage-heatmap", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
       try {
         res.json(await expansionEngine.coverageHeatmap());
-      } catch (err) { res.status(500).json({ error: String(err) }); }
+      } catch (err) { res.status(500).json({ error: "Internal server error" }); }
     });
   }
 
@@ -3692,7 +3697,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const { anchors } = req.body as { anchors?: unknown[] };
         if (!Array.isArray(anchors)) { res.json([]); return; }
         res.json(computeAnchorDrift(anchors as any));
-      } catch (err) { res.status(500).json({ error: String(err) }); }
+      } catch (err) { res.status(500).json({ error: "Internal server error" }); }
     });
 
     app.post("/api/admin/anchors/equating", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), (req, res) => {
@@ -3705,7 +3710,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           ? stockingLordEquating(anchors, formX, formY)
           : meanSigmaEquating(anchors, formX, formY);
         res.json(result);
-      } catch (err) { res.status(500).json({ error: String(err) }); }
+      } catch (err) { res.status(500).json({ error: "Internal server error" }); }
     });
 
     // Public concordance lookup
@@ -3727,7 +3732,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     app.get("/api/admin/exposure/report", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (_req, res) => {
       try {
         res.json(await generateExposureReport());
-      } catch (err) { res.status(500).json({ error: String(err) }); }
+      } catch (err) { res.status(500).json({ error: "Internal server error" }); }
     });
   }
 
@@ -3744,7 +3749,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const { tasks } = req.body as { tasks?: unknown[] };
         if (!Array.isArray(tasks)) { res.status(400).json({ error: "tasks array required" }); return; }
         res.json(computeIRRReport(tasks as any));
-      } catch (err) { res.status(500).json({ error: String(err) }); }
+      } catch (err) { res.status(500).json({ error: "Internal server error" }); }
     });
   }
 
@@ -3758,7 +3763,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const payload = buildCertificatePayload(req.body);
         const cert    = await issueCertificate(payload);
         res.status(201).json(cert);
-      } catch (err) { res.status(500).json({ error: String(err) }); }
+      } catch (err) { res.status(500).json({ error: "Internal server error" }); }
     });
 
     // Public: no auth required
@@ -3767,13 +3772,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const cert = await lookupCertificate(req.params.certId);
         if (!cert) { res.status(404).json({ error: "Certificate not found" }); return; }
         res.json(await verifyCertificate(cert));
-      } catch (err) { res.status(500).json({ error: String(err) }); }
+      } catch (err) { res.status(500).json({ error: "Internal server error" }); }
     });
 
     app.get("/api/certificates/candidate/:candidateId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
       try {
         res.json(await listCertificatesByCandidate(req.params.candidateId));
-      } catch (err) { res.status(500).json({ error: String(err) }); }
+      } catch (err) { res.status(500).json({ error: "Internal server error" }); }
     });
   }
 
@@ -3802,7 +3807,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           return;
         }
         res.json(pkg);
-      } catch (err) { res.status(500).json({ error: String(err) }); }
+      } catch (err) { res.status(500).json({ error: "Internal server error" }); }
     });
   }
 
