@@ -41,7 +41,7 @@ interface ReviewItem {
   englishVariant: string | null;
   provenance: string | null;
   createdAt: string;
-  itemReviews: Array<{ id: string; reviewType: string; verdict: string; notes: string | null; createdAt: string }>;
+  itemReviews: Array<{ id: string; reviewType: string; verdict: string; notes: string | null; revisionsReq: string[] | null; createdAt: string }>;
 }
 
 interface DimensionScores {
@@ -60,6 +60,7 @@ type DeviceSize = "desktop" | "tablet" | "mobile";
 // ── Pipeline stage config ─────────────────────────────────────────────────────
 
 const PIPELINE_STAGES = [
+  { stage: "EDITING",        label: "Needs Revision",  next: "LANGUAGE_REVIEW",    reviewType: "LANGUAGE_REVIEW",  role: "ITEM_WRITER" },
   { stage: "AI_DRAFT",       label: "AI Drafts",       next: "LANGUAGE_REVIEW",    reviewType: "LANGUAGE_REVIEW",  role: "Any reviewer" },
   { stage: "LANGUAGE_REVIEW",label: "Language Review", next: "CEFR_REVIEW",        reviewType: "LANGUAGE_REVIEW",  role: "LANGUAGE_REVIEWER" },
   { stage: "CEFR_REVIEW",    label: "CEFR Review",     next: "FAIRNESS_REVIEW",    reviewType: "CEFR_REVIEW",      role: "CEFR_REVIEWER" },
@@ -626,38 +627,93 @@ export function ContentFactoryReviewQueue() {
               ))}
             </div>
 
-            {/* Verdict */}
-            <div>
-              <p className="text-xs font-medium text-[var(--foreground)] mb-2">Verdict</p>
-              <div className="flex flex-wrap gap-2">
-                {(["APPROVE", "MINOR_REVISION", "MAJOR_REVISION", "REJECT"] as Verdict[]).map((v) => (
-                  <VerdictBtn key={v} verdict={v} active={verdict === v} onClick={() => setVerdict(v)} />
-                ))}
+            {/* EDITING stage: show feedback + re-submit action */}
+            {item.pipelineStage === "EDITING" ? (
+              <div className="space-y-3">
+                {item.itemReviews && item.itemReviews.length > 0 && (
+                  <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 p-3 space-y-2">
+                    <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide flex items-center gap-1">
+                      <AlertTriangle size={10} /> Reviewer Feedback
+                    </p>
+                    {item.itemReviews.slice(0, 3).map((rv) => (
+                      <div key={rv.id} className="text-[10px] text-[var(--muted)] space-y-1">
+                        <p className="font-semibold text-[var(--foreground)]">{rv.verdict.replace(/_/g, " ")} — {rv.reviewType}</p>
+                        {rv.notes && <p>"{rv.notes}"</p>}
+                        {Array.isArray(rv.revisionsReq) && rv.revisionsReq.length > 0 && (
+                          <ul className="list-disc ml-3 space-y-0.5">
+                            {rv.revisionsReq.map((req: string, i: number) => <li key={i}>{req}</li>)}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={async () => {
+                    setSubmitting(true);
+                    try {
+                      const r = await fetch(`/api/items/${item.id}/pipeline`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ stage: "LANGUAGE_REVIEW" }),
+                      });
+                      if (r.ok) {
+                        setSubmitOk(true);
+                        setTimeout(async () => {
+                          const updated = await fetch(`/api/items?stage=EDITING&limit=50`).then((r) => r.json());
+                          if (Array.isArray(updated)) setItems(updated);
+                        }, 1000);
+                      } else {
+                        const d = await r.json();
+                        setSubmitErr(d.error ?? "Failed");
+                      }
+                    } catch (e) { setSubmitErr((e as Error).message); }
+                    finally { setSubmitting(false); }
+                  }}
+                  disabled={submitting || submitOk}
+                  className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-semibold transition-colors"
+                >
+                  {submitting ? <><RefreshCw size={13} className="animate-spin" /> Submitting…</> :
+                   submitOk ? <><CheckCircle2 size={13} /> Re-submitted!</> :
+                   "Submit for Re-review →"}
+                </button>
               </div>
-            </div>
+            ) : (
+              <>
+                {/* Verdict */}
+                <div>
+                  <p className="text-xs font-medium text-[var(--foreground)] mb-2">Verdict</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(["APPROVE", "MINOR_REVISION", "MAJOR_REVISION", "REJECT"] as Verdict[]).map((v) => (
+                      <VerdictBtn key={v} verdict={v} active={verdict === v} onClick={() => setVerdict(v)} />
+                    ))}
+                  </div>
+                </div>
 
-            {/* Submit */}
-            <button
-              onClick={handleSubmit}
-              disabled={!verdict || submitting || submitOk}
-              className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold transition-colors"
-            >
-              {submitting ? <><RefreshCw size={13} className="animate-spin" /> Submitting…</> :
-               submitOk ? <><CheckCircle2 size={13} /> Submitted!</> :
-               "Submit Review"}
-            </button>
+                {/* Submit */}
+                <button
+                  onClick={handleSubmit}
+                  disabled={!verdict || submitting || submitOk}
+                  className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold transition-colors"
+                >
+                  {submitting ? <><RefreshCw size={13} className="animate-spin" /> Submitting…</> :
+                   submitOk ? <><CheckCircle2 size={13} /> Submitted!</> :
+                   "Submit Review"}
+                </button>
 
-            {submitErr && (
-              <p className="text-xs text-red-500 flex items-center gap-1"><AlertTriangle size={12} />{submitErr}</p>
-            )}
+                {submitErr && (
+                  <p className="text-xs text-red-500 flex items-center gap-1"><AlertTriangle size={12} />{submitErr}</p>
+                )}
 
-            {/* Stage advance info */}
-            {stageCfg?.next && (
-              <p className="text-[10px] text-[var(--muted)] flex items-start gap-1">
-                <Clock size={10} className="mt-0.5 shrink-0" />
-                APPROVE → item advances to <strong className="text-[var(--foreground)]">{stageCfg.next}</strong>.
-                REJECT/REVISION → item stays in current stage for rework.
-              </p>
+                {/* Stage advance info */}
+                {stageCfg?.next && (
+                  <p className="text-[10px] text-[var(--muted)] flex items-start gap-1">
+                    <Clock size={10} className="mt-0.5 shrink-0" />
+                    APPROVE → item advances to <strong className="text-[var(--foreground)]">{stageCfg.next}</strong>.
+                    REJECT/REVISION → item returns to author for revision.
+                  </p>
+                )}
+              </>
             )}
           </div>
         </div>

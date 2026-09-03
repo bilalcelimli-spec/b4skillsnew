@@ -2444,11 +2444,22 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           },
         });
 
-        // Advance pipeline stage on APPROVE
+        // Advance or revert pipeline stage based on verdict
         if (verdict === "APPROVE" && stageTarget) {
           await prisma.item.update({
             where: { id },
             data: { pipelineStage: stageTarget as any },
+          });
+        } else if (verdict === "MINOR_REVISION" || verdict === "MAJOR_REVISION") {
+          // Return item to EDITING so the author can address feedback
+          await prisma.item.update({
+            where: { id },
+            data: { pipelineStage: "EDITING" as any },
+          });
+        } else if (verdict === "REJECT") {
+          await prisma.item.update({
+            where: { id },
+            data: { pipelineStage: "FLAGGED" as any },
           });
         }
 
