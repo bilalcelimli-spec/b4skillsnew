@@ -2725,8 +2725,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.get("/api/organizations/:id/analytics", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req, res) => {
+  app.get("/api/organizations/:id/analytics", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR", "INST_ADMIN", "TEACHER"]), async (req: any, res) => {
     const { id } = req.params;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
+    if (userRole === "TEACHER" && userOrgId !== id) return res.status(403).json({ error: "Forbidden" });
     try {
       const sessionsCount = await prisma.session.count({ where: { organizationId: id } });
       const feedbacksCount = await (prisma as any).feedback.count({ where: { organizationId: id } });
@@ -3055,8 +3058,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.get("/api/organizations/:id/candidates", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
+  app.get("/api/organizations/:id/candidates", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "TEACHER"]), async (req: any, res) => {
     const { id } = req.params;
+    const userRole = req.user?.role;
+    const userOrgId = req.user?.organizationId;
+    if (userRole === "TEACHER" && userOrgId !== id) return res.status(403).json({ error: "Forbidden" });
     const { search } = req.query;
     try {
       const where: any = { organizationId: id, role: "CANDIDATE" };

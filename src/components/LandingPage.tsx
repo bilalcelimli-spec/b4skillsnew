@@ -152,6 +152,9 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
             <a href="#technology" className="hover:text-slate-900 transition-colors h-16 flex items-center">Technology & Pedagogy</a>
             <a href="#research" className="hover:text-slate-900 transition-colors h-16 flex items-center">Research</a>
             <div className="flex items-center gap-6 h-16">
+              <button onClick={() => setPendingFeature("Methodology")} className="text-slate-600 hover:text-[#9b276c] font-bold transition-colors" aria-label="Assessment methodology">
+                Methodology
+              </button>
               <button onClick={() => setPendingFeature("Pricing")} className="text-slate-600 hover:text-[#9b276c] font-bold transition-colors" aria-label="View pricing">
                 Pricing
               </button>
@@ -736,17 +739,17 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
           <div>
             <h4 className="text-slate-900 font-bold mb-4">Resources</h4>
             <ul className="space-y-3 text-sm text-slate-600">
-              <li><a href="mailto:hello@b4skills.com" className="hover:text-[#9b276c] transition-colors">Support Center</a></li>
-              <li><a href="#unavailable" className="hover:text-[#9b276c] transition-colors">Pedagogy</a></li>
-              <li><a href="#unavailable" className="hover:text-[#9b276c] transition-colors">Research & Adoptions</a></li>
+              <li><button onClick={() => setPendingFeature("Methodology")} className="hover:text-[#9b276c] transition-colors text-left">Assessment Methodology</button></li>
+              <li><a href="mailto:hello@b4skills.com" className="hover:text-[#9b276c] transition-colors">Support</a></li>
+              <li><button onClick={() => setPendingFeature("Pricing")} className="hover:text-[#9b276c] transition-colors text-left">Pricing</button></li>
             </ul>
           </div>
           <div>
             <h4 className="text-slate-900 font-bold mb-4">Company</h4>
             <ul className="space-y-3 text-sm text-slate-600">
-              <li><a href="#unavailable" className="hover:text-[#9b276c] transition-colors">About Us</a></li>
-              <li><a href="#unavailable" className="hover:text-[#9b276c] transition-colors">Contact</a></li>
-              <li><a href="#unavailable" className="hover:text-[#9b276c] transition-colors">Terms & Privacy</a></li>
+              <li><a href="mailto:hello@b4skills.com" className="hover:text-[#9b276c] transition-colors">Contact Us</a></li>
+              <li><a href="mailto:privacy@b4skills.com" className="hover:text-[#9b276c] transition-colors">Privacy Policy</a></li>
+              <li><a href="mailto:hello@b4skills.com" className="hover:text-[#9b276c] transition-colors">Terms of Service</a></li>
             </ul>
           </div>
         </div>

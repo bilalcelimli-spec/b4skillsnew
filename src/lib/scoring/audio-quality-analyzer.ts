@@ -145,9 +145,16 @@ export class AudioQualityAnalyzer {
     const dynamicRange = peakLevel - rmsLevel;
     const clippingPercentage = this.estimateClipping(buffer);
 
-    // Estimate SNR from dynamic range and audio characteristics
-    // Higher dynamic range generally indicates better SNR
-    const estimatedSNR = Math.max(3, dynamicRange + 5 + Math.random() * 10);
+    // Estimate SNR from dynamic range + byte entropy (deterministic, no Math.random())
+    const sample = buffer.subarray(0, Math.min(4096, buffer.length));
+    const byteFreq = new Array(256).fill(0);
+    for (const byte of sample) byteFreq[byte]++;
+    let entropy = 0;
+    for (const count of byteFreq) {
+      if (count > 0) { const p = count / sample.length; entropy -= p * Math.log2(p); }
+    }
+    const snrBoost = (entropy / 8) * 10; // 0–8 bits entropy → 0–10 dB SNR boost
+    const estimatedSNR = Math.max(3, dynamicRange + 5 + snrBoost);
 
     // Determine noise floor
     const noiseFloor = Math.min(-40, rmsLevel - (estimatedSNR / 2));
@@ -215,29 +222,48 @@ export class AudioQualityAnalyzer {
    * In production: proper FFT-based peak detection
    */
   private static estimatePeakLevel(buffer: Buffer): number {
-    // Simulate peak level detection (-30 to 0 dB range)
-    const simulatedPeak = -3 - Math.random() * 8; // Typical -3 to -11 dB
-    return simulatedPeak;
+    if (buffer.length < 2) return -20;
+    let maxAbs = 0;
+    for (let i = 0; i + 1 < buffer.length; i += 2) {
+      const s = buffer.readInt16LE(i);
+      if (Math.abs(s) > maxAbs) maxAbs = Math.abs(s);
+    }
+    // Silent buffer (all zeros) → treat as noise floor at -40 dBFS
+    if (maxAbs === 0) return -40;
+    return Math.max(-59, Math.min(0, 20 * Math.log10(maxAbs / 32768)));
   }
 
   /**
-   * Estimate RMS level from buffer (simplified)
-   * In production: proper RMS calculation from PCM samples
+   * Estimate RMS level from buffer (simplified PCM analysis)
    */
   private static estimateRMSLevel(buffer: Buffer): number {
-    // Simulate RMS level detection
-    const simulatedRMS = -20 - Math.random() * 10; // Typical -20 to -30 dB
-    return simulatedRMS;
+    if (buffer.length < 2) return -50;
+    let sumSq = 0;
+    let count = 0;
+    for (let i = 0; i + 1 < buffer.length; i += 2) {
+      const sample = buffer.readInt16LE(i) / 32768;
+      sumSq += sample * sample;
+      count++;
+    }
+    const rms = count > 0 ? Math.sqrt(sumSq / count) : 0;
+    // Silent buffer → RMS sits well below noise floor (-55 dBFS)
+    if (rms === 0) return -55;
+    return Math.max(-60, Math.min(0, 20 * Math.log10(rms)));
   }
 
   /**
-   * Estimate clipping percentage
-   * In production: count samples at or near peak levels
+   * Estimate clipping percentage from samples at or near max amplitude
    */
   private static estimateClipping(buffer: Buffer): number {
-    // Simulate clipping detection (0-5% typically)
-    if (buffer.length < 1000) return 0; // Too small to have meaningful data
-    return Math.max(0, Math.random() * 3 - 0.5); // 0-2.5% range
+    if (buffer.length < 1000) return 0;
+    const threshold = 32000; // ~97.7% of 16-bit range
+    let clipped = 0;
+    let total = 0;
+    for (let i = 0; i + 1 < buffer.length; i += 2) {
+      if (Math.abs(buffer.readInt16LE(i)) >= threshold) clipped++;
+      total++;
+    }
+    return total > 0 ? (clipped / total) * 100 : 0;
   }
 }
 
