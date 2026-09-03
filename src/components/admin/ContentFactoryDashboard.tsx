@@ -10,6 +10,7 @@ import {
   BookMarked, Hash, Activity, FlaskConical, ArrowRight, Settings2,
 } from "lucide-react";
 import { ContentFactoryOpsPanel } from "./ContentFactoryOpsPanel";
+import { ContentFactoryItemForm } from "./ContentFactoryItemForm";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -168,7 +169,7 @@ export function ContentFactoryDashboard() {
   const [coverage, setCoverage] = useState<CoverageData | null>(null);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "heatmap" | "gaps" | "pipeline" | "review" | "scale-gate" | "monitor" | "ops">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "heatmap" | "gaps" | "pipeline" | "review" | "scale-gate" | "monitor" | "ops" | "author">("overview");
   const [gapsExpanded, setGapsExpanded] = useState(false);
   const [scaleGate, setScaleGate] = useState<Record<string, unknown> | null>(null);
   const [scaleGateLoading, setScaleGateLoading] = useState(false);
@@ -246,7 +247,7 @@ export function ContentFactoryDashboard() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-[var(--border)]">
-        {(["overview", "heatmap", "gaps", "pipeline", "review", "scale-gate", "monitor", "ops"] as const).map((tab) => (
+        {(["overview", "heatmap", "gaps", "pipeline", "review", "scale-gate", "monitor", "ops", "author"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => {
@@ -274,7 +275,7 @@ export function ContentFactoryDashboard() {
                 : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]"
             }`}
           >
-            {tab === "heatmap" ? "Coverage Heatmap" : tab === "overview" ? "Overview" : tab === "gaps" ? "Gap Matrix" : tab === "pipeline" ? "Pipeline" : tab === "review" ? "Reviews" : tab === "scale-gate" ? "Scale Gate" : tab === "monitor" ? "Monitor" : "Ops"}
+            {tab === "heatmap" ? "Coverage Heatmap" : tab === "overview" ? "Overview" : tab === "gaps" ? "Gap Matrix" : tab === "pipeline" ? "Pipeline" : tab === "review" ? "Reviews" : tab === "scale-gate" ? "Scale Gate" : tab === "monitor" ? "Monitor" : tab === "author" ? "Author Item" : "Ops"}
           </button>
         ))}
       </div>
@@ -808,6 +809,21 @@ export function ContentFactoryDashboard() {
 
       {/* Ops tab */}
       {activeTab === "ops" && <ContentFactoryOpsPanel />}
+
+      {activeTab === "author" && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">Human Item Authoring</h3>
+            <p className="text-xs text-[var(--muted)] mt-0.5">
+              Create items from scratch (HUMAN_DRAFT). Items enter the review pipeline automatically after submission.
+            </p>
+          </div>
+          <ContentFactoryItemForm onSuccess={(id, code) => {
+            // Refresh the overview data after successful item creation
+            fetch("/api/content/overview").then(() => {}).catch(() => {});
+          }} />
+        </div>
+      )}
 
       {/* North Star reminder */}
       <div className="rounded-xl border border-[var(--border)] p-4 bg-gradient-to-r from-blue-50/50 to-purple-50/50 dark:from-blue-900/10 dark:to-purple-900/10">
