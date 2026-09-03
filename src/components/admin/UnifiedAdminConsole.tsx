@@ -64,6 +64,7 @@ import { ContentReviewDashboard } from "./ContentReviewDashboard";
 import { ExamCodeManager } from "./ExamCodeManager";
 import { ItemGeneratorPanel } from "./ItemGeneratorPanel";
 import { ItemBankPanel } from "./ItemBankPanel";
+import { ContentFactoryDashboard } from "./ContentFactoryDashboard";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -77,6 +78,7 @@ type Section =
   | "analytics"
   | "ai-generator"
   | "item-bank"
+  | "content-factory"
   | "content-review"
   | "calibration"
   | "engine-config"
@@ -134,10 +136,11 @@ const NAV_GROUPS: NavGroup[] = [
     id: "content",
     label: "Content Studio",
     items: [
-      { id: "ai-generator",   label: "AI Generator",    icon: <Wand2 size={15} /> },
-      { id: "item-bank",      label: "Item Bank",       icon: <Layers size={15} /> },
-      { id: "content-review", label: "Content Review",  icon: <CheckCircle2 size={15} /> },
-      { id: "calibration",    label: "Calibration",     icon: <Calculator size={15} /> },
+      { id: "ai-generator",     label: "AI Generator",    icon: <Wand2 size={15} /> },
+      { id: "item-bank",        label: "Item Bank",       icon: <Layers size={15} /> },
+      { id: "content-factory",  label: "Content Factory", icon: <BarChart3 size={15} /> },
+      { id: "content-review",   label: "Content Review",  icon: <CheckCircle2 size={15} /> },
+      { id: "calibration",      label: "Calibration",     icon: <Calculator size={15} /> },
     ],
   },
   {
@@ -289,6 +292,7 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string }> = ({
               )}
               {activeSection === "ai-generator" && <ItemGeneratorPanel />}
               {activeSection === "item-bank" && <ItemBankPanel />}
+              {activeSection === "content-factory" && <ContentFactoryDashboard />}
               {activeSection === "content-review" && <ContentReviewDashboard />}
               {activeSection === "calibration" && <CalibrationStudy />}
               {activeSection === "engine-config" && <EngineConfigPanel />}
@@ -352,6 +356,7 @@ const SECTION_META: Record<Section, { label: string; desc: string; group: string
   analytics:      { label: "Analytics",      desc: "Advanced reporting",              group: "Operations" },
   "ai-generator": { label: "AI Generator",   desc: "Generate assessment items",       group: "Content Studio" },
   "item-bank":    { label: "Item Bank",      desc: "Exposure control & inventory",    group: "Content Studio" },
+  "content-factory": { label: "Content Factory", desc: "Coverage heatmap, gaps & pipeline", group: "Content Studio" },
   "content-review": { label: "Content Review", desc: "QA workflow & approvals",      group: "Content Studio" },
   calibration:    { label: "Calibration",    desc: "IRT calibration study",           group: "Content Studio" },
   "engine-config": { label: "Engine Config", desc: "CAT parameters & CEFR thresholds", group: "Psychometrics" },

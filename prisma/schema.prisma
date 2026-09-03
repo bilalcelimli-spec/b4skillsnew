@@ -179,6 +179,13 @@ enum UserRole {
   RATER
   PROCTOR
   CANDIDATE
+  // Content Factory roles
+  ITEM_WRITER
+  LANGUAGE_REVIEWER
+  CEFR_REVIEWER
+  MODERATOR
+  PSYCHOMETRICIAN
+  SECURITY_ADMIN
 }
 
 model CandidateProfile {
@@ -240,6 +247,38 @@ model Item {
   // Audit trail: { ai: "B2", expert1: "B2", expert2: "B1", empirical: "B2" }
   cefrSources     Json?
 
+  // ── Content Factory Taxonomy (Master Prompt §10, §63) ────────────────────
+  // Controlled vocabulary fields — stored as String to survive enum additions
+  // without requiring a new migration for every new subskill/genre variant.
+  subskill        String?   // ReadingSubskill | ListeningSubskill | etc.
+  genre           String?   // email | article | notice | interview | blog | review | report | conversation | presentation | lecture | discussion
+  topic           String?   // personal_life | education | work | travel | technology | environment | health | culture | science | media | society | leisure | consumer | transport | innovation
+  construct       String?   // Explicit construct label, e.g. "Reading for inference"
+  evidenceStatement String? // What a correct response proves (§11)
+  descriptorRef   String?   // CEFR CV 2020 source e.g. "CEFR CV2020 B2 Reading p.67"
+
+  // ── Content Factory Editorial Workflow ───────────────────────────────────
+  pipelineStage   ItemPipelineStage @default(AI_DRAFT)
+  securityClass   SecurityClassification @default(ASSESSMENT)
+  provenance      ContentProvenance @default(ORIGINAL_AI_ASSISTED)
+  ageSuitability  AgeSuitability    @default(UNIVERSAL)
+
+  // ── Contextual metadata ───────────────────────────────────────────────────
+  register        String?   // formal | informal | neutral | academic | colloquial
+  englishVariant  String?   // BRITISH | AMERICAN | AUSTRALIAN | INTERNATIONAL
+  culturalLoad    String?   // LOW | MEDIUM | HIGH
+  estimatedResponseTimeSec Int? // seconds; calibrated from pilot timing data
+
+  // ── Flags & Security ──────────────────────────────────────────────────────
+  isSuspended     Boolean   @default(false)
+  isCompromised   Boolean   @default(false)
+  compromisedAt   DateTime?
+  compromisedNote String?
+
+  // ── Task Family (Speaking/Writing variant sets) ───────────────────────────
+  taskFamilyId    String?
+  taskFamily      TaskFamily? @relation(fields: [taskFamilyId], references: [id])
+
   // Stats
   exposureCount   Int       @default(0)
   pVal            Float?    // Classical test theory difficulty
@@ -260,6 +299,7 @@ model Item {
   difReports      DifReportArchive[]
   difFlaggedItem  DifFlaggedItem?
   calibrationRuns CalibrationRun[]
+  itemReviews     ItemReview[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -272,6 +312,9 @@ model Item {
   @@index([status, retirementScore])  // For retirement monitoring queries
   @@index([isAnchor, skill, cefrLevel])  // Faz1: anchor item queries for equating
   @@index([iqScore])                     // Faz1: quality gate queries
+  @@index([pipelineStage])              // Content factory workflow queries
+  @@index([skill, cefrLevel, subskill]) // Coverage heatmap queries
+  @@index([taskFamilyId])
 }
 
 model RetirementAuditLog {
@@ -380,6 +423,207 @@ enum ItemStatus {
   ACTIVE
   PRETEST
   RETIRED
+}
+
+// Content Factory — full item lifecycle stage (separate from operational status).
+// status field tracks bank-eligibility; pipelineStage tracks editorial workflow.
+enum ItemPipelineStage {
+  AI_DRAFT
+  HUMAN_DRAFT
+  EDITING
+  LANGUAGE_REVIEW
+  CEFR_REVIEW
+  FAIRNESS_REVIEW
+  MODERATION
+  APPROVED_FOR_PILOT
+  PILOT
+  ANALYSIS
+  CALIBRATION
+  LIVE
+  FLAGGED
+  SUSPENDED
+  RETIRED
+  COMPROMISED
+}
+
+enum SecurityClassification {
+  PUBLIC_SAMPLE
+  PRACTICE
+  ASSESSMENT
+  HIGH_SECURITY
+}
+
+enum ContentProvenance {
+  ORIGINAL_HUMAN
+  ORIGINAL_AI_ASSISTED
+  LICENSED
+  PUBLIC_DOMAIN
+}
+
+enum AgeSuitability {
+  YOUNG_LEARNER
+  TEEN
+  ADULT
+  UNIVERSAL
+}
+
+// Controlled subskill taxonomy (Reading / Listening / Writing / Speaking / Grammar / Vocabulary)
+enum ReadingSubskill {
+  GIST
+  MAIN_IDEA
+  OVERALL_PURPOSE
+  TEXT_FUNCTION
+  EXPLICIT_DETAIL
+  SPECIFIC_INFORMATION
+  REFERENCE_RESOLUTION
+  IMPLIED_MEANING
+  INFERENCE
+  UNSTATED_CONCLUSION
+  CAUSE_EFFECT_INFERENCE
+  MEANING_FROM_CONTEXT
+  PHRASE_INTERPRETATION
+  COHESION
+  PARAGRAPH_RELATIONSHIPS
+  DISCOURSE_MARKERS
+  SENTENCE_INSERTION
+  WRITER_ATTITUDE
+  TONE
+  STANCE
+  INTENTION
+  ARGUMENT_STRUCTURE
+  EVIDENCE_EVALUATION
+  COMPETING_VIEWPOINTS
+  SYNTHESIS
+}
+
+enum ListeningSubskill {
+  GIST
+  TOPIC
+  PURPOSE
+  FACTUAL_DETAIL
+  SPECIFIC_INFORMATION
+  SEQUENCE
+  IMPLICATION
+  INFERRED_INTENTION
+  SPEAKER_ATTITUDE
+  SPEAKER_RELATIONSHIP
+  ORGANISATION
+  ARGUMENT_DEVELOPMENT
+  TONE
+  AGREEMENT_DISAGREEMENT
+  IMPLIED_MEANING
+  SYNTHESISING_INFORMATION
+  DISTINGUISHING_VIEWPOINTS
+}
+
+enum WritingSubskill {
+  TASK_FULFILMENT
+  ORGANISATION
+  COHERENCE
+  COHESION
+  LEXICAL_RANGE
+  LEXICAL_ACCURACY
+  GRAMMATICAL_RANGE
+  GRAMMATICAL_ACCURACY
+  REGISTER
+  GENRE_CONVENTIONS
+}
+
+enum SpeakingSubskill {
+  TASK_FULFILMENT
+  FLUENCY
+  COHERENCE
+  DISCOURSE_MANAGEMENT
+  LEXICAL_RANGE
+  LEXICAL_ACCURACY
+  GRAMMATICAL_RANGE
+  GRAMMATICAL_ACCURACY
+  PRONUNCIATION
+  INTELLIGIBILITY
+  INTERACTION
+  TURN_MANAGEMENT
+  PRAGMATIC_APPROPRIACY
+}
+
+enum GrammarSubskill {
+  TENSE_ASPECT
+  MODALITY
+  CONDITIONALS
+  COMPARISON
+  DETERMINERS
+  QUANTIFICATION
+  AGREEMENT
+  COMPLEMENTATION
+  SUBORDINATION
+  RELATIVE_CLAUSES
+  PASSIVE
+  REPORTED_LANGUAGE
+  INVERSION
+  DISCOURSE_GRAMMAR
+}
+
+enum VocabularySubskill {
+  RECEPTIVE_VOCABULARY
+  PRODUCTIVE_VOCABULARY
+  LEXICAL_RANGE
+  LEXICAL_PRECISION
+  COLLOCATION
+  WORD_FORMATION
+  MULTI_WORD_EXPRESSIONS
+  PHRASAL_VERBS
+  REGISTER
+  CONTEXTUAL_MEANING
+}
+
+// ── Content Factory: Item Review ─────────────────────────────────────────────
+// One record per human review action (language, CEFR, fairness, moderation).
+model ItemReview {
+  id            String   @id @default(cuid())
+  itemId        String
+  item          Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  reviewType    String   // LANGUAGE_REVIEW | CEFR_REVIEW | FAIRNESS_REVIEW | MODERATION
+  reviewerId    String   // User.id of the reviewer
+  verdict       String   // APPROVE | MINOR_REVISION | MAJOR_REVISION | REJECT
+  stageTarget   ItemPipelineStage? // Stage to advance to on APPROVE
+
+  // Dimension scores (0–100 each, null if not applicable)
+  constructClarity    Int?
+  cefrFit             Int? // BELOW_TARGET | TARGET_FIT | ABOVE_TARGET | UNCERTAIN stored as string
+  cefrFitLabel        String?
+  languageNaturalness Int?
+  distractorQuality   Int?
+  fairnessScore       Int?
+  ambiguityRisk       Int? // 0 = none, 100 = definite ambiguity
+
+  notes         String?  // Free-text reviewer notes
+  revisionsReq  String[] // Specific revision requests
+
+  createdAt     DateTime @default(now())
+
+  @@index([itemId])
+  @@index([reviewerId])
+  @@index([reviewType, verdict])
+  @@index([createdAt])
+}
+
+// ── Content Factory: Task Family ─────────────────────────────────────────────
+// Groups related Speaking/Writing prompts into comparable variant sets.
+model TaskFamily {
+  id          String   @id @default(cuid())
+  name        String   // e.g. "B2 Decision & Justification"
+  skill       SkillType
+  cefrLevel   CefrLevel
+  description String?
+  taskType    String?  // personal_questions | situational | picture_description | opinion | problem_solving | comparison
+  metadata    Json?
+
+  items       Item[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([skill, cefrLevel])
 }
 
 model Asset {

@@ -1701,6 +1701,255 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // ── CONTENT FACTORY APIs ──────────────────────────────────────────────────
+
+  const CONTENT_FACTORY_ROLES = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN",
+    "ITEM_WRITER", "LANGUAGE_REVIEWER", "CEFR_REVIEWER", "MODERATOR", "PSYCHOMETRICIAN"];
+
+  // GET /api/content/coverage — CEFR × Skill × Subskill coverage heatmap
+  app.get("/api/content/coverage", checkRole(CONTENT_FACTORY_ROLES), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json({ heatmap: {}, totals: {}, byPipeline: {} });
+
+      const items = await prisma.item.findMany({
+        select: { skill: true, cefrLevel: true, subskill: true, status: true, pipelineStage: true, iqScore: true },
+      });
+
+      // CEFR × Skill count matrix
+      const heatmap: Record<string, Record<string, number>> = {};
+      const byPipeline: Record<string, number> = {};
+      const byStatus: Record<string, number> = {};
+      const subskillGaps: Record<string, Record<string, number>> = {}; // skill → subskill → count
+
+      for (const it of items) {
+        // heatmap[cefrLevel][skill]
+        if (!heatmap[it.cefrLevel]) heatmap[it.cefrLevel] = {};
+        heatmap[it.cefrLevel][it.skill] = (heatmap[it.cefrLevel][it.skill] ?? 0) + 1;
+
+        // pipeline stage counts
+        const stage = (it.pipelineStage as string) ?? "AI_DRAFT";
+        byPipeline[stage] = (byPipeline[stage] ?? 0) + 1;
+
+        // status counts
+        byStatus[it.status] = (byStatus[it.status] ?? 0) + 1;
+
+        // subskill coverage
+        if (it.subskill) {
+          const key = `${it.skill}:${it.cefrLevel}`;
+          if (!subskillGaps[key]) subskillGaps[key] = {};
+          subskillGaps[key][it.subskill] = (subskillGaps[key][it.subskill] ?? 0) + 1;
+        }
+      }
+
+      const CEFR_ORDER = ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"];
+      const SKILLS = ["READING", "LISTENING", "WRITING", "SPEAKING", "GRAMMAR", "VOCABULARY"];
+
+      // Target coverage per cell (from bank depth ratio §121: need >> items in pool)
+      const PHASE1_TARGET = 50; // Phase 1 minimum per cell
+      const gaps: Array<{ cefr: string; skill: string; have: number; need: number; priority: "HIGH" | "MEDIUM" | "LOW" }> = [];
+
+      for (const cefr of CEFR_ORDER) {
+        for (const skill of SKILLS) {
+          const have = heatmap[cefr]?.[skill] ?? 0;
+          const need = Math.max(0, PHASE1_TARGET - have);
+          if (need > 0) {
+            gaps.push({
+              cefr,
+              skill,
+              have,
+              need,
+              priority: have === 0 ? "HIGH" : have < 20 ? "MEDIUM" : "LOW",
+            });
+          }
+        }
+      }
+
+      gaps.sort((a, b) => b.need - a.need);
+
+      return res.json({
+        heatmap,
+        byPipeline,
+        byStatus,
+        subskillGaps,
+        gaps: gaps.slice(0, 20), // top 20 gaps
+        totalItems: items.length,
+        liveItems: byStatus["ACTIVE"] ?? 0,
+        pilotItems: byStatus["PRETEST"] ?? 0,
+        draftItems: (byStatus["DRAFT"] ?? 0) + (byStatus["REVIEW"] ?? 0),
+        phase1TargetPct: Math.round(
+          (items.length / (CEFR_ORDER.length * SKILLS.length * PHASE1_TARGET)) * 100
+        ),
+      });
+    } catch (err) {
+      console.error("[content/coverage]", err);
+      res.status(500).json({ error: "Failed to compute coverage" });
+    }
+  });
+
+  // GET /api/content/gaps — prioritised production queue
+  app.get("/api/content/gaps", checkRole(CONTENT_FACTORY_ROLES), async (req, res) => {
+    try {
+      if (!dbAvailable) return res.json({ gaps: [] });
+      const { skill, cefr } = req.query as Record<string, string>;
+
+      const where: any = { status: { not: "RETIRED" } };
+      if (skill) where.skill = skill;
+      if (cefr) where.cefrLevel = cefr;
+
+      const items = await prisma.item.groupBy({
+        by: ["skill", "cefrLevel", "subskill"],
+        _count: { id: true },
+        where,
+      });
+
+      const SKILLS = ["READING", "LISTENING", "WRITING", "SPEAKING", "GRAMMAR", "VOCABULARY"];
+      const CEFR_ORDER = ["A1", "A2", "B1", "B2", "C1", "C2"];
+      const TARGET = 50;
+
+      const countMap: Record<string, number> = {};
+      for (const row of items) {
+        const key = `${row.skill}:${row.cefrLevel}:${row.subskill ?? "_"}`;
+        countMap[key] = row._count.id;
+      }
+
+      const gaps = [];
+      for (const s of (skill ? [skill] : SKILLS)) {
+        for (const c of (cefr ? [cefr] : CEFR_ORDER)) {
+          const key = `${s}:${c}:_`;
+          const have = countMap[key] ?? 0;
+          const need = Math.max(0, TARGET - have);
+          if (need > 0) {
+            gaps.push({ skill: s, cefr: c, subskill: null, have, need, priority: have < 10 ? "HIGH" : "MEDIUM" });
+          }
+        }
+      }
+
+      gaps.sort((a, b) => b.need - a.need);
+      return res.json({ gaps });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to compute gaps" });
+    }
+  });
+
+  // GET /api/content/dashboard — command center snapshot
+  app.get("/api/content/dashboard", checkRole(CONTENT_FACTORY_ROLES), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json({ mock: true });
+
+      const [total, byStatus, awaitingReview, flagged, recentReviews] = await Promise.all([
+        prisma.item.count(),
+        prisma.item.groupBy({ by: ["status"], _count: { id: true } }),
+        prisma.item.count({ where: { pipelineStage: { in: ["LANGUAGE_REVIEW", "CEFR_REVIEW", "FAIRNESS_REVIEW", "MODERATION"] as any } } }),
+        prisma.item.count({ where: { pipelineStage: "FLAGGED" as any } }),
+        prisma.itemReview.findMany({
+          orderBy: { createdAt: "desc" },
+          take: 10,
+          select: { id: true, itemId: true, reviewType: true, verdict: true, createdAt: true },
+        }),
+      ]);
+
+      const statusMap: Record<string, number> = {};
+      for (const row of byStatus) statusMap[row.status] = row._count.id;
+
+      return res.json({
+        total,
+        live: statusMap["ACTIVE"] ?? 0,
+        pilot: statusMap["PRETEST"] ?? 0,
+        draft: statusMap["DRAFT"] ?? 0,
+        review: statusMap["REVIEW"] ?? 0,
+        retired: statusMap["RETIRED"] ?? 0,
+        awaitingReview,
+        flagged,
+        recentReviews,
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch dashboard" });
+    }
+  });
+
+  // POST /api/items/:id/review — submit a review record
+  app.post("/api/items/:id/review",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "LANGUAGE_REVIEWER", "CEFR_REVIEWER", "MODERATOR", "CONTENT_ADMIN"]),
+    async (req: any, res) => {
+      try {
+        const { id } = req.params;
+        const reviewerId = req.user.userId;
+        const { reviewType, verdict, stageTarget, notes, revisionsReq,
+          constructClarity, cefrFit, cefrFitLabel, languageNaturalness,
+          distractorQuality, fairnessScore, ambiguityRisk } = req.body;
+
+        if (!["APPROVE", "MINOR_REVISION", "MAJOR_REVISION", "REJECT"].includes(verdict)) {
+          return res.status(400).json({ error: "Invalid verdict" });
+        }
+
+        const review = await prisma.itemReview.create({
+          data: {
+            itemId: id, reviewerId, reviewType, verdict,
+            stageTarget: stageTarget ?? null,
+            notes: notes ?? null,
+            revisionsReq: revisionsReq ?? [],
+            constructClarity: constructClarity ?? null,
+            cefrFit: cefrFit ?? null,
+            cefrFitLabel: cefrFitLabel ?? null,
+            languageNaturalness: languageNaturalness ?? null,
+            distractorQuality: distractorQuality ?? null,
+            fairnessScore: fairnessScore ?? null,
+            ambiguityRisk: ambiguityRisk ?? null,
+          },
+        });
+
+        // Advance pipeline stage on APPROVE
+        if (verdict === "APPROVE" && stageTarget) {
+          await prisma.item.update({
+            where: { id },
+            data: { pipelineStage: stageTarget as any },
+          });
+        }
+
+        return res.json({ review });
+      } catch (err) {
+        console.error("[items/:id/review]", err);
+        res.status(500).json({ error: "Failed to submit review" });
+      }
+    }
+  );
+
+  // POST /api/items/:id/pipeline — advance or set pipelineStage
+  app.post("/api/items/:id/pipeline",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { stage } = req.body;
+        const item = await prisma.item.update({
+          where: { id },
+          data: { pipelineStage: stage as any },
+          select: { id: true, pipelineStage: true, status: true },
+        });
+        return res.json(item);
+      } catch (err) {
+        res.status(500).json({ error: "Failed to update pipeline stage" });
+      }
+    }
+  );
+
+  // GET /api/items/:id/reviews — list review history for an item
+  app.get("/api/items/:id/reviews",
+    checkRole(CONTENT_FACTORY_ROLES),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const reviews = await prisma.itemReview.findMany({
+          where: { itemId: id },
+          orderBy: { createdAt: "desc" },
+        });
+        return res.json({ reviews });
+      } catch (err) {
+        res.status(500).json({ error: "Failed to fetch reviews" });
+      }
+    }
+  );
+
   // --- RATING QUEUE API ---
   const { RatingQueueService } = await import("./src/lib/scoring/rating-queue.js");
 
