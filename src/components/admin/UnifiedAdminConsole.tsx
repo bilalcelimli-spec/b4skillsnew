@@ -66,6 +66,7 @@ import { ItemGeneratorPanel } from "./ItemGeneratorPanel";
 import { ItemBankPanel } from "./ItemBankPanel";
 import { ContentFactoryDashboard } from "./ContentFactoryDashboard";
 import { ContentFactoryBatchPanel } from "./ContentFactoryBatchPanel";
+import { ContentFactoryReviewQueue } from "./ContentFactoryReviewQueue";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -302,7 +303,15 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string }> = ({
               )}
               {activeSection === "item-bank" && <ItemBankPanel />}
               {activeSection === "content-factory" && <ContentFactoryDashboard />}
-              {activeSection === "content-review" && <ContentReviewDashboard />}
+              {activeSection === "content-review" && (
+                <div className="space-y-6">
+                  <ContentFactoryReviewQueue />
+                  <div className="border-t border-[var(--border)] pt-4 opacity-60">
+                    <p className="text-xs text-[var(--muted)] mb-2">Legacy Basic QA (deprecated — use Review Queue above)</p>
+                    <ContentReviewDashboard />
+                  </div>
+                </div>
+              )}
               {activeSection === "calibration" && <CalibrationStudy />}
               {activeSection === "engine-config" && <EngineConfigPanel />}
               {activeSection === "branding" && <BrandingSettings orgId={ORG_ID} />}
