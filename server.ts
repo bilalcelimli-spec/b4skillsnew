@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import cors from "cors";
 import * as crypto from "crypto";
@@ -4728,11 +4729,148 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
+
+    // ── Per-route meta injection for marketing/SEO pages ──────────────────
+    interface RouteMeta {
+      title: string;
+      description: string;
+      keywords?: string;
+      jsonLd?: object;
+    }
+
+    const ORG_LD = {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "B4Skills",
+      url: APP_BASE_URL,
+      logo: `${APP_BASE_URL}/icons/pwa-192.png`,
+      sameAs: [],
+    };
+
+    const WEBSITE_LD = {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "B4Skills",
+      url: APP_BASE_URL,
+      potentialAction: {
+        "@type": "SearchAction",
+        target: `${APP_BASE_URL}/english-level-test`,
+        "query-input": "required name=search_term_string",
+      },
+    };
+
+    const ROUTE_META: Record<string, RouteMeta> = {
+      "/": {
+        title: "B4Skills — Adaptive English Assessment Platform",
+        description: "AI-powered adaptive CEFR English assessment for individuals, schools, universities, and corporates. Get your certified English level in 15–60 minutes.",
+        keywords: "english assessment, cefr test, adaptive english test, english proficiency, b4skills",
+        jsonLd: [ORG_LD, WEBSITE_LD],
+      },
+      "/pricing": {
+        title: "Pricing — B4Skills English Assessment",
+        description: "Transparent pricing for adaptive CEFR English testing. Free Quick Check, €19 Full Assessment, and volume plans for institutions from €6/learner.",
+        keywords: "english test price, cefr test cost, english assessment pricing, b4skills pricing",
+        jsonLd: { "@context": "https://schema.org", "@type": "WebPage", name: "B4Skills Pricing", description: "Pricing plans for adaptive CEFR English assessment.", url: `${APP_BASE_URL}/pricing` },
+      },
+      "/methodology": {
+        title: "Assessment Methodology — B4Skills",
+        description: "How B4Skills works: adaptive CAT engine, IRT 3PL, CEFR alignment, AI multi-model scoring, DIF fairness monitoring, and certificate validation.",
+        keywords: "cefr methodology, adaptive testing methodology, irt 3pl, cat engine, english assessment methodology",
+        jsonLd: {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: [
+            { "@type": "Question", name: "Why does my result differ from IELTS?", acceptedAnswer: { "@type": "Answer", text: "Different assessments measure proficiency through different tasks and stakes conditions." } },
+            { "@type": "Question", name: "What is theta (θ)?", acceptedAnswer: { "@type": "Answer", text: "Theta is the latent ability estimate from IRT with a known measurement error, making it more informative than a percentage score." } },
+          ],
+        },
+      },
+      "/schools": {
+        title: "English Assessment for Schools — B4Skills",
+        description: "Adaptive CEFR English testing for primary and secondary schools. Class management, teacher dashboards, and cohort analytics.",
+        keywords: "english assessment schools, school english test, cefr schools, teacher english dashboard",
+      },
+      "/corporate": {
+        title: "Corporate English Assessment — B4Skills",
+        description: "Screen, place, and develop English skills across your workforce. CEFR-aligned assessment with ATS/HRIS integration and volume pricing.",
+        keywords: "corporate english test, workforce english assessment, hr english screening, cefr corporate",
+      },
+      "/academia": {
+        title: "English Assessment for Academia — B4Skills",
+        description: "EAP placement and proficiency testing for universities and research institutions. CEFR-aligned with LMS integration.",
+        keywords: "academia english test, university english assessment, eap placement, cefr academia",
+      },
+      "/language-schools": {
+        title: "English Assessment for Language Schools — B4Skills",
+        description: "Adaptive CEFR placement and progress testing for language schools. Group analysis and institutional dashboard.",
+        keywords: "language school english test, language center placement, cefr language school",
+      },
+      "/english-level-test": {
+        title: "Free English Level Test — CEFR A1 to C2 | B4Skills",
+        description: "Take a free adaptive English level test and get your official CEFR level in under 15 minutes. Instant results, no account required.",
+        keywords: "english level test, free english test, cefr test online, english proficiency test",
+      },
+      "/ingilizce-seviye-testi": {
+        title: "İngilizce Seviye Testi — CEFR A1-C2 | B4Skills",
+        description: "Ücretsiz adaptif İngilizce seviye testiyle CEFR seviyenizi 15 dakikada öğrenin. Anında sonuç, kayıt gerektirmez.",
+        keywords: "ingilizce seviye testi, ingilizce sınav, cefr testi türkçe, ingilizce test",
+      },
+      "/cefr-english-test": {
+        title: "CEFR English Test — Adaptive Assessment | B4Skills",
+        description: "Certified CEFR-aligned adaptive English test with QR-verifiable certificate. Accepted by universities and employers worldwide.",
+        keywords: "cefr english test, cefr assessment online, cefr certificate, cefr level test",
+      },
+      "/english-assessment-for-universities": {
+        title: "English Assessment for Universities — B4Skills",
+        description: "Adaptive CEFR placement for universities: bulk import, LMS integration, cohort analytics. 14-day free pilot.",
+        keywords: "english assessment universities, english placement test university, cefr university test",
+      },
+      "/english-assessment-for-companies": {
+        title: "English Assessment for Companies — B4Skills",
+        description: "Fast, reliable English proficiency testing for HR teams. CEFR-aligned, bulk testing, workforce skill analytics.",
+        keywords: "english assessment companies, corporate english proficiency, hr english test, workforce english",
+      },
+    };
+
+    const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    const injectSeoMeta = (html: string, meta: RouteMeta, reqPath: string): string => {
+      const ldJson = Array.isArray(meta.jsonLd) ? meta.jsonLd : meta.jsonLd ? [meta.jsonLd] : [
+        { "@context": "https://schema.org", "@type": "WebPage", name: meta.title, description: meta.description, url: `${APP_BASE_URL}${reqPath}` },
+      ];
+      const extraTags = [
+        meta.keywords ? `<meta name="keywords" content="${escHtml(meta.keywords)}" />` : "",
+        `<meta property="og:url" content="${APP_BASE_URL}${reqPath}" />`,
+        `<meta property="og:type" content="website" />`,
+        `<meta property="og:image" content="${APP_BASE_URL}/icons/pwa-192.png" />`,
+        `<meta name="twitter:card" content="summary_large_image" />`,
+        `<meta name="twitter:title" content="${escHtml(meta.title)}" />`,
+        `<meta name="twitter:description" content="${escHtml(meta.description)}" />`,
+        ...ldJson.map((ld) => `<script type="application/ld+json">${JSON.stringify(ld)}</script>`),
+      ].filter(Boolean).join("\n    ");
+
+      return html
+        .replace(/<title>[^<]*<\/title>/, `<title>${escHtml(meta.title)}</title>`)
+        .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${escHtml(meta.description)}" />`)
+        .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escHtml(meta.title)}" />`)
+        .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escHtml(meta.description)}" />`)
+        .replace("</head>", `  ${extraTags}\n  </head>`);
+    };
+
+    let _cachedIndexHtml: string | null = null;
+    const getIndexHtml = () => {
+      if (!_cachedIndexHtml) _cachedIndexHtml = fs.readFileSync(path.join(distPath, "index.html"), "utf-8");
+      return _cachedIndexHtml;
+    };
+
     app.get("*", (req, res) => {
-      // Don't serve the SPA shell for static asset requests — return 404 instead
       const ext = path.extname(req.path);
-      if (ext && ext !== ".html") {
-        return res.status(404).end();
+      if (ext && ext !== ".html") return res.status(404).end();
+
+      const meta = ROUTE_META[req.path] ?? null;
+      if (meta) {
+        const injected = injectSeoMeta(getIndexHtml(), meta, req.path);
+        return res.set("Content-Type", "text/html; charset=utf-8").send(injected);
       }
       res.sendFile(path.join(distPath, "index.html"));
     });
