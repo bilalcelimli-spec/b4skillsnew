@@ -5537,20 +5537,32 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     });
     app.use(vite.middlewares);
 
-    // Dev SSR — intercept marketing routes before Vite's SPA fallback
+    // Dev: serve index.html for all non-API, non-asset HTML routes
+    // SSR paths get rendered HTML; all others get the plain SPA shell.
+    // appType: "custom" means Vite won't add its own index.html fallback.
     app.get("*", async (req, res, next) => {
-      if (!SSR_PATHS.has(req.path)) return next();
-      try {
-        const { render } = await vite.ssrLoadModule("/src/entry-server.tsx");
-        const { html: appHtml, didSSR } = render(req.path);
-        if (!didSSR || !appHtml) return next();
+      const ext = path.extname(req.path);
+      if (ext && ext !== ".html") return next();
 
+      try {
         let indexHtml = fs.readFileSync(path.join(process.cwd(), "index.html"), "utf-8");
         indexHtml = await vite.transformIndexHtml(req.url, indexHtml);
-        const finalHtml = indexHtml.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`);
-        res.set("Content-Type", "text/html").send(finalHtml);
+
+        if (SSR_PATHS.has(req.path)) {
+          try {
+            const { render } = await vite.ssrLoadModule("/src/entry-server.tsx");
+            const { html: appHtml, didSSR } = render(req.path);
+            if (didSSR && appHtml) {
+              indexHtml = indexHtml.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`);
+            }
+          } catch (ssrErr) {
+            vite.ssrFixStacktrace(ssrErr as Error);
+            // SSR failure non-fatal — serve plain shell
+          }
+        }
+
+        res.set("Content-Type", "text/html").send(indexHtml);
       } catch (e) {
-        vite.ssrFixStacktrace(e as Error);
         next(e);
       }
     });
