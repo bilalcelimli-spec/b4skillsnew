@@ -138,8 +138,10 @@ export function ContentFactoryDashboard() {
   const [coverage, setCoverage] = useState<CoverageData | null>(null);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "heatmap" | "gaps" | "pipeline" | "review">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "heatmap" | "gaps" | "pipeline" | "review" | "scale-gate">("overview");
   const [gapsExpanded, setGapsExpanded] = useState(false);
+  const [scaleGate, setScaleGate] = useState<Record<string, unknown> | null>(null);
+  const [scaleGateLoading, setScaleGateLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -210,17 +212,27 @@ export function ContentFactoryDashboard() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-[var(--border)]">
-        {(["overview", "heatmap", "gaps", "pipeline", "review"] as const).map((tab) => (
+        {(["overview", "heatmap", "gaps", "pipeline", "review", "scale-gate"] as const).map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => {
+              setActiveTab(tab);
+              if (tab === "scale-gate" && !scaleGate) {
+                setScaleGateLoading(true);
+                fetch("/api/content/scale-gate")
+                  .then((r) => r.json())
+                  .then((d) => setScaleGate(d))
+                  .catch(() => setScaleGate({ error: "Failed to load" }))
+                  .finally(() => setScaleGateLoading(false));
+              }
+            }}
             className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
               activeTab === tab
                 ? "border-blue-500 text-blue-500"
                 : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]"
             }`}
           >
-            {tab === "heatmap" ? "Coverage Heatmap" : tab === "overview" ? "Overview" : tab === "gaps" ? "Gap Matrix" : tab === "pipeline" ? "Pipeline" : "Reviews"}
+            {tab === "heatmap" ? "Coverage Heatmap" : tab === "overview" ? "Overview" : tab === "gaps" ? "Gap Matrix" : tab === "pipeline" ? "Pipeline" : tab === "review" ? "Reviews" : "Scale Gate"}
           </button>
         ))}
       </div>
@@ -458,6 +470,117 @@ export function ContentFactoryDashboard() {
               <strong>ASSESSMENT_DIRECTOR</strong> — release sign-off
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Scale Gate tab (§192) */}
+      {activeTab === "scale-gate" && (
+        <div className="space-y-4">
+          {scaleGateLoading && (
+            <div className="flex items-center justify-center h-40 text-[var(--muted)] text-sm">
+              <RefreshCw size={15} className="animate-spin mr-2" /> Evaluating scale gate…
+            </div>
+          )}
+          {!scaleGateLoading && scaleGate && !(scaleGate as any).error && (() => {
+            const sg = scaleGate as any;
+            const rec: string = sg.recommendation ?? "";
+            const isReady = rec.startsWith("READY");
+            return (
+              <div className="space-y-4">
+                {/* Recommendation banner */}
+                <div className={`rounded-xl border p-4 ${isReady ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20" : "border-amber-300 bg-amber-50 dark:bg-amber-900/20"}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    {isReady
+                      ? <CheckCircle2 size={16} className="text-emerald-500" />
+                      : <AlertTriangle size={16} className="text-amber-500" />}
+                    <span className={`text-sm font-bold ${isReady ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>
+                      {isReady ? "Ready to Scale" : "Scale Gate: Not Ready"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--muted)]">{rec.replace(/^[A-Z_]+: /, "")}</p>
+                </div>
+
+                {/* Gate checklist */}
+                <div className="rounded-xl border border-[var(--border)] p-4 bg-[var(--card)]">
+                  <h4 className="text-xs font-semibold text-[var(--muted)] uppercase tracking-wide mb-3">§192 Gate Checks</h4>
+                  {[
+                    { key: "minSampleReached", label: "≥ 20 items reviewed", desc: `${sg.snapshot?.totalReviews ?? 0} reviews recorded` },
+                    { key: "rejectionRateOk", label: "Rejection rate < 30%", desc: sg.rates?.rejectionRate != null ? `${(sg.rates.rejectionRate * 100).toFixed(1)}%` : "No data" },
+                    { key: "reviewerAgreementOk", label: "Reviewer agreement ≥ 80%", desc: sg.rates?.reviewerAgreement != null ? `${(sg.rates.reviewerAgreement * 100).toFixed(1)}%` : "Insufficient multi-reviewed items" },
+                    { key: "cefrFitOk", label: "Avg CEFR fit score ≥ 65", desc: `Avg: ${sg.avgDimensionScores?.cefrFit ?? "—"} / 100` },
+                  ].map(({ key, label, desc }) => {
+                    const v = sg.gates?.[key];
+                    return (
+                      <div key={key} className="flex items-center gap-3 py-2 border-b border-[var(--border)] last:border-0">
+                        {v === true ? <CheckCircle2 size={14} className="text-emerald-500 shrink-0" /> :
+                         v === false ? <AlertTriangle size={14} className="text-amber-500 shrink-0" /> :
+                         <Clock size={14} className="text-[var(--muted)] shrink-0" />}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-[var(--foreground)]">{label}</p>
+                          <p className="text-[10px] text-[var(--muted)]">{desc}</p>
+                        </div>
+                        <span className={`text-[10px] font-bold ${v === true ? "text-emerald-500" : v === false ? "text-amber-500" : "text-[var(--muted)]"}`}>
+                          {v === true ? "PASS" : v === false ? "FAIL" : "N/A"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Dimension averages */}
+                <div className="rounded-xl border border-[var(--border)] p-4 bg-[var(--card)]">
+                  <h4 className="text-xs font-semibold text-[var(--muted)] uppercase tracking-wide mb-3">Avg Reviewer Dimension Scores</h4>
+                  {Object.entries(sg.avgDimensionScores ?? {}).map(([dim, score]) => {
+                    const v = score as number;
+                    return (
+                      <div key={dim} className="flex items-center gap-3 mb-2 last:mb-0">
+                        <span className="text-xs text-[var(--muted)] w-44 shrink-0 capitalize">{dim.replace(/([A-Z])/g, " $1").trim()}</span>
+                        <div className="flex-1 h-1.5 rounded-full bg-[var(--muted)]/20 overflow-hidden">
+                          <div className={`h-full rounded-full ${v >= 70 ? "bg-emerald-500" : v >= 50 ? "bg-amber-400" : "bg-red-400"}`} style={{ width: `${v}%` }} />
+                        </div>
+                        <span className={`text-xs font-bold tabular-nums w-8 text-right ${v >= 70 ? "text-emerald-500" : v >= 50 ? "text-amber-500" : "text-red-500"}`}>{v}</span>
+                      </div>
+                    );
+                  })}
+                  <p className="text-[10px] text-[var(--muted)] mt-3">Based on {sg.snapshot?.totalReviews ?? 0} recent reviews.</p>
+                </div>
+
+                {/* Rate snapshot */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: "Approval Rate", v: sg.rates?.approvalRate, format: (n: number) => `${(n * 100).toFixed(1)}%`, good: (n: number) => n >= 0.7 },
+                    { label: "Rejection Rate", v: sg.rates?.rejectionRate, format: (n: number) => `${(n * 100).toFixed(1)}%`, good: (n: number) => n < 0.3 },
+                    { label: "Reviewer Agreement", v: sg.rates?.reviewerAgreement, format: (n: number) => `${(n * 100).toFixed(1)}%`, good: (n: number) => n >= 0.8 },
+                    { label: "Near-Match Warning Rate", v: sg.rates?.duplicateWarningRate, format: (n: number) => `${(n * 100).toFixed(1)}%`, good: (n: number) => n < 0.15 },
+                  ].map(({ label, v, format, good }) => (
+                    <div key={label} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+                      <p className="text-[10px] text-[var(--muted)] mb-0.5">{label}</p>
+                      <p className={`text-xl font-bold ${v == null ? "text-[var(--muted)]" : good(v) ? "text-emerald-500" : "text-amber-500"}`}>
+                        {v == null ? "—" : format(v)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => {
+                    setScaleGate(null);
+                    setScaleGateLoading(true);
+                    fetch("/api/content/scale-gate").then((r) => r.json()).then(setScaleGate).catch(() => setScaleGate({ error: "Failed" })).finally(() => setScaleGateLoading(false));
+                  }}
+                  className="flex items-center gap-1.5 text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                >
+                  <RefreshCw size={11} /> Refresh
+                </button>
+              </div>
+            );
+          })()}
+          {!scaleGateLoading && scaleGate && (scaleGate as any).error && (
+            <p className="text-sm text-red-500">{(scaleGate as any).error}</p>
+          )}
+          {!scaleGateLoading && !scaleGate && (
+            <p className="text-sm text-[var(--muted)]">Click the Scale Gate tab to evaluate readiness.</p>
+          )}
         </div>
       )}
 

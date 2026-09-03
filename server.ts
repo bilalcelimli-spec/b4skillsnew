@@ -1997,6 +1997,124 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // GET /api/content/scale-gate — §192 health check before scaling batch size
+  // Returns: rejection rate, reviewer agreement, duplicate block rate, recommendation
+  app.get("/api/content/scale-gate", checkRole(CONTENT_FACTORY_ROLES), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json({ mock: true });
+
+      // Last 100 reviews
+      const recentReviews = await prisma.itemReview.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        select: { verdict: true, reviewType: true, itemId: true, cefrFit: true, constructClarity: true, languageNaturalness: true, distractorQuality: true, fairnessScore: true },
+      });
+
+      const totalReviews = recentReviews.length;
+      const rejected = recentReviews.filter((r) => r.verdict === "REJECT").length;
+      const majorRevision = recentReviews.filter((r) => r.verdict === "MAJOR_REVISION").length;
+      const approved = recentReviews.filter((r) => r.verdict === "APPROVE").length;
+      const rejectionRate = totalReviews > 0 ? (rejected + majorRevision) / totalReviews : null;
+      const approvalRate = totalReviews > 0 ? approved / totalReviews : null;
+
+      // Reviewer agreement: for items reviewed by >1 reviewer, check verdict consensus
+      const itemVerdictMap = new Map<string, string[]>();
+      for (const r of recentReviews) {
+        const list = itemVerdictMap.get(r.itemId) ?? [];
+        list.push(r.verdict);
+        itemVerdictMap.set(r.itemId, list);
+      }
+      const multiReviewed = [...itemVerdictMap.values()].filter((v) => v.length > 1);
+      const agreedItems = multiReviewed.filter((v) => new Set(v).size === 1).length;
+      const reviewerAgreement = multiReviewed.length > 0 ? agreedItems / multiReviewed.length : null;
+
+      // Duplicate block rate from last 7 days (read from item metadata)
+      const recentItems = await prisma.item.findMany({
+        where: {
+          pipelineStage: { in: ["AI_DRAFT", "LANGUAGE_REVIEW", "CEFR_REVIEW"] as any[] },
+          createdAt: { gte: new Date(Date.now() - 7 * 24 * 3600 * 1000) },
+        },
+        select: { metadata: true },
+      });
+      const withNearMatch = recentItems.filter((i) => {
+        const m = i.metadata as Record<string, unknown> | null;
+        return m?.nearMatchWarning != null;
+      }).length;
+      const duplicateWarningRate = recentItems.length > 0 ? withNearMatch / recentItems.length : null;
+
+      // Avg dimension scores
+      const avgDims = recentReviews.reduce(
+        (acc, r) => {
+          acc.cefrFit += r.cefrFit ?? 0;
+          acc.constructClarity += r.constructClarity ?? 0;
+          acc.languageNaturalness += r.languageNaturalness ?? 0;
+          acc.distractorQuality += r.distractorQuality ?? 0;
+          acc.fairnessScore += r.fairnessScore ?? 0;
+          acc.n++;
+          return acc;
+        },
+        { cefrFit: 0, constructClarity: 0, languageNaturalness: 0, distractorQuality: 0, fairnessScore: 0, n: 0 },
+      );
+      const divN = Math.max(avgDims.n, 1);
+      const avgScores = {
+        cefrFit: Math.round(avgDims.cefrFit / divN),
+        constructClarity: Math.round(avgDims.constructClarity / divN),
+        languageNaturalness: Math.round(avgDims.languageNaturalness / divN),
+        distractorQuality: Math.round(avgDims.distractorQuality / divN),
+        fairnessScore: Math.round(avgDims.fairnessScore / divN),
+      };
+
+      // Gate decision (§192):
+      // - rejection rate < 30%  ✓
+      // - reviewer agreement > 80% (if data available)  ✓
+      // - avg CEFR fit score ≥ 65  ✓
+      const gates = {
+        rejectionRateOk: rejectionRate !== null ? rejectionRate < 0.30 : null,
+        reviewerAgreementOk: reviewerAgreement !== null ? reviewerAgreement >= 0.80 : null,
+        cefrFitOk: avgScores.cefrFit >= 65,
+        minSampleReached: totalReviews >= 20,
+      };
+      const passedGates = Object.values(gates).filter((v) => v === true).length;
+      const testedGates = Object.values(gates).filter((v) => v !== null).length;
+      const recommendation =
+        !gates.minSampleReached ? "NOT_READY: review at least 20 items before evaluating scale gate" :
+        gates.rejectionRateOk === false ? "NOT_READY: rejection rate ≥ 30% — diagnose prompt or blueprint before scaling" :
+        gates.reviewerAgreementOk === false ? "NOT_READY: reviewer agreement < 80% — calibrate reviewers with anchor examples" :
+        !gates.cefrFitOk ? "NOT_READY: avg CEFR fit score < 65 — check cell specification and generation prompt" :
+        "READY: all gates passed — safe to scale to 100-item batches";
+
+      res.json({
+        snapshot: { totalReviews, approved, rejected, majorRevision },
+        rates: { rejectionRate, approvalRate, reviewerAgreement, duplicateWarningRate },
+        avgDimensionScores: avgScores,
+        gates,
+        passedGates,
+        testedGates,
+        recommendation,
+      });
+    } catch (err) {
+      console.error("[content/scale-gate]", err);
+      res.status(500).json({ error: "Scale gate check failed" });
+    }
+  });
+
+  // POST /api/content/item-codes/backfill — assign itemCode to items that have none
+  app.post("/api/content/item-codes/backfill",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req: any, res) => {
+      try {
+        if (!dbAvailable) return res.status(503).json({ error: "Database required" });
+        const maxItems = Math.min(Number(req.body?.maxItems ?? 500), 2000);
+        const { backfillItemCodes } = await import("./src/lib/content-factory/item-codes.js");
+        const result = await backfillItemCodes(maxItems);
+        res.json(result);
+      } catch (err) {
+        console.error("[content/item-codes/backfill]", err);
+        res.status(500).json({ error: "Item code backfill failed" });
+      }
+    }
+  );
+
   // POST /api/items/:id/review — submit a review record
   app.post("/api/items/:id/review",
     checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "LANGUAGE_REVIEWER", "CEFR_REVIEWER", "MODERATOR", "CONTENT_ADMIN"]),

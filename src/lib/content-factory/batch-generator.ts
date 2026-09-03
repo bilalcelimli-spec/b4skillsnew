@@ -25,6 +25,7 @@ import {
   WORD_COUNT_GUIDANCE,
 } from "./blueprint.js";
 import { screenItemForDuplicates, DUP_THRESHOLD, NEAR_THRESHOLD } from "./duplicate-detector.js";
+import { nextItemCode } from "./item-codes.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -360,9 +361,18 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
       skippedReasons.push(`Embedding failed (item saved without dedup): ${(embedErr as Error).message}`);
     }
 
+    // Pre-generate item code (unique, stable, human-readable)
+    let itemCode: string | null = null;
+    try {
+      itemCode = await nextItemCode(cell.skill, cell.cefr);
+    } catch {
+      // Non-fatal: item saves without a code; backfillItemCodes() can fill later
+    }
+
     try {
       const stored = await prisma.item.create({
         data: {
+          itemCode: itemCode ?? undefined,
           type: itemType as any,
           skill: cell.skill as any,
           cefrLevel: cell.cefr as any,
@@ -399,6 +409,14 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
         select: { id: true },
       });
       storedIds.push(stored.id);
+
+      // Auto-score IQS immediately so reviewers see quality signal in review queue
+      try {
+        const { computeAndPersistIqs } = await import("../psychometrics/item-quality-score.js");
+        await computeAndPersistIqs(stored.id);
+      } catch {
+        // IQS failure is non-fatal — reviewers will see null iqScore; run iqs:batch later
+      }
     } catch (dbErr) {
       skippedReasons.push(`DB write failed: ${(dbErr as Error).message}`);
     }
