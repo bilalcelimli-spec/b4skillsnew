@@ -11,6 +11,7 @@ import { SchoolsPage } from './SchoolsPage';
 import { AcademiaPage } from './AcademiaPage';
 import { CorporatePage } from './CorporatePage';
 import { LanguageSchoolsPage } from './LanguageSchoolsPage';
+import { PricingPage } from './PricingPage';
 
 interface DynamicPageProps {
   pageName: string;
@@ -516,6 +517,7 @@ export const DynamicPage: React.FC<DynamicPageProps> = ({ pageName, onBack }) =>
   if (pageName === 'Corporations' || pageName === 'Corporates' || pageName.includes('Corporate') || pageName.includes('Corporations')) return <CorporatePage onBack={onBack} />;
   if (pageName === 'Language Schools' || pageName === 'Language Centers') return <LanguageSchoolsPage onBack={onBack} />;
   if (pageName === 'Schools' || pageName === 'For Schools' || pageName.includes('Schools')) return <SchoolsPage onBack={onBack} />;
+  if (pageName === 'Pricing' || pageName.includes('Pricing') || pageName.includes('Price')) return <PricingPage onBack={onBack} />;
 
   const page = PAGE_DATA[pageName] ?? FALLBACK_PAGE(pageName);
 

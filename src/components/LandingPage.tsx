@@ -85,11 +85,11 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
                       <div className="uppercase tracking-[0.2em] text-[#9b276c] text-[10px] font-black border-b-2 border-[#9b276c] inline-block pb-1 mb-8">Distributions</div>
                       <div className="grid grid-cols-4 gap-8">
                         {["Academia", "Schools", "Corporates", "Language Schools"].map(type => (
-                          <div key={type} className="group/item cursor-pointer">
+                          <div key={type} className="group/item cursor-pointer" onClick={() => setPendingFeature(type)}>
                             <h4 className="text-slate-400 font-bold mb-1 text-[11px] uppercase tracking-wider">b4skills for</h4>
-                            <a href="#unavailable" className="flex flex-col font-black text-[22px] leading-tight text-slate-800 group-hover/item:text-[#9b276c] transition-colors">
+                            <button className="flex flex-col font-black text-[22px] leading-tight text-slate-800 group-hover/item:text-[#9b276c] transition-colors text-left">
                               {type}
-                            </a>
+                            </button>
                             <div className="h-0.5 w-0 bg-[#9b276c] mt-2 group-hover/item:w-full transition-all duration-300 opacity-50" />
                           </div>
                         ))}
@@ -152,6 +152,9 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
             <a href="#technology" className="hover:text-slate-900 transition-colors h-16 flex items-center">Technology & Pedagogy</a>
             <a href="#research" className="hover:text-slate-900 transition-colors h-16 flex items-center">Research</a>
             <div className="flex items-center gap-6 h-16">
+              <button onClick={() => setPendingFeature("Pricing")} className="text-slate-600 hover:text-[#9b276c] font-bold transition-colors" aria-label="View pricing">
+                Pricing
+              </button>
               <button onClick={onCodeEntry} className="text-slate-600 hover:text-slate-900 font-bold transition-colors" aria-label="Enter your exam code">
                 Enter Exam Code
               </button>
@@ -724,15 +727,16 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
           <div>
             <h4 className="text-slate-900 font-bold mb-4">Assessment Solutions</h4>
             <ul className="space-y-3 text-sm text-slate-600">
-              <li><a href="#unavailable" className="hover:text-[#9b276c] transition-colors">For Schools</a></li>
-              <li><a href="#unavailable" className="hover:text-[#9b276c] transition-colors">Academic Testing</a></li>
-              <li><a href="#unavailable" className="hover:text-[#9b276c] transition-colors">General & Business English</a></li>
+              <li><button onClick={() => setPendingFeature("Schools")} className="hover:text-[#9b276c] transition-colors text-left">For Schools</button></li>
+              <li><button onClick={() => setPendingFeature("Academia")} className="hover:text-[#9b276c] transition-colors text-left">Academic Testing</button></li>
+              <li><button onClick={() => setPendingFeature("Corporates")} className="hover:text-[#9b276c] transition-colors text-left">General & Business English</button></li>
+              <li><button onClick={() => setPendingFeature("Pricing")} className="hover:text-[#9b276c] transition-colors text-left font-medium">Pricing</button></li>
             </ul>
           </div>
           <div>
             <h4 className="text-slate-900 font-bold mb-4">Resources</h4>
             <ul className="space-y-3 text-sm text-slate-600">
-              <li><a href="#unavailable" className="hover:text-[#9b276c] transition-colors">Support Center</a></li>
+              <li><a href="mailto:hello@b4skills.com" className="hover:text-[#9b276c] transition-colors">Support Center</a></li>
               <li><a href="#unavailable" className="hover:text-[#9b276c] transition-colors">Pedagogy</a></li>
               <li><a href="#unavailable" className="hover:text-[#9b276c] transition-colors">Research & Adoptions</a></li>
             </ul>
