@@ -36,7 +36,7 @@ const PageLoader = () => (
     <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600" />
   </div>
 );
-import { LogIn, LogOut, GraduationCap, LayoutDashboard, FileText, Settings, ShieldCheck, User as UserIcon, ShieldAlert, CheckCircle2, ClipboardList, Building2, BarChart3, Award, Database, UserCircle, Sliders, BoxSelect, Menu, X } from "lucide-react";
+import { LogIn, LogOut, GraduationCap, LayoutDashboard, FileText, Settings, ShieldCheck, User as UserIcon, ShieldAlert, CheckCircle2, ClipboardList, Building2, BarChart3, Award, Database, UserCircle, Sliders, BoxSelect, Menu, X, ChevronRight } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "./lib/utils";
 
@@ -55,6 +55,7 @@ export default function App() {
   const [certificate, setCertificate] = useState<any>(null);
   const [recentSessions, setRecentSessions] = useState<any[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [selectedHistorySessionId, setSelectedHistorySessionId] = useState<string | null>(null);
   // SSE stream for async Writing/Speaking scoring — active after test completes
   const scoringStatus = useScoringStatus(testCompleted?.sessionId ?? null);
 
@@ -242,6 +243,7 @@ export default function App() {
     if (tab !== "results") {
       setTestCompleted(null);
       setCertificate(null);
+      setSelectedHistorySessionId(null);
     }
     setActiveTab(tab);
   };
@@ -417,17 +419,26 @@ export default function App() {
           <Suspense fallback={<PageLoader />}>
             <InstitutionalDashboard organizationId={userProfile?.organizationId} />
           </Suspense>
-        ) : activeTab === "results" && testCompleted?.sessionId ? (
+        ) : activeTab === "results" && (testCompleted?.sessionId || selectedHistorySessionId) ? (
           <Suspense fallback={<PageLoader />}>
             <CandidateAdaptiveReport
-              sessionId={testCompleted.sessionId}
-              onClose={() => { setTestCompleted(null); setActiveTab("dashboard"); }}
+              sessionId={(testCompleted?.sessionId || selectedHistorySessionId)!}
+              onClose={() => {
+                setTestCompleted(null);
+                setSelectedHistorySessionId(null);
+                setActiveTab(testCompleted ? "dashboard" : "results");
+              }}
             />
           </Suspense>
         ) : activeTab === "results" && certificate ? (
           <Suspense fallback={<PageLoader />}>
             <CertificateView certificate={certificate} branding={branding} />
           </Suspense>
+        ) : activeTab === "results" ? (
+          <ResultsHistory
+            sessions={recentSessions}
+            onSelectSession={(id) => setSelectedHistorySessionId(id)}
+          />
         ) : activeTab === "profile" ? (
           <Suspense fallback={<PageLoader />}>
             <CandidateProfile user={userProfile} onLogout={() => signOut()} />
@@ -613,6 +624,57 @@ function ActivityItem({ title, date, score, status }: { title: string; date: str
         <div className="text-lg font-bold text-indigo-600">{score}</div>
         <div className="text-[10px] font-bold uppercase tracking-widest text-green-600">{status}</div>
       </div>
+    </div>
+  );
+}
+
+function ResultsHistory({ sessions, onSelectSession }: { sessions: any[]; onSelectSession: (id: string) => void }) {
+  const completed = sessions.filter(s => s.status === "COMPLETED");
+  return (
+    <div className="max-w-2xl mx-auto">
+      <header className="mb-8">
+        <h1 className="text-3xl font-bold text-slate-900 tracking-tighter uppercase">My Results</h1>
+        <p className="text-slate-500 mt-1 font-medium">Review your past assessments and reports.</p>
+      </header>
+      {completed.length === 0 ? (
+        <div className="text-center py-20 text-slate-400">
+          <div className="text-5xl mb-4">📋</div>
+          <p className="font-medium">No completed assessments yet. Take a test to see your results here.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {completed.map((s: any) => {
+            const cefr = s.scoreReport?.overallCefr ?? s.cefrLevel ?? "—";
+            const beps = s.scoreReport?.bepsScore ?? (s.finalTheta != null ? thetaToBeps(s.finalTheta) : null);
+            const date = s.completedAt ? new Date(s.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+            const product = s.metadata?.productLine ?? "Assessment";
+            return (
+              <button
+                key={s.id}
+                onClick={() => onSelectSession(s.id)}
+                className="w-full flex items-center justify-between p-5 bg-white border border-slate-200 rounded-2xl hover:border-indigo-300 hover:shadow-md transition-all text-left group"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-2.5 bg-indigo-50 text-indigo-500 rounded-xl group-hover:bg-indigo-100 transition-colors">
+                    <FileText size={22} />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-900">{product}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">{date}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <div className="text-xl font-black text-indigo-600">{cefr}</div>
+                    {beps != null && <div className="text-xs text-slate-400 font-bold">{beps} BEPS</div>}
+                  </div>
+                  <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
