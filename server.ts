@@ -5520,16 +5520,52 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     console.log(`[WS] Realtime dashboard WebSocket attached at /ws/dashboard`);
   });
 
+  // ── SSR render helper (marketing routes only) ────────────────────────────
+  // Marketing paths that get server-rendered HTML for crawlers.
+  const SSR_PATHS = new Set([
+    "/", "/pricing", "/methodology", "/schools", "/corporate", "/academia",
+    "/language-schools", "/english-level-test", "/ingilizce-seviye-testi",
+    "/cefr-english-test", "/english-assessment-for-universities",
+    "/english-assessment-for-companies",
+  ]);
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: "custom",
     });
     app.use(vite.middlewares);
+
+    // Dev SSR — intercept marketing routes before Vite's SPA fallback
+    app.get("*", async (req, res, next) => {
+      if (!SSR_PATHS.has(req.path)) return next();
+      try {
+        const { render } = await vite.ssrLoadModule("/src/entry-server.tsx");
+        const { html: appHtml, didSSR } = render(req.path);
+        if (!didSSR || !appHtml) return next();
+
+        let indexHtml = fs.readFileSync(path.join(process.cwd(), "index.html"), "utf-8");
+        indexHtml = await vite.transformIndexHtml(req.url, indexHtml);
+        const finalHtml = indexHtml.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`);
+        res.set("Content-Type", "text/html").send(finalHtml);
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
+
+    // Load the pre-built SSR module at startup (non-fatal if missing)
+    let ssrRender: ((url: string) => { html: string; didSSR: boolean }) | null = null;
+    try {
+      const ssrModule = await import(path.join(distPath, "ssr/entry-server.js"));
+      ssrRender = ssrModule.render ?? null;
+    } catch {
+      console.warn("[SSR] dist/ssr/entry-server.js not found — marketing pages will serve CSR shell.");
+    }
 
     // ── Per-route meta injection for marketing/SEO pages ──────────────────
     interface RouteMeta {
@@ -5669,11 +5705,25 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (ext && ext !== ".html") return res.status(404).end();
 
       const meta = ROUTE_META[req.path] ?? null;
+      let baseHtml = getIndexHtml();
+
+      // Attempt SSR for marketing paths
+      if (ssrRender && SSR_PATHS.has(req.path)) {
+        try {
+          const { html: appHtml, didSSR } = ssrRender(req.path);
+          if (didSSR && appHtml) {
+            baseHtml = baseHtml.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`);
+          }
+        } catch {
+          // SSR failure is non-fatal — continue with CSR shell
+        }
+      }
+
       if (meta) {
-        const injected = injectSeoMeta(getIndexHtml(), meta, req.path);
+        const injected = injectSeoMeta(baseHtml, meta, req.path);
         return res.set("Content-Type", "text/html; charset=utf-8").send(injected);
       }
-      res.sendFile(path.join(distPath, "index.html"));
+      res.set("Content-Type", "text/html; charset=utf-8").send(baseHtml);
     });
   }
 

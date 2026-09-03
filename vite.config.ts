@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 import {defineConfig} from 'vite';
 
-export default defineConfig(() => {
+export default defineConfig(({ isSsrBuild }) => {
   return {
     plugins: [
       react(), 
@@ -112,9 +112,10 @@ export default defineConfig(() => {
             if (id.includes("node_modules/prisma") || id.includes("node_modules/@prisma")) return "prisma";
           },
           // Deterministic filenames for CDN caching
-          chunkFileNames:  "assets/[name]-[hash].js",
-          entryFileNames:  "assets/[name]-[hash].js",
-          assetFileNames:  "assets/[name]-[hash][extname]",
+          // SSR build: deterministic filename so server.ts can import it directly
+          chunkFileNames:  isSsrBuild ? "[name].js"              : "assets/[name]-[hash].js",
+          entryFileNames:  isSsrBuild ? "[name].js"              : "assets/[name]-[hash].js",
+          assetFileNames:  isSsrBuild ? "[name][extname]"        : "assets/[name]-[hash][extname]",
         },
       },
     },
