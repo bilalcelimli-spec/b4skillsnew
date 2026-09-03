@@ -1233,6 +1233,12 @@ export const AssessmentService = {
     };
     const stopReason = opts?.stopReason ?? (sessionMeta.stopReason as string | undefined) ?? null;
 
+    // Flag sessions where Writing/Speaking responses are still awaiting AI scoring
+    const pendingAsyncResponses = (session?.responses ?? []).filter(
+      (r: any) => r.isPretest && r.score === 0 && !r.rubricScores
+    );
+    const pendingAsyncScoring = pendingAsyncResponses.length > 0;
+
     // Initialize with safe defaults — overwritten by analysis block below if successful
     let skillScoresForDb: Record<string, number | null> = {
       readingScore: null, listeningScore: null, writingScore: null,
@@ -1675,6 +1681,7 @@ export const AssessmentService = {
             skillProfiles: skillProfilesSnapshot,
             ...(sessionMstTrack != null ? { mstTrack: sessionMstTrack } : {}),
             stoppingRule,
+            ...(pendingAsyncScoring ? { pendingAsyncScoring: true, pendingCount: pendingAsyncResponses.length } : {}),
           } as Prisma.InputJsonValue,
         }
       }),

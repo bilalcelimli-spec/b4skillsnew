@@ -127,6 +127,11 @@ export const CertificateService = {
 
     if (!report) return null;
 
+    // Mark as verified on first lookup
+    if (!report.isVerified) {
+      await prisma.scoreReport.update({ where: { id }, data: { isVerified: true } }).catch(() => {});
+    }
+
     return this.mapToCertificate(report, report.session.candidate, {
       organizationId: report.session.organizationId,
       name: report.session.organization.name

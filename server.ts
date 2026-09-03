@@ -2051,14 +2051,31 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const { id } = req.params;
     try {
       if (!(await assertSessionOwnership(req, res, id))) return;
+
+      // If ScoreReport doesn't exist yet (timeout/dropout), run finalization before marking complete
+      if (dbAvailable) {
+        const [existingReport, session] = await Promise.all([
+          prisma.scoreReport.findUnique({ where: { sessionId: id } }),
+          prisma.session.findUnique({ where: { id }, select: { currentTheta: true, status: true } }),
+        ]);
+        if (!existingReport && session?.currentTheta != null && session.status !== "COMPLETED") {
+          try {
+            const { AssessmentService } = await import("./src/lib/assessment-engine/server-engine.js");
+            await AssessmentService.finalizeSession(id, session.currentTheta);
+          } catch (finErr) {
+            console.warn("finalizeSession fallback failed in /complete:", finErr);
+          }
+        }
+      }
+
       await prisma.session.update({
         where: { id },
         data: { status: "COMPLETED", completedAt: new Date() },
       });
-      
+
       const { WebhookService } = await import("./src/lib/ecosystem/webhook-service.js");
       await WebhookService.dispatchTestCompleted(id);
-      
+
       res.json({ status: "ok" });
     } catch (err) {
       res.status(500).json({ error: "Failed to complete session" });
@@ -2282,6 +2299,121 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     } catch (err) {
       console.error("adaptive-report error:", err);
       res.status(500).json({ error: "Failed to build adaptive report"});
+    }
+  });
+
+  // ── GET /api/sessions/:id/full-analysis (admin-facing detailed view) ─────────
+  app.get(
+    "/api/sessions/:id/full-analysis",
+    authMiddleware,
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]),
+    async (req: any, res) => {
+      const { id } = req.params;
+      try {
+        const { thetaToCefr, thetaToBeps, getCanDo } = await import("./src/lib/cefr/cefr-framework.js");
+
+        if (!dbAvailable) return res.status(503).json({ error: "Database unavailable in demo mode" });
+
+        const session = await prisma.session.findUnique({
+          where: { id },
+          include: {
+            responses: {
+              orderBy: { order: "asc" },
+              include: { item: { select: { skill: true, cefrLevel: true, type: true, content: true } } },
+            },
+            scoreReport: true,
+          },
+        }) as any;
+
+        if (!session) return res.status(404).json({ error: "Session not found" });
+
+        const theta: number = session.finalTheta ?? session.currentTheta ?? 0;
+        const sem:   number = session.finalSem   ?? session.currentSem   ?? 0.5;
+        const level = thetaToCefr(theta);
+        const beps  = thetaToBeps(theta);
+
+        const responses = (session.responses ?? []).map((r: any) => ({
+          itemId:     r.itemId,
+          skill:      r.item?.skill    ?? "UNKNOWN",
+          cefrLevel:  r.item?.cefrLevel ?? "B1",
+          isCorrect:  r.isCorrect  ?? null,
+          score:      r.score      ?? null,
+          thetaAfter: r.thetaAfter ?? theta,
+          semAfter:   r.semAfter   ?? sem,
+          latencyMs:  r.responseTimeMs ?? 0,
+          rubricScores: r.rubricScores ?? undefined,
+          aiFeedback:   r.aiFeedback   ?? undefined,
+          isPretest:    r.isPretest    ?? false,
+          metadata:     r.metadata     ?? undefined,
+        }));
+
+        const skillMap: Record<string, number[]> = {};
+        for (const r of responses) {
+          if (!skillMap[r.skill]) skillMap[r.skill] = [];
+          if (r.thetaAfter != null) skillMap[r.skill].push(r.thetaAfter);
+        }
+        const skillScores = Object.entries(skillMap).map(([skill, thetas]) => {
+          const t = thetas.length ? thetas[thetas.length - 1] : theta;
+          return { skill, theta: t, cefrLevel: thetaToCefr(t) };
+        });
+
+        let proctoringReport: any = null;
+        try {
+          const { ProctoringService } = await import("./src/lib/proctoring/proctoring-service.js");
+          proctoringReport = await ProctoringService.getTrustReport(id);
+        } catch { /* proctoring data optional */ }
+
+        res.json({
+          sessionId:    id,
+          candidateId:  session.userId,
+          candidateName: session.user?.name ?? session.user?.email ?? undefined,
+          completedAt:  (session.completedAt ?? session.updatedAt ?? new Date()).toISOString(),
+          finalTheta:   theta,
+          finalSem:     sem,
+          beps,
+          cefrLevel:    level,
+          stopReason:   session.stopReason ?? "COMPLETED",
+          status:       session.status,
+          totalItems:   responses.length,
+          skillScores,
+          responses,
+          canDo:        getCanDo(level),
+          integrityRisk:       session.integrityRisk ?? "LOW",
+          productLine:         session.productLine   ?? undefined,
+          proctoringReport,
+          scoreReport:         session.scoreReport   ?? null,
+          pendingAsyncScoring: (session.metadata as any)?.pendingAsyncScoring ?? false,
+        });
+      } catch (err) {
+        console.error("full-analysis error:", err);
+        res.status(500).json({ error: "Failed to build full analysis" });
+      }
+    }
+  );
+
+  // ── GET /api/verify/:id — public certificate verification alias ───────────────
+  app.get("/api/verify/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      if (!dbAvailable) return res.status(503).json({ valid: false, error: "Service unavailable" });
+      const { CertificateService } = await import("./src/lib/certification/certificate-service.js");
+      const cert = await CertificateService.verifyCertificate(id);
+      if (!cert) return res.status(404).json({ valid: false, error: "Certificate not found" });
+      const now = new Date();
+      const expired = cert.expiresAt < now;
+      res.json({
+        valid: !expired,
+        certificateId: cert.id,
+        candidateName: cert.candidateName,
+        cefrLevel:     cert.cefrLevel,
+        issuedAt:      cert.issuedAt instanceof Date ? cert.issuedAt.toISOString() : cert.issuedAt,
+        expiresAt:     cert.expiresAt instanceof Date ? cert.expiresAt.toISOString() : cert.expiresAt,
+        organization:  cert.organizationName,
+        expired,
+      });
+    } catch (err) {
+      console.error("verify error:", err);
+      res.status(500).json({ valid: false, error: "Verification failed" });
     }
   });
 

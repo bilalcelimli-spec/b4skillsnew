@@ -275,6 +275,7 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string }> = ({
                 <CandidateManagement
                   orgId={ORG_ID}
                   onGenerateCodes={() => navigate("exam-codes")}
+                  onViewAnalysis={(sessionId) => setSelectedSessionId(sessionId)}
                 />
               )}
               {activeSection === "proctoring" && (

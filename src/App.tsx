@@ -6,6 +6,7 @@ import { CefrLevelCard } from "./components/CefrLevelCard";
 
 import { AuthPage } from "./components/AuthPage";
 import { CodeEntryPage } from "./components/CodeEntryPage";
+import { VerificationPage } from "./components/VerificationPage";
 type User = { uid: string; email: string; displayName?: string; role?: string };
 const signOut = async () => {
   try {
@@ -190,6 +191,12 @@ export default function App() {
       console.error("Failed to generate certificate");
     }
   };
+
+  // Public certificate verification page — accessible without authentication
+  const verifyMatch = location.pathname.match(/^\/verify\/(.+)/);
+  if (verifyMatch) {
+    return <VerificationPage certId={verifyMatch[1]} />;
+  }
 
   if (loading) {
     return (

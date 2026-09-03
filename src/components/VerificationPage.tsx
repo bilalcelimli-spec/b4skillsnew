@@ -50,20 +50,20 @@ const CEFR_COLOR: Record<string, string> = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export const VerificationPage: React.FC = () => {
-  const [inputId, setInputId] = useState("");
+export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId }) => {
+  const [inputId, setInputId] = useState(certId ?? "");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerificationResult | null>(null);
 
-  // Auto-fill from URL ?id= param
+  // Auto-verify from prop or URL ?id= param
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get("id");
-    if (id) {
-      setInputId(id);
-      verify(id);
+    const initial = certId ?? new URLSearchParams(window.location.search).get("id") ?? "";
+    if (initial) {
+      setInputId(initial);
+      verify(initial);
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [certId]);
 
   const verify = async (id: string) => {
     const trimmed = id.trim();
