@@ -7,7 +7,16 @@ import { CefrLevelCard } from "./components/CefrLevelCard";
 import { AuthPage } from "./components/AuthPage";
 import { CodeEntryPage } from "./components/CodeEntryPage";
 import { VerificationPage } from "./components/VerificationPage";
+import type { SeoVariant } from "./components/SeoLandingPage";
 type User = { uid: string; email: string; displayName?: string; role?: string };
+
+const SEO_PATHS: Record<string, SeoVariant> = {
+  "/english-level-test": "english-level-test",
+  "/ingilizce-seviye-testi": "ingilizce-seviye-testi",
+  "/cefr-english-test": "cefr-english-test",
+  "/english-assessment-for-universities": "english-assessment-for-universities",
+  "/english-assessment-for-companies": "english-assessment-for-companies",
+};
 const signOut = async () => {
   try {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
@@ -29,6 +38,7 @@ const CandidateAdaptiveReport = lazy(() => import("./components/CandidateAdaptiv
 const AssessmentModeSelector  = lazy(() => import("./components/AssessmentModeSelector").then(m => ({ default: m.AssessmentModeSelector })));
 const TestPlayer             = lazy(() => import("./components/TestPlayer").then(m => ({ default: m.TestPlayer })));
 const LandingPage            = lazy(() => import("./components/LandingPage").then(m => ({ default: m.LandingPage })));
+const SeoLandingPage         = lazy(() => import("./components/SeoLandingPage").then(m => ({ default: m.SeoLandingPage })));
 const ItemBankManager        = lazy(() => import("./components/ItemBankManager").then(m => ({ default: m.ItemBankManager })));
 const CandidateProfile       = lazy(() => import("./components/CandidateProfile").then(m => ({ default: m.CandidateProfile })));
 
@@ -214,6 +224,15 @@ export default function App() {
       setUserProfile({ uid: candidateId, email, role: "CANDIDATE", organizationId: orgId, allowedProductLine: productLine });
       setShowCodeEntry(false);
     }} />;
+  }
+
+  const seoVariant = SEO_PATHS[location.pathname] ?? null;
+  if (!user && seoVariant) {
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <SeoLandingPage variant={seoVariant} onStart={() => setShowLanding(false)} />
+      </Suspense>
+    );
   }
 
   if (!user && showLanding) {

@@ -4597,6 +4597,51 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // ── SEO: robots.txt + sitemap.xml ───────────────────────────────────────
+  app.get("/robots.txt", (_req, res) => {
+    res.set("Content-Type", "text/plain; charset=utf-8").send(
+      [
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /api/",
+        "Disallow: /admin",
+        "Disallow: /assessment",
+        "Disallow: /dashboard",
+        "Disallow: /verify-email",
+        "Disallow: /reset-password",
+        "",
+        `Sitemap: ${APP_BASE_URL}/sitemap.xml`,
+      ].join("\n")
+    );
+  });
+
+  app.get("/sitemap.xml", (_req, res) => {
+    const now = new Date().toISOString().split("T")[0];
+    const urls: Array<{ loc: string; priority: string; changefreq: string }> = [
+      { loc: "/", priority: "1.0", changefreq: "weekly" },
+      { loc: "/pricing", priority: "0.9", changefreq: "monthly" },
+      { loc: "/english-level-test", priority: "0.9", changefreq: "monthly" },
+      { loc: "/ingilizce-seviye-testi", priority: "0.9", changefreq: "monthly" },
+      { loc: "/cefr-english-test", priority: "0.8", changefreq: "monthly" },
+      { loc: "/english-assessment-for-universities", priority: "0.8", changefreq: "monthly" },
+      { loc: "/english-assessment-for-companies", priority: "0.8", changefreq: "monthly" },
+      { loc: "/schools", priority: "0.7", changefreq: "monthly" },
+      { loc: "/corporate", priority: "0.7", changefreq: "monthly" },
+      { loc: "/academia", priority: "0.7", changefreq: "monthly" },
+      { loc: "/language-schools", priority: "0.7", changefreq: "monthly" },
+      { loc: "/methodology", priority: "0.6", changefreq: "monthly" },
+    ];
+    const urlTags = urls
+      .map(
+        (u) =>
+          `  <url>\n    <loc>${APP_BASE_URL}${u.loc}</loc>\n    <lastmod>${now}</lastmod>\n    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
+      )
+      .join("\n");
+    res
+      .set("Content-Type", "application/xml; charset=utf-8")
+      .send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urlTags}\n</urlset>`);
+  });
+
   // ── Q3: Realtime WebSocket Dashboard ────────────────────────────────────
   // Import http module to get underlying server for WS attachment
   const http = await import("http");
