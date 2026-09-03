@@ -2891,6 +2891,67 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // GET /api/candidates/:id/progress-history — theta time series for trend chart
+  app.get("/api/candidates/:id/progress-history", authMiddleware, async (req: any, res) => {
+    const { id } = req.params;
+    try {
+      const userId: string | undefined = req.user?.id;
+      const role: string | undefined = req.user?.role;
+      const adminRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "PROCTOR", "TEACHER"];
+      if (userId !== id && !(role && adminRoles.includes(role))) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const sessions = await prisma.session.findMany({
+        where: { candidateId: id, status: "COMPLETED" },
+        select: {
+          id: true,
+          createdAt: true,
+          completedAt: true,
+          theta: true,
+          cefrLevel: true,
+          metadata: true,
+          scoreReport: {
+            select: {
+              overallCefr: true,
+              overallScore: true,
+              readingScore: true,
+              listeningScore: true,
+              writingScore: true,
+              speakingScore: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+        take: 20,
+      });
+
+      const history = sessions
+        .filter((s) => s.theta != null)
+        .map((s) => {
+          const meta = s.metadata as Record<string, any> | null;
+          return {
+            sessionId: s.id,
+            date: (s.completedAt ?? s.createdAt).toISOString(),
+            productLine: meta?.productLine ?? "Assessment",
+            theta: s.theta,
+            cefrLevel: s.scoreReport?.overallCefr ?? s.cefrLevel ?? "—",
+            skillScores: s.scoreReport
+              ? {
+                  reading: s.scoreReport.readingScore,
+                  listening: s.scoreReport.listeningScore,
+                  writing: s.scoreReport.writingScore,
+                  speaking: s.scoreReport.speakingScore,
+                }
+              : null,
+          };
+        });
+
+      return res.json({ candidateId: id, history });
+    } catch (err) {
+      return res.status(500).json({ error: "Failed to fetch progress history" });
+    }
+  });
+
   // --- CERTIFICATION API ---
   const { CertificateService } = await import("./src/lib/certification/certificate-service.js");
 

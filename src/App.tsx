@@ -39,6 +39,8 @@ const AssessmentModeSelector  = lazy(() => import("./components/AssessmentModeSe
 const TestPlayer             = lazy(() => import("./components/TestPlayer").then(m => ({ default: m.TestPlayer })));
 const LandingPage            = lazy(() => import("./components/LandingPage").then(m => ({ default: m.LandingPage })));
 const SeoLandingPage         = lazy(() => import("./components/SeoLandingPage").then(m => ({ default: m.SeoLandingPage })));
+const ProgressTrendChart     = lazy(() => import("./components/ProgressTrendChart").then(m => ({ default: m.ProgressTrendChart })));
+const MethodologyPage        = lazy(() => import("./components/MethodologyPage").then(m => ({ default: m.MethodologyPage })));
 const ItemBankManager        = lazy(() => import("./components/ItemBankManager").then(m => ({ default: m.ItemBankManager })));
 const CandidateProfile       = lazy(() => import("./components/CandidateProfile").then(m => ({ default: m.CandidateProfile })));
 
@@ -224,6 +226,14 @@ export default function App() {
       setUserProfile({ uid: candidateId, email, role: "CANDIDATE", organizationId: orgId, allowedProductLine: productLine });
       setShowCodeEntry(false);
     }} />;
+  }
+
+  if (!user && location.pathname === "/methodology") {
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <MethodologyPage onBack={() => setShowLanding(true)} />
+      </Suspense>
+    );
   }
 
   const seoVariant = SEO_PATHS[location.pathname] ?? null;
@@ -609,6 +619,12 @@ export default function App() {
                     })()}
                   </CardContent>
                 </Card>
+
+                {recentSessions.filter(s => s.status === "COMPLETED").length > 1 && user && (
+                  <Suspense fallback={null}>
+                    <ProgressTrendChart candidateId={user.uid} />
+                  </Suspense>
+                )}
 
                 <Card className="bg-slate-900 text-white rounded-[32px] border-none shadow-2xl shadow-slate-200">
                   <CardContent className="p-8">

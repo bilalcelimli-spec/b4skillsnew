@@ -93,44 +93,102 @@ export class AcousticAnalyzer {
 
       const audioBuffer = Buffer.from(audioBase64, "base64");
       const audioLengthSeconds = this.estimateAudioDuration(audioBuffer);
-      const wordCount = transcript.split(/\s+/).length;
+
+      // Transcript-derived metrics (deterministic, no Math.random())
+      const words = transcript.trim().split(/\s+/).filter(Boolean);
+      const wordCount = words.length;
       const fillerCount = this.countFillerWords(transcript);
 
-      // Simulated features (would be computed from actual audio)
+      // Speech rate: words per minute from transcript + estimated duration
+      const speechRateWpm = audioLengthSeconds > 0
+        ? Math.round((wordCount / audioLengthSeconds) * 60)
+        : 130; // fallback to average fluent rate
+
+      // Pause proxy: clause boundaries (commas, semicolons) + sentence ends
+      const clausePauses = (transcript.match(/[,;:]/g) ?? []).length;
+      const sentencePauses = (transcript.match(/[.!?]/g) ?? []).length;
+      const pauseFrequency = clausePauses + sentencePauses;
+      // Estimate pause duration: short pauses ~0.3s, long ~0.8s
+      const pauseDuration = parseFloat((clausePauses * 0.3 + sentencePauses * 0.7).toFixed(2));
+
+      // Pause distribution relative to total duration thirds
+      const third = Math.max(0, Math.floor(sentencePauses / 3));
+      const pauseDistribution = {
+        before1min: third,
+        between1to3min: Math.max(0, sentencePauses - 2 * third),
+        after3min: third,
+      };
+
+      // Silence estimate: total time minus estimated speaking time
+      const estimatedSpeakingTime = (wordCount / 150) * 60; // 150 wpm avg
+      const silenceDuration = parseFloat(
+        Math.max(0, audioLengthSeconds - estimatedSpeakingTime).toFixed(2)
+      );
+
+      // Sentence diversity → pitch variation proxy
+      const questionRatio = sentencePauses > 0
+        ? (transcript.match(/\?/g) ?? []).length / sentencePauses
+        : 0;
+      const exclamRatio = sentencePauses > 0
+        ? (transcript.match(/!/g) ?? []).length / sentencePauses
+        : 0;
+      const pitchVariationScore = questionRatio + exclamRatio; // 0–2 range, normalise below
+      const pitchVariation = this.categorizePitchVariation(Math.min(1, pitchVariationScore));
+
+      // Intonation: majority sentence-end character
+      const questionCount = (transcript.match(/\?/g) ?? []).length;
+      const stmtCount = (transcript.match(/\./g) ?? []).length;
+      const sentenceIntonation =
+        questionCount > stmtCount * 0.5 ? "rising" :
+        stmtCount > 0 ? "falling" :
+        "flat";
+
+      // Content-word ratio → keyword emphasis (stop-word list approximation)
+      const stopWords = new Set(["the","a","an","is","are","was","were","be","been","it","in","on","at","to","of","and","or","but","for","with","that","this","i","we","you","they","he","she"]);
+      const contentWords = words.filter(w => !stopWords.has(w.toLowerCase().replace(/[^a-z]/g, "")));
+      const contentRatio = wordCount > 0 ? contentWords.length / wordCount : 0.5;
+      const keywordEmphasis = Math.round(5 + contentRatio * 5); // 5–10
+
+      // Natural flow: inverse of filler rate, scaled 1–10
+      const fillerRate = wordCount > 0 ? fillerCount / wordCount : 0;
+      const naturalFlow = Math.round(10 - Math.min(9, fillerRate * 50));
+
+      // Voice quality: degrade if filler rate high or speech rate extreme
+      const qualityPenalty = (fillerRate > 0.1 ? 1 : 0) + (speechRateWpm < 80 || speechRateWpm > 200 ? 1 : 0);
+      const qualityScore = Math.max(1, 10 - qualityPenalty * 2);
+
       const features: AudioFeatures = {
-        speechRate: Math.round((wordCount / audioLengthSeconds) * 60),
-        pauseDuration: Math.random() * 5, // 0-5 seconds
-        pauseFrequency: Math.floor(Math.random() * 8), // 0-8 pauses
-        pauseDistribution: {
-          before1min: Math.floor(Math.random() * 3),
-          between1to3min: Math.floor(Math.random() * 4),
-          after3min: Math.floor(Math.random() * 2),
-        },
+        speechRate: speechRateWpm,
+        pauseDuration,
+        pauseFrequency,
+        pauseDistribution,
 
-        pitchMean: 100 + Math.random() * 50, // 100-150 Hz (voice-dependent)
-        pitchRange: 12 + Math.random() * 6, // 12-18 semitones
-        pitchStdDev: 5 + Math.random() * 10,
-        pitchVariation: this.categorizePitchVariation(Math.random()),
+        pitchMean: 120, // not derivable from transcript; fixed physiological average
+        pitchRange: 14,
+        pitchStdDev: 8,
+        pitchVariation,
 
-        voiceClarity: Math.round(5 + Math.random() * 5), // 5-10
-        articulation: Math.round(5 + Math.random() * 5), // 5-10
-        voiceQualityFlags: fillerCount > 3 ? ["excessive_pausing"] : [],
+        voiceClarity: Math.round(7 + contentRatio * 3), // 7–10
+        articulation: Math.round(7 + (1 - fillerRate) * 3), // 7–10
+        voiceQualityFlags: [
+          ...(fillerRate > 0.1 ? ["excessive_fillers"] : []),
+          ...(speechRateWpm > 190 ? ["too_fast"] : []),
+          ...(speechRateWpm < 85 ? ["too_slow"] : []),
+        ],
 
-        speakingDuration: audioLengthSeconds,
-        silenceDuration: Math.random() * 5,
+        speakingDuration: parseFloat(estimatedSpeakingTime.toFixed(2)),
+        silenceDuration,
         fillerWords: fillerCount,
-        fillerWordsFlag: fillerCount / wordCount > 0.05,
+        fillerWordsFlag: fillerRate > 0.05,
 
         stressPattern: {
-          keywordEmphasis: Math.round(5 + Math.random() * 5),
-          sentenceIntonation: this.categorizeSentenceIntonation(Math.random()),
-          naturalFlow: Math.round(5 + Math.random() * 5),
+          keywordEmphasis,
+          sentenceIntonation,
+          naturalFlow,
         },
 
         processingTime: Date.now() - t0,
-        audioQuality: this.categorizeAudioQuality(
-          Math.round(7 + Math.random() * 3)
-        ),
+        audioQuality: this.categorizeAudioQuality(qualityScore),
       };
 
       return features;
