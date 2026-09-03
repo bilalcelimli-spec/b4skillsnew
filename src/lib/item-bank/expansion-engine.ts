@@ -143,15 +143,24 @@ function runQualityGate(item: {
 export class ItemBankExpansionEngine {
   /** Scan current bank and return snapshot against tier targets */
   async snapshot(tier: ItemTier = "TIER1"): Promise<BankSnapshot> {
-    const items = await prisma.item.findMany({
-      select: { id: true, skill: true, cefrLevel: true, status: true, metadata: true },
-    });
+    const [items, pretestResponses] = await Promise.all([
+      prisma.item.findMany({
+        select: { id: true, skill: true, cefrLevel: true, status: true, metadata: true },
+      }),
+      // Distinct PILOT item IDs that have at least one response (calibration progress)
+      prisma.response.findMany({
+        where: { item: { status: "PRETEST" } },
+        select: { itemId: true },
+        distinct: ["itemId"],
+      }),
+    ]);
 
     const byStatus: Record<string, number> = {};
     const bySkill:  Record<string, number> = {};
     const byCefr:   Record<string, number> = {};
     const byModule: Record<string, number> = { GENERAL: 0, BUSINESS: 0, ACADEMIC: 0, HEALTHCARE: 0 };
 
+    let pilotCount = 0;
     for (const it of items) {
       const st = (it.status as string) ?? "DRAFT";
       byStatus[st] = (byStatus[st] ?? 0) + 1;
@@ -159,7 +168,12 @@ export class ItemBankExpansionEngine {
       byCefr[it.cefrLevel]    = (byCefr[it.cefrLevel]    ?? 0) + 1;
       const mod = (it.metadata as any)?.module ?? "GENERAL";
       byModule[mod] = (byModule[mod] ?? 0) + 1;
+      if (st === "PRETEST") pilotCount++;
     }
+
+    const pretestCoverage = pilotCount > 0
+      ? Math.round((pretestResponses.length / pilotCount) * 100)
+      : 0;
 
     const target = TIER_TARGETS[tier];
     return {
@@ -169,7 +183,7 @@ export class ItemBankExpansionEngine {
       byModule:   byModule as Record<DomainModule, number>,
       bySkill,
       byCefr,
-      pretestCoverage: 0, // TODO: join with Response table for full accuracy
+      pretestCoverage,
       targetItems: target,
       progressPct: Math.min(100, Math.round((items.length / target) * 100 * 10) / 10),
     };
