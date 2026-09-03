@@ -1706,6 +1706,55 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   const CONTENT_FACTORY_ROLES = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN",
     "ITEM_WRITER", "LANGUAGE_REVIEWER", "CEFR_REVIEWER", "MODERATOR", "PSYCHOMETRICIAN"];
 
+  // POST /api/content/batch/generate — blueprint-aware controlled batch generation (§131-133)
+  // Takes a precise blueprint cell spec; generates AI drafts → stores as AI_DRAFT → returns summary.
+  // NEVER auto-publishes. Items must pass human review pipeline before going live.
+  app.post("/api/content/batch/generate",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN", "ITEM_WRITER"]),
+    async (req: any, res) => {
+      try {
+        if (!dbAvailable) return res.status(503).json({ error: "Database required for batch generation" });
+        if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: "GEMINI_API_KEY not configured" });
+
+        const { cell, count = 5, notes } = req.body;
+        if (!cell?.cefr || !cell?.skill || !cell?.subskill) {
+          return res.status(400).json({ error: "cell.cefr, cell.skill, cell.subskill are required" });
+        }
+        if (count < 1 || count > 20) {
+          return res.status(400).json({ error: "count must be 1–20 (§190 controlled batches)" });
+        }
+
+        const { runBatchGeneration } = await import("./src/lib/content-factory/batch-generator.js");
+        const result = await runBatchGeneration({
+          cell,
+          count,
+          triggeredBy: req.user.userId,
+          notes: notes ?? undefined,
+        });
+
+        return res.json(result);
+      } catch (err) {
+        console.error("[content/batch/generate]", err);
+        res.status(500).json({ error: "Batch generation failed", detail: (err as Error).message });
+      }
+    }
+  );
+
+  // GET /api/content/batch/:batchId/feedback — rejection reason analysis (§194)
+  app.get("/api/content/batch/:batchId/feedback",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
+    async (req, res) => {
+      try {
+        if (!dbAvailable) return res.json({});
+        const { getBatchFeedback } = await import("./src/lib/content-factory/batch-generator.js");
+        const feedback = await getBatchFeedback(req.params.batchId);
+        return res.json(feedback);
+      } catch (err) {
+        res.status(500).json({ error: "Failed to get batch feedback" });
+      }
+    }
+  );
+
   // GET /api/content/coverage — CEFR × Skill × Subskill coverage heatmap
   app.get("/api/content/coverage", checkRole(CONTENT_FACTORY_ROLES), async (_req, res) => {
     try {

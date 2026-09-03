@@ -65,6 +65,7 @@ import { ExamCodeManager } from "./ExamCodeManager";
 import { ItemGeneratorPanel } from "./ItemGeneratorPanel";
 import { ItemBankPanel } from "./ItemBankPanel";
 import { ContentFactoryDashboard } from "./ContentFactoryDashboard";
+import { ContentFactoryBatchPanel } from "./ContentFactoryBatchPanel";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -290,7 +291,15 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string }> = ({
               {activeSection === "analytics" && (
                 <AdvancedAnalytics orgId={ORG_ID} />
               )}
-              {activeSection === "ai-generator" && <ItemGeneratorPanel />}
+              {activeSection === "ai-generator" && (
+                <div className="space-y-8">
+                  <ContentFactoryBatchPanel />
+                  <div className="border-t border-[var(--border)] pt-6">
+                    <p className="text-xs text-[var(--muted)] mb-4 font-medium">Legacy generator (unspecced — use Blueprint Batch above for production content)</p>
+                    <ItemGeneratorPanel />
+                  </div>
+                </div>
+              )}
               {activeSection === "item-bank" && <ItemBankPanel />}
               {activeSection === "content-factory" && <ContentFactoryDashboard />}
               {activeSection === "content-review" && <ContentReviewDashboard />}
