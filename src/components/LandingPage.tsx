@@ -152,12 +152,12 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
             <a href="#technology" className="hover:text-slate-900 transition-colors h-16 flex items-center">Technology & Pedagogy</a>
             <a href="#research" className="hover:text-slate-900 transition-colors h-16 flex items-center">Research</a>
             <div className="flex items-center gap-6 h-16">
-              <button onClick={() => setPendingFeature("Methodology")} className="text-slate-600 hover:text-[#9b276c] font-bold transition-colors" aria-label="Assessment methodology">
+              <a href="/methodology" className="text-slate-600 hover:text-[#9b276c] font-bold transition-colors" aria-label="Assessment methodology">
                 Methodology
-              </button>
-              <button onClick={() => setPendingFeature("Pricing")} className="text-slate-600 hover:text-[#9b276c] font-bold transition-colors" aria-label="View pricing">
+              </a>
+              <a href="/pricing" className="text-slate-600 hover:text-[#9b276c] font-bold transition-colors" aria-label="View pricing">
                 Pricing
-              </button>
+              </a>
               <button onClick={onCodeEntry} className="text-slate-600 hover:text-slate-900 font-bold transition-colors" aria-label="Enter your exam code">
                 Enter Exam Code
               </button>
@@ -730,18 +730,18 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
           <div>
             <h4 className="text-slate-900 font-bold mb-4">Assessment Solutions</h4>
             <ul className="space-y-3 text-sm text-slate-600">
-              <li><button onClick={() => setPendingFeature("Schools")} className="hover:text-[#9b276c] transition-colors text-left">For Schools</button></li>
-              <li><button onClick={() => setPendingFeature("Academia")} className="hover:text-[#9b276c] transition-colors text-left">Academic Testing</button></li>
-              <li><button onClick={() => setPendingFeature("Corporates")} className="hover:text-[#9b276c] transition-colors text-left">General & Business English</button></li>
-              <li><button onClick={() => setPendingFeature("Pricing")} className="hover:text-[#9b276c] transition-colors text-left font-medium">Pricing</button></li>
+              <li><a href="/schools" className="hover:text-[#9b276c] transition-colors text-left">For Schools</a></li>
+              <li><a href="/academia" className="hover:text-[#9b276c] transition-colors text-left">Academic Testing</a></li>
+              <li><a href="/corporate" className="hover:text-[#9b276c] transition-colors text-left">General & Business English</a></li>
+              <li><a href="/pricing" className="hover:text-[#9b276c] transition-colors text-left font-medium">Pricing</a></li>
             </ul>
           </div>
           <div>
             <h4 className="text-slate-900 font-bold mb-4">Resources</h4>
             <ul className="space-y-3 text-sm text-slate-600">
-              <li><button onClick={() => setPendingFeature("Methodology")} className="hover:text-[#9b276c] transition-colors text-left">Assessment Methodology</button></li>
+              <li><a href="/methodology" className="hover:text-[#9b276c] transition-colors text-left">Assessment Methodology</a></li>
               <li><a href="mailto:hello@b4skills.com" className="hover:text-[#9b276c] transition-colors">Support</a></li>
-              <li><button onClick={() => setPendingFeature("Pricing")} className="hover:text-[#9b276c] transition-colors text-left">Pricing</button></li>
+              <li><a href="/pricing" className="hover:text-[#9b276c] transition-colors text-left">Pricing</a></li>
             </ul>
           </div>
           <div>
