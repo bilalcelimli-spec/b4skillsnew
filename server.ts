@@ -2115,6 +2115,200 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   );
 
+  // ── PILOT PIPELINE ────────────────────────────────────────────────────────────
+
+  // POST /api/content/pilot/promote — APPROVED_FOR_PILOT → isPretest=true + status=PRETEST
+  // ?dryRun=true  returns candidate list without committing.
+  app.post("/api/content/pilot/promote",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req: any, res) => {
+      try {
+        if (!dbAvailable) return res.status(503).json({ error: "Database required" });
+        const dryRun = String(req.query.dryRun ?? req.body?.dryRun) === "true";
+
+        const candidates = await prisma.item.findMany({
+          where: { pipelineStage: "APPROVED_FOR_PILOT" as any },
+          select: { id: true, skill: true, cefrLevel: true, subskill: true, itemCode: true, iqScore: true },
+        });
+
+        if (dryRun) return res.json({ dryRun: true, candidates, count: candidates.length });
+
+        // Promote: set status=PRETEST, isPretest=true, pipelineStage=PILOT
+        // The assessment engine picks up PRETEST items and embeds them silently in live sessions.
+        const ids = candidates.map((c) => c.id);
+        await prisma.item.updateMany({
+          where: { id: { in: ids } },
+          data: {
+            status: "PRETEST",
+            isPretest: true,
+            pipelineStage: "PILOT" as any,
+            metadata: undefined, // keep existing metadata
+          },
+        });
+
+        // Log each promotion in metadata
+        for (const item of candidates) {
+          await prisma.item.update({
+            where: { id: item.id },
+            data: {
+              metadata: {
+                pilotStartedAt: new Date().toISOString(),
+                promotedBy: req.user?.id ?? "system",
+              } as any,
+            },
+          });
+        }
+
+        res.json({ promoted: ids.length, ids, message: "Items are now PRETEST — will be embedded as silent pretests in live sessions" });
+      } catch (err) {
+        console.error("[content/pilot/promote]", err);
+        res.status(500).json({ error: "Pilot promotion failed" });
+      }
+    }
+  );
+
+  // GET /api/content/monitor — live health of PILOT (PRETEST) items
+  // Returns per-item: response count, p-value, IQS, DIF status, calibration readiness
+  app.get("/api/content/monitor", checkRole(CONTENT_FACTORY_ROLES), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json({ items: [], summary: {} });
+
+      const pilotItems = await prisma.item.findMany({
+        where: {
+          OR: [
+            { pipelineStage: "PILOT" as any },
+            { pipelineStage: "CALIBRATION" as any },
+          ],
+        },
+        select: {
+          id: true, itemCode: true, skill: true, cefrLevel: true, subskill: true,
+          difficulty: true, iqScore: true, difStatus: true,
+          pipelineStage: true, status: true, isPretest: true,
+          createdAt: true,
+          responses: {
+            where: { isPretest: true },
+            select: { score: true, latencyMs: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 200,
+      });
+
+      const CALIBRATION_THRESHOLD = 200;
+      const IQS_MIN = 65;
+
+      const items = pilotItems.map((item) => {
+        const responses = item.responses;
+        const nResponses = responses.length;
+        const pValue = nResponses > 0
+          ? responses.filter((r) => (r.score ?? 0) > 0).length / nResponses
+          : null;
+        const avgLatencyMs = nResponses > 0
+          ? Math.round(responses.reduce((s, r) => s + (r.latencyMs ?? 0), 0) / nResponses)
+          : null;
+
+        // Expected p-value from IRT 3PL at θ=0 (population mean)
+        const b = item.difficulty;
+        const expectedP = 0.25 + 0.75 * (1 / (1 + Math.exp(-1.0 * (0 - b))));
+
+        const drift = pValue !== null ? Math.abs(pValue - expectedP) : null;
+        const isDrifting = drift !== null && drift > 0.20;
+
+        const calibrationReady =
+          nResponses >= CALIBRATION_THRESHOLD &&
+          (item.iqScore ?? 0) >= IQS_MIN &&
+          item.pipelineStage === "PILOT" &&
+          !isDrifting;
+
+        const status =
+          calibrationReady ? "CALIBRATION_READY" :
+          isDrifting ? "DRIFTING" :
+          item.difStatus === "FLAGGED" ? "DIF_FLAGGED" :
+          nResponses >= CALIBRATION_THRESHOLD ? "AWAITING_CALIBRATION_REVIEW" :
+          nResponses > 0 ? "COLLECTING" :
+          "AWAITING_EXPOSURE";
+
+        return {
+          id: item.id,
+          itemCode: item.itemCode,
+          skill: item.skill,
+          cefrLevel: item.cefrLevel,
+          subskill: item.subskill,
+          pipelineStage: item.pipelineStage,
+          nResponses,
+          pValue: pValue !== null ? Math.round(pValue * 1000) / 1000 : null,
+          expectedP: Math.round(expectedP * 1000) / 1000,
+          drift: drift !== null ? Math.round(drift * 1000) / 1000 : null,
+          avgLatencyMs,
+          iqScore: item.iqScore,
+          difStatus: item.difStatus ?? "CLEAR",
+          calibrationReady,
+          isDrifting,
+          status,
+          daysInPilot: Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 86400000),
+        };
+      });
+
+      const summary = {
+        total: items.length,
+        collecting: items.filter((i) => i.status === "COLLECTING").length,
+        calibrationReady: items.filter((i) => i.status === "CALIBRATION_READY").length,
+        drifting: items.filter((i) => i.isDrifting).length,
+        difFlagged: items.filter((i) => i.difStatus === "FLAGGED").length,
+        awaitingExposure: items.filter((i) => i.status === "AWAITING_EXPOSURE").length,
+      };
+
+      res.json({ items, summary, calibrationThreshold: CALIBRATION_THRESHOLD });
+    } catch (err) {
+      console.error("[content/monitor]", err);
+      res.status(500).json({ error: "Monitor fetch failed" });
+    }
+  });
+
+  // POST /api/content/calibration/promote — PILOT items with ≥200 responses → CALIBRATION stage
+  app.post("/api/content/calibration/promote",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PSYCHOMETRICIAN"]),
+    async (req: any, res) => {
+      try {
+        if (!dbAvailable) return res.status(503).json({ error: "Database required" });
+
+        // Find items already identified as CALIBRATION_READY by the monitor
+        // We re-derive here rather than trusting the client to pass IDs
+        const pilotItems = await prisma.item.findMany({
+          where: { pipelineStage: "PILOT" as any },
+          select: {
+            id: true, itemCode: true, skill: true, cefrLevel: true,
+            iqScore: true, difficulty: true,
+            responses: { where: { isPretest: true }, select: { score: true } },
+          },
+        });
+
+        const readyIds = pilotItems
+          .filter((item) => {
+            const n = item.responses.length;
+            if (n < 200) return false;
+            if ((item.iqScore ?? 0) < 65) return false;
+            return true;
+          })
+          .map((item) => item.id);
+
+        if (readyIds.length === 0) {
+          return res.json({ promoted: 0, message: "No items meet calibration threshold (≥200 responses, IQS ≥65)" });
+        }
+
+        await prisma.item.updateMany({
+          where: { id: { in: readyIds } },
+          data: { pipelineStage: "CALIBRATION" as any },
+        });
+
+        res.json({ promoted: readyIds.length, ids: readyIds });
+      } catch (err) {
+        console.error("[content/calibration/promote]", err);
+        res.status(500).json({ error: "Calibration promotion failed" });
+      }
+    }
+  );
+
   // POST /api/items/:id/review — submit a review record
   app.post("/api/items/:id/review",
     checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "LANGUAGE_REVIEWER", "CEFR_REVIEWER", "MODERATOR", "CONTENT_ADMIN"]),

@@ -7,7 +7,7 @@ import {
   BarChart3, CheckCircle2, Clock, AlertTriangle, Layers,
   TrendingUp, FileText, ChevronDown, ChevronUp, RefreshCw,
   Target, Shield, Zap, BookOpen, Headphones, PenLine, Mic,
-  BookMarked, Hash
+  BookMarked, Hash, Activity, FlaskConical, ArrowRight
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -34,6 +34,35 @@ interface DashboardData {
   awaitingReview: number;
   flagged: number;
   recentReviews: Array<{ id: string; itemId: string; reviewType: string; verdict: string; createdAt: string }>;
+}
+
+interface MonitorItem {
+  id: string;
+  itemCode: string | null;
+  skill: string;
+  cefrLevel: string;
+  subskill: string | null;
+  pipelineStage: string;
+  nResponses: number;
+  pValue: number | null;
+  expectedP: number;
+  drift: number | null;
+  avgLatencyMs: number | null;
+  iqScore: number | null;
+  difStatus: string;
+  calibrationReady: boolean;
+  isDrifting: boolean;
+  status: string;
+  daysInPilot: number;
+}
+
+interface MonitorSummary {
+  total: number;
+  collecting: number;
+  calibrationReady: number;
+  drifting: number;
+  difFlagged: number;
+  awaitingExposure: number;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -138,10 +167,14 @@ export function ContentFactoryDashboard() {
   const [coverage, setCoverage] = useState<CoverageData | null>(null);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "heatmap" | "gaps" | "pipeline" | "review" | "scale-gate">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "heatmap" | "gaps" | "pipeline" | "review" | "scale-gate" | "monitor">("overview");
   const [gapsExpanded, setGapsExpanded] = useState(false);
   const [scaleGate, setScaleGate] = useState<Record<string, unknown> | null>(null);
   const [scaleGateLoading, setScaleGateLoading] = useState(false);
+  const [monitorData, setMonitorData] = useState<{ items: MonitorItem[]; summary: MonitorSummary; calibrationThreshold: number } | null>(null);
+  const [monitorLoading, setMonitorLoading] = useState(false);
+  const [pilotPromoting, setPilotPromoting] = useState(false);
+  const [calPromoting, setCalPromoting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -212,7 +245,7 @@ export function ContentFactoryDashboard() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-[var(--border)]">
-        {(["overview", "heatmap", "gaps", "pipeline", "review", "scale-gate"] as const).map((tab) => (
+        {(["overview", "heatmap", "gaps", "pipeline", "review", "scale-gate", "monitor"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => {
@@ -225,6 +258,14 @@ export function ContentFactoryDashboard() {
                   .catch(() => setScaleGate({ error: "Failed to load" }))
                   .finally(() => setScaleGateLoading(false));
               }
+              if (tab === "monitor" && !monitorData) {
+                setMonitorLoading(true);
+                fetch("/api/content/monitor")
+                  .then((r) => r.json())
+                  .then((d) => setMonitorData(d))
+                  .catch(() => setMonitorData(null))
+                  .finally(() => setMonitorLoading(false));
+              }
             }}
             className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
               activeTab === tab
@@ -232,7 +273,7 @@ export function ContentFactoryDashboard() {
                 : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]"
             }`}
           >
-            {tab === "heatmap" ? "Coverage Heatmap" : tab === "overview" ? "Overview" : tab === "gaps" ? "Gap Matrix" : tab === "pipeline" ? "Pipeline" : tab === "review" ? "Reviews" : "Scale Gate"}
+            {tab === "heatmap" ? "Coverage Heatmap" : tab === "overview" ? "Overview" : tab === "gaps" ? "Gap Matrix" : tab === "pipeline" ? "Pipeline" : tab === "review" ? "Reviews" : tab === "scale-gate" ? "Scale Gate" : "Monitor"}
           </button>
         ))}
       </div>
@@ -580,6 +621,166 @@ export function ContentFactoryDashboard() {
           )}
           {!scaleGateLoading && !scaleGate && (
             <p className="text-sm text-[var(--muted)]">Click the Scale Gate tab to evaluate readiness.</p>
+          )}
+        </div>
+      )}
+
+      {/* Monitor tab */}
+      {activeTab === "monitor" && (
+        <div className="space-y-4">
+          {/* Action bar */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <button
+              onClick={async () => {
+                setPilotPromoting(true);
+                try {
+                  const r = await fetch("/api/content/pilot/promote", { method: "POST" });
+                  const d = await r.json();
+                  alert(`Promoted ${d.promoted ?? 0} items to PILOT (PRETEST) status.`);
+                  setMonitorData(null);
+                  setMonitorLoading(true);
+                  fetch("/api/content/monitor").then((r) => r.json()).then(setMonitorData).finally(() => setMonitorLoading(false));
+                } catch { alert("Promotion failed"); }
+                finally { setPilotPromoting(false); }
+              }}
+              disabled={pilotPromoting}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-300 dark:border-blue-700 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 transition-colors"
+            >
+              {pilotPromoting ? <RefreshCw size={11} className="animate-spin" /> : <FlaskConical size={11} />}
+              Promote APPROVED → PILOT
+            </button>
+            <button
+              onClick={async () => {
+                setCalPromoting(true);
+                try {
+                  const r = await fetch("/api/content/calibration/promote", { method: "POST" });
+                  const d = await r.json();
+                  alert(`Promoted ${d.promoted ?? 0} items to CALIBRATION stage.`);
+                  setMonitorData(null);
+                  setMonitorLoading(true);
+                  fetch("/api/content/monitor").then((r) => r.json()).then(setMonitorData).finally(() => setMonitorLoading(false));
+                } catch { alert("Calibration promotion failed"); }
+                finally { setCalPromoting(false); }
+              }}
+              disabled={calPromoting}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-300 dark:border-purple-700 text-xs font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-50 transition-colors"
+            >
+              {calPromoting ? <RefreshCw size={11} className="animate-spin" /> : <ArrowRight size={11} />}
+              Promote Calibration-Ready → CALIBRATION
+            </button>
+            <button
+              onClick={() => {
+                setMonitorLoading(true);
+                fetch("/api/content/monitor").then((r) => r.json()).then(setMonitorData).catch(() => {}).finally(() => setMonitorLoading(false));
+              }}
+              className="ml-auto flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              <RefreshCw size={11} /> Refresh
+            </button>
+          </div>
+
+          {monitorLoading && (
+            <div className="flex items-center justify-center h-40 text-[var(--muted)] text-sm">
+              <RefreshCw size={15} className="animate-spin mr-2" /> Loading pilot monitor…
+            </div>
+          )}
+
+          {!monitorLoading && monitorData && (
+            <>
+              {/* Summary KPIs */}
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                {[
+                  { label: "In Pilot", value: monitorData.summary.total, icon: <Activity size={13} />, color: "text-blue-500" },
+                  { label: "Collecting", value: monitorData.summary.collecting, icon: <BarChart3 size={13} />, color: "text-emerald-500" },
+                  { label: "Cal. Ready", value: monitorData.summary.calibrationReady, icon: <CheckCircle2 size={13} />, color: "text-purple-500" },
+                  { label: "Drifting", value: monitorData.summary.drifting, icon: <AlertTriangle size={13} />, color: "text-amber-500" },
+                  { label: "DIF Flagged", value: monitorData.summary.difFlagged, icon: <Shield size={13} />, color: "text-red-500" },
+                  { label: "No Exposure", value: monitorData.summary.awaitingExposure, icon: <Clock size={13} />, color: "text-[var(--muted)]" },
+                ].map((k) => (
+                  <div key={k.label} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-2 text-center">
+                    <div className={`flex justify-center mb-0.5 ${k.color}`}>{k.icon}</div>
+                    <p className={`text-lg font-bold ${k.color}`}>{k.value}</p>
+                    <p className="text-[10px] text-[var(--muted)]">{k.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Item table */}
+              {monitorData.items.length === 0 ? (
+                <div className="rounded-xl border border-[var(--border)] p-8 text-center text-[var(--muted)] text-sm">
+                  No items in PILOT or CALIBRATION stage yet.<br />
+                  <span className="text-xs">Use "Promote APPROVED → PILOT" above after items pass Moderation.</span>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-[var(--border)] overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-[var(--border)] bg-[var(--card)]">
+                          {["Code", "Skill", "CEFR", "Stage", "Responses", "p-val", "Exp. p", "Drift", "IQS", "DIF", "Status", "Days"].map((h) => (
+                            <th key={h} className="text-left text-[var(--muted)] font-medium py-2 px-2 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monitorData.items.map((item) => {
+                          const statusColor =
+                            item.status === "CALIBRATION_READY" ? "text-purple-500 font-bold" :
+                            item.status === "DRIFTING" ? "text-amber-500 font-bold" :
+                            item.status === "DIF_FLAGGED" ? "text-red-500 font-bold" :
+                            item.status === "COLLECTING" ? "text-emerald-500" :
+                            "text-[var(--muted)]";
+                          const progressPct = Math.min((item.nResponses / (monitorData.calibrationThreshold)) * 100, 100);
+                          return (
+                            <tr key={item.id} className="border-b border-[var(--border)] hover:bg-[var(--card)]">
+                              <td className="py-1.5 px-2 font-mono text-[var(--foreground)]">{item.itemCode ?? item.id.slice(0, 8)}</td>
+                              <td className="py-1.5 px-2 text-[var(--muted)]">{item.skill.slice(0, 4)}</td>
+                              <td className="py-1.5 px-2">
+                                <span className="px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 font-medium">{item.cefrLevel}</span>
+                              </td>
+                              <td className="py-1.5 px-2 text-[var(--muted)]">{item.pipelineStage.replace(/_/g, " ")}</td>
+                              <td className="py-1.5 px-2">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="tabular-nums text-[var(--foreground)]">{item.nResponses}</span>
+                                  <div className="w-12 h-1 rounded-full bg-[var(--muted)]/20 overflow-hidden">
+                                    <div className="h-full rounded-full bg-blue-400" style={{ width: `${progressPct}%` }} />
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-1.5 px-2 tabular-nums text-[var(--foreground)]">{item.pValue?.toFixed(2) ?? "—"}</td>
+                              <td className="py-1.5 px-2 tabular-nums text-[var(--muted)]">{item.expectedP.toFixed(2)}</td>
+                              <td className={`py-1.5 px-2 tabular-nums ${item.isDrifting ? "text-amber-500 font-bold" : "text-[var(--muted)]"}`}>
+                                {item.drift?.toFixed(2) ?? "—"}
+                              </td>
+                              <td className={`py-1.5 px-2 tabular-nums ${(item.iqScore ?? 0) >= 80 ? "text-emerald-500" : (item.iqScore ?? 0) >= 65 ? "text-amber-500" : "text-red-400"}`}>
+                                {item.iqScore != null ? Math.round(item.iqScore) : "—"}
+                              </td>
+                              <td className={`py-1.5 px-2 ${item.difStatus === "FLAGGED" ? "text-red-500 font-bold" : "text-[var(--muted)]"}`}>
+                                {item.difStatus}
+                              </td>
+                              <td className={`py-1.5 px-2 whitespace-nowrap ${statusColor}`}>
+                                {item.status.replace(/_/g, " ")}
+                              </td>
+                              <td className="py-1.5 px-2 tabular-nums text-[var(--muted)]">{item.daysInPilot}d</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="p-2 bg-[var(--card)] border-t border-[var(--border)]">
+                    <p className="text-[10px] text-[var(--muted)]">
+                      Calibration threshold: {monitorData.calibrationThreshold} responses + IQS ≥ 65.
+                      Drift = |observed p − IRT-expected p at θ=0|. Drift {">"} 0.20 flagged.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {!monitorLoading && !monitorData && (
+            <p className="text-sm text-[var(--muted)]">Click Monitor tab to load pilot health data.</p>
           )}
         </div>
       )}
