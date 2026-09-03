@@ -81,6 +81,23 @@ export function buildTtsPrompt(moduleId: string, ttsScript: string, cefr: string
   return prefix + ttsScript;
 }
 
+// ── Multi-speaker detection ───────────────────────────────────────────────────
+// Speaker labels format: "Speaker A: ..." or "Speaker B: ..." at line start.
+// Returns the unique speaker names found in the script.
+
+export function detectSpeakers(ttsScript: string): string[] {
+  const labels = new Set<string>();
+  for (const line of ttsScript.split("\n")) {
+    const m = line.match(/^(Speaker\s+[A-Z]|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?):\s/);
+    if (m) labels.add(m[1]);
+  }
+  return [...labels];
+}
+
+// ── Voice assignment for multi-speaker dialogues ─────────────────────────────
+// Two distinct Gemini voices chosen for contrast (warm female vs. clear male).
+const DIALOGUE_VOICES: string[] = ["Aoede", "Puck"];
+
 // ── Main export ────────────────────────────────────────────────────────────────
 
 export interface TtsResult {
@@ -105,18 +122,39 @@ export async function generateListeningAudio(opts: {
   const outputDir = opts.outputDir ?? path.join(process.cwd(), "public", "audio");
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
-  const voiceName = resolveVoice(opts.moduleId, opts.productLine);
-  const prompt    = buildTtsPrompt(opts.moduleId, opts.ttsScript, opts.cefrLevel, opts.productLine);
-  const ai        = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey });
+
+  // Detect two-person dialogues and use multi-speaker config
+  const speakers = detectSpeakers(opts.ttsScript);
+  const isDialogue = speakers.length >= 2;
+
+  let speechConfig: Record<string, unknown>;
+  let usedVoiceName: string;
+
+  if (isDialogue) {
+    // Multi-speaker: assign a distinct voice to each speaker label
+    const speakerVoiceConfigs = speakers.slice(0, 2).map((speaker, i) => ({
+      speaker,
+      voiceConfig: { prebuiltVoiceConfig: { voiceName: DIALOGUE_VOICES[i] } },
+    }));
+    speechConfig = { multiSpeakerVoiceConfig: { speakerVoiceConfigs } };
+    usedVoiceName = DIALOGUE_VOICES.slice(0, speakers.length).join("+");
+  } else {
+    const voiceName = resolveVoice(opts.moduleId, opts.productLine);
+    speechConfig = { voiceConfig: { prebuiltVoiceConfig: { voiceName } } };
+    usedVoiceName = voiceName;
+  }
+
+  const prompt = isDialogue
+    ? opts.ttsScript  // speaker-labelled text — Gemini routes each line to the right voice
+    : buildTtsPrompt(opts.moduleId, opts.ttsScript, opts.cefrLevel, opts.productLine);
 
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     config: {
       responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName } },
-      },
+      speechConfig,
     },
   });
 
@@ -139,7 +177,7 @@ export async function generateListeningAudio(opts: {
     audioUrl: `/audio/${fileName}`,
     absolutePath,
     durationSeconds,
-    voiceName,
+    voiceName: usedVoiceName,
     fileSizeKb: Math.round(wavBuffer.length / 1024),
   };
 }

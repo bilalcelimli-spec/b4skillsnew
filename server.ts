@@ -3124,9 +3124,24 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // happened to favour. With 6 skills × 2 = 12 minimum responses out of 36 max.
   const FREEMIUM_MIN_ITEMS_PER_SKILL = 2;
 
+  // Hard cap per skill: prevents WRITING/SPEAKING from dominating the session
+  // when the item bank happens to cluster productive items near the candidate's θ.
+  // Receptive skills (GRAMMAR/VOCABULARY/READING/LISTENING) can go up to the cap;
+  // productive skills are also bounded here (they have longer response latency).
+  const FREEMIUM_MAX_ITEMS_PER_SKILL = 4;
+
   const pickNextPlacementItem = (allItems: any[], usedIds: Set<string>, theta: number, skillBreakdown: Record<string, any> = {}) => {
+    // Pre-compute per-skill counts so the cap check is O(1) per item
+    const skillCounts: Record<string, number> = {};
+    for (const s of FREEMIUM_PLACEMENT_SKILLS) skillCounts[s] = 0;
+    Object.entries(skillBreakdown).forEach(([s, data]) => { skillCounts[s] = (data as any).total ?? 0; });
+
     const available = allItems.filter(
-      it => !usedIds.has(it.id) && it.active !== false && FREEMIUM_PLACEMENT_SKILLS.includes(it.skill)
+      it =>
+        !usedIds.has(it.id) &&
+        it.active !== false &&
+        FREEMIUM_PLACEMENT_SKILLS.includes(it.skill) &&
+        (skillCounts[it.skill] ?? 0) < FREEMIUM_MAX_ITEMS_PER_SKILL
     );
     if (!available.length) return null;
 
@@ -3136,9 +3151,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     // pure IRT selection ignores WRITING/SPEAKING (item info is lower than
     // for receptive MCQs at moderate θ), and the productive sections never
     // appear in the freemium result.
-    const skillCounts: Record<string, number> = {};
-    for (const s of FREEMIUM_PLACEMENT_SKILLS) skillCounts[s] = 0;
-    Object.entries(skillBreakdown).forEach(([s, data]) => { skillCounts[s] = (data as any).total ?? 0; });
+    // (skillCounts already computed above for the cap filter)
 
     const underServed = FREEMIUM_PLACEMENT_SKILLS.filter(
       s => skillCounts[s] < FREEMIUM_MIN_ITEMS_PER_SKILL && available.some(it => it.skill === s)

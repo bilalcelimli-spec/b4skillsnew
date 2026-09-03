@@ -305,7 +305,10 @@ Your expertise covers:
 • TTS naturalness: embed prosody cues inline in ttsScript:
     [PAUSE 0.3s] short pause | [PAUSE 0.8s] breath pause | [PAUSE 1.5s] scene break
     [SLOW] begin slower rate | [NORMAL] resume normal rate
-    Speaker changes marked with two line-breaks only (no labels in ttsScript)
+    For MONOLOGUE items: no speaker labels in ttsScript (single-voice TTS).
+    For DIALOGUE items (two speakers): KEEP speaker labels in ttsScript using exactly
+    "Speaker A: " and "Speaker B: " prefixes on every line — the TTS engine routes
+    each line to a different voice. Do NOT strip labels from two-person passages.
 • Principled distractor design for listening (Buck 2001):
     Type A — Plausible-but-not-heard: similar sound/word but different meaning
     Type B — Heard-but-irrelevant: word/phrase from passage, wrong question
@@ -323,7 +326,7 @@ REQUIRED OUTPUT SCHEMA for LISTENING items:
     "stimulus": "<2–3 sentence scene-setting shown to candidate, e.g. 'You will hear a telephone call between a hotel guest and the front desk.'>",
     "moduleId": "<kebab-case unique id, e.g. 'general-b1-hotel-complaint-001'>",
     "passage": "<full human-readable script with speaker labels, e.g. 'Guest: I wanted to ask about...\\nStaff: Of course, I can...'> ",
-    "ttsScript": "<cleaned script for TTS: no speaker labels, prosody cues embedded, spoken features calibrated to CEFR level>",
+    "ttsScript": "<TTS script: for monologues — no speaker labels, prosody cues embedded; for dialogues — KEEP 'Speaker A: ' and 'Speaker B: ' prefixes on every line, prosody cues embedded>",
     "ttsSettings": {
       "voiceName": "Kore",
       "speakingRate": 0.9,
