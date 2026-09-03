@@ -2115,6 +2115,110 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   );
 
+  // ── ITEM CONTENT EDITOR (AI_DRAFT / LANGUAGE_REVIEW stage only) ──────────────
+  // PATCH /api/items/:id/content — writer edits item content before it enters review
+  // Body: { content: {...}, reason?: string }
+  // Only allowed while item is in AI_DRAFT or HUMAN_DRAFT stage.
+  app.patch("/api/items/:id/content",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER", "CONTENT_ADMIN"]),
+    async (req: any, res) => {
+      try {
+        if (!dbAvailable) return res.status(503).json({ error: "Database required" });
+        const { id } = req.params;
+        const { content, reason } = req.body;
+        if (!content || typeof content !== "object") {
+          return res.status(400).json({ error: "content object required" });
+        }
+
+        const item = await prisma.item.findUnique({
+          where: { id },
+          select: { pipelineStage: true, version: true, metadata: true },
+        });
+        if (!item) return res.status(404).json({ error: "Item not found" });
+
+        const editableStages = ["AI_DRAFT", "HUMAN_DRAFT", "EDITING", "LANGUAGE_REVIEW"];
+        if (!editableStages.includes(item.pipelineStage as string)) {
+          return res.status(409).json({ error: `Item in stage ${item.pipelineStage} is not editable. Only ${editableStages.join(", ")} are editable.` });
+        }
+
+        const existingMeta = (item.metadata ?? {}) as Record<string, unknown>;
+        const updated = await prisma.item.update({
+          where: { id },
+          data: {
+            content: content as any,
+            version: { increment: 1 },
+            metadata: {
+              ...existingMeta,
+              lastEditedAt: new Date().toISOString(),
+              lastEditedBy: req.user?.id ?? "unknown",
+              editReason: reason ?? null,
+            } as any,
+          },
+          select: { id: true, version: true, pipelineStage: true, content: true },
+        });
+        res.json(updated);
+      } catch (err) {
+        console.error("[items/:id/content]", err);
+        res.status(500).json({ error: "Content update failed" });
+      }
+    }
+  );
+
+  // PATCH /api/items/:id/suspend — toggle isSuspended; optionally set compromised
+  // Body: { suspend: boolean, note?: string, compromised?: boolean }
+  app.patch("/api/items/:id/suspend",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "MODERATOR"]),
+    async (req: any, res) => {
+      try {
+        if (!dbAvailable) return res.status(503).json({ error: "Database required" });
+        const { id } = req.params;
+        const { suspend, note, compromised = false } = req.body;
+        if (typeof suspend !== "boolean") {
+          return res.status(400).json({ error: "suspend (boolean) required" });
+        }
+        const updated = await prisma.item.update({
+          where: { id },
+          data: {
+            isSuspended: suspend,
+            ...(compromised ? {
+              isCompromised: true,
+              compromisedAt: new Date(),
+              compromisedNote: note ?? null,
+              pipelineStage: "COMPROMISED" as any,
+              status: "RETIRED" as any,
+            } : {}),
+            metadata: {
+              suspendedAt: suspend ? new Date().toISOString() : null,
+              suspendedBy: req.user?.id ?? "system",
+              suspendNote: note ?? null,
+            } as any,
+          },
+          select: { id: true, isSuspended: true, isCompromised: true, pipelineStage: true },
+        });
+        res.json(updated);
+      } catch (err) {
+        console.error("[items/:id/suspend]", err);
+        res.status(500).json({ error: "Suspend failed" });
+      }
+    }
+  );
+
+  // GET /api/content/ops/stats — counts for operations panel
+  app.get("/api/content/ops/stats", checkRole(CONTENT_FACTORY_ROLES), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json({ mock: true });
+      const [missingCodes, missingEmbeddings, unscoredIqs, approvedForPilot] = await Promise.all([
+        prisma.item.count({ where: { itemCode: null } }),
+        prisma.item.count({ where: { embeddingVec: null, pipelineStage: { notIn: ["RETIRED", "COMPROMISED"] as any[] } } }),
+        prisma.item.count({ where: { iqScore: null, status: { not: "RETIRED" } } }),
+        prisma.item.count({ where: { pipelineStage: "APPROVED_FOR_PILOT" as any } }),
+      ]);
+      res.json({ missingCodes, missingEmbeddings, unscoredIqs, approvedForPilot });
+    } catch (err) {
+      res.status(500).json({ error: "Ops stats failed" });
+    }
+  });
+
   // ── PILOT PIPELINE ────────────────────────────────────────────────────────────
 
   // POST /api/content/pilot/promote — APPROVED_FOR_PILOT → isPretest=true + status=PRETEST

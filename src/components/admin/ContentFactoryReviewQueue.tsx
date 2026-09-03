@@ -13,7 +13,7 @@ import {
   ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, XCircle,
   RotateCcw, Eye, Layers, BookOpen, Headphones, PenLine, Mic,
   BookMarked, Hash, Monitor, Tablet, Smartphone, RefreshCw,
-  Info, ClipboardList, Clock, Shield,
+  Info, ClipboardList, Clock, Shield, Edit3, Save, X,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -252,6 +252,12 @@ export function ContentFactoryReviewQueue() {
   const [submitOk, setSubmitOk] = useState(false);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
 
+  // Inline content editor — only for AI_DRAFT / LANGUAGE_REVIEW
+  const [editing, setEditing] = useState(false);
+  const [editJson, setEditJson] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editErr, setEditErr] = useState<string | null>(null);
+
   const stageCfg = STAGE_CONFIG[activeStage];
   const item = items[currentIdx] ?? null;
 
@@ -463,9 +469,83 @@ export function ContentFactoryReviewQueue() {
 
           {/* Right — Review form */}
           <div className="space-y-4">
-            <h4 className="text-xs font-semibold text-[var(--foreground)] uppercase tracking-wide flex items-center gap-1.5">
-              <Eye size={13} className="text-blue-500" /> Review Form — {stageCfg?.label ?? activeStage}
-            </h4>
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-semibold text-[var(--foreground)] uppercase tracking-wide flex items-center gap-1.5">
+                <Eye size={13} className="text-blue-500" /> Review Form — {stageCfg?.label ?? activeStage}
+              </h4>
+              {/* Inline editor toggle — only for early pipeline stages */}
+              {["AI_DRAFT", "HUMAN_DRAFT", "EDITING", "LANGUAGE_REVIEW"].includes(item.pipelineStage) && (
+                <button
+                  onClick={() => {
+                    setEditing((v) => {
+                      if (!v) setEditJson(JSON.stringify(item.content, null, 2));
+                      setEditErr(null);
+                      return !v;
+                    });
+                  }}
+                  className={`ml-auto flex items-center gap-1 text-xs px-2 py-1 rounded border transition-colors ${
+                    editing
+                      ? "border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-600"
+                      : "border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {editing ? <><X size={11} /> Cancel edit</> : <><Edit3 size={11} /> Edit content</>}
+                </button>
+              )}
+            </div>
+
+            {/* Content editor panel */}
+            {editing && (
+              <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 p-3 space-y-2">
+                <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide flex items-center gap-1">
+                  <Edit3 size={10} /> Edit item content (JSON)
+                </p>
+                <textarea
+                  value={editJson}
+                  onChange={(e) => setEditJson(e.target.value)}
+                  rows={10}
+                  className="w-full font-mono text-[10px] px-2 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-amber-400 resize-y"
+                />
+                {editErr && <p className="text-[10px] text-red-500">{editErr}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      setEditSaving(true);
+                      setEditErr(null);
+                      try {
+                        const parsed = JSON.parse(editJson);
+                        const r = await fetch(`/api/items/${item.id}/content`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ content: parsed, reason: "Manual edit during review" }),
+                        });
+                        const d = await r.json();
+                        if (!r.ok) { setEditErr(d.error ?? "Save failed"); return; }
+                        setEditing(false);
+                        // Refresh item in list
+                        const updated = await fetch(`/api/items?stage=${activeStage}&limit=50`).then((r) => r.json());
+                        if (Array.isArray(updated)) setItems(updated);
+                      } catch (e) {
+                        setEditErr((e as Error).message);
+                      } finally {
+                        setEditSaving(false);
+                      }
+                    }}
+                    disabled={editSaving}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
+                  >
+                    {editSaving ? <><RefreshCw size={11} className="animate-spin" /> Saving…</> : <><Save size={11} /> Save changes</>}
+                  </button>
+                  <button
+                    onClick={() => { setEditing(false); setEditErr(null); }}
+                    className="px-3 py-1.5 rounded-lg border border-[var(--border)] text-xs text-[var(--muted)] hover:text-[var(--foreground)]"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
 
             {/* §72 CEFR Review dimensions */}
             <div className="rounded-xl border border-[var(--border)] p-3 bg-[var(--card)] space-y-3">

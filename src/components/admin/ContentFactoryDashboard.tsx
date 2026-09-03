@@ -7,8 +7,9 @@ import {
   BarChart3, CheckCircle2, Clock, AlertTriangle, Layers,
   TrendingUp, FileText, ChevronDown, ChevronUp, RefreshCw,
   Target, Shield, Zap, BookOpen, Headphones, PenLine, Mic,
-  BookMarked, Hash, Activity, FlaskConical, ArrowRight
+  BookMarked, Hash, Activity, FlaskConical, ArrowRight, Settings2,
 } from "lucide-react";
+import { ContentFactoryOpsPanel } from "./ContentFactoryOpsPanel";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -167,7 +168,7 @@ export function ContentFactoryDashboard() {
   const [coverage, setCoverage] = useState<CoverageData | null>(null);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "heatmap" | "gaps" | "pipeline" | "review" | "scale-gate" | "monitor">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "heatmap" | "gaps" | "pipeline" | "review" | "scale-gate" | "monitor" | "ops">("overview");
   const [gapsExpanded, setGapsExpanded] = useState(false);
   const [scaleGate, setScaleGate] = useState<Record<string, unknown> | null>(null);
   const [scaleGateLoading, setScaleGateLoading] = useState(false);
@@ -245,7 +246,7 @@ export function ContentFactoryDashboard() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-[var(--border)]">
-        {(["overview", "heatmap", "gaps", "pipeline", "review", "scale-gate", "monitor"] as const).map((tab) => (
+        {(["overview", "heatmap", "gaps", "pipeline", "review", "scale-gate", "monitor", "ops"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => {
@@ -273,7 +274,7 @@ export function ContentFactoryDashboard() {
                 : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]"
             }`}
           >
-            {tab === "heatmap" ? "Coverage Heatmap" : tab === "overview" ? "Overview" : tab === "gaps" ? "Gap Matrix" : tab === "pipeline" ? "Pipeline" : tab === "review" ? "Reviews" : tab === "scale-gate" ? "Scale Gate" : "Monitor"}
+            {tab === "heatmap" ? "Coverage Heatmap" : tab === "overview" ? "Overview" : tab === "gaps" ? "Gap Matrix" : tab === "pipeline" ? "Pipeline" : tab === "review" ? "Reviews" : tab === "scale-gate" ? "Scale Gate" : tab === "monitor" ? "Monitor" : "Ops"}
           </button>
         ))}
       </div>
@@ -717,7 +718,7 @@ export function ContentFactoryDashboard() {
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-[var(--border)] bg-[var(--card)]">
-                          {["Code", "Skill", "CEFR", "Stage", "Responses", "p-val", "Exp. p", "Drift", "IQS", "DIF", "Status", "Days"].map((h) => (
+                          {["Code", "Skill", "CEFR", "Stage", "Responses", "p-val", "Exp. p", "Drift", "IQS", "DIF", "Status", "Days", ""].map((h) => (
                             <th key={h} className="text-left text-[var(--muted)] font-medium py-2 px-2 whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
@@ -762,6 +763,26 @@ export function ContentFactoryDashboard() {
                                 {item.status.replace(/_/g, " ")}
                               </td>
                               <td className="py-1.5 px-2 tabular-nums text-[var(--muted)]">{item.daysInPilot}d</td>
+                              <td className="py-1.5 px-2">
+                                {item.isDrifting && (
+                                  <button
+                                    onClick={async () => {
+                                      if (!confirm(`Suspend ${item.itemCode ?? item.id}? This will stop it being served in sessions.`)) return;
+                                      await fetch(`/api/items/${item.id}/suspend`, {
+                                        method: "PATCH",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ suspend: true, note: "Suspended from monitor: drift > 0.20" }),
+                                      });
+                                      setMonitorData(null);
+                                      setMonitorLoading(true);
+                                      fetch("/api/content/monitor").then((r) => r.json()).then(setMonitorData).finally(() => setMonitorLoading(false));
+                                    }}
+                                    className="text-[10px] px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 whitespace-nowrap"
+                                  >
+                                    Suspend
+                                  </button>
+                                )}
+                              </td>
                             </tr>
                           );
                         })}
@@ -784,6 +805,9 @@ export function ContentFactoryDashboard() {
           )}
         </div>
       )}
+
+      {/* Ops tab */}
+      {activeTab === "ops" && <ContentFactoryOpsPanel />}
 
       {/* North Star reminder */}
       <div className="rounded-xl border border-[var(--border)] p-4 bg-gradient-to-r from-blue-50/50 to-purple-50/50 dark:from-blue-900/10 dark:to-purple-900/10">
