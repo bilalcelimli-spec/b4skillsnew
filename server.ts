@@ -2310,16 +2310,22 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     async (req: any, res) => {
       const { id } = req.params;
       try {
-        const { thetaToCefr, thetaToBeps, getCanDo } = await import("./src/lib/cefr/cefr-framework.js");
-
         if (!dbAvailable) return res.status(503).json({ error: "Database unavailable in demo mode" });
 
         const session = await prisma.session.findUnique({
           where: { id },
           include: {
+            candidate: { select: { id: true, name: true, email: true } },
             responses: {
               orderBy: { order: "asc" },
-              include: { item: { select: { skill: true, cefrLevel: true, type: true, content: true } } },
+              include: {
+                item: {
+                  select: {
+                    id: true, itemCode: true, type: true, skill: true, cefrLevel: true,
+                    difficulty: true, discrimination: true, guessing: true, content: true,
+                  },
+                },
+              },
             },
             scoreReport: true,
           },
@@ -2329,60 +2335,97 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
         const theta: number = session.finalTheta ?? session.currentTheta ?? 0;
         const sem:   number = session.finalSem   ?? session.currentSem   ?? 0.5;
-        const level = thetaToCefr(theta);
-        const beps  = thetaToBeps(theta);
 
-        const responses = (session.responses ?? []).map((r: any) => ({
-          itemId:     r.itemId,
-          skill:      r.item?.skill    ?? "UNKNOWN",
-          cefrLevel:  r.item?.cefrLevel ?? "B1",
-          isCorrect:  r.isCorrect  ?? null,
-          score:      r.score      ?? null,
-          thetaAfter: r.thetaAfter ?? theta,
-          semAfter:   r.semAfter   ?? sem,
-          latencyMs:  r.responseTimeMs ?? 0,
-          rubricScores: r.rubricScores ?? undefined,
-          aiFeedback:   r.aiFeedback   ?? undefined,
-          isPretest:    r.isPretest    ?? false,
-          metadata:     r.metadata     ?? undefined,
-        }));
-
-        const skillMap: Record<string, number[]> = {};
-        for (const r of responses) {
-          if (!skillMap[r.skill]) skillMap[r.skill] = [];
-          if (r.thetaAfter != null) skillMap[r.skill].push(r.thetaAfter);
-        }
-        const skillScores = Object.entries(skillMap).map(([skill, thetas]) => {
-          const t = thetas.length ? thetas[thetas.length - 1] : theta;
-          return { skill, theta: t, cefrLevel: thetaToCefr(t) };
+        const responses = (session.responses ?? []).map((r: any) => {
+          const meta = (r.metadata as any) ?? {};
+          return {
+            id:          r.id,
+            order:       r.order,
+            value:       r.value ?? null,
+            isCorrect:   r.isCorrect ?? null,
+            score:       r.score ?? null,
+            aiScore:     r.aiScore ?? null,
+            humanScore:  r.humanScore ?? null,
+            latencyMs:   r.latencyMs ?? 0,
+            rtZScore:    r.rtZScore ?? null,
+            rtFlag:      r.rtFlag ?? null,
+            transcript:  meta.transcript ?? undefined,
+            rubricScores:    meta.rubricScores    ?? r.rubricScores    ?? undefined,
+            speakingFeatures: meta.speakingFeatures ?? undefined,
+            item: {
+              id:             r.item?.id ?? r.itemId,
+              itemCode:       r.item?.itemCode ?? null,
+              type:           r.item?.type ?? "MULTIPLE_CHOICE",
+              skill:          r.item?.skill ?? "UNKNOWN",
+              cefrLevel:      r.item?.cefrLevel ?? "B1",
+              difficulty:     r.item?.difficulty ?? 0,
+              discrimination: r.item?.discrimination ?? 1,
+              guessing:       r.item?.guessing ?? 0,
+              content:        r.item?.content ?? {},
+            },
+          };
         });
 
-        let proctoringReport: any = null;
-        try {
-          const { ProctoringService } = await import("./src/lib/proctoring/proctoring-service.js");
-          proctoringReport = await ProctoringService.getTrustReport(id);
-        } catch { /* proctoring data optional */ }
+        // Compute stats
+        const totalItems   = responses.length;
+        const totalCorrect = responses.filter((r: any) => r.isCorrect === true).length;
+        const latencies    = responses.map((r: any) => r.latencyMs as number);
+        const avgLatencyMs = latencies.length ? Math.round(latencies.reduce((a: number, b: number) => a + b, 0) / latencies.length) : 0;
+        const sorted       = [...latencies].sort((a, b) => a - b);
+        const medianLatencyMs = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+        const durationMs = session.startedAt && session.completedAt
+          ? new Date(session.completedAt).getTime() - new Date(session.startedAt).getTime()
+          : null;
+
+        const skillBreakdown: Record<string, { total: number; correct: number; avgLatency: number }> = {};
+        const cefrBreakdown: Record<string, { total: number; correct: number }> = {};
+        for (const r of responses) {
+          const sk = r.item.skill;
+          const cl = r.item.cefrLevel;
+          if (!skillBreakdown[sk]) skillBreakdown[sk] = { total: 0, correct: 0, avgLatency: 0 };
+          if (!cefrBreakdown[cl])  cefrBreakdown[cl]  = { total: 0, correct: 0 };
+          skillBreakdown[sk].total++;
+          cefrBreakdown[cl].total++;
+          if (r.isCorrect) { skillBreakdown[sk].correct++; cefrBreakdown[cl].correct++; }
+          skillBreakdown[sk].avgLatency = Math.round(
+            (skillBreakdown[sk].avgLatency * (skillBreakdown[sk].total - 1) + r.latencyMs) / skillBreakdown[sk].total
+          );
+        }
+
+        // Person fit from metadata
+        const fitMeta = (session.metadata as any)?.personFit ?? null;
 
         res.json({
-          sessionId:    id,
-          candidateId:  session.userId,
-          candidateName: session.user?.name ?? session.user?.email ?? undefined,
-          completedAt:  (session.completedAt ?? session.updatedAt ?? new Date()).toISOString(),
-          finalTheta:   theta,
-          finalSem:     sem,
-          beps,
-          cefrLevel:    level,
-          stopReason:   session.stopReason ?? "COMPLETED",
-          status:       session.status,
-          totalItems:   responses.length,
-          skillScores,
+          session: {
+            id:             session.id,
+            status:         session.status,
+            theta,
+            sem,
+            cefrLevel:      session.cefrLevel ?? null,
+            startedAt:      session.startedAt?.toISOString() ?? null,
+            completedAt:    session.completedAt?.toISOString() ?? null,
+            responsesCount: totalItems,
+          },
+          candidate: {
+            id:    session.candidate?.id    ?? session.candidateId,
+            name:  session.candidate?.name  ?? session.candidate?.email?.split("@")[0] ?? "Unknown",
+            email: session.candidate?.email ?? "",
+          },
+          scoreReport: session.scoreReport
+            ? { overallCefr: session.scoreReport.overallCefr, overallScore: session.scoreReport.overallScore }
+            : null,
           responses,
-          canDo:        getCanDo(level),
-          integrityRisk:       session.integrityRisk ?? "LOW",
-          productLine:         session.productLine   ?? undefined,
-          proctoringReport,
-          scoreReport:         session.scoreReport   ?? null,
-          pendingAsyncScoring: (session.metadata as any)?.pendingAsyncScoring ?? false,
+          personFit: fitMeta,
+          stats: {
+            totalItems,
+            totalCorrect,
+            pctCorrect: totalItems ? Math.round((totalCorrect / totalItems) * 100) : 0,
+            avgLatencyMs,
+            medianLatencyMs,
+            durationMs,
+            skillBreakdown,
+            cefrBreakdown,
+          },
         });
       } catch (err) {
         console.error("full-analysis error:", err);
