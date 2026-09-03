@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader } from "./components/ui/Card";
 const UnifiedAdminConsole    = lazy(() => import("./components/admin/UnifiedAdminConsole").then(m => ({ default: m.UnifiedAdminConsole })));
 const RatingDashboard        = lazy(() => import("./components/RatingDashboard").then(m => ({ default: m.RatingDashboard })));
 const InstitutionalDashboard = lazy(() => import("./components/InstitutionalDashboard").then(m => ({ default: m.InstitutionalDashboard })));
+const TeacherDashboard       = lazy(() => import("./components/teacher/TeacherDashboard").then(m => ({ default: m.TeacherDashboard })));
 const CertificateView        = lazy(() => import("./components/CertificateView").then(m => ({ default: m.CertificateView })));
 const CandidateAdaptiveReport = lazy(() => import("./components/CandidateAdaptiveReport").then(m => ({ default: m.CandidateAdaptiveReport })));
 const AssessmentModeSelector  = lazy(() => import("./components/AssessmentModeSelector").then(m => ({ default: m.AssessmentModeSelector })));
@@ -50,7 +51,7 @@ export default function App() {
   const [showCodeEntry, setShowCodeEntry] = useState(false);
   const [activeSession, setActiveSession] = useState<{ orgId: string; sessionId: string; productLine?: string } | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "admin" | "rating" | "institutional" | "results" | "items" | "profile" | "settings" | "psychometrics">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "admin" | "rating" | "institutional" | "teacher" | "results" | "items" | "profile" | "settings" | "psychometrics">("dashboard");
   const [testCompleted, setTestCompleted] = useState<{ theta: number; cefr: string; sessionId: string } | null>(null);
   const [branding, setBranding] = useState<any>(null);
   const [certificate, setCertificate] = useState<any>(null);
@@ -78,6 +79,7 @@ export default function App() {
       if (path === "/admin") setActiveTab("admin");
       else if (path === "/rating") setActiveTab("rating");
       else if (path === "/institutional") setActiveTab("institutional");
+      else if (path === "/teacher") setActiveTab("teacher");
       else if (path === "/profile") setActiveTab("profile");
       else if (path === "/items") setActiveTab("items");
       else if (path === "/settings") setActiveTab("settings");
@@ -97,7 +99,7 @@ export default function App() {
     } else if (!showLanding && user) {
       const tabPath: Record<string, string> = {
         admin: "/admin", dashboard: "/dashboard", rating: "/rating",
-        institutional: "/institutional", results: "/results",
+        institutional: "/institutional", teacher: "/teacher", results: "/results",
         items: "/items", profile: "/profile", settings: "/settings",
         psychometrics: "/psychometrics",
       };
@@ -243,6 +245,7 @@ export default function App() {
   const isAdmin = ["ADMIN", "SUPER_ADMIN", "CONTENT_ADMIN", "ASSESSMENT_DIRECTOR"].includes(profRole);
   const isRater = profRole === "RATER" || isAdmin;
   const isOrgAdmin = ["ORG_ADMIN", "INST_ADMIN"].includes(profRole) || isAdmin;
+  const isTeacher = profRole === "TEACHER" || isOrgAdmin;
 
   // Clears stale session state when the user explicitly switches away from results.
   type Tab = typeof activeTab;
@@ -295,6 +298,7 @@ export default function App() {
               {isAdmin && <SidebarItem icon={<ShieldAlert size={20} />} label="Admin Console" active={activeTab === "admin"} onClick={() => { goToTab("admin"); setMobileMenuOpen(false); }} />}
               {isRater && <SidebarItem icon={<ClipboardList size={20} />} label="Rating Queue" active={activeTab === "rating"} onClick={() => { goToTab("rating"); setMobileMenuOpen(false); }} />}
               {isOrgAdmin && <SidebarItem icon={<BarChart3 size={20} />} label="Institutional" active={activeTab === "institutional"} onClick={() => { goToTab("institutional"); setMobileMenuOpen(false); }} />}
+              {isTeacher && !isOrgAdmin && <SidebarItem icon={<ClipboardList size={20} />} label="My Classes" active={activeTab === "teacher"} onClick={() => { goToTab("teacher"); setMobileMenuOpen(false); }} />}
               <SidebarItem icon={<FileText size={20} />} label="My Results" active={activeTab === "results"} onClick={() => { goToTab("results"); setMobileMenuOpen(false); }} />
               <SidebarItem icon={<UserCircle size={20} />} label="Profile" active={activeTab === "profile"} onClick={() => { goToTab("profile"); setMobileMenuOpen(false); }} />
             </nav>
@@ -425,6 +429,13 @@ export default function App() {
         ) : activeTab === "institutional" && isOrgAdmin ? (
           <Suspense fallback={<PageLoader />}>
             <InstitutionalDashboard organizationId={userProfile?.organizationId} />
+          </Suspense>
+        ) : activeTab === "teacher" && isTeacher ? (
+          <Suspense fallback={<PageLoader />}>
+            <TeacherDashboard
+              organizationId={userProfile?.organizationId ?? ""}
+              instructorId={userProfile?.uid ?? ""}
+            />
           </Suspense>
         ) : activeTab === "results" && (testCompleted?.sessionId || selectedHistorySessionId) ? (
           <Suspense fallback={<PageLoader />}>

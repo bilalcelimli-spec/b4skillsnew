@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 interface StudentRow {
   id: string;
@@ -43,10 +43,22 @@ const TREND_COLOR: Record<string, string> = {
   declining: "#ef4444",
 };
 
+interface ClassRow {
+  id: string;
+  name: string;
+  description?: string | null;
+  status: string;
+  teacherId?: string | null;
+  teacher?: { id: string; name?: string | null; email: string } | null;
+  _count?: { members: number; assignments: number };
+  createdAt: string;
+}
+
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   organizationId,
   instructorId,
 }) => {
+  const [activeTab, setActiveTab] = useState<"students" | "classes">("students");
   const [summary, setSummary] = useState<CohortSummary | null>(null);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +67,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [sortBy, setSortBy] = useState<keyof StudentRow>("overallScore");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [filterCefr, setFilterCefr] = useState<string>("");
+  const [classes, setClasses] = useState<ClassRow[]>([]);
+  const [classLoading, setClassLoading] = useState(false);
+  const [newClassName, setNewClassName] = useState("");
+  const [creatingClass, setCreatingClass] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -125,6 +141,39 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     else { setSortBy(col); setSortDir("desc"); }
   };
 
+  const fetchClasses = useCallback(async () => {
+    setClassLoading(true);
+    try {
+      const res = await fetch("/api/teacher/classes", { credentials: "include" });
+      if (res.ok) setClasses(await res.json());
+    } finally {
+      setClassLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "classes") fetchClasses();
+  }, [activeTab, fetchClasses]);
+
+  const handleCreateClass = async () => {
+    if (!newClassName.trim()) return;
+    setCreatingClass(true);
+    try {
+      const res = await fetch("/api/teacher/classes", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newClassName.trim() }),
+      });
+      if (res.ok) {
+        setNewClassName("");
+        fetchClasses();
+      }
+    } finally {
+      setCreatingClass(false);
+    }
+  };
+
   if (loading) return (
     <div role="status" aria-live="polite" style={{ display: "flex", justifyContent: "center", padding: "48px" }}>
       <div style={{ color: "#64748b" }}>Loading dashboard…</div>
@@ -141,9 +190,88 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
   return (
     <div style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto", fontFamily: "system-ui, sans-serif" }}>
-      <h1 style={{ fontSize: "24px", fontWeight: 700, color: "#0f172a", marginBottom: "24px" }}>
-        Teacher Dashboard
-      </h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
+        <h1 style={{ fontSize: "24px", fontWeight: 700, color: "#0f172a", margin: 0 }}>
+          Teacher Dashboard
+        </h1>
+        <div role="tablist" style={{ display: "flex", gap: "4px", background: "#f1f5f9", borderRadius: "8px", padding: "4px" }}>
+          {(["students", "classes"] as const).map((tab) => (
+            <button
+              key={tab}
+              role="tab"
+              aria-selected={activeTab === tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                padding: "6px 16px", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "14px", fontWeight: 500,
+                background: activeTab === tab ? "#fff" : "transparent",
+                color: activeTab === tab ? "#0f172a" : "#64748b",
+                boxShadow: activeTab === tab ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+              }}
+            >
+              {tab === "students" ? "Students" : "Classes"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Classes Tab */}
+      {activeTab === "classes" && (
+        <div>
+          {/* Create class */}
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "20px", marginBottom: "20px" }}>
+            <h2 style={{ fontSize: "16px", fontWeight: 600, margin: "0 0 12px" }}>Create New Class</h2>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <input
+                type="text"
+                placeholder="Class name…"
+                aria-label="New class name"
+                value={newClassName}
+                onChange={(e) => setNewClassName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreateClass()}
+                style={{ flex: 1, padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: "6px", fontSize: "14px" }}
+              />
+              <button
+                onClick={handleCreateClass}
+                disabled={!newClassName.trim() || creatingClass}
+                style={{ padding: "8px 20px", background: "#3b82f6", color: "#fff", border: "none", borderRadius: "6px", fontWeight: 600, cursor: "pointer", opacity: creatingClass ? 0.6 : 1 }}
+              >
+                {creatingClass ? "Creating…" : "Create"}
+              </button>
+            </div>
+          </div>
+
+          {/* Class list */}
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "20px" }}>
+            <h2 style={{ fontSize: "16px", fontWeight: 600, margin: "0 0 16px" }}>Your Classes ({classes.length})</h2>
+            {classLoading ? (
+              <div style={{ color: "#64748b", padding: "24px", textAlign: "center" }}>Loading classes…</div>
+            ) : classes.length === 0 ? (
+              <div style={{ color: "#94a3b8", padding: "24px", textAlign: "center" }}>No classes yet. Create one above.</div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "12px" }}>
+                {classes.map((cls) => (
+                  <div key={cls.id} style={{ border: "1px solid #e2e8f0", borderRadius: "10px", padding: "16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div style={{ fontWeight: 600, color: "#0f172a", fontSize: "15px" }}>{cls.name}</div>
+                      <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "999px", background: cls.status === "ACTIVE" ? "#dcfce7" : "#f1f5f9", color: cls.status === "ACTIVE" ? "#16a34a" : "#64748b" }}>
+                        {cls.status}
+                      </span>
+                    </div>
+                    {cls.description && <div style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>{cls.description}</div>}
+                    <div style={{ display: "flex", gap: "16px", marginTop: "12px", fontSize: "13px", color: "#64748b" }}>
+                      <span>{cls._count?.members ?? 0} students</span>
+                      <span>{cls._count?.assignments ?? 0} assignments</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Students Tab */}
+      {activeTab === "students" && <>
 
       {/* KPI Cards */}
       {summary && (
@@ -278,6 +406,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           </table>
         </div>
       </div>
+      </>}
     </div>
   );
 };

@@ -4384,6 +4384,219 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     });
   }
 
+  // ── Teacher / Class / Assignment API ────────────────────────────────────
+
+  const teacherRoles = ["TEACHER", "INST_ADMIN", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"];
+
+  // GET /api/teacher/classes — list classes the authenticated user teaches (or all for admin)
+  app.get("/api/teacher/classes", checkRole(teacherRoles), async (req: any, res) => {
+    try {
+      const user = req.user as { userId: string; role: string };
+      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
+      const classes = await prisma.class.findMany({
+        where: isAdmin ? undefined : { teacherId: user.userId },
+        include: {
+          _count: { select: { members: true, assignments: true } },
+          teacher: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      return res.json(classes);
+    } catch (err: any) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // GET /api/teacher/classes/:id — class detail with members and recent sessions
+  app.get("/api/teacher/classes/:id", checkRole(teacherRoles), async (req: any, res) => {
+    try {
+      const user = req.user as { userId: string; role: string };
+      const cls = await prisma.class.findUnique({
+        where: { id: req.params.id },
+        include: {
+          teacher: { select: { id: true, name: true, email: true } },
+          members: {
+            include: {
+              user: {
+                select: {
+                  id: true, name: true, email: true,
+                  sessions: {
+                    where: { status: "COMPLETED" },
+                    orderBy: { completedAt: "desc" },
+                    take: 1,
+                    select: { id: true, cefrLevel: true, theta: true, completedAt: true },
+                  },
+                },
+              },
+            },
+          },
+          assignments: { orderBy: { createdAt: "desc" }, take: 10 },
+        },
+      });
+      if (!cls) return res.status(404).json({ error: "Class not found" });
+      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
+      if (!isAdmin && cls.teacherId !== user.userId)
+        return res.status(403).json({ error: "Access denied" });
+      return res.json(cls);
+    } catch (err: any) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // POST /api/teacher/classes — create a class
+  app.post("/api/teacher/classes", checkRole(teacherRoles), async (req: any, res) => {
+    try {
+      const user = req.user as { userId: string; organizationId?: string };
+      const { name, description, teacherId } = req.body;
+      if (!name || typeof name !== "string") return res.status(400).json({ error: "name required" });
+      const orgUser = await prisma.user.findUnique({ where: { id: user.userId }, select: { organizationId: true } });
+      const orgId = orgUser?.organizationId;
+      if (!orgId) return res.status(400).json({ error: "User has no organization" });
+      const cls = await prisma.class.create({
+        data: {
+          name: name.trim(),
+          description: description ?? null,
+          organizationId: orgId,
+          teacherId: teacherId ?? user.userId,
+        },
+      });
+      return res.status(201).json(cls);
+    } catch (err: any) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // POST /api/teacher/classes/:id/members — add student(s) to class
+  app.post("/api/teacher/classes/:id/members", checkRole(teacherRoles), async (req: any, res) => {
+    try {
+      const user = req.user as { userId: string; role: string };
+      const cls = await prisma.class.findUnique({ where: { id: req.params.id } });
+      if (!cls) return res.status(404).json({ error: "Class not found" });
+      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
+      if (!isAdmin && cls.teacherId !== user.userId)
+        return res.status(403).json({ error: "Access denied" });
+      const { userIds } = req.body;
+      if (!Array.isArray(userIds) || userIds.length === 0)
+        return res.status(400).json({ error: "userIds array required" });
+      await prisma.classMember.createMany({
+        data: userIds.map((uid: string) => ({ classId: cls.id, userId: uid })),
+        skipDuplicates: true,
+      });
+      return res.json({ ok: true, added: userIds.length });
+    } catch (err: any) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // DELETE /api/teacher/classes/:id/members/:userId — remove member
+  app.delete("/api/teacher/classes/:id/members/:userId", checkRole(teacherRoles), async (req: any, res) => {
+    try {
+      await prisma.classMember.deleteMany({
+        where: { classId: req.params.id, userId: req.params.userId },
+      });
+      return res.json({ ok: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // GET /api/teacher/classes/:id/skills — aggregated skill stats for the class
+  app.get("/api/teacher/classes/:id/skills", checkRole(teacherRoles), async (req: any, res) => {
+    try {
+      const user = req.user as { userId: string; role: string };
+      const cls = await prisma.class.findUnique({
+        where: { id: req.params.id },
+        include: { members: { select: { userId: true } } },
+      });
+      if (!cls) return res.status(404).json({ error: "Class not found" });
+      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
+      if (!isAdmin && cls.teacherId !== user.userId)
+        return res.status(403).json({ error: "Access denied" });
+      const memberIds = cls.members.map((m) => m.userId);
+      // Get latest completed session per member
+      const sessions = await prisma.session.findMany({
+        where: { candidateId: { in: memberIds }, status: "COMPLETED" },
+        orderBy: { completedAt: "desc" },
+        distinct: ["candidateId"],
+        select: { candidateId: true, cefrLevel: true, theta: true, metadata: true },
+      });
+      // Build CEFR distribution
+      const dist: Record<string, number> = {};
+      for (const s of sessions) {
+        const lvl = s.cefrLevel ?? "UNCLASSIFIED";
+        dist[lvl] = (dist[lvl] ?? 0) + 1;
+      }
+      return res.json({
+        memberCount: memberIds.length,
+        assessedCount: sessions.length,
+        cefrDistribution: dist,
+        averageTheta: sessions.length
+          ? sessions.reduce((a, s) => a + (s.theta ?? 0), 0) / sessions.length
+          : null,
+        members: sessions,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // GET /api/teacher/assignments — list assignments for the teacher's classes
+  app.get("/api/teacher/assignments", checkRole(teacherRoles), async (req: any, res) => {
+    try {
+      const user = req.user as { userId: string; role: string };
+      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
+      const assignments = await prisma.assignment.findMany({
+        where: isAdmin ? undefined : { class: { teacherId: user.userId } },
+        include: {
+          class: { select: { id: true, name: true } },
+          _count: { select: { sessions: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      return res.json(assignments);
+    } catch (err: any) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // POST /api/teacher/assignments — create an assignment
+  app.post("/api/teacher/assignments", checkRole(teacherRoles), async (req: any, res) => {
+    try {
+      const user = req.user as { userId: string; role: string };
+      const { classId, productLine, title, openAt, dueAt, maxAttempts } = req.body;
+      if (!productLine) return res.status(400).json({ error: "productLine required" });
+      let orgId: string | null = null;
+      if (classId) {
+        const cls = await prisma.class.findUnique({ where: { id: classId } });
+        if (!cls) return res.status(404).json({ error: "Class not found" });
+        const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
+        if (!isAdmin && cls.teacherId !== user.userId)
+          return res.status(403).json({ error: "Access denied" });
+        orgId = cls.organizationId;
+      } else {
+        const u = await prisma.user.findUnique({ where: { id: user.userId }, select: { organizationId: true } });
+        orgId = u?.organizationId ?? null;
+      }
+      if (!orgId) return res.status(400).json({ error: "Cannot determine organization" });
+      const assignment = await prisma.assignment.create({
+        data: {
+          title: title ?? null,
+          organizationId: orgId,
+          classId: classId ?? null,
+          assignedById: user.userId,
+          productLine,
+          openAt: openAt ? new Date(openAt) : null,
+          dueAt: dueAt ? new Date(dueAt) : null,
+          maxAttempts: maxAttempts ?? 1,
+        },
+      });
+      return res.status(201).json(assignment);
+    } catch (err: any) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // ── Q3: Realtime WebSocket Dashboard ────────────────────────────────────
   // Import http module to get underlying server for WS attachment
   const http = await import("http");

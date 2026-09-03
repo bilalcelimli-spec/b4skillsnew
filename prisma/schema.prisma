@@ -37,6 +37,8 @@ model Organization {
   apiKeys       ApiKey[]
   feedbacks     Feedback[]
   examCodes     ExamCode[]
+  classes       Class[]
+  assignments   Assignment[]
 }
 
 model ExamCode {
@@ -153,12 +155,15 @@ model User {
   twoFactorEnabled Boolean   @default(false)
   
   // Relations
-  sessions        Session[]
-  raterTasks      RatingTask[] @relation("RaterTasks")
+  sessions         Session[]
+  raterTasks       RatingTask[] @relation("RaterTasks")
   candidateProfile CandidateProfile?
-  auditLogs       AuditLog[]
-  transactions    PaymentTransaction[]
-  
+  auditLogs        AuditLog[]
+  transactions     PaymentTransaction[]
+  taughtClasses    Class[]      @relation("ClassTeacher")
+  classMemberships ClassMember[] @relation("ClassMemberships")
+  createdAssignments Assignment[] @relation("AssignedBy")
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -408,11 +413,15 @@ model Session {
   cefrLevel       CefrLevel?
   metadata        Json?     // { browserInfo, ipAddress, deviceFingerprint }
   
-  responses       Response[]
+  responses        Response[]
   proctoringEvents ProctoringEvent[]
-  scoreReport     ScoreReport?
-  feedback        Feedback?
-  
+  scoreReport      ScoreReport?
+  feedback         Feedback?
+
+  // Assignment link (optional — direct attempts have no assignment)
+  assignmentId     String?
+  assignment       Assignment? @relation("AssignmentSessions", fields: [assignmentId], references: [id])
+
   startedAt       DateTime?
   completedAt     DateTime?
   validUntil      DateTime? // 2-year validity policy: set to completedAt + 2 years on completion
@@ -426,6 +435,7 @@ model Session {
   @@index([status])
   @@index([createdAt])
   @@index([status, updatedAt])       // SLO monitor: rolling-window IN_PROGRESS/COMPLETED lookups
+  @@index([assignmentId])
 }
 
 enum SessionStatus {
@@ -697,8 +707,75 @@ model Cohort {
   organization    Organization @relation(fields: [organizationId], references: [id])
   name            String
   description     String?
-  
+
   createdAt       DateTime  @default(now())
+}
+
+// ─── TEACHER / INSTITUTIONAL WORKFLOW ─────────────────────────────────────────
+
+model Class {
+  id             String        @id @default(cuid())
+  name           String
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  teacherId      String?
+  teacher        User?         @relation("ClassTeacher", fields: [teacherId], references: [id])
+  description    String?
+  status         ClassStatus   @default(ACTIVE)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  members        ClassMember[]
+  assignments    Assignment[]
+
+  @@index([organizationId])
+  @@index([teacherId])
+}
+
+enum ClassStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model ClassMember {
+  id         String   @id @default(cuid())
+  classId    String
+  userId     String
+  class      Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user       User     @relation("ClassMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt   DateTime @default(now())
+
+  @@unique([classId, userId])
+  @@index([userId])
+}
+
+model Assignment {
+  id             String          @id @default(cuid())
+  title          String?
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  classId        String?
+  class          Class?          @relation(fields: [classId], references: [id])
+  assignedById   String?
+  assignedBy     User?           @relation("AssignedBy", fields: [assignedById], references: [id])
+  productLine    String          // maps to product-line profile key
+  openAt         DateTime?
+  dueAt          DateTime?
+  maxAttempts    Int             @default(1)
+  status         AssignmentStatus @default(ACTIVE)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  sessions       Session[]       @relation("AssignmentSessions")
+
+  @@index([organizationId])
+  @@index([classId])
+}
+
+enum AssignmentStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
 }
 
 model License {
