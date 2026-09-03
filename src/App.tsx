@@ -43,6 +43,7 @@ const ProgressTrendChart     = lazy(() => import("./components/ProgressTrendChar
 const MethodologyPage        = lazy(() => import("./components/MethodologyPage").then(m => ({ default: m.MethodologyPage })));
 const ItemBankManager        = lazy(() => import("./components/ItemBankManager").then(m => ({ default: m.ItemBankManager })));
 const CandidateProfile       = lazy(() => import("./components/CandidateProfile").then(m => ({ default: m.CandidateProfile })));
+const ContentFactoryReviewQueue = lazy(() => import("./components/admin/ContentFactoryReviewQueue").then(m => ({ default: m.ContentFactoryReviewQueue })));
 
 // Shared loading fallback
 const PageLoader = () => (
@@ -63,7 +64,7 @@ export default function App() {
   const [showCodeEntry, setShowCodeEntry] = useState(false);
   const [activeSession, setActiveSession] = useState<{ orgId: string; sessionId: string; productLine?: string } | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "admin" | "rating" | "institutional" | "teacher" | "results" | "items" | "profile" | "settings" | "psychometrics">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "admin" | "rating" | "institutional" | "teacher" | "content" | "results" | "items" | "profile" | "settings" | "psychometrics">("dashboard");
   const [testCompleted, setTestCompleted] = useState<{ theta: number; cefr: string; sessionId: string } | null>(null);
   const [branding, setBranding] = useState<any>(null);
   const [certificate, setCertificate] = useState<any>(null);
@@ -97,6 +98,7 @@ export default function App() {
       else if (path === "/settings") setActiveTab("settings");
       else if (path === "/psychometrics") setActiveTab("psychometrics");
       else if (path === "/results") setActiveTab("results");
+      else if (path === "/content") setActiveTab("content");
       else setActiveTab("dashboard");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,6 +143,7 @@ export default function App() {
           if (role === "RATER") setActiveTab("rating");
           else if (["ADMIN", "SUPER_ADMIN", "CONTENT_ADMIN", "ASSESSMENT_DIRECTOR"].includes(role)) setActiveTab("admin");
           else if (["ORG_ADMIN", "INST_ADMIN"].includes(role)) setActiveTab("institutional");
+          else if (["ITEM_WRITER", "LANGUAGE_REVIEWER", "CEFR_REVIEWER", "FAIRNESS_REVIEWER", "MODERATOR", "PSYCHOMETRICIAN"].includes(role)) setActiveTab("content");
           
           if (data.user.organizationId) {
             try {
@@ -275,6 +278,9 @@ export default function App() {
   const isRater = profRole === "RATER" || isAdmin;
   const isOrgAdmin = ["ORG_ADMIN", "INST_ADMIN"].includes(profRole) || isAdmin;
   const isTeacher = profRole === "TEACHER" || isOrgAdmin;
+  // Content factory workers (non-admin reviewers / writers) get a dedicated review view
+  const isContentWorker = ["ITEM_WRITER", "LANGUAGE_REVIEWER", "CEFR_REVIEWER",
+    "FAIRNESS_REVIEWER", "MODERATOR", "PSYCHOMETRICIAN"].includes(profRole ?? "") && !isAdmin;
 
   // Clears stale session state when the user explicitly switches away from results.
   type Tab = typeof activeTab;
@@ -328,6 +334,7 @@ export default function App() {
               {isRater && <SidebarItem icon={<ClipboardList size={20} />} label="Rating Queue" active={activeTab === "rating"} onClick={() => { goToTab("rating"); setMobileMenuOpen(false); }} />}
               {isOrgAdmin && <SidebarItem icon={<BarChart3 size={20} />} label="Institutional" active={activeTab === "institutional"} onClick={() => { goToTab("institutional"); setMobileMenuOpen(false); }} />}
               {isTeacher && !isOrgAdmin && <SidebarItem icon={<ClipboardList size={20} />} label="My Classes" active={activeTab === "teacher"} onClick={() => { goToTab("teacher"); setMobileMenuOpen(false); }} />}
+              {isContentWorker && <SidebarItem icon={<FileText size={20} />} label="Review Queue" active={activeTab === "content"} onClick={() => { goToTab("content"); setMobileMenuOpen(false); }} />}
               <SidebarItem icon={<FileText size={20} />} label="My Results" active={activeTab === "results"} onClick={() => { goToTab("results"); setMobileMenuOpen(false); }} />
               <SidebarItem icon={<UserCircle size={20} />} label="Profile" active={activeTab === "profile"} onClick={() => { goToTab("profile"); setMobileMenuOpen(false); }} />
             </nav>
@@ -465,6 +472,10 @@ export default function App() {
               organizationId={userProfile?.organizationId ?? ""}
               instructorId={userProfile?.uid ?? ""}
             />
+          </Suspense>
+        ) : activeTab === "content" && isContentWorker ? (
+          <Suspense fallback={<PageLoader />}>
+            <ContentFactoryReviewQueue />
           </Suspense>
         ) : activeTab === "results" && (testCompleted?.sessionId || selectedHistorySessionId) ? (
           <Suspense fallback={<PageLoader />}>
