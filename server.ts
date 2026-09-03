@@ -1394,8 +1394,43 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // --- ITEM BANK API ---
-  app.get("/api/items", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER", "INST_ADMIN"]), async (req, res) => {
+  app.get("/api/items", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER", "INST_ADMIN",
+    "LANGUAGE_REVIEWER", "CEFR_REVIEWER", "MODERATOR", "CONTENT_ADMIN"]), async (req, res) => {
     try {
+      const { stage, skill, cefr, status, limit = "50", offset = "0" } = req.query as Record<string, string>;
+
+      // If pipeline-stage filter requested, use direct prisma query for content-factory workflow
+      if (stage || skill || cefr) {
+        const where: Record<string, unknown> = {};
+        if (stage) where.pipelineStage = stage;
+        if (skill) where.skill = skill;
+        if (cefr) where.cefrLevel = cefr;
+        if (status) where.status = status;
+
+        const items = await prisma.item.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: Math.min(parseInt(limit), 100),
+          skip: parseInt(offset),
+          select: {
+            id: true, itemCode: true, type: true, skill: true, cefrLevel: true,
+            status: true, pipelineStage: true, iqScore: true, subskill: true,
+            genre: true, topic: true, construct: true, evidenceStatement: true,
+            content: true, tags: true, difficulty: true, discrimination: true,
+            guessing: true, exposureCount: true, metadata: true,
+            ageSuitability: true, culturalLoad: true, englishVariant: true,
+            register: true, provenance: true, securityClass: true,
+            createdAt: true, updatedAt: true,
+            itemReviews: {
+              orderBy: { createdAt: "desc" },
+              take: 3,
+              select: { id: true, reviewType: true, verdict: true, notes: true, createdAt: true },
+            },
+          },
+        });
+        return res.json(items);
+      }
+
       const items = await AssessmentService.getAllItems();
       res.json(items);
     } catch (error) {
@@ -1751,6 +1786,52 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         return res.json(feedback);
       } catch (err) {
         res.status(500).json({ error: "Failed to get batch feedback" });
+      }
+    }
+  );
+
+  // POST /api/content/duplicates/check — ad-hoc semantic duplicate check for a given item text
+  // Body: { text: string, skill: string, cefrLevel: string, excludeId?: string }
+  // Returns: { isDuplicate, isNearMatch, topMatch, nearMatches }
+  app.post("/api/content/duplicates/check",
+    checkRole(CONTENT_FACTORY_ROLES),
+    async (req: any, res) => {
+      try {
+        if (!dbAvailable) return res.status(503).json({ error: "Database required" });
+        if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: "GEMINI_API_KEY not configured" });
+
+        const { text, skill, cefrLevel, excludeId } = req.body;
+        if (!text || !skill || !cefrLevel) {
+          return res.status(400).json({ error: "text, skill, and cefrLevel are required" });
+        }
+
+        const { embedText, checkDuplicate } = await import("./src/lib/content-factory/duplicate-detector.js");
+        const embedding = await embedText(String(text));
+        const result = await checkDuplicate(embedding, skill, cefrLevel, excludeId);
+        res.json({ result, embeddingDim: embedding.length });
+      } catch (err) {
+        console.error("[content/duplicates/check]", err);
+        res.status(500).json({ error: "Duplicate check failed" });
+      }
+    }
+  );
+
+  // POST /api/content/duplicates/backfill — retroactively embed items that predate dedup
+  // Body: { skill?: string, cefrLevel?: string, maxItems?: number }
+  app.post("/api/content/duplicates/backfill",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req: any, res) => {
+      try {
+        if (!dbAvailable) return res.status(503).json({ error: "Database required" });
+        if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: "GEMINI_API_KEY not configured" });
+
+        const { skill, cefrLevel, maxItems = 200 } = req.body;
+        const { backfillEmbeddings } = await import("./src/lib/content-factory/duplicate-detector.js");
+        const result = await backfillEmbeddings(skill, cefrLevel, Math.min(Number(maxItems), 500));
+        res.json(result);
+      } catch (err) {
+        console.error("[content/duplicates/backfill]", err);
+        res.status(500).json({ error: "Backfill failed" });
       }
     }
   );

@@ -279,6 +279,12 @@ model Item {
   taskFamilyId    String?
   taskFamily      TaskFamily? @relation(fields: [taskFamilyId], references: [id])
 
+  // ── Semantic Duplicate Detection ──────────────────────────────────────────
+  // 768-dim Gemini text-embedding-004 vector stored as JSON float array.
+  // Used for cosine-similarity duplicate screening in batch-generator.ts.
+  // JS-side comparison (no pgvector required at Phase 1 scale).
+  embeddingVec    Json?       // Float[]  | null
+
   // Stats
   exposureCount   Int       @default(0)
   pVal            Float?    // Classical test theory difficulty

@@ -24,6 +24,7 @@ import {
   DEFAULT_ITEM_TYPE,
   WORD_COUNT_GUIDANCE,
 } from "./blueprint.js";
+import { screenItemForDuplicates, DUP_THRESHOLD, NEAR_THRESHOLD } from "./duplicate-detector.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -42,8 +43,10 @@ export interface BatchResult {
   requested: number;
   generated: number;
   storedIds: string[];
-  skipped: number;           // items that failed structural parse
+  skipped: number;           // items that failed structural parse or duplicate check
   skippedReasons: string[];
+  duplicatesBlocked: number; // items rejected by semantic duplicate detector
+  nearMatchWarnings: number; // items saved but flagged as near-matches
   durationMs: number;
   reviewQueueSize: number;   // items now awaiting LANGUAGE_REVIEW
 }
@@ -289,6 +292,8 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
 
   const storedIds: string[] = [];
   const skippedReasons: string[] = [];
+  let duplicatesBlocked = 0;
+  let nearMatchWarnings = 0;
 
   // Single API call for the whole batch
   let rawText = "";
@@ -306,6 +311,7 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
       batchId, cell,
       requested: safeCount, generated: 0,
       storedIds, skipped: safeCount, skippedReasons,
+      duplicatesBlocked: 0, nearMatchWarnings: 0,
       durationMs: Date.now() - t0, reviewQueueSize: 0,
     };
   }
@@ -330,6 +336,28 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
         rationale: o.rationale ?? "",
         distractorRationale: o.distractorRationale ?? "",
       }));
+    }
+
+    // ── Semantic duplicate screening (§195) ───────────────────────────────────
+    let embeddingVec: number[] | null = null;
+    let nearMatchNote: string | null = null;
+    try {
+      const { result, embedding } = await screenItemForDuplicates(content, cell.skill, cell.cefr);
+      if (result.isDuplicate && result.topMatch) {
+        duplicatesBlocked++;
+        skippedReasons.push(
+          `Duplicate blocked (similarity ${(result.topMatch.similarity * 100).toFixed(1)}% ≥ ${DUP_THRESHOLD * 100}%) — near-clone of item ${result.topMatch.itemId}`,
+        );
+        continue; // skip this item entirely
+      }
+      if (embedding.length > 0) embeddingVec = embedding;
+      if (result.isNearMatch && result.topMatch) {
+        nearMatchWarnings++;
+        nearMatchNote = `Near-match ${(result.topMatch.similarity * 100).toFixed(1)}% (≥ ${NEAR_THRESHOLD * 100}%) — possible variant of ${result.topMatch.itemId}`;
+      }
+    } catch (embedErr) {
+      // Embedding failure is non-fatal — log and continue without dedup
+      skippedReasons.push(`Embedding failed (item saved without dedup): ${(embedErr as Error).message}`);
     }
 
     try {
@@ -357,6 +385,7 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
           culturalLoad: cell.culturalLoad ?? "LOW",
           securityClass: "ASSESSMENT",
           provenance: "ORIGINAL_AI_ASSISTED",
+          embeddingVec: embeddingVec as any,
           metadata: {
             batchId,
             triggeredBy,
@@ -364,6 +393,7 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
             fairnessConcerns: raw.fairnessConcerns,
             notes: spec.notes,
             generatedAt: new Date().toISOString(),
+            ...(nearMatchNote ? { nearMatchWarning: nearMatchNote } : {}),
           } as any,
         },
         select: { id: true },
@@ -382,8 +412,10 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
     storedIds,
     skipped: safeCount - storedIds.length,
     skippedReasons,
+    duplicatesBlocked,
+    nearMatchWarnings,
     durationMs: Date.now() - t0,
-    reviewQueueSize: storedIds.length, // all AI_DRAFT items are implicitly in the review queue
+    reviewQueueSize: storedIds.length,
   };
 }
 

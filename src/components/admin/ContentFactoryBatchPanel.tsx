@@ -58,6 +58,8 @@ interface BatchResult {
   storedIds: string[];
   skipped: number;
   skippedReasons: string[];
+  duplicatesBlocked: number;
+  nearMatchWarnings: number;
   durationMs: number;
   reviewQueueSize: number;
 }
@@ -392,6 +394,8 @@ export function ContentFactoryBatchPanel() {
               { label: "Requested", value: result.requested, color: "text-[var(--foreground)]" },
               { label: "Generated", value: result.generated, color: "text-emerald-500" },
               { label: "Skipped", value: result.skipped, color: result.skipped > 0 ? "text-amber-500" : "text-[var(--muted)]" },
+              { label: "Duplicates Blocked", value: result.duplicatesBlocked ?? 0, color: result.duplicatesBlocked > 0 ? "text-red-500" : "text-[var(--muted)]" },
+              { label: "Near-Match Warnings", value: result.nearMatchWarnings ?? 0, color: result.nearMatchWarnings > 0 ? "text-amber-400" : "text-[var(--muted)]" },
             ].map((tile) => (
               <div key={tile.label} className="rounded-lg border border-[var(--border)] p-2">
                 <div className={`text-xl font-bold ${tile.color}`}>{tile.value}</div>
