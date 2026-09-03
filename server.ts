@@ -9,7 +9,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { prisma } from "./src/lib/prisma.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
 import { SecretsManager } from "./src/lib/secrets/secrets-manager.js";
@@ -351,25 +351,21 @@ async function startServer() {
     }
   });
 
-  const sendMockEmail = async (to: string, subject: string, text: string) => {
-    const testAccount = await nodemailer.createTestAccount();
-    const transporter = nodemailer.createTransport({
-      host: "smtp.ethereal.email",
-      port: 587,
-      secure: false, 
-      auth: {
-        user: testAccount.user,
-        pass: testAccount.pass,
-      },
-    });
-    const info = await transporter.sendMail({
-      from: '"Linguadapt Auth" <noreply@linguadapt.com>',
-      to,
-      subject,
-      text,
-    });
-    console.log(`✉️ Email Mock to ${to}: ${subject}`);
-    console.log(`✉️ Preview URL: %s`, nodemailer.getTestMessageUrl(info));
+  const resendClient = process.env.RESEND_API_KEY
+    ? new Resend(process.env.RESEND_API_KEY)
+    : null;
+
+  const FROM_ADDRESS = process.env.EMAIL_FROM ?? "B4Skills <noreply@b4skills.com>";
+  const APP_BASE_URL = process.env.APP_URL ?? "http://localhost:3001";
+
+  const sendEmail = async (to: string, subject: string, html: string) => {
+    if (!resendClient) {
+      // Dev fallback: log only, never send
+      console.log(`[email:dev] To=${to} Subject="${subject}"`);
+      return;
+    }
+    const { error } = await resendClient.emails.send({ from: FROM_ADDRESS, to, subject, html });
+    if (error) console.error("[email] Resend error:", error);
   };
 
   app.post("/api/auth/forgot-password", async (req, res) => {
@@ -387,9 +383,12 @@ async function startServer() {
       data: { resetPasswordToken: resetToken, resetPasswordExpires: resetExpires }
     });
 
-    const appUrl = process.env.APP_URL ?? "http://localhost:3001";
-    const resetLink = `${appUrl}/reset-password?token=${resetToken}`;
-    await sendMockEmail(user.email, "Password Reset", `Click here to reset: ${resetLink}`);
+    const resetLink = `${APP_BASE_URL}/reset-password?token=${resetToken}`;
+    await sendEmail(
+      user.email,
+      "Reset your B4Skills password",
+      `<p>Click the link below to reset your password. It expires in 15 minutes.</p><p><a href="${resetLink}">${resetLink}</a></p>`
+    );
     
     return res.json({ message: 'If email exists, reset link sent.' });
   });
@@ -423,37 +422,13 @@ async function startServer() {
       data: { verifyEmailToken: verifyToken }
     });
     
-    const verifyLink = `http://localhost:5173/verify-email?token=${verifyToken}`;
-    await sendMockEmail(user.email, "Verify your email", `Click here to verify: ${verifyLink}`);
+    const verifyLink = `${APP_BASE_URL}/verify-email?token=${verifyToken}`;
+    await sendEmail(
+      user.email,
+      "Verify your B4Skills email address",
+      `<p>Click the link below to verify your email address.</p><p><a href="${verifyLink}">${verifyLink}</a></p>`
+    );
     return res.json({ message: 'Process started if email needs verification' });
-  });
-
-  app.post("/api/auth/google", async (req, res) => {
-    // Shell implementation expecting a token usually verified via google-auth-library
-    const { token } = req.body;
-    if (!token) return res.status(400).json({ error: 'Missing token' });
-    
-    try {
-      // MOCK Verify: In real scenario, use `const ticket = await authClient.verifyIdToken({ idToken: token }); const { email, name, sub } = ticket.getPayload();`
-      const mockDecoded = jwt.decode(token) as any || { email: 'mock-google@example.com', name: 'Mock Google User' };
-      if (!mockDecoded.email) throw new Error("Invalid format");
-      
-      let user = await prisma.user.findUnique({ where: { email: mockDecoded.email } });
-      if (!user) {
-        user = await prisma.user.create({
-          data: { email: mockDecoded.email, name: mockDecoded.name, role: 'CANDIDATE', emailVerified: new Date() }
-        });
-      }
-      
-      const accessToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '15m' });
-      const refreshToken = jwt.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: '7d' });
-      await prisma.user.update({ where: { id: user.id }, data: { refreshToken } });
-      
-      setAuthCookies(res, accessToken, refreshToken);
-      return res.json({ token: accessToken, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
-    } catch(err) {
-      return res.status(401).json({ error: 'Invalid Google Token' });
-    }
   });
 
   // ── Social SSO — redirect-based flows (Google, Microsoft, LinkedIn) ────────
@@ -491,6 +466,20 @@ async function startServer() {
     setAuthCookies(res, accessToken, refreshToken);
     return { accessToken, user };
   }
+
+  // POST /api/auth/google — legacy alias; delegates to real Google token verification
+  app.post("/api/auth/google", socialAuthLimiter, async (req, res) => {
+    try {
+      const idToken = req.body.token ?? req.body.idToken;
+      if (!idToken || typeof idToken !== "string") return res.status(400).json({ error: "idToken required" });
+      const profile = await verifyGoogleIdToken(idToken);
+      const { accessToken, user } = await handleSocialProfile(profile, res);
+      return res.json({ token: accessToken, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
+    } catch (err: any) {
+      console.error("[auth/google]", err.message);
+      return res.status(401).json({ error: "Invalid Google token" });
+    }
+  });
 
   // POST /api/auth/social/google/id-token — mobile/SPA flow (pass ID token directly)
   app.post("/api/auth/social/google/id-token", socialAuthLimiter, async (req, res) => {

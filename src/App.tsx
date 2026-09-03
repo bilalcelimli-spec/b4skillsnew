@@ -120,7 +120,7 @@ export default function App() {
         const data = await res.json();
         if (data.user) {
           setUser(data.user);
-          setUserProfile({ ...data.user, organizationId: data.user.organizationId || "b4skills-demo" });
+          setUserProfile({ ...data.user, organizationId: data.user.organizationId ?? null });
           setShowLanding(false);
           
           const role = data.user.role?.toUpperCase();
@@ -164,7 +164,7 @@ export default function App() {
     if (!user || !userProfile) return;
     setTestCompleted(null);
     setCertificate(null);
-    setActiveSession({ orgId: userProfile.organizationId || "b4skills-demo", sessionId: "new", productLine });
+    setActiveSession({ orgId: userProfile.organizationId ?? "", sessionId: "new", productLine });
   };
 
   const handleTestComplete = async (finalTheta: number | null, sessionId: string) => {
