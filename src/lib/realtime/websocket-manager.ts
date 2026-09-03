@@ -7,6 +7,7 @@
  */
 
 import { EventEmitter } from "events";
+import crypto from "crypto";
 import type { IncomingMessage, Server as HttpServer } from "http";
 import { prisma } from "../prisma.js";
 
@@ -80,7 +81,7 @@ export class RealtimeDashboardManager extends EventEmitter {
     const url = new URL(req.url ?? "/", "http://localhost");
     const orgId = url.searchParams.get("orgId") ?? "unknown";
     const role = url.searchParams.get("role") ?? "INST_ADMIN";
-    const clientId = `${orgId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const clientId = `${orgId}-${crypto.randomUUID().slice(0, 8)}`;
 
     const client: ConnectedClient = {
       id: clientId,

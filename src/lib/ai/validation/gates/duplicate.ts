@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 /**
  * Duplicate detection gate — hybrid n-gram + semantic embedding.
  *
@@ -195,8 +197,7 @@ function buildFingerprintFor(item: DraftItem): ItemFingerprint {
 }
 
 function cryptoRand(): string {
-  // Stable-enough random id; we don't need crypto-strong here.
-  return Math.random().toString(36).slice(2, 10);
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 }
 
 function finalize(

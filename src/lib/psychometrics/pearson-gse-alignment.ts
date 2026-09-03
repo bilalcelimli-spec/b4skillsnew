@@ -474,7 +474,9 @@ export function buildPearsonScoreProfile(theta: number, sem: number): {
   const band = GSE_BANDS.find((b) => gse >= b.gseRange[0] && gse <= b.gseRange[1]) ?? GSE_BANDS[0];
 
   // Approximate PTE Academic from GSE (same 10–90 scale, calibrated differently)
-  const pteAcademic = Math.min(90, Math.max(10, gse + Math.round(Math.random() * 2 - 1)));
+  // GSE and PTE Academic share the same scale but differ by a constant calibration offset;
+  // no noise term — same theta should always yield the same PTE estimate.
+  const pteAcademic = Math.min(90, Math.max(10, gse));
 
   // Confidence interval based on SEM (SEM in theta → GSE units ≈ SEM * 10)
   const gseSem = Math.round(sem * 10);
