@@ -57,8 +57,8 @@ describe("Multi-Rater Ensemble Scoring", () => {
       };
 
       vi.spyOn(Gemini.GeminiScoringService, "scoreWriting").mockResolvedValue(mockGeminiScore);
-      vi.spyOn(Claude, "scoreWithClaude").mockResolvedValue(mockClaudeScore);
-      vi.spyOn(GPT4, "scoreWithGPT4").mockResolvedValue(mockGPT4Score);
+      vi.spyOn(Claude, "scoreWritingWithClaude").mockResolvedValue(mockClaudeScore);
+      vi.spyOn(GPT4, "scoreWritingWithGPT4").mockResolvedValue(mockGPT4Score);
 
       const result = await scoreWritingWithEnsemble(
         "The quick brown fox jumps over the lazy dog.",
@@ -101,8 +101,8 @@ describe("Multi-Rater Ensemble Scoring", () => {
       ];
 
       vi.spyOn(Gemini.GeminiScoringService, "scoreWriting").mockResolvedValue(mockScores[0]);
-      vi.spyOn(Claude, "scoreWithClaude").mockResolvedValue(mockScores[1]);
-      vi.spyOn(GPT4, "scoreWithGPT4").mockResolvedValue(mockScores[2]);
+      vi.spyOn(Claude, "scoreWritingWithClaude").mockResolvedValue(mockScores[1]);
+      vi.spyOn(GPT4, "scoreWritingWithGPT4").mockResolvedValue(mockScores[2]);
 
       const result = await scoreWritingWithEnsemble("text", "prompt", "B1");
 
@@ -112,26 +112,26 @@ describe("Multi-Rater Ensemble Scoring", () => {
     });
 
     it("should flag for review when consensus is low (stdDev > 0.25)", async () => {
-      // Setup: Wide score spread (0.4, 0.6, 0.8) → low agreement
+      // Setup: Very wide score spread (0.1, 0.5, 0.9) → stdDev≈0.327 > 0.25, low agreement
       const mockScores = [
-        { score: 0.4, cefrLevel: "A2", feedback: "Weak", confidence: 0.6 },
-        { score: 0.6, cefrLevel: "B1", feedback: "Fair", confidence: 0.7 },
-        { score: 0.8, cefrLevel: "B2", feedback: "Strong", confidence: 0.8 },
+        { score: 0.1, cefrLevel: "A1", feedback: "Very weak", confidence: 0.6 },
+        { score: 0.5, cefrLevel: "B1", feedback: "Fair", confidence: 0.7 },
+        { score: 0.9, cefrLevel: "C1", feedback: "Excellent", confidence: 0.8 },
       ];
 
       vi.spyOn(Gemini.GeminiScoringService, "scoreWriting").mockResolvedValueOnce({
         ...mockScores[0],
-        rubricScores: { grammar: 4, vocabulary: 4, coherence: 4, taskRelevance: 4 },
+        rubricScores: { grammar: 1, vocabulary: 1, coherence: 1, taskRelevance: 1 },
         corrections: [],
       });
-      vi.spyOn(Claude, "scoreWithClaude").mockResolvedValueOnce({
+      vi.spyOn(Claude, "scoreWritingWithClaude").mockResolvedValueOnce({
         ...mockScores[1],
-        rubricScores: { grammar: 6, vocabulary: 6, coherence: 6, taskRelevance: 6 },
+        rubricScores: { grammar: 5, vocabulary: 5, coherence: 5, taskRelevance: 5 },
         corrections: [],
       });
-      vi.spyOn(GPT4, "scoreWithGPT4").mockResolvedValueOnce({
+      vi.spyOn(GPT4, "scoreWritingWithGPT4").mockResolvedValueOnce({
         ...mockScores[2],
-        rubricScores: { grammar: 8, vocabulary: 8, coherence: 8, taskRelevance: 8 },
+        rubricScores: { grammar: 9, vocabulary: 9, coherence: 9, taskRelevance: 9 },
         corrections: [],
       });
 
@@ -173,8 +173,8 @@ describe("Multi-Rater Ensemble Scoring", () => {
       ];
 
       vi.spyOn(Gemini.GeminiScoringService, "scoreWriting").mockResolvedValue(mockScores[0]);
-      vi.spyOn(Claude, "scoreWithClaude").mockResolvedValue(mockScores[1]);
-      vi.spyOn(GPT4, "scoreWithGPT4").mockResolvedValue(mockScores[2]);
+      vi.spyOn(Claude, "scoreWritingWithClaude").mockResolvedValue(mockScores[1]);
+      vi.spyOn(GPT4, "scoreWritingWithGPT4").mockResolvedValue(mockScores[2]);
 
       const result = await scoreWritingWithEnsemble("text", "prompt", "B1");
 
@@ -186,7 +186,7 @@ describe("Multi-Rater Ensemble Scoring", () => {
       vi.spyOn(Gemini.GeminiScoringService, "scoreWriting").mockRejectedValue(
         new Error("API error")
       );
-      vi.spyOn(Claude, "scoreWithClaude").mockResolvedValue({
+      vi.spyOn(Claude, "scoreWritingWithClaude").mockResolvedValue({
         score: 0.65,
         cefrLevel: "B1",
         feedback: "Good",
@@ -194,7 +194,7 @@ describe("Multi-Rater Ensemble Scoring", () => {
         rubricScores: { grammar: 6, vocabulary: 6, coherence: 6, taskRelevance: 6 },
         corrections: [],
       });
-      vi.spyOn(GPT4, "scoreWithGPT4").mockResolvedValue({
+      vi.spyOn(GPT4, "scoreWritingWithGPT4").mockResolvedValue({
         score: 0.68,
         cefrLevel: "B1",
         feedback: "Good",
@@ -215,10 +215,10 @@ describe("Multi-Rater Ensemble Scoring", () => {
       vi.spyOn(Gemini.GeminiScoringService, "scoreWriting").mockRejectedValue(
         new Error("API error")
       );
-      vi.spyOn(Claude, "scoreWithClaude").mockRejectedValue(
+      vi.spyOn(Claude, "scoreWritingWithClaude").mockRejectedValue(
         new Error("API error")
       );
-      vi.spyOn(GPT4, "scoreWithGPT4").mockResolvedValue({
+      vi.spyOn(GPT4, "scoreWritingWithGPT4").mockResolvedValue({
         score: 0.65,
         cefrLevel: "B1",
         feedback: "Good",
@@ -261,8 +261,8 @@ describe("Multi-Rater Ensemble Scoring", () => {
       ];
 
       vi.spyOn(Gemini.GeminiScoringService, "scoreWriting").mockResolvedValue(mockScores[0]);
-      vi.spyOn(Claude, "scoreWithClaude").mockResolvedValue(mockScores[1]);
-      vi.spyOn(GPT4, "scoreWithGPT4").mockResolvedValue(mockScores[2]);
+      vi.spyOn(Claude, "scoreWritingWithClaude").mockResolvedValue(mockScores[1]);
+      vi.spyOn(GPT4, "scoreWritingWithGPT4").mockResolvedValue(mockScores[2]);
 
       const result = await scoreWritingWithEnsemble("text", "prompt", "B1");
 
@@ -303,8 +303,8 @@ describe("Multi-Rater Ensemble Scoring", () => {
       ];
 
       vi.spyOn(Gemini.GeminiScoringService, "scoreWriting").mockResolvedValue(mockScores[0]);
-      vi.spyOn(Claude, "scoreWithClaude").mockResolvedValue(mockScores[1]);
-      vi.spyOn(GPT4, "scoreWithGPT4").mockResolvedValue(mockScores[2]);
+      vi.spyOn(Claude, "scoreWritingWithClaude").mockResolvedValue(mockScores[1]);
+      vi.spyOn(GPT4, "scoreWritingWithGPT4").mockResolvedValue(mockScores[2]);
 
       const result = await scoreWritingWithEnsemble("text", "prompt", "B1");
 
@@ -312,36 +312,37 @@ describe("Multi-Rater Ensemble Scoring", () => {
     });
 
     it("should recommend 'review' for low consensus", async () => {
+      // Very wide spread → stdDev > 0.2 → consensusLevel "low" → recommendedAction "review"
       const mockScores = [
         {
-          score: 0.4,
-          cefrLevel: "A2",
-          feedback: "Weak",
+          score: 0.1,
+          cefrLevel: "A1",
+          feedback: "Very weak",
           confidence: 0.6,
-          rubricScores: { grammar: 4, vocabulary: 4, coherence: 4, taskRelevance: 4 },
+          rubricScores: { grammar: 1, vocabulary: 1, coherence: 1, taskRelevance: 1 },
           corrections: [],
         },
         {
-          score: 0.6,
+          score: 0.5,
           cefrLevel: "B1",
           feedback: "Fair",
           confidence: 0.7,
-          rubricScores: { grammar: 6, vocabulary: 6, coherence: 6, taskRelevance: 6 },
+          rubricScores: { grammar: 5, vocabulary: 5, coherence: 5, taskRelevance: 5 },
           corrections: [],
         },
         {
-          score: 0.8,
-          cefrLevel: "B2",
-          feedback: "Strong",
+          score: 0.9,
+          cefrLevel: "C1",
+          feedback: "Excellent",
           confidence: 0.8,
-          rubricScores: { grammar: 8, vocabulary: 8, coherence: 8, taskRelevance: 8 },
+          rubricScores: { grammar: 9, vocabulary: 9, coherence: 9, taskRelevance: 9 },
           corrections: [],
         },
       ];
 
       vi.spyOn(Gemini.GeminiScoringService, "scoreWriting").mockResolvedValue(mockScores[0]);
-      vi.spyOn(Claude, "scoreWithClaude").mockResolvedValue(mockScores[1]);
-      vi.spyOn(GPT4, "scoreWithGPT4").mockResolvedValue(mockScores[2]);
+      vi.spyOn(Claude, "scoreWritingWithClaude").mockResolvedValue(mockScores[1]);
+      vi.spyOn(GPT4, "scoreWritingWithGPT4").mockResolvedValue(mockScores[2]);
 
       const result = await scoreWritingWithEnsemble("text", "prompt", "B1");
 
@@ -349,36 +350,38 @@ describe("Multi-Rater Ensemble Scoring", () => {
     });
 
     it("should recommend 'flag' for medium consensus with borderline metrics", async () => {
+      // Scores 0.50/0.65/0.80: stdDev≈0.122 (medium band 0.1–0.2), avg confidence 0.62 < 0.65
+      // → consensusLevel "medium", flagForHumanReview true → recommendedAction "flag"
       const mockScores = [
         {
-          score: 0.60,
+          score: 0.50,
           cefrLevel: "B1",
           feedback: "Fair",
-          confidence: 0.62, // Below 0.65 threshold
-          rubricScores: { grammar: 6, vocabulary: 6, coherence: 6, taskRelevance: 6 },
+          confidence: 0.60, // below 0.65 threshold
+          rubricScores: { grammar: 5, vocabulary: 5, coherence: 5, taskRelevance: 5 },
           corrections: [],
         },
         {
           score: 0.65,
           cefrLevel: "B1",
           feedback: "Fair",
-          confidence: 0.65,
+          confidence: 0.62, // below 0.65 threshold
           rubricScores: { grammar: 6, vocabulary: 6, coherence: 6, taskRelevance: 6 },
           corrections: [],
         },
         {
-          score: 0.70,
+          score: 0.80,
           cefrLevel: "B1",
           feedback: "Good",
-          confidence: 0.68,
-          rubricScores: { grammar: 7, vocabulary: 7, coherence: 7, taskRelevance: 7 },
+          confidence: 0.64, // below 0.65 threshold
+          rubricScores: { grammar: 8, vocabulary: 8, coherence: 8, taskRelevance: 8 },
           corrections: [],
         },
       ];
 
       vi.spyOn(Gemini.GeminiScoringService, "scoreWriting").mockResolvedValue(mockScores[0]);
-      vi.spyOn(Claude, "scoreWithClaude").mockResolvedValue(mockScores[1]);
-      vi.spyOn(GPT4, "scoreWithGPT4").mockResolvedValue(mockScores[2]);
+      vi.spyOn(Claude, "scoreWritingWithClaude").mockResolvedValue(mockScores[1]);
+      vi.spyOn(GPT4, "scoreWritingWithGPT4").mockResolvedValue(mockScores[2]);
 
       const result = await scoreWritingWithEnsemble("text", "prompt", "B1");
 

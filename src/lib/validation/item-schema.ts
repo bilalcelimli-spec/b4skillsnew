@@ -73,7 +73,7 @@ export const listeningContentSchema = z.object({
   prompt: z.string().min(5).optional(),
   stem: z.string().min(5).optional(),
   question: z.string().min(5).optional(),
-  audioUrl: z.string().url().optional(),
+  audioUrl: z.string().min(1).optional(),  // relative path (/audio/...) or full URL
   ttsScript: z.string().min(20).optional(),
   transcript: z.string().optional(),
   options: z.array(optionSchema).optional(),

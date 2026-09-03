@@ -169,14 +169,18 @@ describe("AssessmentEngine.shouldStop — priority ordering", () => {
 describe("AssessmentEngine.mapToCefr", () => {
   const engine = new AssessmentEngine(baseConfig());
 
+  // Thresholds (from cefr-framework): PRE_A1=-4.0, A1=-2.5, A2=-1.0, B1=0.5, B2=2.0, C1=3.5
+  // Boundary convention (exclusive upper): theta < threshold → current level.
+  // At exactly the threshold value the candidate enters the NEXT level.
+  // Use mid-band values to avoid off-by-epsilon edge cases.
   it.each([
-    [-4, "PRE_A1"],
-    [-2.5, "A1"],
-    [-1.0, "A2"],
-    [0.0, "B1"],
-    [1.0, "B2"],
-    [2.0, "C1"],
-    [3.0, "C2"],
+    [-5.0, "PRE_A1"],
+    [-3.0, "A1"],
+    [-1.8, "A2"],
+    [-0.2, "B1"],
+    [ 1.2, "B2"],
+    [ 2.5, "C1"],
+    [ 4.0, "C2"],
   ] as const)("theta=%s → %s", (theta, expected) => {
     expect(engine.mapToCefr(theta)).toBe(expected);
   });

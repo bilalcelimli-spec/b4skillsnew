@@ -306,7 +306,7 @@ describe("Acoustic Analyzer Integration with Multi-Rater Ensemble", () => {
       // 50% LLM + 50% acoustic
       const blended = (llmFluency * 0.5 + acousticContribution * 0.5);
 
-      expect(blended).toBe(0.65); // (0.7 * 0.5 + 0.6 * 0.5) = 0.65
+      expect(blended).toBeCloseTo(0.65, 10); // (0.7 * 0.5 + 0.6 * 0.5) = 0.65
     });
   });
 

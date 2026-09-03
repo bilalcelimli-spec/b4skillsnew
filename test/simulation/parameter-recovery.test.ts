@@ -198,13 +198,14 @@ describe("End-to-end CAT simulation — parameter recovery", () => {
       startingSem: 1,
     });
 
-    // Theta values that sit in the middle of each band (with margin from boundaries)
+    // Canonical thresholds: PRE_A1=-4.0, A1=-2.5, A2=-1.0, B1=0.5, B2=2.0, C1=3.5
+    // Use mid-band thetas so estimates have margin from the boundary on both sides.
     const cases: Array<{ theta: number; expected: string }> = [
-      { theta: -2.3, expected: "A1" }, // band A1: [-3.0, -1.75]
-      { theta: -1.0, expected: "A2" }, // band A2: [-1.75, -0.5]
-      { theta: 0.0, expected: "B1" },  // band B1: [-0.5, 0.5]
-      { theta: 1.0, expected: "B2" },  // band B2: [0.5, 1.5]
-      { theta: 2.0, expected: "C1" },  // band C1: [1.5, 2.5]
+      { theta: -3.25, expected: "A1" }, // midpoint of A1: [-4.0, -2.5)
+      { theta: -1.75, expected: "A2" }, // midpoint of A2: [-2.5, -1.0)
+      { theta: -0.25, expected: "B1" }, // midpoint of B1: [-1.0,  0.5)
+      { theta:  1.25, expected: "B2" }, // midpoint of B2: [ 0.5,  2.0)
+      { theta:  2.75, expected: "C1" }, // midpoint of C1: [ 2.0,  3.5)
     ];
 
     let correct = 0;
