@@ -245,7 +245,7 @@ export default function App() {
   if (!user && location.pathname === "/methodology") {
     return (
       <Suspense fallback={<PageLoader />}>
-        <MethodologyPage onBack={() => setShowLanding(true)} />
+        <MethodologyPage onBack={() => navigate("/")} />
       </Suspense>
     );
   }
@@ -253,7 +253,10 @@ export default function App() {
   if (!user && location.pathname === "/pricing") {
     return (
       <Suspense fallback={<PageLoader />}>
-        <PricingPage onBack={() => setShowLanding(true)} onStart={() => setShowLanding(false)} />
+        <PricingPage
+          onBack={() => navigate("/")}
+          onStart={() => { setShowLanding(false); navigate("/"); }}
+        />
       </Suspense>
     );
   }

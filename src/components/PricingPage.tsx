@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Check, ArrowLeft, Zap, Building2, GraduationCap } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Check, ArrowLeft, Zap, Building2, GraduationCap, ExternalLink } from "lucide-react";
 import { cn } from "../lib/utils";
 
 interface PricingPageProps {
@@ -147,23 +147,71 @@ const FAQ = [
 export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => {
   const [tab, setTab] = useState<"individual" | "institution">("individual");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setScrolled(window.scrollY > 10);
+    window.addEventListener("scroll", handler, { passive: true });
+    return () => window.removeEventListener("scroll", handler);
+  }, []);
 
   const plans = tab === "individual" ? B2C_PLANS : B2B_PLANS;
 
+  const handleCta = (plan: Plan) => {
+    if (plan.cta === "Contact Sales" || plan.price === "Custom") {
+      window.location.href = `mailto:hello@b4skills.com?subject=${encodeURIComponent(`${plan.name} Plan Enquiry`)}`;
+    } else if (plan.price === "Free" && onStart) {
+      onStart();
+    } else if (onStart) {
+      try { localStorage.setItem("b4_intent_plan", plan.name); } catch {}
+      onStart();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#FAFAFA] font-sans text-slate-800">
-      {onBack && (
-        <button
-          onClick={onBack}
-          className="fixed top-5 left-5 z-40 flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-900 bg-white/80 backdrop-blur px-4 py-2 rounded-full shadow-sm border border-slate-200 transition-colors"
-          aria-label="Back"
-        >
-          <ArrowLeft size={16} /> Back
-        </button>
-      )}
 
-      {/* Hero */}
-      <section className="relative bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white py-24 px-6 text-center overflow-hidden">
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <header className={cn(
+        "fixed top-0 left-0 w-full z-50 transition-all duration-300",
+        scrolled ? "bg-white/95 backdrop-blur-md shadow-sm py-3" : "bg-white/80 backdrop-blur-sm py-4 border-b border-slate-100"
+      )}>
+        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
+          {/* Logo */}
+          <button onClick={onBack} className="flex items-center gap-2 group" aria-label="Go to home">
+            <div className="bg-[#9b276c] text-white font-bold text-lg px-3 py-1 -skew-x-6 rounded-sm tracking-tight">
+              <span style={{ textShadow: "0 0 8px rgba(253,224,71,0.8)" }}>b4skills</span>
+            </div>
+          </button>
+
+          {/* Nav links */}
+          <nav className="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-600">
+            <a href="/english-level-test" className="hover:text-[#9b276c] transition-colors">Free Test</a>
+            <a href="/schools" className="hover:text-[#9b276c] transition-colors">For Schools</a>
+            <a href="/corporate" className="hover:text-[#9b276c] transition-colors">For Companies</a>
+            <a href="/methodology" className="hover:text-[#9b276c] transition-colors">Methodology</a>
+          </nav>
+
+          {/* Actions */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onBack}
+              className="hidden sm:flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              <ArrowLeft size={15} /> Back
+            </button>
+            <button
+              onClick={onStart}
+              className="px-4 py-2 bg-[#9b276c] hover:bg-[#7d1f56] text-white text-sm font-black rounded-xl transition-colors"
+            >
+              Get Started
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Hero ───────────────────────────────────────────────────────── */}
+      <section className="relative bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white pt-36 pb-24 px-6 text-center overflow-hidden">
         <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: "radial-gradient(circle at 30% 50%, #6366f1 0%, transparent 60%), radial-gradient(circle at 70% 50%, #9b276c 0%, transparent 60%)" }} />
         <div className="relative max-w-3xl mx-auto">
           <p className="text-xs font-black tracking-[0.25em] uppercase text-indigo-300 mb-4">Transparent Pricing</p>
@@ -240,16 +288,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
                 ))}
               </ul>
               <button
-                onClick={() => {
-                  if (plan.cta === "Contact Sales" || plan.price === "Custom") {
-                    window.location.href = `mailto:hello@b4skills.com?subject=${encodeURIComponent(`${plan.name} Plan Enquiry`)}`;
-                  } else if (plan.price === "Free" && onStart) {
-                    onStart();
-                  } else if (onStart) {
-                    try { localStorage.setItem("b4_intent_plan", plan.name); } catch {}
-                    onStart();
-                  }
-                }}
+                onClick={() => handleCta(plan)}
                 className={cn(
                   "w-full py-3 rounded-xl font-bold text-sm transition-colors",
                   plan.highlighted
@@ -298,6 +337,57 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
           ))}
         </div>
       </section>
+
+      {/* ── Footer ─────────────────────────────────────────────────────── */}
+      <footer className="bg-[#0f172a] text-white">
+        <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8 text-sm">
+          <div className="col-span-2 md:col-span-1">
+            <div className="bg-[#9b276c] inline-block text-white font-bold text-lg px-3 py-1 -skew-x-6 rounded-sm tracking-tight mb-4">
+              <span style={{ textShadow: "0 0 8px rgba(253,224,71,0.8)" }}>b4skills</span>
+            </div>
+            <p className="text-slate-400 leading-relaxed text-xs">
+              Adaptive CEFR English assessment powered by IRT psychometrics and AI.
+            </p>
+          </div>
+          <div>
+            <p className="font-black uppercase tracking-widest text-[10px] text-slate-500 mb-3">Product</p>
+            <ul className="space-y-2 text-slate-400">
+              <li><a href="/english-level-test" className="hover:text-white transition-colors">Free English Test</a></li>
+              <li><a href="/cefr-english-test" className="hover:text-white transition-colors">CEFR Assessment</a></li>
+              <li><a href="/methodology" className="hover:text-white transition-colors">Methodology</a></li>
+              <li><a href="/pricing" className="hover:text-white transition-colors text-[#9b276c]">Pricing</a></li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-black uppercase tracking-widest text-[10px] text-slate-500 mb-3">Solutions</p>
+            <ul className="space-y-2 text-slate-400">
+              <li><a href="/schools" className="hover:text-white transition-colors">For Schools</a></li>
+              <li><a href="/corporate" className="hover:text-white transition-colors">For Companies</a></li>
+              <li><a href="/academia" className="hover:text-white transition-colors">For Universities</a></li>
+              <li><a href="/language-schools" className="hover:text-white transition-colors">Language Schools</a></li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-black uppercase tracking-widest text-[10px] text-slate-500 mb-3">Contact</p>
+            <ul className="space-y-2 text-slate-400">
+              <li>
+                <a href="mailto:hello@b4skills.com" className="hover:text-white transition-colors flex items-center gap-1">
+                  hello@b4skills.com <ExternalLink size={11} />
+                </a>
+              </li>
+            </ul>
+            <button
+              onClick={onStart}
+              className="mt-6 w-full py-2.5 bg-[#9b276c] hover:bg-[#7d1f56] text-white text-sm font-black rounded-xl transition-colors"
+            >
+              Start Free Test
+            </button>
+          </div>
+        </div>
+        <div className="border-t border-white/10 px-6 py-4 text-center text-xs text-slate-600">
+          © {new Date().getFullYear()} B4Skills. All rights reserved.
+        </div>
+      </footer>
     </div>
   );
 };
