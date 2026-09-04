@@ -5485,6 +5485,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         "Disallow: /reset-password",
         "",
         `Sitemap: ${APP_BASE_URL}/sitemap.xml`,
+        `Sitemap: ${APP_BASE_URL}/atom.xml`,
       ].join("\n")
     );
   });
@@ -5514,6 +5515,38 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     res
       .set("Content-Type", "application/xml; charset=utf-8")
       .send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urlTags}\n</urlset>`);
+  });
+
+  // ── Atom feed (for Bing / feed readers) ─────────────────────────────────
+  app.get(["/atom.xml", "/feed.xml", "/rss.xml"], (_req, res) => {
+    const now = new Date().toISOString();
+    const pages = [
+      { title: "B4Skills — Adaptive CEFR English Assessment", url: "/", summary: "AI-powered adaptive English assessment. Get your certified CEFR level (A1–C2) in 15–60 minutes." },
+      { title: "English Level Test — Free CEFR Placement", url: "/english-level-test", summary: "Take a free adaptive English level test and get your CEFR level in under 15 minutes." },
+      { title: "CEFR English Test — Certified Assessment", url: "/cefr-english-test", summary: "Certified CEFR-aligned adaptive English test with QR-verifiable certificate." },
+      { title: "English Assessment for Universities", url: "/english-assessment-for-universities", summary: "Adaptive CEFR placement testing for language centres and admissions teams." },
+      { title: "English Assessment for Companies", url: "/english-assessment-for-companies", summary: "Screen and develop English skills across your workforce with CEFR-aligned assessments." },
+      { title: "Pricing — B4Skills", url: "/pricing", summary: "Transparent pricing for adaptive CEFR English testing. Free Quick Check to institutional plans." },
+    ];
+    const entries = pages.map(p => `  <entry>
+    <title>${p.title}</title>
+    <link href="${APP_BASE_URL}${p.url}" />
+    <id>${APP_BASE_URL}${p.url}</id>
+    <updated>${now}</updated>
+    <summary>${p.summary}</summary>
+  </entry>`).join("\n");
+    res.set("Content-Type", "application/atom+xml; charset=utf-8").send(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>B4Skills — Adaptive CEFR English Assessment</title>
+  <link href="${APP_BASE_URL}/atom.xml" rel="self" />
+  <link href="${APP_BASE_URL}/" />
+  <id>${APP_BASE_URL}/</id>
+  <updated>${now}</updated>
+  <author><name>B4Skills</name></author>
+${entries}
+</feed>`
+    );
   });
 
   // ── Q3: Realtime WebSocket Dashboard ────────────────────────────────────
