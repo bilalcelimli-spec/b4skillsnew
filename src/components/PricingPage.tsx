@@ -241,7 +241,14 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
               </ul>
               <button
                 onClick={() => {
-                  if (plan.price === "Free" && onStart) onStart();
+                  if (plan.cta === "Contact Sales" || plan.price === "Custom") {
+                    window.location.href = `mailto:hello@b4skills.com?subject=${encodeURIComponent(`${plan.name} Plan Enquiry`)}`;
+                  } else if (plan.price === "Free" && onStart) {
+                    onStart();
+                  } else if (onStart) {
+                    try { localStorage.setItem("b4_intent_plan", plan.name); } catch {}
+                    onStart();
+                  }
                 }}
                 className={cn(
                   "w-full py-3 rounded-xl font-bold text-sm transition-colors",
