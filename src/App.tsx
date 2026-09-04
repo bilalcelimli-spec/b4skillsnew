@@ -41,6 +41,7 @@ const LandingPage            = lazy(() => import("./components/LandingPage").the
 const SeoLandingPage         = lazy(() => import("./components/SeoLandingPage").then(m => ({ default: m.SeoLandingPage })));
 const ProgressTrendChart     = lazy(() => import("./components/ProgressTrendChart").then(m => ({ default: m.ProgressTrendChart })));
 const MethodologyPage        = lazy(() => import("./components/MethodologyPage").then(m => ({ default: m.MethodologyPage })));
+const PricingPage            = lazy(() => import("./components/PricingPage").then(m => ({ default: m.PricingPage })));
 const ItemBankManager        = lazy(() => import("./components/ItemBankManager").then(m => ({ default: m.ItemBankManager })));
 const CandidateProfile       = lazy(() => import("./components/CandidateProfile").then(m => ({ default: m.CandidateProfile })));
 const ContentFactoryReviewQueue = lazy(() => import("./components/admin/ContentFactoryReviewQueue").then(m => ({ default: m.ContentFactoryReviewQueue })));
@@ -235,6 +236,14 @@ export default function App() {
     return (
       <Suspense fallback={<PageLoader />}>
         <MethodologyPage onBack={() => setShowLanding(true)} />
+      </Suspense>
+    );
+  }
+
+  if (!user && location.pathname === "/pricing") {
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <PricingPage onBack={() => setShowLanding(true)} onStart={() => setShowLanding(false)} />
       </Suspense>
     );
   }
