@@ -146,6 +146,15 @@ export default function App() {
           else if (["ORG_ADMIN", "INST_ADMIN"].includes(role)) setActiveTab("institutional");
           else if (["ITEM_WRITER", "LANGUAGE_REVIEWER", "CEFR_REVIEWER", "FAIRNESS_REVIEWER", "MODERATOR", "PSYCHOMETRICIAN"].includes(role)) setActiveTab("content");
           
+          // If user came from a pricing CTA, clear the intent and surface assessment start
+          try {
+            const intentPlan = localStorage.getItem("b4_intent_plan");
+            if (intentPlan && role === "CANDIDATE") {
+              localStorage.removeItem("b4_intent_plan");
+              setActiveTab("dashboard");
+            }
+          } catch {}
+
           if (data.user.organizationId) {
             try {
               const res = await fetch(`/api/branding/${data.user.organizationId}`);
