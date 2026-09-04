@@ -34,8 +34,9 @@ export const SessionReview: React.FC<SessionReviewProps> = ({ sessionId, onBack 
     try {
       const res = await fetch(`/api/sessions/${sessionId}/responses`);
       const data = await res.json();
-      setResponses(data);
-      if (data.length > 0) setSelectedResponse(data[0]);
+      const arr = Array.isArray(data) ? data : [];
+      setResponses(arr);
+      if (arr.length > 0) setSelectedResponse(arr[0]);
     } catch (err) {
       console.error("Failed to fetch responses");
     } finally {
