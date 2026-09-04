@@ -16,16 +16,20 @@ interface ItemRendererProps {
   isUploading?: boolean;
   uploadProgress?: number;
   uploadStatus?: 'idle' | 'uploading' | 'analyzing' | 'success' | 'error';
+  /** Stable passage managed by TestPlayer. Only changes when passage text changes,
+   *  so consecutive items from the same passage don't re-mount the left column. */
+  activePassage?: string | null;
 }
 
-export const ItemRenderer: React.FC<ItemRendererProps> = ({ 
-  item, 
-  onResponse, 
-  disabled, 
+export const ItemRenderer: React.FC<ItemRendererProps> = ({
+  item,
+  onResponse,
+  disabled,
   feedback,
   isUploading = false,
   uploadProgress = 0,
-  uploadStatus = 'idle'
+  uploadStatus = 'idle',
+  activePassage,
 }) => {
   const content = (item as any).content ?? item.metadata ?? {};
   const itemCode = (item as any).itemCode as string | null | undefined;
@@ -383,27 +387,61 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
       );
 
       if (isReadingWithPassage) {
-        // Split layout: scrollable passage on top, sticky question panel below
+        // Use the stable passage from TestPlayer if available; fall back to the
+        // item-level passage so single-item rendering (e.g. admin preview) still works.
+        const passageText = activePassage ?? displayPassage ?? "";
+
         return (
-          <div className="flex flex-col gap-0" role="form" aria-labelledby="item-prompt">
-            {/* Scrollable passage */}
+          <div
+            className="flex flex-col md:flex-row gap-0 rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm"
+            style={{ minHeight: "520px" }}
+            role="form"
+            aria-labelledby="item-prompt"
+          >
+            {/* ── Left column: reading passage ─────────────────────────────── */}
+            {/* key tied to passage content so React only re-mounts when the
+                passage genuinely changes, preserving scroll position between
+                consecutive questions on the same passage. */}
             <div
-              className="overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm"
-              style={{ maxHeight: "320px" }}
+              key={passageText.slice(0, 80)}
+              className="md:w-[55%] w-full overflow-y-auto border-b md:border-b-0 md:border-r border-slate-200 bg-slate-50/60"
               aria-label="Reading passage"
               tabIndex={0}
             >
-              <div className="p-6 leading-relaxed text-slate-700">
-                {displayPassage}
+              <div className="p-6 md:p-8">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
+                  Reading Passage
+                </p>
+                <div className="prose prose-sm max-w-none text-slate-700 leading-relaxed text-[15px]">
+                  {passageText.split("\n").filter(Boolean).map((para, i) => (
+                    <p key={i} className="mb-4 last:mb-0">{para}</p>
+                  ))}
+                </div>
               </div>
             </div>
-            {/* Sticky question panel */}
-            <div className="sticky bottom-0 bg-white/95 backdrop-blur-sm border border-t-0 border-slate-200 rounded-b-2xl px-6 py-4 space-y-4 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
-              <legend id="item-prompt" className="text-base font-black text-slate-900 uppercase tracking-tight">
-                {displayPrompt}
-              </legend>
-              {optionButtons}
-              {confirmBtn}
+
+            {/* ── Right column: question + options ─────────────────────────── */}
+            {/* key tied to item.id so this column animates independently every
+                time the question changes, even when the passage stays the same. */}
+            <div
+              key={item.id}
+              className="md:w-[45%] w-full flex flex-col justify-between bg-white"
+            >
+              <div className="p-6 md:p-8 flex-1 overflow-y-auto space-y-5">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  Question
+                </p>
+                <p
+                  id="item-prompt"
+                  className="text-base font-black text-slate-900 leading-snug"
+                >
+                  {displayPrompt}
+                </p>
+                {optionButtons}
+              </div>
+              <div className="px-6 md:px-8 pb-6 md:pb-8 pt-2 border-t border-slate-100">
+                {confirmBtn}
+              </div>
             </div>
           </div>
         );

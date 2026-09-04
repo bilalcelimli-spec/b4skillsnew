@@ -73,11 +73,29 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   // "Continue manually" button being clicked while the loop is still in-flight).
   const isFetchingNextRef = React.useRef(false);
 
+  // Update stable reading passage when item changes.
+  // Only calls setActivePassage when the passage text actually differs so
+  // consecutive items with the same passage don't re-mount the left column.
+  React.useEffect(() => {
+    if (!currentItem) { setActivePassage(null); return; }
+    if (currentItem.skill !== "READING") { setActivePassage(null); return; }
+    const p = (currentItem as any).content?.passage as string | undefined;
+    if (p) {
+      setActivePassage(prev => (prev === p ? prev : p));
+    } else {
+      setActivePassage(null);
+    }
+  }, [currentItem?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Default section list — overwritten by the server's sectionOrder field
   // on /api/sessions/launch response. Kept as a sane fallback so the UI
   // renders something coherent even if the server payload is missing the field.
   const DEFAULT_SECTION_ORDER = ['VOCABULARY', 'GRAMMAR', 'READING', 'LISTENING', 'WRITING', 'SPEAKING'];
   const [sectionOrder, setSectionOrder] = useState<string[]>(DEFAULT_SECTION_ORDER);
+  // Stable reading passage: only updates when the passage text actually changes.
+  // Stays constant across consecutive items that share the same passage so the
+  // left column doesn't re-mount and loses its scroll position.
+  const [activePassage, setActivePassage] = useState<string | null>(null);
   const SECTION_LABELS: Record<string, string> = {
     VOCABULARY: 'Vocabulary',
     GRAMMAR: 'Grammar',
@@ -785,14 +803,15 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
                     </button>
                   </div>
                 )}
-                <ItemRenderer 
-                  item={currentItem} 
-                  onResponse={handleResponse} 
+                <ItemRenderer
+                  item={currentItem}
+                  onResponse={handleResponse}
                   disabled={submitting}
                   feedback={itemFeedback?.error ? null : itemFeedback}
                   isUploading={submitting}
                   uploadProgress={uploadProgress}
                   uploadStatus={uploadStatus}
+                  activePassage={activePassage}
                 />
               </motion.div>
             ) : null}
