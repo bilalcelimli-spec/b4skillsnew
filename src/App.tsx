@@ -144,6 +144,7 @@ export default function App() {
           if (role === "RATER") setActiveTab("rating");
           else if (["ADMIN", "SUPER_ADMIN", "CONTENT_ADMIN", "ASSESSMENT_DIRECTOR"].includes(role)) setActiveTab("admin");
           else if (["ORG_ADMIN", "INST_ADMIN"].includes(role)) setActiveTab("institutional");
+          else if (role === "TEACHER") setActiveTab("teacher");
           else if (["ITEM_WRITER", "LANGUAGE_REVIEWER", "CEFR_REVIEWER", "FAIRNESS_REVIEWER", "MODERATOR", "PSYCHOMETRICIAN"].includes(role)) setActiveTab("content");
           
           // If user came from a pricing CTA, clear the intent and surface assessment start
