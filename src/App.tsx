@@ -56,6 +56,43 @@ const PageLoader = () => (
     <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600" />
   </div>
 );
+
+const EmailVerifyPage: React.FC<{ token: string | null; onDone: () => void }> = ({ token, onDone }) => {
+  const [status, setStatus] = React.useState<"loading" | "ok" | "error">("loading");
+  React.useEffect(() => {
+    if (!token) { setStatus("error"); return; }
+    fetch(`/api/auth/verify-email?token=${encodeURIComponent(token)}`)
+      .then(r => r.ok ? setStatus("ok") : setStatus("error"))
+      .catch(() => setStatus("error"));
+  }, [token]);
+  return (
+    <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center px-4">
+      <div className="text-center max-w-sm">
+        {status === "loading" && <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[#9b276c] mx-auto mb-4" />}
+        {status === "ok" && (
+          <>
+            <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-5">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <h1 className="text-2xl font-black text-slate-900 mb-2">Email verified!</h1>
+            <p className="text-slate-500 mb-6">Your b4skills account is fully activated.</p>
+            <button onClick={onDone} className="bg-slate-900 text-white font-bold px-6 py-2.5 rounded-xl hover:bg-slate-700 transition-colors">Continue</button>
+          </>
+        )}
+        {status === "error" && (
+          <>
+            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-5">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </div>
+            <h1 className="text-2xl font-black text-slate-900 mb-2">Link invalid or expired</h1>
+            <p className="text-slate-500 mb-6">This verification link has already been used or has expired. Request a new one from your account settings.</p>
+            <button onClick={onDone} className="bg-slate-900 text-white font-bold px-6 py-2.5 rounded-xl hover:bg-slate-700 transition-colors">Go home</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 import { LogIn, LogOut, GraduationCap, LayoutDashboard, FileText, Settings, ShieldCheck, User as UserIcon, ShieldAlert, CheckCircle2, ClipboardList, Building2, BarChart3, Award, Database, UserCircle, Sliders, BoxSelect, Menu, X, ChevronRight } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "./lib/utils";
@@ -276,6 +313,12 @@ export default function App() {
   }
   if (!user && location.pathname === "/language-schools") {
     return <Suspense fallback={<PageLoader />}><LanguageSchoolsPage onBack={() => navigate("/")} /></Suspense>;
+  }
+
+  // Email verification link — /verify-email?token=...
+  if (location.pathname === "/verify-email") {
+    const token = new URLSearchParams(location.search).get("token");
+    return <EmailVerifyPage token={token} onDone={() => navigate("/")} />;
   }
 
   const seoVariant = SEO_PATHS[location.pathname] ?? null;

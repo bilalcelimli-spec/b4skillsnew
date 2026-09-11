@@ -252,6 +252,23 @@ async function startServer() {
         data: { refreshToken }
       });
       setAuthCookies(res, accessToken, refreshToken);
+
+      // Send welcome + email verification asynchronously (don't block registration)
+      const verifyToken = crypto.randomBytes(32).toString('hex');
+      await prisma.user.update({ where: { id: user.id }, data: { verifyEmailToken: verifyToken } });
+      const verifyLink = `${APP_BASE_URL}/verify-email?token=${verifyToken}`;
+      sendEmail(
+        user.email,
+        "Welcome to b4skills — please verify your email",
+        emailTemplate({
+          heading: `Welcome${user.name ? ", " + user.name : ""}!`,
+          body: `<p>Your b4skills account is ready. Please verify your email address to unlock your full assessment results and CEFR certificate.</p>`,
+          ctaLabel: "Verify Email Address",
+          ctaUrl: verifyLink,
+          footer: "This link expires in 24 hours. If you didn't sign up for b4skills, you can safely ignore this email.",
+        })
+      ).catch((e) => console.error("[email] welcome send failed:", e));
+
       return res.json({ token: accessToken, user: { uid: user.id, email: user.email, displayName: user.name, role: user.role } });
     } catch (err: any) {
       console.error("[auth/register]", err);
@@ -361,7 +378,6 @@ async function startServer() {
 
   const sendEmail = async (to: string, subject: string, html: string) => {
     if (!resendClient) {
-      // Dev fallback: log only, never send
       console.log(`[email:dev] To=${to} Subject="${subject}"`);
       return;
     }
@@ -369,15 +385,54 @@ async function startServer() {
     if (error) console.error("[email] Resend error:", error);
   };
 
+  // ── Branded email template ──────────────────────────────────────────────────
+  const emailTemplate = (opts: {
+    heading: string;
+    body: string;
+    ctaLabel?: string;
+    ctaUrl?: string;
+    footer?: string;
+  }) => `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:40px 0">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+        <!-- Header -->
+        <tr><td style="background:#0f172a;padding:28px 40px">
+          <span style="background:#9b276c;color:#fff;font-weight:800;font-size:18px;padding:6px 14px;border-radius:4px;letter-spacing:-0.5px;display:inline-block;transform:skewX(-6deg)">b4skills</span>
+        </td></tr>
+        <!-- Body -->
+        <tr><td style="padding:40px">
+          <h1 style="margin:0 0 16px;font-size:24px;font-weight:800;color:#0f172a;line-height:1.2">${opts.heading}</h1>
+          <div style="font-size:15px;color:#475569;line-height:1.7">${opts.body}</div>
+          ${opts.ctaLabel && opts.ctaUrl ? `
+          <div style="margin:32px 0">
+            <a href="${opts.ctaUrl}" style="display:inline-block;background:#9b276c;color:#fff;font-weight:700;font-size:15px;padding:14px 28px;border-radius:10px;text-decoration:none">${opts.ctaLabel}</a>
+          </div>
+          <p style="font-size:13px;color:#94a3b8;margin:0">Or copy this link: <a href="${opts.ctaUrl}" style="color:#9b276c;word-break:break-all">${opts.ctaUrl}</a></p>
+          ` : ""}
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:20px 40px">
+          <p style="margin:0;font-size:12px;color:#94a3b8">${opts.footer ?? "© " + new Date().getFullYear() + " b4skills Inc. · <a href='https://b4skills.com' style='color:#9b276c;text-decoration:none'>b4skills.com</a>"}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
   app.post("/api/auth/forgot-password", async (req, res) => {
     const body = validate(ForgotPasswordBody, req.body, res);
     if (!body) return;
     const { email } = body;
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.json({ message: 'If email exists, reset link sent.' }); // Generic response
+    if (!user) return res.json({ message: 'If email exists, reset link sent.' });
 
     const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
+    const resetExpires = new Date(Date.now() + 15 * 60 * 1000);
 
     await prisma.user.update({
       where: { id: user.id },
@@ -387,10 +442,15 @@ async function startServer() {
     const resetLink = `${APP_BASE_URL}/reset-password?token=${resetToken}`;
     await sendEmail(
       user.email,
-      "Reset your B4Skills password",
-      `<p>Click the link below to reset your password. It expires in 15 minutes.</p><p><a href="${resetLink}">${resetLink}</a></p>`
+      "Reset your b4skills password",
+      emailTemplate({
+        heading: "Reset your password",
+        body: `<p>We received a request to reset the password for your b4skills account (<strong>${user.email}</strong>).</p><p>This link expires in <strong>15 minutes</strong>. If you did not request a reset, you can safely ignore this email.</p>`,
+        ctaLabel: "Reset Password",
+        ctaUrl: resetLink,
+      })
     );
-    
+
     return res.json({ message: 'If email exists, reset link sent.' });
   });
 
@@ -398,12 +458,12 @@ async function startServer() {
     const body = validate(ResetPasswordBody, req.body, res);
     if (!body) return;
     const { token, password: newPassword } = body;
-    
+
     const user = await prisma.user.findFirst({
       where: { resetPasswordToken: token, resetPasswordExpires: { gt: new Date() } }
     });
     if (!user) return res.status(400).json({ error: 'Invalid or expired token' });
-    
+
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({
       where: { id: user.id },
@@ -412,8 +472,9 @@ async function startServer() {
     return res.json({ success: true, message: 'Password reset successfully' });
   });
 
+  // POST /api/auth/verify-email — send (or resend) a verification link
   app.post("/api/auth/verify-email", async (req, res) => {
-    const { email } = req.body; // Mock endpoint to start email verification process
+    const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || user.emailVerified) return res.json({ message: 'Process started if email needs verification' });
 
@@ -422,14 +483,33 @@ async function startServer() {
       where: { id: user.id },
       data: { verifyEmailToken: verifyToken }
     });
-    
+
     const verifyLink = `${APP_BASE_URL}/verify-email?token=${verifyToken}`;
     await sendEmail(
       user.email,
-      "Verify your B4Skills email address",
-      `<p>Click the link below to verify your email address.</p><p><a href="${verifyLink}">${verifyLink}</a></p>`
+      "Verify your b4skills email address",
+      emailTemplate({
+        heading: "Confirm your email address",
+        body: `<p>Thanks for signing up for b4skills! Please verify your email address to access your full assessment results and certificate.</p>`,
+        ctaLabel: "Verify Email",
+        ctaUrl: verifyLink,
+        footer: "This link expires in 24 hours. If you didn't create a b4skills account, you can safely ignore this email.",
+      })
     );
     return res.json({ message: 'Process started if email needs verification' });
+  });
+
+  // GET /api/auth/verify-email?token=... — process the verification token
+  app.get("/api/auth/verify-email", async (req, res) => {
+    const { token } = req.query as { token?: string };
+    if (!token) return res.status(400).json({ error: "Token required" });
+    const user = await prisma.user.findFirst({ where: { verifyEmailToken: token } });
+    if (!user) return res.status(400).json({ error: "Invalid or expired token" });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerified: new Date(), verifyEmailToken: null }
+    });
+    return res.json({ success: true, email: user.email });
   });
 
   // ── Social SSO — redirect-based flows (Google, Microsoft, LinkedIn) ────────
