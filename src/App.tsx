@@ -42,6 +42,10 @@ const SeoLandingPage         = lazy(() => import("./components/SeoLandingPage").
 const ProgressTrendChart     = lazy(() => import("./components/ProgressTrendChart").then(m => ({ default: m.ProgressTrendChart })));
 const MethodologyPage        = lazy(() => import("./components/MethodologyPage").then(m => ({ default: m.MethodologyPage })));
 const PricingPage            = lazy(() => import("./components/PricingPage").then(m => ({ default: m.PricingPage })));
+const SchoolsPage            = lazy(() => import("./components/SchoolsPage").then(m => ({ default: m.SchoolsPage })));
+const AcademiaPage           = lazy(() => import("./components/AcademiaPage").then(m => ({ default: m.AcademiaPage })));
+const CorporatePage          = lazy(() => import("./components/CorporatePage").then(m => ({ default: m.CorporatePage })));
+const LanguageSchoolsPage    = lazy(() => import("./components/LanguageSchoolsPage").then(m => ({ default: m.LanguageSchoolsPage })));
 const ItemBankManager        = lazy(() => import("./components/ItemBankManager").then(m => ({ default: m.ItemBankManager })));
 const CandidateProfile       = lazy(() => import("./components/CandidateProfile").then(m => ({ default: m.CandidateProfile })));
 const ContentFactoryReviewQueue = lazy(() => import("./components/admin/ContentFactoryReviewQueue").then(m => ({ default: m.ContentFactoryReviewQueue })));
@@ -259,6 +263,19 @@ export default function App() {
         />
       </Suspense>
     );
+  }
+
+  if (!user && location.pathname === "/schools") {
+    return <Suspense fallback={<PageLoader />}><SchoolsPage onBack={() => navigate("/")} /></Suspense>;
+  }
+  if (!user && location.pathname === "/academia") {
+    return <Suspense fallback={<PageLoader />}><AcademiaPage onBack={() => navigate("/")} /></Suspense>;
+  }
+  if (!user && location.pathname === "/corporate") {
+    return <Suspense fallback={<PageLoader />}><CorporatePage onBack={() => navigate("/")} /></Suspense>;
+  }
+  if (!user && location.pathname === "/language-schools") {
+    return <Suspense fallback={<PageLoader />}><LanguageSchoolsPage onBack={() => navigate("/")} /></Suspense>;
   }
 
   const seoVariant = SEO_PATHS[location.pathname] ?? null;

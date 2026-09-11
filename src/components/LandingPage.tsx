@@ -71,15 +71,15 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
           >
             <p className="text-sm font-bold tracking-wide text-slate-400 mb-6">We specialize in English assessments.</p>
             <div className="flex flex-wrap gap-4">
-              <button onClick={() => setPendingFeature('Schools')} className="flex items-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm px-5 py-3 rounded-full text-sm font-bold text-slate-700 transition-transform hover:-translate-y-0.5">
+              <a href="/schools" className="flex items-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm px-5 py-3 rounded-full text-sm font-bold text-slate-700 transition-transform hover:-translate-y-0.5">
                 For Schools <div className="bg-purple-600 text-white rounded-full p-1"><ChevronRight size={14}/></div>
-              </button>
-              <button onClick={() => setPendingFeature('Academia')} className="flex items-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm px-5 py-3 rounded-full text-sm font-bold text-slate-700 transition-transform hover:-translate-y-0.5">
+              </a>
+              <a href="/academia" className="flex items-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm px-5 py-3 rounded-full text-sm font-bold text-slate-700 transition-transform hover:-translate-y-0.5">
                 Academic <div className="bg-blue-600 text-white rounded-full p-1"><ChevronRight size={14}/></div>
-              </button>
-              <button onClick={() => setPendingFeature('Corporates')} className="flex items-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm px-5 py-3 rounded-full text-sm font-bold text-slate-700 transition-transform hover:-translate-y-0.5">
+              </a>
+              <a href="/corporate" className="flex items-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm px-5 py-3 rounded-full text-sm font-bold text-slate-700 transition-transform hover:-translate-y-0.5">
                 Corporate Solutions <div className="bg-slate-900 text-white rounded-full p-1"><ChevronRight size={14}/></div>
-              </button>
+              </a>
             </div>
 
             {/* Free placement test CTA */}
