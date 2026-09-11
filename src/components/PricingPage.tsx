@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from "react";
-import { Check, ArrowLeft, Zap, Building2, GraduationCap, ExternalLink } from "lucide-react";
+import React, { useState } from "react";
+import { Check, Zap, Building2, GraduationCap } from "lucide-react";
 import { cn } from "../lib/utils";
+import { SiteNav } from "./SiteNav";
+import { SiteFooter } from "./SiteFooter";
 
 interface PricingPageProps {
   onBack?: () => void;
@@ -147,13 +149,6 @@ const FAQ = [
 export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => {
   const [tab, setTab] = useState<"individual" | "institution">("individual");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    const handler = () => setScrolled(window.scrollY > 10);
-    window.addEventListener("scroll", handler, { passive: true });
-    return () => window.removeEventListener("scroll", handler);
-  }, []);
 
   const plans = tab === "individual" ? B2C_PLANS : B2B_PLANS;
 
@@ -171,44 +166,8 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
   return (
     <div className="min-h-screen bg-[#FAFAFA] font-sans text-slate-800">
 
-      {/* ── Header ─────────────────────────────────────────────────────── */}
-      <header className={cn(
-        "fixed top-0 left-0 w-full z-50 transition-all duration-300",
-        scrolled ? "bg-white/95 backdrop-blur-md shadow-sm py-3" : "bg-white/80 backdrop-blur-sm py-4 border-b border-slate-100"
-      )}>
-        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
-          {/* Logo */}
-          <button onClick={onBack} className="flex items-center gap-2 group" aria-label="Go to home">
-            <div className="bg-[#9b276c] text-white font-bold text-lg px-3 py-1 -skew-x-6 rounded-sm tracking-tight">
-              <span style={{ textShadow: "0 0 8px rgba(253,224,71,0.8)" }}>b4skills</span>
-            </div>
-          </button>
-
-          {/* Nav links */}
-          <nav className="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-600">
-            <a href="/english-level-test" className="hover:text-[#9b276c] transition-colors">Free Test</a>
-            <a href="/schools" className="hover:text-[#9b276c] transition-colors">For Schools</a>
-            <a href="/corporate" className="hover:text-[#9b276c] transition-colors">For Companies</a>
-            <a href="/methodology" className="hover:text-[#9b276c] transition-colors">Methodology</a>
-          </nav>
-
-          {/* Actions */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onBack}
-              className="hidden sm:flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
-            >
-              <ArrowLeft size={15} /> Back
-            </button>
-            <button
-              onClick={onStart}
-              className="px-4 py-2 bg-[#9b276c] hover:bg-[#7d1f56] text-white text-sm font-black rounded-xl transition-colors"
-            >
-              Get Started
-            </button>
-          </div>
-        </div>
-      </header>
+      {/* ── Shared Nav ─── */}
+      <SiteNav onStart={onStart ?? (() => {})} />
 
       {/* ── Hero ───────────────────────────────────────────────────────── */}
       <section className="relative bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white pt-36 pb-24 px-6 text-center overflow-hidden">
@@ -338,56 +297,8 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
         </div>
       </section>
 
-      {/* ── Footer ─────────────────────────────────────────────────────── */}
-      <footer className="bg-[#0f172a] text-white">
-        <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8 text-sm">
-          <div className="col-span-2 md:col-span-1">
-            <div className="bg-[#9b276c] inline-block text-white font-bold text-lg px-3 py-1 -skew-x-6 rounded-sm tracking-tight mb-4">
-              <span style={{ textShadow: "0 0 8px rgba(253,224,71,0.8)" }}>b4skills</span>
-            </div>
-            <p className="text-slate-400 leading-relaxed text-xs">
-              Adaptive CEFR English assessment powered by IRT psychometrics and AI.
-            </p>
-          </div>
-          <div>
-            <p className="font-black uppercase tracking-widest text-[10px] text-slate-500 mb-3">Product</p>
-            <ul className="space-y-2 text-slate-400">
-              <li><a href="/english-level-test" className="hover:text-white transition-colors">Free English Test</a></li>
-              <li><a href="/cefr-english-test" className="hover:text-white transition-colors">CEFR Assessment</a></li>
-              <li><a href="/methodology" className="hover:text-white transition-colors">Methodology</a></li>
-              <li><a href="/pricing" className="hover:text-white transition-colors text-[#9b276c]">Pricing</a></li>
-            </ul>
-          </div>
-          <div>
-            <p className="font-black uppercase tracking-widest text-[10px] text-slate-500 mb-3">Solutions</p>
-            <ul className="space-y-2 text-slate-400">
-              <li><a href="/schools" className="hover:text-white transition-colors">For Schools</a></li>
-              <li><a href="/corporate" className="hover:text-white transition-colors">For Companies</a></li>
-              <li><a href="/academia" className="hover:text-white transition-colors">For Universities</a></li>
-              <li><a href="/language-schools" className="hover:text-white transition-colors">Language Schools</a></li>
-            </ul>
-          </div>
-          <div>
-            <p className="font-black uppercase tracking-widest text-[10px] text-slate-500 mb-3">Contact</p>
-            <ul className="space-y-2 text-slate-400">
-              <li>
-                <a href="mailto:hello@b4skills.com" className="hover:text-white transition-colors flex items-center gap-1">
-                  hello@b4skills.com <ExternalLink size={11} />
-                </a>
-              </li>
-            </ul>
-            <button
-              onClick={onStart}
-              className="mt-6 w-full py-2.5 bg-[#9b276c] hover:bg-[#7d1f56] text-white text-sm font-black rounded-xl transition-colors"
-            >
-              Start Free Test
-            </button>
-          </div>
-        </div>
-        <div className="border-t border-white/10 px-6 py-4 text-center text-xs text-slate-600">
-          © {new Date().getFullYear()} B4Skills. All rights reserved.
-        </div>
-      </footer>
+      {/* ── Footer ─── */}
+      <SiteFooter />
     </div>
   );
 };
