@@ -270,11 +270,14 @@ export class AssessmentEngine {
 
     // 3. Adaptive blueprint: temporarily expand maxCount for skills still imprecise
     //    (SEM > 0.40) so measurement budget flows to where it is most needed.
+    //    WRITING and SPEAKING are excluded — each task costs ~15 min of user time
+    //    and AI scoring budget, so the hard cap must be respected unconditionally.
     let effectiveBlueprint = this.config.blueprint;
     if (effectiveBlueprint && state.skillProfiles) {
       effectiveBlueprint = effectiveBlueprint.map(constraint => {
         const skillSem = state.skillProfiles![constraint.skill]?.sem ?? 1.0;
-        const relaxed = skillSem > 0.40 ? constraint.maxCount + 1 : constraint.maxCount;
+        const isProductiveSkill = constraint.skill === "WRITING" || constraint.skill === "SPEAKING";
+        const relaxed = (!isProductiveSkill && skillSem > 0.40) ? constraint.maxCount + 1 : constraint.maxCount;
         return { ...constraint, maxCount: relaxed };
       });
     }
