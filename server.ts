@@ -167,6 +167,22 @@ async function startServer() {
     store: loginLimiterStore,
   });
 
+  const registerLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 10,
+    message: { error: 'Too many registrations from this IP, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  const passwordResetLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 3,
+    message: { error: 'Too many password reset requests, please try again after 15 minutes' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
   const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     try {
       let token = req.cookies.accessToken;
@@ -228,7 +244,7 @@ async function startServer() {
     });
   };
 
-  app.post("/api/auth/register", async (req, res) => {
+  app.post("/api/auth/register", registerLimiter, async (req, res) => {
     try {
       const body = validate(RegisterBody, req.body, res);
       if (!body) return;
@@ -424,7 +440,7 @@ async function startServer() {
 </body>
 </html>`;
 
-  app.post("/api/auth/forgot-password", async (req, res) => {
+  app.post("/api/auth/forgot-password", passwordResetLimiter, async (req, res) => {
     const body = validate(ForgotPasswordBody, req.body, res);
     if (!body) return;
     const { email } = body;
@@ -454,7 +470,7 @@ async function startServer() {
     return res.json({ message: 'If email exists, reset link sent.' });
   });
 
-  app.post("/api/auth/reset-password", async (req, res) => {
+  app.post("/api/auth/reset-password", passwordResetLimiter, async (req, res) => {
     const body = validate(ResetPasswordBody, req.body, res);
     if (!body) return;
     const { token, password: newPassword } = body;
@@ -4032,9 +4048,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.delete("/api/candidates/:id", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
     const { id } = req.params;
     try {
-      await prisma.user.update({ where: { id }, data: { role: "CANDIDATE" } });
-      // Soft-delete: mark as inactive by clearing organization
-      await prisma.user.update({ where: { id }, data: { organizationId: undefined } });
+      await prisma.user.update({ where: { id }, data: { role: "CANDIDATE", organizationId: null } });
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to remove candidate" });
