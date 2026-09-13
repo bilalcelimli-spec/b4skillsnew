@@ -9,6 +9,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ScoringOrchestratorEnsemble } from "../src/lib/scoring/scoring-orchestrator.js";
 import { AcousticAnalyzer, type AudioFeatures } from "../src/lib/scoring/acoustic-analyzer.js";
 
+// vi.mock must be at the top level — hoisted before any test runs.
+vi.mock("../src/lib/scoring/multi-rater-ensemble.js", () => ({
+  scoreSpeakingWithEnsemble: vi.fn(),
+  scoreWritingWithEnsemble: vi.fn(),
+}));
+
 // Set ensemble mode for these tests
 process.env.USE_ENSEMBLE_SCORING = "true";
 
@@ -32,51 +38,6 @@ describe("Acoustic Analyzer Integration with Multi-Rater Ensemble", () => {
 
   describe("SPEAKING Assessment Flow", () => {
     it("should extract audio features during ensemble scoring", async () => {
-      // Mock the ensemble result with a valid response
-      vi.mock("../src/lib/scoring/multi-rater-ensemble.js", () => ({
-        scoreSpeakingWithEnsemble: vi.fn().mockResolvedValue({
-          finalScore: 0.72,
-          finalCefrLevel: "B1",
-          consensusLevel: "high",
-          variance: 0.05,
-          stdDev: 0.05,
-          raterAgreement: 0.9,
-          flagForHumanReview: false,
-          averageConfidence: 0.88,
-          raterScores: [
-            {
-              rater: "gemini",
-              score: 0.72,
-              cefrLevel: "B1",
-              confidence: 0.9,
-              rubricScores: { grammar: 7, vocabulary: 7, coherence: 7, taskRelevance: 8, fluency: 7 },
-              feedback: mockTranscript,
-              latencyMs: 250,
-            },
-            {
-              rater: "claude",
-              score: 0.71,
-              cefrLevel: "B1",
-              confidence: 0.88,
-              rubricScores: { grammar: 7, vocabulary: 7, coherence: 7, taskRelevance: 8, fluency: 7 },
-              feedback: mockTranscript,
-              latencyMs: 280,
-            },
-            {
-              rater: "gpt4",
-              score: 0.73,
-              cefrLevel: "B1",
-              confidence: 0.87,
-              rubricScores: { grammar: 7, vocabulary: 7, coherence: 7, taskRelevance: 8, fluency: 7 },
-              feedback: mockTranscript,
-              latencyMs: 300,
-            },
-          ],
-          recommendedAction: "accept",
-          diagnosticFeedback: "High consensus across raters",
-        }),
-      }));
-
       // Extract features independently to verify they're created correctly
       const features = await AcousticAnalyzer.analyzeAudio(mockAudioBase64, mockTranscript);
 
