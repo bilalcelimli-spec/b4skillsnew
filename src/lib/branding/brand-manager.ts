@@ -245,7 +245,11 @@ ${config.customCss ?? ""}
     if (config.logoUrl) {
       const logoContainer = document.getElementById("brand-logo");
       if (logoContainer) {
-        logoContainer.innerHTML = `<img src="${config.logoUrl}" alt="${config.name} logo" style="height:40px" />`;
+        const img = document.createElement("img");
+        img.src = config.logoUrl;
+        img.alt = `${config.name} logo`;
+        img.style.height = "40px";
+        logoContainer.replaceChildren(img);
       }
     }
 
