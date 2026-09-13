@@ -1209,15 +1209,17 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 // --- ASSESSMENT SESSION API ---
   const { AssessmentService } = await import("./src/lib/assessment-engine/server-engine.js");
 
-  app.post("/api/sessions/launch", authMiddleware, async (req, res) => {
+  app.post("/api/sessions/launch", authMiddleware, async (req: any, res) => {
     try {
       const body = validate(SessionLaunchBody, req.body, res);
       if (!body) return;
-      const { candidateId, organizationId, productLine } = body;
+      const { organizationId, productLine } = body;
+      // Always derive candidateId from the JWT — ignore body.candidateId to prevent IDOR
+      const candidateId = req.user?.id || "demo-user";
       let session;
       try {
         session = await AssessmentService.launchSession(
-          candidateId || "demo-user", 
+          candidateId,
           organizationId || "demo-org",
           productLine
         );
