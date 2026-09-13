@@ -82,18 +82,18 @@ export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
                       Assessments & Modules
                     </div>
                     <div className="grid grid-cols-2 gap-x-16 gap-y-5 mt-2">
-                      {[
-                        "b4skills Diagnostic",
-                        "b4skills Career Context",
-                        "Early Years (Ages 7-10)",
-                        "Video & Writing Interviews",
-                        "Junior Suite (Ages 11-15)",
-                        "General English Adaptive",
-                        "Academic Admissions (C1+)",
-                        "Business English Core",
-                      ].map((item) => (
+                      {([
+                        ["b4skills Diagnostic",        "/assessment"],
+                        ["b4skills Career Context",    "/corporate"],
+                        ["Early Years (Ages 7-10)",    "/schools"],
+                        ["Video & Writing Interviews", "/corporate"],
+                        ["Junior Suite (Ages 11-15)",  "/schools"],
+                        ["General English Adaptive",   "/assessment"],
+                        ["Academic Admissions (C1+)",  "/academia"],
+                        ["Business English Core",      "/corporate"],
+                      ] as [string, string][]).map(([item, href]) => (
                         <a
-                          href="#unavailable"
+                          href={href}
                           key={item}
                           className="flex items-center justify-between text-slate-600 font-bold text-[14px] hover:text-[#9b276c] group/link transition-colors border-b border-transparent hover:border-slate-100 pb-1"
                         >
@@ -114,10 +114,14 @@ export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
                     Services
                   </div>
                   <div className="flex flex-col gap-6 flex-1">
-                    {["Custom Platform Dev.", "Administration Management", "AI Assessment Analysis"].map((svc) => (
+                    {([
+                      ["Custom Platform Dev.",       "/#contact"],
+                      ["Administration Management",  "/schools"],
+                      ["AI Assessment Analysis",     "/methodology"],
+                    ] as [string, string][]).map(([svc, href]) => (
                       <a
                         key={svc}
-                        href="#unavailable"
+                        href={href}
                         className="text-slate-700 font-bold text-[15px] hover:text-[#9b276c] transition-colors flex items-center gap-3"
                       >
                         <div className="w-1.5 h-1.5 rounded-full bg-slate-300" /> {svc}

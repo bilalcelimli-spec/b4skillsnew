@@ -491,7 +491,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
             </div>
 
             <div className="inline-block border-b-2 border-indigo-200 hover:border-indigo-600 pb-1 transition-colors duration-300">
-              <a href="#unavailable" className="font-bold text-slate-900 hover:text-indigo-600 transition-colors flex items-center gap-2">
+              <a href="/methodology" className="font-bold text-slate-900 hover:text-indigo-600 transition-colors flex items-center gap-2">
                 Discover b4skills Pedagogy <ArrowRight size={18} />
               </a>
             </div>
