@@ -2736,7 +2736,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/codes/redeem", async (req, res) => {
+  app.post("/api/codes/redeem", loginLimiter, async (req, res) => {
     try {
       const { code, candidateId, email, name, surname, school, className } = req.body;
       // 1. Verify code
