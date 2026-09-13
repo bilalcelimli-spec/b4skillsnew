@@ -3865,9 +3865,25 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // --- CERTIFICATION API ---
   const { CertificateService } = await import("./src/lib/certification/certificate-service.js");
 
-  app.post("/api/certificates/generate", authMiddleware, async (req, res) => {
+  app.post("/api/certificates/generate", authMiddleware, async (req: any, res) => {
     try {
-      const { sessionData, candidateProfile, branding } = req.body;
+      const { sessionId, candidateProfile, branding } = req.body;
+      if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+
+      // Verify session belongs to the authenticated user before generating a certificate
+      if (!(await assertSessionOwnership(req, res, sessionId))) return;
+
+      // Re-read authoritative score data from DB — never trust client-supplied scores
+      let sessionData = req.body.sessionData; // demo/mock fallback only
+      if (dbAvailable) {
+        const [scoreReport, session] = await Promise.all([
+          prisma.scoreReport.findUnique({ where: { sessionId } }),
+          prisma.session.findUnique({ where: { id: sessionId }, select: { completedAt: true } }),
+        ]);
+        if (!scoreReport) return res.status(404).json({ error: "Score report not found — session may not be complete" });
+        sessionData = { sessionId, overallCefr: scoreReport.overallCefr, overallScore: scoreReport.overallScore, completedAt: session?.completedAt };
+      }
+
       const cert = await CertificateService.generateCertificate(sessionData, candidateProfile, branding);
       res.json(cert);
     } catch (error) {
