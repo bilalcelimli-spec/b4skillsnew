@@ -191,7 +191,22 @@ async function startServer() {
       }
       if (!token) return res.status(401).json({ error: 'Missing token' });
       const decoded: any = jwt.verify(token, JWT_SECRET);
-      (req as any).user = { id: decoded.userId };
+      const baseUser: Record<string, string> = { id: decoded.userId, userId: decoded.userId };
+      // Fetch role + organizationId from DB so ownership checks and admin gates work
+      // without requiring a separate checkRole middleware on every authMiddleware route.
+      if (dbAvailable && decoded.userId && !decoded.userId.startsWith("demo")) {
+        try {
+          const profile = await prisma.user.findUnique({
+            where: { id: decoded.userId },
+            select: { role: true, organizationId: true },
+          });
+          if (profile) {
+            baseUser.role = profile.role;
+            if (profile.organizationId) baseUser.organizationId = profile.organizationId;
+          }
+        } catch { /* non-fatal: role may be undefined */ }
+      }
+      (req as any).user = baseUser;
       next();
     } catch (err) {
       return res.status(401).json({ error: 'Invalid or expired access token' });
@@ -363,22 +378,32 @@ async function startServer() {
       const rf = req.cookies.refreshToken;
       if (!rf) return res.status(401).json({ error: 'No refresh token' });
       const decoded: any = jwt.verify(rf, REFRESH_SECRET);
-      
+
       const user = await prisma.user.findUnique({
         where: { id: decoded.userId },
         select: { id: true, refreshToken: true },
       });
-      if (!user || user.refreshToken !== rf) return res.status(401).json({ error: 'Invalid refresh token' });
 
-      const newAccess = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '15m' });
-      const newRefresh = jwt.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: '7d' });
-      
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { refreshToken: newRefresh }
-      });
+      if (!user) return res.status(401).json({ error: 'Invalid refresh token' });
+
+      if (user.refreshToken !== rf) {
+        // Token reuse detected: a previously-rotated token is being replayed.
+        // This is a strong signal of refresh token theft — invalidate the entire
+        // session so both the legitimate user and any attacker are forced to
+        // re-authenticate. (RFC 6749 §10.4 / OWASP Session Management.)
+        await prisma.user.update({ where: { id: user.id }, data: { refreshToken: null } });
+        const cookieOpts = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' as const, path: '/' };
+        res.clearCookie('accessToken', cookieOpts);
+        res.clearCookie('refreshToken', cookieOpts);
+        return res.status(401).json({ error: 'Refresh token reuse detected — please log in again' });
+      }
+
+      const newAccess  = jwt.sign({ userId: user.id }, JWT_SECRET,     { expiresIn: '15m' });
+      const newRefresh = jwt.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: '7d'  });
+
+      await prisma.user.update({ where: { id: user.id }, data: { refreshToken: newRefresh } });
       setAuthCookies(res, newAccess, newRefresh);
-      
+
       return res.json({ token: newAccess });
     } catch (err: any) {
       return res.status(401).json({ error: 'Tokens invalid or expired' });
@@ -1113,10 +1138,11 @@ async function startServer() {
             }
             const jwtUser = await prisma.user.findUnique({
               where: { id: decoded.userId },
-              select: { role: true, organizationId: true }
+              select: { id: true, role: true, organizationId: true }
             });
             if (jwtUser && (roles.includes(jwtUser.role) || jwtUser.role === "SUPER_ADMIN")) {
-              req.user = jwtUser;
+              // Expose both `id` and `userId` so route handlers can use either spelling.
+              req.user = { ...jwtUser, userId: jwtUser.id };
               return next();
             }
           }
@@ -1132,14 +1158,14 @@ async function startServer() {
 
       const user = await prisma.user.findUnique({
         where: { email: userEmail as string },
-        select: { role: true, organizationId: true }
+        select: { id: true, role: true, organizationId: true }
       });
 
       if (!user || !roles.includes(user.role)) {
         return res.status(403).json({ error: "Forbidden: Insufficient permissions" });
       }
 
-      req.user = user;
+      req.user = { ...user, userId: user.id };
       next();
     };
   };
@@ -4710,6 +4736,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // ── Edge cache headers ──────────────────────────────────────────────────
   const { edgeCacheMiddleware } = await import("./src/lib/cdn/edge-cache.js");
   app.use(edgeCacheMiddleware);
+
+  // ── Psychometrics router ────────────────────────────────────────────────
+  const { createPsychometricsRouter } = await import("./src/routes/psychometrics.js");
+  app.use("/api/psychometrics", createPsychometricsRouter(prisma, checkRole));
 
   // ── Anti-cheat ML v1 ────────────────────────────────────────────────────
   const { computeAnticheatReport } = await import("./src/lib/proctoring/anticheat-ml.js");
