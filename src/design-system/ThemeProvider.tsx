@@ -20,7 +20,7 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState]   = useState<Theme>(() => (localStorage.getItem("la-theme") as Theme) ?? "system");
+  const [theme, setThemeState]   = useState<Theme>(() => { try { return (localStorage.getItem("la-theme") as Theme) ?? "system"; } catch { return "system"; } });
   const [dir, setDirState]       = useState<Direction>(() => (document.documentElement.getAttribute("dir") as Direction) ?? "ltr");
   const [reducedMotion, setRM]   = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [highContrast, setHC]    = useState(() => window.matchMedia("(prefers-contrast: more)").matches);
@@ -63,7 +63,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = useCallback((t: Theme) => {
     setThemeState(t);
-    localStorage.setItem("la-theme", t);
+    try { localStorage.setItem("la-theme", t); } catch { /* private browsing */ }
   }, []);
 
   const setDir = useCallback((d: Direction) => {

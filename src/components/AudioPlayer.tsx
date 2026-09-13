@@ -49,8 +49,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const [volume, setVolume] = useState(1);
   const [audioLoadError, setAudioLoadError] = useState(false);
   const [speed, setSpeed] = useState<number>(() => {
-    const saved = localStorage.getItem("linguadapt_audio_speed");
-    return saved ? parseFloat(saved) : 1;
+    try { const saved = localStorage.getItem("linguadapt_audio_speed"); return saved ? parseFloat(saved) : 1; } catch { return 1; }
   });
 
   const playsRemaining = maxPlays > 0 ? maxPlays - playCount : Infinity;
@@ -181,7 +180,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
   const handleSpeedChange = (newSpeed: number) => {
     setSpeed(newSpeed);
-    localStorage.setItem("linguadapt_audio_speed", String(newSpeed));
+    try { localStorage.setItem("linguadapt_audio_speed", String(newSpeed)); } catch { /* private browsing */ }
     if (audioRef.current) audioRef.current.playbackRate = newSpeed;
   };
 
