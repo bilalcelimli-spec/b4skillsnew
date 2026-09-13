@@ -176,16 +176,34 @@ export async function microsoftCodeToProfile(code: string): Promise<SocialProfil
   const tokens = await httpsPost(`${MS_AUTH_BASE}/token`, body, { "Content-Type": "application/x-www-form-urlencoded" });
   if (tokens.error) throw new Error(`Microsoft token exchange failed: ${tokens.error_description ?? tokens.error}`);
 
-  // Decode the ID token payload (skip full RS256 verification for brevity; add jwks verify in prod)
+  // Validate via Microsoft's OIDC userinfo endpoint using the access_token.
+  // This avoids trusting the ID token payload without RS256 signature verification.
+  const userInfo = await new Promise<any>((resolve, reject) => {
+    https.get("https://graph.microsoft.com/oidc/userinfo", {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    }, (res) => {
+      let data = "";
+      res.on("data", (c) => { data += c; });
+      res.on("end", () => {
+        try { resolve(JSON.parse(data)); }
+        catch { reject(new Error("Invalid JSON from Microsoft userinfo")); }
+      });
+    }).on("error", reject);
+  });
+
+  if (userInfo.error) throw new Error(`Microsoft userinfo failed: ${userInfo.error_description ?? userInfo.error}`);
+
+  // oid from the ID token — more stable than sub across tenants
   const [, payloadB64] = tokens.id_token.split(".");
-  const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString());
+  const idPayload = JSON.parse(Buffer.from(payloadB64, "base64url").toString());
+
   return {
     provider:      "microsoft",
-    providerId:    payload.sub ?? payload.oid,
-    email:         payload.email ?? payload.preferred_username,
-    name:          payload.name ?? payload.email,
-    picture:       undefined,
-    emailVerified: !!payload.email,
+    providerId:    idPayload.oid ?? idPayload.sub ?? userInfo.sub,
+    email:         userInfo.email ?? idPayload.email ?? idPayload.preferred_username,
+    name:          userInfo.name ?? idPayload.name ?? userInfo.email,
+    picture:       userInfo.picture,
+    emailVerified: !!(userInfo.email ?? idPayload.email),
   };
 }
 

@@ -4021,7 +4021,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           scoreReport: { select: { overallCefr: true, overallScore: true } }
         },
         orderBy: { createdAt: "desc" },
-        take: parseInt(limit as string)
+        take: Math.min(parseInt(limit as string) || 50, 200),
       });
       res.json(sessions);
     } catch (err) {
