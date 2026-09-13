@@ -1728,10 +1728,12 @@ export const AssessmentService = {
   /**
    * Item Bank Management
    */
-  async getAllItems() {
+  async getAllItems(limit = 100, offset = 0) {
     return prisma.item.findMany({
       include: { assets: true },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      take: Math.min(limit, 200),
+      skip: offset,
     });
   },
 

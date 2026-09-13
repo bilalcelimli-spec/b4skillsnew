@@ -93,7 +93,7 @@ export const ItemBankManager: React.FC = () => {
   const fetchItems = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/items");
+      const res = await fetch("/api/items?limit=200&offset=0");
       const data = await res.json();
       setItems(data);
     } catch (err) {

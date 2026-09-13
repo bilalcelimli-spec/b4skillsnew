@@ -1511,7 +1511,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         return res.json(items);
       }
 
-      const items = await AssessmentService.getAllItems();
+      const items = await AssessmentService.getAllItems(parseInt(limit), parseInt(offset));
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch items" });

@@ -97,9 +97,11 @@ export function createItemsRouter(
   );
 
   // GET /api/items
-  router.get("/", async (_req, res) => {
+  router.get("/", async (req, res) => {
     try {
-      const items = await AssessmentService.getAllItems();
+      const limit = Math.min(parseInt((req.query.limit as string) ?? "100"), 200);
+      const offset = parseInt((req.query.offset as string) ?? "0");
+      const items = await AssessmentService.getAllItems(limit, offset);
       res.json(items);
     } catch {
       res.status(500).json({ error: "Failed to fetch items" });
