@@ -1367,6 +1367,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.get("/api/sessions/:id/next", authMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
+      if (!(await assertSessionOwnership(req, res, id))) return;
       let next;
       try {
         next = await AssessmentService.getNextItem(id);
@@ -1414,6 +1415,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.get("/api/sessions/:id/status", authMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
+      if (!(await assertSessionOwnership(req, res, id))) return;
       let status;
       try {
         status = await AssessmentService.getSessionStatus(id);
