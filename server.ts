@@ -4643,14 +4643,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   const { webhookManager } = await import("./src/lib/webhooks/webhook-manager.js");
   await webhookManager.loadFromDatabase();
 
-  app.post("/api/webhooks/register", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.post("/api/webhooks/register", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: express.Request, res: express.Response) => {
     try {
       const endpoint = await webhookManager.registerWebhook(req.body);
       res.status(201).json(endpoint);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
-  app.get("/api/webhooks/logs", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get("/api/webhooks/logs", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: express.Request, res: express.Response) => {
     try {
       const { webhookId, limit } = req.query;
       const logs = await webhookManager.getDeliveryLog(webhookId as string, parseInt(limit as string) || 100);
