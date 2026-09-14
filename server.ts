@@ -4415,8 +4415,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     } catch (err) { res.status(500).json({ error: "Report generation failed"}); }
   });
 
-  app.get("/api/reports/cohort/:orgId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get("/api/reports/cohort/:orgId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: express.Request, res: express.Response) => {
     try {
+      const caller = (req as any).user;
+      if (caller?.role === "INST_ADMIN" && caller?.organizationId !== req.params.orgId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const { orgId } = req.params;
       const format = (req.query.format as string) ?? "csv";
       const { buffer, mimeType, filename } = await ReportGenerator.generateCohortReport(orgId, format as any);
@@ -4429,23 +4433,32 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // ── Q3: Privacy Manager ───────────────────────────────────────────────────
   const { privacyManager } = await import("./src/lib/compliance/privacy-manager.js");
 
-  app.get("/api/privacy/settings/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  const privacyAdminRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"];
+  const privacySelfOrAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const caller = (req as any).user;
+    const targetId = req.params.userId;
+    if (caller?.id !== targetId && caller?.userId !== targetId && !privacyAdminRoles.includes(caller?.role)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    return next();
+  };
+
+  app.get("/api/privacy/settings/:userId", authMiddleware, privacySelfOrAdmin, async (req: express.Request, res: express.Response) => {
     try {
       const settings = await privacyManager.getPrivacySettings(req.params.userId);
       res.json(settings);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
-  app.post("/api/privacy/consent/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.post("/api/privacy/consent/:userId", authMiddleware, privacySelfOrAdmin, async (req: express.Request, res: express.Response) => {
     try {
       const { consents } = req.body;
-      const user = (req as any).user;
       await privacyManager.updateConsent(req.params.userId, consents, { ipAddress: req.ip!, userAgent: req.headers["user-agent"] ?? "" });
       res.json({ success: true });
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
-  app.post("/api/privacy/export/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.post("/api/privacy/export/:userId", authMiddleware, privacySelfOrAdmin, async (req: express.Request, res: express.Response) => {
     try {
       const actorId = (req as any).user?.id ?? "system";
       const bundle = await privacyManager.requestDataExport(req.params.userId, actorId);
@@ -4453,7 +4466,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
-  app.post("/api/privacy/delete/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.post("/api/privacy/delete/:userId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req: express.Request, res: express.Response) => {
     try {
       const actorId = (req as any).user?.id ?? "system";
       const { reason } = req.body;
@@ -4462,7 +4475,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
-  app.get("/api/privacy/audit/:userId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get("/api/privacy/audit/:userId", authMiddleware, privacySelfOrAdmin, async (req: express.Request, res: express.Response) => {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       const log = await privacyManager.getAuditLog(req.params.userId, limit);
