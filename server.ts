@@ -4407,6 +4407,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.get("/api/reports/candidate/:id", authMiddleware, async (req: express.Request, res: express.Response) => {
     try {
       const { id } = req.params;
+      const caller = (req as any).user;
+      const staffRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "TEACHER", "PROCTOR"];
+      if (caller?.id !== id && caller?.userId !== id && !staffRoles.includes(caller?.role)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const format = (req.query.format as string) ?? "csv";
       const { buffer, mimeType, filename } = await ReportGenerator.generateCandidateReport(id, format as any);
       res.setHeader("Content-Type", mimeType);
