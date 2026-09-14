@@ -508,7 +508,9 @@ async function startServer() {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({
       where: { id: user.id },
-      data: { password: hashedPassword, resetPasswordToken: null, resetPasswordExpires: null }
+      // Also clear refreshToken to invalidate any active sessions — a password
+      // reset implies account compromise; all existing sessions should be revoked.
+      data: { password: hashedPassword, resetPasswordToken: null, resetPasswordExpires: null, refreshToken: null }
     });
     return res.json({ success: true, message: 'Password reset successfully' });
   });
