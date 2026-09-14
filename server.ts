@@ -3663,7 +3663,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const { id } = req.params;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
-    if (userRole === "TEACHER" && userOrgId !== id) return res.status(403).json({ error: "Forbidden" });
+    const scopedRoles1 = ["TEACHER", "INST_ADMIN"];
+    if (scopedRoles1.includes(userRole) && userOrgId !== id) return res.status(403).json({ error: "Forbidden" });
     try {
       const sessionsCount = await prisma.session.count({ where: { organizationId: id } });
       const feedbacksCount = await (prisma as any).feedback.count({ where: { organizationId: id } });
@@ -4012,7 +4013,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const { id } = req.params;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
-    if (userRole === "TEACHER" && userOrgId !== id) return res.status(403).json({ error: "Forbidden" });
+    const scopedRoles = ["TEACHER", "INST_ADMIN"];
+    if (scopedRoles.includes(userRole) && userOrgId !== id) return res.status(403).json({ error: "Forbidden" });
     const { search } = req.query;
     try {
       const where: any = { organizationId: id, role: "CANDIDATE" };
