@@ -10,6 +10,8 @@ type AuthMode = "signin" | "signup" | "forgot" | "reset" | "verify";
 
 interface AuthPageProps {
   onBack?: () => void;
+  initialMode?: AuthMode;
+  initialToken?: string;
 }
 
 // Marker highlight component
@@ -20,15 +22,15 @@ const Highlight = ({ children, className }: { children: React.ReactNode, classNa
   </span>
 );
 
-export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
-  const [mode, setMode] = useState<AuthMode>("signin");
+export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initialToken }) => {
+  const [mode, setMode] = useState<AuthMode>(initialMode ?? "signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [resetToken, setResetToken] = useState("");
+  const [resetToken, setResetToken] = useState(initialToken ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);  const [pendingFeature, setPendingFeature] = useState<string | null>(null);

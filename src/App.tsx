@@ -321,6 +321,12 @@ export default function App() {
     return <EmailVerifyPage token={token} onDone={() => navigate("/")} />;
   }
 
+  // Password reset link — /reset-password?token=...
+  if (location.pathname === "/reset-password") {
+    const token = new URLSearchParams(location.search).get("token");
+    return <AuthPage initialMode="reset" initialToken={token ?? ""} onBack={() => navigate("/")} />;
+  }
+
   const seoVariant = SEO_PATHS[location.pathname] ?? null;
   if (!user && seoVariant) {
     return (
