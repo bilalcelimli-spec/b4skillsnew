@@ -4487,7 +4487,17 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   const { LearningTrajectoryAnalyzer } = await import("./src/lib/analytics/learning-trajectory.js");
   const trajectoryAnalyzer = new LearningTrajectoryAnalyzer();
 
-  app.get("/api/analytics/trajectory/:candidateId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  const candidateAdminRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "TEACHER", "PROCTOR"];
+  const candidateSelfOrAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const caller = (req as any).user;
+    const targetId = req.params.candidateId;
+    if (caller?.id !== targetId && caller?.userId !== targetId && !candidateAdminRoles.includes(caller?.role)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    return next();
+  };
+
+  app.get("/api/analytics/trajectory/:candidateId", authMiddleware, candidateSelfOrAdmin, async (req: express.Request, res: express.Response) => {
     try {
       const skill = req.query.skill as string | undefined;
       const trajectory = await trajectoryAnalyzer.analyzeTrajectory(req.params.candidateId, skill as any);
@@ -4495,14 +4505,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
-  app.get("/api/analytics/trajectory/:candidateId/multi", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get("/api/analytics/trajectory/:candidateId/multi", authMiddleware, candidateSelfOrAdmin, async (req: express.Request, res: express.Response) => {
     try {
       const trajectories = await trajectoryAnalyzer.analyzeMultiSkillTrajectory(req.params.candidateId);
       res.json(trajectories);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
-  app.get("/api/analytics/trajectory/:candidateId/vs-cohort", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get("/api/analytics/trajectory/:candidateId/vs-cohort", authMiddleware, candidateSelfOrAdmin, async (req: express.Request, res: express.Response) => {
     try {
       const { orgId } = req.query;
       if (!orgId) return res.status(400).json({ error: "orgId required" });
@@ -4537,7 +4547,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   const pathEngine = new LearningPathEngine();
   const spacedRep = new SpacedRepetitionScheduler();
 
-  app.get("/api/recommendations/path/:candidateId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get("/api/recommendations/path/:candidateId", authMiddleware, candidateSelfOrAdmin, async (req: express.Request, res: express.Response) => {
     try {
       const target = req.query.targetCefrLevel as string | undefined;
       const path = await pathEngine.generatePersonalisedPath(req.params.candidateId, target as any);
@@ -4545,7 +4555,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
-  app.get("/api/recommendations/review-queue/:candidateId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get("/api/recommendations/review-queue/:candidateId", authMiddleware, candidateSelfOrAdmin, async (req: express.Request, res: express.Response) => {
     try {
       await spacedRep.syncFromSessions(req.params.candidateId);
       const queue = await spacedRep.getReviewQueue(req.params.candidateId);
@@ -4553,14 +4563,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
-  app.post("/api/recommendations/review/:candidateId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.post("/api/recommendations/review/:candidateId", authMiddleware, candidateSelfOrAdmin, async (req: express.Request, res: express.Response) => {
     try {
       const result = await spacedRep.recordReview(req.body);
       res.json(result);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
-  app.get("/api/recommendations/review/:candidateId/forecast", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get("/api/recommendations/review/:candidateId/forecast", authMiddleware, candidateSelfOrAdmin, async (req: express.Request, res: express.Response) => {
     try {
       await spacedRep.syncFromSessions(req.params.candidateId);
       const queue = await spacedRep.getReviewQueue(req.params.candidateId);
