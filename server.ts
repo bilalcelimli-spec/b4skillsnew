@@ -4390,8 +4390,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // ── Cohort Analytics ─────────────────────────────────────────────────────
   const { cohortAnalytics } = await import("./src/lib/analytics/cohort-analytics.js");
 
-  app.get("/api/analytics/cohort/:orgId/full", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get("/api/analytics/cohort/:orgId/full", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: express.Request, res: express.Response) => {
     try {
+      const caller = (req as any).user;
+      if (caller?.role === "INST_ADMIN" && caller?.organizationId !== req.params.orgId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const stats = await cohortAnalytics.getCohortStats(req.params.orgId);
       res.json(stats);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
@@ -4557,14 +4561,22 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   const { DataWarehouseExporter } = await import("./src/lib/analytics/data-warehouse-exporter.js");
   const dataExporter = new DataWarehouseExporter();
 
-  app.get("/api/bi/metrics/:orgId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  const biOrgGuard = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const caller = (req as any).user;
+    if (caller?.role === "INST_ADMIN" && caller?.organizationId !== (req.params.orgId ?? req.params.id)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    return next();
+  };
+
+  app.get("/api/bi/metrics/:orgId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), biOrgGuard, async (req: express.Request, res: express.Response) => {
     try {
       const metrics = await dataExporter.getBIMetrics(req.params.orgId);
       res.json(metrics);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
-  app.post("/api/bi/export/:orgId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.post("/api/bi/export/:orgId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), biOrgGuard, async (req: express.Request, res: express.Response) => {
     try {
       const { format, from: fromDate, to: toDate, skill } = req.body;
       const result = await dataExporter.exportAssessments({
@@ -4583,14 +4595,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // ── Q6: SLA Manager ──────────────────────────────────────────────────────
   const { slaManager } = await import("./src/lib/sla/sla-manager.js");
 
-  app.get("/api/sla/:orgId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get("/api/sla/:orgId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), biOrgGuard, async (req: express.Request, res: express.Response) => {
     try {
       const report = await slaManager.generateMonthlyReport(req.params.orgId);
       res.json(report);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
-  app.get("/api/sla/:orgId/range", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get("/api/sla/:orgId/range", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), biOrgGuard, async (req: express.Request, res: express.Response) => {
     try {
       const from = new Date(req.query.from as string || Date.now() - 30 * 86400000);
       const to   = new Date(req.query.to   as string || Date.now());
@@ -4618,7 +4630,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
-  app.get("/api/webhooks/stats/:orgId", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get("/api/webhooks/stats/:orgId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), biOrgGuard, async (req: express.Request, res: express.Response) => {
     try {
       const stats = await webhookManager.getDeliveryStats(req.params.orgId);
       res.json(stats);
