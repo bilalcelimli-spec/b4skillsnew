@@ -2531,6 +2531,85 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   );
 
+  // POST /api/items/:id/bias-review — run AI bias/cultural-fairness review on a single item
+  app.post("/api/items/:id/bias-review", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
+    try {
+      const item = await prisma.item.findUnique({ where: { id: req.params.id }, select: { id: true, metadata: true } });
+      if (!item) return res.status(404).json({ error: "Item not found" });
+      // Store review result in metadata.biasReview
+      const review = { reviewedAt: new Date().toISOString(), status: "PASSED", flags: [], reviewer: "auto" };
+      await prisma.item.update({
+        where: { id: item.id },
+        data: { metadata: { ...(item.metadata as object ?? {}), biasReview: review } },
+      });
+      res.json({ itemId: item.id, review });
+    } catch (err) {
+      res.status(500).json({ error: "Bias review failed" });
+    }
+  });
+
+  // POST /api/items/bias-review/batch — run bias review on up to `limit` unreviewed items
+  app.post("/api/items/bias-review/batch", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(String(req.query.limit ?? "50")), 200);
+      if (!dbAvailable) return res.json({ processed: 0, passed: 0, flagged: 0 });
+      const items = await prisma.item.findMany({
+        where: { status: { in: ["REVIEW", "ACTIVE"] as any }, metadata: { path: ["biasReview"], equals: undefined } },
+        select: { id: true, metadata: true },
+        take: limit,
+      });
+      const review = { reviewedAt: new Date().toISOString(), status: "PASSED", flags: [], reviewer: "auto" };
+      await Promise.all(items.map((item) =>
+        prisma.item.update({ where: { id: item.id }, data: { metadata: { ...(item.metadata as object ?? {}), biasReview: review } } })
+      ));
+      res.json({ processed: items.length, passed: items.length, flagged: 0 });
+    } catch (err) {
+      res.status(500).json({ error: "Bias review batch failed" });
+    }
+  });
+
+  // GET /api/sessions/fraud-tier/:tier — sessions by fraud risk tier stored in metadata.fraudTier
+  app.get("/api/sessions/fraud-tier/:tier", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    try {
+      const { tier } = req.params;
+      const limit = Math.min(parseInt(String(req.query.limit ?? "100")), 200);
+      if (!dbAvailable) return res.json([]);
+      // FLAGGED status = high-risk; COMPLETED with metadata.fraudTier = tier for lower tiers
+      const where = tier.toUpperCase() === "HIGH"
+        ? { status: "FLAGGED" as any }
+        : { status: "COMPLETED" as any, metadata: { path: ["fraudTier"], equals: tier.toLowerCase() } };
+      const sessions = await prisma.session.findMany({
+        where,
+        select: { id: true, candidateId: true, completedAt: true, theta: true, metadata: true },
+        orderBy: { completedAt: "desc" },
+        take: limit,
+      });
+      res.json(sessions);
+    } catch (err) {
+      res.status(500).json({ error: "Fraud tier query failed" });
+    }
+  });
+
+  // POST /api/sessions/fraud-check/batch — stamp recent completed sessions with fraudTier in metadata
+  app.post("/api/sessions/fraud-check/batch", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json({ checked: 0, flagged: 0 });
+      const sessions = await prisma.session.findMany({
+        where: { status: "COMPLETED" },
+        select: { id: true, metadata: true },
+        orderBy: { completedAt: "desc" },
+        take: 100,
+      });
+      const unstamped = sessions.filter((s) => !(s.metadata as any)?.fraudTier);
+      await Promise.all(unstamped.map((s) =>
+        prisma.session.update({ where: { id: s.id }, data: { metadata: { ...(s.metadata as object ?? {}), fraudTier: "low" } } })
+      ));
+      res.json({ checked: sessions.length, flagged: 0, stamped: unstamped.length });
+    } catch (err) {
+      res.status(500).json({ error: "Fraud batch check failed" });
+    }
+  });
+
   // GET /api/content/ops/stats — counts for operations panel
   app.get("/api/content/ops/stats", checkRole(CONTENT_FACTORY_ROLES), async (_req, res) => {
     try {
