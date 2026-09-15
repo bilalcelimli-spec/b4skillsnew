@@ -517,7 +517,7 @@ async function startServer() {
   });
 
   // POST /api/auth/verify-email — send (or resend) a verification link
-  app.post("/api/auth/verify-email", async (req, res) => {
+  app.post("/api/auth/verify-email", passwordResetLimiter, async (req, res) => {
     const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || user.emailVerified) return res.json({ message: 'Process started if email needs verification' });
@@ -2947,6 +2947,25 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.json({ received: true });
     } catch (err) {
       res.status(400).send(`Webhook Error: ${(err as Error).message}`);
+    }
+  });
+
+  app.get("/api/ecosystem/config", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
+    const organizationId = req.query.organizationId as string;
+    if (!organizationId) return res.status(400).json({ error: "organizationId required" });
+    try {
+      const caller = req.user;
+      if (caller?.role === "INST_ADMIN" && caller?.organizationId !== organizationId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const org = await prisma.organization.findUnique({ where: { id: organizationId }, select: { settings: true } });
+      if (!org) return res.status(404).json({ error: "Organization not found" });
+      const settings = (org.settings as any) ?? {};
+      // Never expose the raw API key — mask it
+      const masked = settings.apiKey ? `sk_live_...${String(settings.apiKey).slice(-6)}` : null;
+      res.json({ settings: { ...settings, apiKey: masked } });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch ecosystem config" });
     }
   });
 
