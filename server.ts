@@ -5803,6 +5803,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         if (!lineItemUrl || !ltiUserId || score === undefined) {
           return res.status(400).json({ error: "lineItemUrl, ltiUserId, score required" });
         }
+        if (baseUrl && !isWebhookUrlSafe(baseUrl) && !isWebhookUrlSafe(baseUrl.replace(/^http:/, "https:"))) {
+          return res.status(400).json({ error: "baseUrl must not point to a private network address" });
+        }
+        if (!isWebhookUrlSafe(lineItemUrl) && !isWebhookUrlSafe(lineItemUrl.replace(/^http:/, "https:"))) {
+          return res.status(400).json({ error: "lineItemUrl must not point to a private network address" });
+        }
         const canvas = createCanvasAdapter({ baseUrl, accessToken: token });
         await canvas.agsGradePassback(lineItemUrl, ltiUserId, Number(score), Number(pointsPossible ?? 100), comment);
         return res.json({ ok: true });
@@ -5818,6 +5824,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const { courseId, assignmentId, moodleUserId, score, maxScore, comment, baseUrl, wsToken } = req.body;
         if (!courseId || !assignmentId || !moodleUserId || score === undefined) {
           return res.status(400).json({ error: "courseId, assignmentId, moodleUserId, score required" });
+        }
+        if (baseUrl && !isWebhookUrlSafe(baseUrl) && !isWebhookUrlSafe(baseUrl.replace(/^http:/, "https:"))) {
+          return res.status(400).json({ error: "baseUrl must not point to a private network address" });
         }
         const moodle = createMoodleAdapter({ baseUrl, wsToken });
         await moodle.agsGradePassback({ courseId, assignmentId, moodleUserId, score: Number(score), maxScore, comment });
