@@ -5401,9 +5401,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.get("/api/proctoring/anticheat/:sessionId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
     try {
       const { sessionId } = req.params;
+      const caller = (req as any).user;
       if (dbAvailable) {
-        const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true, status: true } });
+        const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true, status: true, organizationId: true } });
         if (!session) return res.status(404).json({ error: "Session not found" });
+        if (caller?.role === "INST_ADMIN" && session.organizationId && session.organizationId !== caller?.organizationId) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
       }
       res.json({ sessionId, message: "Submit telemetry via POST /api/proctoring/anticheat to compute report" });
     } catch (err) {
