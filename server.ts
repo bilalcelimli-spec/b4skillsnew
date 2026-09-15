@@ -5060,13 +5060,22 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   const trajectoryAnalyzer = new LearningTrajectoryAnalyzer();
 
   const candidateAdminRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "TEACHER", "PROCTOR"];
-  const candidateSelfOrAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const caller = (req as any).user;
-    const targetId = req.params.candidateId;
-    if (caller?.id !== targetId && caller?.userId !== targetId && !candidateAdminRoles.includes(caller?.role)) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-    return next();
+  const candidateSelfOrAdmin = async (req: express.Request, res: express.Response, next: express.NextFunction): Promise<void> => {
+    try {
+      const caller = (req as any).user;
+      const targetId = req.params.candidateId;
+      if (caller?.id === targetId || caller?.userId === targetId) return next();
+      if (!candidateAdminRoles.includes(caller?.role)) {
+        return void res.status(403).json({ error: "Forbidden" });
+      }
+      const orgScopedRoles = ["INST_ADMIN", "TEACHER", "PROCTOR"];
+      if (orgScopedRoles.includes(caller?.role) && dbAvailable) {
+        const candidate = await prisma.user.findUnique({ where: { id: targetId }, select: { organizationId: true } });
+        if (!candidate) return void res.status(404).json({ error: "Candidate not found" });
+        if (candidate.organizationId !== caller?.organizationId) return void res.status(403).json({ error: "Forbidden" });
+      }
+      return next();
+    } catch { res.status(500).json({ error: "Internal server error" }); }
   };
 
   app.get("/api/analytics/trajectory/:candidateId", authMiddleware, candidateSelfOrAdmin, async (req: express.Request, res: express.Response) => {
@@ -5217,6 +5226,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   app.post("/api/webhooks/register", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: express.Request, res: express.Response) => {
     try {
+      const caller = (req as any).user;
+      if (caller?.role === "INST_ADMIN") req.body.organizationId = caller.organizationId;
       const endpoint = await webhookManager.registerWebhook(req.body);
       res.status(201).json(endpoint);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
@@ -5224,8 +5235,15 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   app.get("/api/webhooks/logs", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: express.Request, res: express.Response) => {
     try {
+      const caller = (req as any).user;
       const { webhookId, limit } = req.query;
-      const logs = await webhookManager.getDeliveryLog(webhookId as string, parseInt(limit as string) || 100);
+      if (caller?.role === "INST_ADMIN") {
+        const orgEndpointIds = new Set(webhookManager.getEndpointsForOrg(caller.organizationId).map((e: any) => e.id));
+        if (webhookId && !orgEndpointIds.has(webhookId as string)) return res.status(403).json({ error: "Forbidden" });
+        const logs = webhookManager.getDeliveryLog(webhookId as string, parseInt(limit as string) || 100);
+        return res.json(logs.filter((l: any) => orgEndpointIds.has(l.webhookId)));
+      }
+      const logs = webhookManager.getDeliveryLog(webhookId as string, parseInt(limit as string) || 100);
       res.json(logs);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
