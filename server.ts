@@ -4281,9 +4281,15 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const userId: string | undefined = req.user?.id;
       const role: string | undefined = req.user?.role;
-      const adminRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "PROCTOR"];
-      if (userId !== id && !(role && adminRoles.includes(role))) {
+      const superRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"];
+      const orgScopedRoles = ["INST_ADMIN", "PROCTOR"];
+      if (userId !== id && !superRoles.includes(role ?? "") && !orgScopedRoles.includes(role ?? "")) {
         return res.status(403).json({ error: "Forbidden" });
+      }
+      if (orgScopedRoles.includes(role ?? "") && dbAvailable) {
+        const candidate = await prisma.user.findUnique({ where: { id }, select: { organizationId: true } });
+        if (!candidate) return res.status(404).json({ error: "Candidate not found" });
+        if (candidate.organizationId !== req.user?.organizationId) return res.status(403).json({ error: "Forbidden" });
       }
       const sessions = await prisma.session.findMany({
         where: { candidateId: id },
@@ -4302,9 +4308,15 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const userId: string | undefined = req.user?.id;
       const role: string | undefined = req.user?.role;
-      const adminRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "PROCTOR", "TEACHER"];
-      if (userId !== id && !(role && adminRoles.includes(role))) {
+      const superRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"];
+      const orgScopedRoles = ["INST_ADMIN", "PROCTOR", "TEACHER"];
+      if (userId !== id && !superRoles.includes(role ?? "") && !orgScopedRoles.includes(role ?? "")) {
         return res.status(403).json({ error: "Forbidden" });
+      }
+      if (orgScopedRoles.includes(role ?? "") && dbAvailable) {
+        const candidate = await prisma.user.findUnique({ where: { id }, select: { organizationId: true } });
+        if (!candidate) return res.status(404).json({ error: "Candidate not found" });
+        if (candidate.organizationId !== req.user?.organizationId) return res.status(403).json({ error: "Forbidden" });
       }
       const sessions = await prisma.session.findMany({
         where: { candidateId: id, status: "COMPLETED" },
@@ -5964,6 +5976,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     // Authenticated — GET /api/validity/:sessionId/detail (full result with candidate info)
     app.get("/api/validity/:sessionId/detail", checkRole(["CANDIDATE", "INST_ADMIN", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
       try {
+        if (!(await assertSessionOwnership(req, res, req.params.sessionId))) return;
         const result = await ValidityPolicyService.checkValidity(req.params.sessionId);
         return res.json(result);
       } catch (err: any) {
