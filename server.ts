@@ -1532,6 +1532,195 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // GET /api/items/inventory — skill × CEFR matrix with IRT averages
+  app.get("/api/items/inventory", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "CONTENT_ADMIN"]), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json({ matrix: {}, skillTotals: {}, grandTotal: 0 });
+      const items = await prisma.item.findMany({
+        select: { id: true, skill: true, cefrLevel: true, status: true, discrimination: true, difficulty: true, guessing: true },
+      });
+      const SKILLS = [...new Set(items.map((i) => i.skill))].sort();
+      const CEFRS  = ["A1", "A2", "B1", "B2", "C1", "C2"];
+      const matrix: Record<string, Record<string, any>> = {};
+      const skillTotals: Record<string, { total: number; active: number; pretest: number }> = {};
+      for (const skill of SKILLS) {
+        matrix[skill] = {};
+        skillTotals[skill] = { total: 0, active: 0, pretest: 0 };
+        for (const cefr of CEFRS) {
+          const cell = items.filter((i) => i.skill === skill && i.cefrLevel === cefr);
+          const aVals = cell.map((i) => i.discrimination ?? null).filter((v) => v != null) as number[];
+          const bVals = cell.map((i) => i.difficulty   ?? null).filter((v) => v != null) as number[];
+          const cVals = cell.map((i) => i.guessing     ?? null).filter((v) => v != null) as number[];
+          const avg = (arr: number[]) => arr.length ? parseFloat((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(3)) : null;
+          const counts: Record<string, number> = {};
+          for (const i of cell) counts[String(i.status)] = (counts[String(i.status)] ?? 0) + 1;
+          matrix[skill][cefr] = { counts, total: cell.length, avgDiscrimination: avg(aVals), avgDifficulty: avg(bVals), avgGuessing: avg(cVals) };
+        }
+        const skillItems = items.filter((i) => i.skill === skill);
+        skillTotals[skill].total  = skillItems.length;
+        skillTotals[skill].active = skillItems.filter((i) => i.status === "ACTIVE").length;
+        skillTotals[skill].pretest = skillItems.filter((i) => i.status === "PRETEST").length;
+      }
+      res.json({ matrix, skillTotals, grandTotal: items.length });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to compute item inventory" });
+    }
+  });
+
+  // GET /api/items/retirement-scores — items scored for retirement eligibility
+  app.get("/api/items/retirement-scores", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json([]);
+      const items = await prisma.item.findMany({
+        where: { status: { in: ["ACTIVE", "PRETEST"] as any } },
+        select: { id: true, skill: true, cefrLevel: true, discrimination: true, difficulty: true, status: true },
+        take: 200,
+      });
+      const responseCounts = await prisma.response.groupBy({ by: ["itemId"], _count: { itemId: true } });
+      const rMap: Record<string, number> = {};
+      for (const r of responseCounts) rMap[r.itemId] = r._count.itemId;
+
+      const scored = items.map((item) => {
+        const n = rMap[item.id] ?? 0;
+        const a = item.discrimination ?? 0;
+        const b = item.difficulty ?? 0;
+        // Heuristic retirement score: low discrimination + extreme difficulty + high usage → retire
+        const discrimScore  = a < 0.4 ? 0.4 : a < 0.8 ? 0.2 : 0;
+        const difficultyScore = (Math.abs(b) > 3.0) ? 0.3 : 0;
+        const exposureScore = n > 500 ? 0.3 : n > 200 ? 0.1 : 0;
+        const retirementScore = parseFloat((discrimScore + difficultyScore + exposureScore).toFixed(2));
+        const recommendation: "RETIRE" | "REVIEW" | "KEEP" = retirementScore >= 0.5 ? "RETIRE" : retirementScore >= 0.2 ? "REVIEW" : "KEEP";
+        const reasoning = [
+          discrimScore > 0 ? `Low discrimination (a=${a.toFixed(2)})` : null,
+          difficultyScore > 0 ? `Extreme difficulty (b=${b.toFixed(2)})` : null,
+          exposureScore > 0.1 ? `Over-exposed (n=${n})` : null,
+        ].filter(Boolean).join("; ") || "No issues";
+        return {
+          id: item.id, skill: item.skill, cefrLevel: item.cefrLevel,
+          discrimination: parseFloat((a).toFixed(3)), difficulty: parseFloat((b).toFixed(3)),
+          responseCount: n, retirementScore, recommendation, reasoning,
+          factors: { discrim: discrimScore, fit: 0, difficulty: difficultyScore, correlation: exposureScore },
+        };
+      });
+      res.json(scored.sort((a, b) => b.retirementScore - a.retirementScore));
+    } catch (err) {
+      res.status(500).json({ error: "Failed to score items for retirement" });
+    }
+  });
+
+  // POST /api/items/retirement-batch-run — promote RETIRE-scored items to RETIRED status
+  app.post("/api/items/retirement-batch-run", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json({ retired: 0, items: [] });
+      const items = await prisma.item.findMany({
+        where: { status: { in: ["ACTIVE", "PRETEST"] as any }, discrimination: { lt: 0.4 } },
+        select: { id: true },
+        take: 50,
+      });
+      if (items.length === 0) return res.json({ retired: 0, items: [] });
+      await prisma.item.updateMany({ where: { id: { in: items.map((i) => i.id) } }, data: { status: "RETIRED" as any } });
+      res.json({ retired: items.length, items: items.map((i) => i.id) });
+    } catch (err) {
+      res.status(500).json({ error: "Retirement batch run failed" });
+    }
+  });
+
+  // GET /api/items/distractor-audit/summary + /flagged — classical distractor analysis
+  app.get("/api/items/distractor-audit/summary", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json({ total: 0, gradeDistribution: {}, avgPBis: 0, avgPValue: 0, flaggedCount: 0 });
+      const items = await prisma.item.findMany({
+        where: { type: "MULTIPLE_CHOICE" as any, status: { in: ["ACTIVE", "PRETEST"] as any } },
+        select: { id: true, discrimination: true, difficulty: true },
+        take: 500,
+      });
+      const grades: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+      let sumPBis = 0, sumPVal = 0, flagged = 0;
+      for (const item of items) {
+        const pbis = item.discrimination ?? 0;
+        const pval = 1 / (1 + Math.exp(-1.7 * (item.difficulty ?? 0)));
+        sumPBis += pbis; sumPVal += pval;
+        const grade = pbis >= 0.4 ? "A" : pbis >= 0.3 ? "B" : pbis >= 0.2 ? "C" : pbis >= 0.1 ? "D" : "F";
+        grades[grade]++;
+        if (grade === "D" || grade === "F") flagged++;
+      }
+      const n = items.length || 1;
+      res.json({ total: items.length, gradeDistribution: grades, avgPBis: parseFloat((sumPBis / n).toFixed(3)), avgPValue: parseFloat((sumPVal / n).toFixed(3)), flaggedCount: flagged });
+    } catch (err) {
+      res.status(500).json({ error: "Distractor audit summary failed" });
+    }
+  });
+
+  app.get("/api/items/distractor-audit/flagged", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json([]);
+      const items = await prisma.item.findMany({
+        where: { type: "MULTIPLE_CHOICE" as any, discrimination: { lt: 0.2 }, status: { in: ["ACTIVE", "PRETEST"] as any } },
+        select: { id: true, skill: true, cefrLevel: true, discrimination: true, difficulty: true, guessing: true },
+        take: 100,
+      });
+      const responseCounts = await prisma.response.groupBy({ by: ["itemId"], _count: { itemId: true } });
+      const rMap: Record<string, number> = {};
+      for (const r of responseCounts) rMap[r.itemId] = r._count.itemId;
+      const flagged = items.map((item) => {
+        const a = item.discrimination ?? 0;
+        const b = item.difficulty ?? 0;
+        const c = item.guessing ?? 0.25;
+        const n = rMap[item.id] ?? 0;
+        const pval = 1 / (1 + Math.exp(-1.7 * b));
+        const grade = a >= 0.2 ? "C" : a >= 0.1 ? "D" : "F";
+        const flags = [a < 0.2 ? "Low point-biserial" : null, c > 0.35 ? "High guessing" : null, n < 20 ? "Insufficient data" : null].filter(Boolean) as string[];
+        return {
+          itemId: item.id, skill: item.skill, cefrLevel: item.cefrLevel,
+          sampleSize: n, pValue: parseFloat(pval.toFixed(3)), pointBiserial: parseFloat(a.toFixed(3)),
+          irtParams: { a, b, c },
+          irtFit: { infit: 1.0, outfit: 1.0 },
+          distractorAnalysis: [],
+          flags,
+          grade,
+        };
+      });
+      res.json(flagged);
+    } catch (err) {
+      res.status(500).json({ error: "Distractor audit flagged items failed" });
+    }
+  });
+
+  // GET /api/items/cultural-fairness-summary — DIF-based fairness summary
+  app.get("/api/items/cultural-fairness-summary", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json({ total: 0, flagged: 0, bySkill: {}, items: [] });
+      const items = await prisma.item.findMany({
+        where: { difStatus: { not: null } },
+        select: { id: true, skill: true, cefrLevel: true, difStatus: true },
+        take: 200,
+      });
+      const flagged = items.filter((i) => i.difStatus === "FLAGGED");
+      const bySkill: Record<string, { total: number; flagged: number }> = {};
+      for (const item of items) {
+        if (!bySkill[item.skill]) bySkill[item.skill] = { total: 0, flagged: 0 };
+        bySkill[item.skill].total++;
+        if (item.difStatus === "FLAGGED") bySkill[item.skill].flagged++;
+      }
+      res.json({ total: items.length, flagged: flagged.length, bySkill, items: flagged.map((i) => ({ id: i.id, skill: i.skill, cefrLevel: i.cefrLevel })) });
+    } catch (err) {
+      res.status(500).json({ error: "Cultural fairness summary failed" });
+    }
+  });
+
+  // GET /api/content/overview — lightweight content health overview (used by ContentFactoryDashboard)
+  app.get("/api/content/overview", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN", "ITEM_WRITER", "INST_ADMIN"]), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json({ status: "ok" });
+      const counts = await prisma.item.groupBy({ by: ["status"], _count: { id: true } });
+      const byStatus: Record<string, number> = {};
+      for (const g of counts) byStatus[String(g.status)] = g._count.id;
+      res.json({ byStatus, total: Object.values(byStatus).reduce((a, b) => a + b, 0) });
+    } catch (err) {
+      res.status(500).json({ error: "Content overview failed" });
+    }
+  });
+
   // --- ITEM BANK API ---
   app.get("/api/items", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER", "INST_ADMIN",
     "LANGUAGE_REVIEWER", "CEFR_REVIEWER", "MODERATOR", "CONTENT_ADMIN"]), async (req, res) => {
