@@ -4105,7 +4105,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const { id } = req.params;
     const userRole = req.user?.role;
     const userOrgId = req.user?.organizationId;
-    const scopedRoles1 = ["TEACHER", "INST_ADMIN"];
+    const scopedRoles1 = ["TEACHER", "INST_ADMIN", "PROCTOR"];
     if (scopedRoles1.includes(userRole) && userOrgId !== id) return res.status(403).json({ error: "Forbidden" });
     try {
       const sessionsCount = await prisma.session.count({ where: { organizationId: id } });

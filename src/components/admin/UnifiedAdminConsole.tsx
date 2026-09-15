@@ -173,7 +173,7 @@ const NAV_GROUPS: NavGroup[] = [
 export const UnifiedAdminConsole: React.FC<{ orgId?: string }> = ({
   orgId: propOrgId,
 }) => {
-  const ORG_ID = propOrgId || "b4skills-demo";
+  const ORG_ID = propOrgId ?? "";
   const [activeSection, setActiveSection] = useState<Section>("overview");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
