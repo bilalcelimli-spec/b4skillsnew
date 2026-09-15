@@ -2508,6 +2508,96 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // GET /api/aig/quality — AIG item funnel + CEFR difficulty alignment stats
+  app.get("/api/aig/quality", checkRole(CONTENT_FACTORY_ROLES), async (_req, res) => {
+    try {
+      if (!dbAvailable) {
+        return res.json({
+          funnel: { draft: 0, review: 0, pretest: 0, active: 0, retired: 0, pretestSurvivalRate: null, calibrationSurvivalRate: null },
+          cefrAlignment: { n: 0, pearsonR: null, mae: null, rmse: null, byLevel: {} },
+          largeDeviations: [],
+          generatedAt: new Date().toISOString(),
+        });
+      }
+
+      const [statusCounts, calibratedItems] = await Promise.all([
+        prisma.item.groupBy({ by: ["status"], _count: { id: true } }),
+        prisma.item.findMany({
+          where: { difficulty: { not: null }, cefrLevel: { not: null } },
+          select: { id: true, skill: true, cefrLevel: true, difficulty: true, status: true, difStatus: true },
+          take: 500,
+        }),
+      ]);
+
+      const byStatus: Record<string, number> = {};
+      for (const g of statusCounts) byStatus[String(g.status)] = g._count.id;
+
+      const { CEFR_THETA_THRESHOLDS } = await import("./src/lib/cefr/cefr-framework.js");
+      const cefrMidpoints: Record<string, number> = {
+        A1: -3.0, A2: -2.0, B1: -0.5, B2: 0.8, C1: 2.0, C2: 3.2,
+      };
+
+      const aligned = calibratedItems.filter((i) => i.cefrLevel && i.difficulty != null);
+      let sumSqErr = 0, sumAbsErr = 0;
+      const byLevel: Record<string, { n: number; predictedBMean: number; empiricalBMean: number; mae: number }> = {};
+      const largeDeviations: any[] = [];
+
+      for (const item of aligned) {
+        const predicted = cefrMidpoints[item.cefrLevel!] ?? 0;
+        const empirical = item.difficulty as number;
+        const delta = empirical - predicted;
+        sumSqErr += delta * delta;
+        sumAbsErr += Math.abs(delta);
+        if (!byLevel[item.cefrLevel!]) byLevel[item.cefrLevel!] = { n: 0, predictedBMean: 0, empiricalBMean: 0, mae: 0 };
+        byLevel[item.cefrLevel!].n++;
+        byLevel[item.cefrLevel!].predictedBMean += predicted;
+        byLevel[item.cefrLevel!].empiricalBMean += empirical;
+        byLevel[item.cefrLevel!].mae += Math.abs(delta);
+        if (Math.abs(delta) >= 1.0) {
+          largeDeviations.push({ itemId: item.id, skill: item.skill, cefrLevel: item.cefrLevel, predictedB: predicted, empiricalB: empirical, deltaB: parseFloat(delta.toFixed(3)), flagged: Math.abs(delta) >= 1.5 });
+        }
+      }
+      for (const lvl of Object.values(byLevel)) {
+        lvl.predictedBMean = parseFloat((lvl.predictedBMean / lvl.n).toFixed(3));
+        lvl.empiricalBMean = parseFloat((lvl.empiricalBMean / lvl.n).toFixed(3));
+        lvl.mae = parseFloat((lvl.mae / lvl.n).toFixed(3));
+      }
+
+      const n = aligned.length;
+      const mae = n ? parseFloat((sumAbsErr / n).toFixed(3)) : null;
+      const rmse = n ? parseFloat(Math.sqrt(sumSqErr / n).toFixed(3)) : null;
+
+      // Pearson r between predicted and empirical B
+      let pearsonR: number | null = null;
+      if (n > 1) {
+        const xs = aligned.map((i) => cefrMidpoints[i.cefrLevel!] ?? 0);
+        const ys = aligned.map((i) => i.difficulty as number);
+        const mx = xs.reduce((a, b) => a + b, 0) / n;
+        const my = ys.reduce((a, b) => a + b, 0) / n;
+        const num = xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0);
+        const den = Math.sqrt(xs.reduce((s, x) => s + (x - mx) ** 2, 0) * ys.reduce((s, y) => s + (y - my) ** 2, 0));
+        pearsonR = den > 0 ? parseFloat((num / den).toFixed(3)) : null;
+      }
+
+      const pilotCount = byStatus["DRAFT"] ?? 0; // proxy: use DRAFT as "generated"
+      const reviewCount = byStatus["REVIEW"] ?? 0;
+      const pretestCount = byStatus["PRETEST"] ?? byStatus["PILOT"] ?? 0;
+      const activeCount = byStatus["ACTIVE"] ?? 0;
+      const retiredCount = byStatus["RETIRED"] ?? 0;
+      const pretestSurvivalRate = pretestCount + activeCount > 0 ? parseFloat((activeCount / (pretestCount + activeCount)).toFixed(3)) : null;
+
+      return res.json({
+        funnel: { draft: pilotCount, review: reviewCount, pretest: pretestCount, active: activeCount, retired: retiredCount, pretestSurvivalRate, calibrationSurvivalRate: pretestSurvivalRate },
+        cefrAlignment: { n, pearsonR, mae, rmse, byLevel },
+        largeDeviations: largeDeviations.slice(0, 50),
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("[aig/quality]", err);
+      res.status(500).json({ error: "AIG quality report failed" });
+    }
+  });
+
   // POST /api/content/calibration/promote — PILOT items with ≥200 responses → CALIBRATION stage
   app.post("/api/content/calibration/promote",
     checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PSYCHOMETRICIAN"]),
@@ -3967,6 +4057,78 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // Mock AI Scoring Endpoint (Simulation)
+  // POST /api/ai-tutor — streaming AI tutor using Gemini; falls back to a static hint if key absent
+  app.post("/api/ai-tutor", authMiddleware, async (req: any, res) => {
+    const { message, history = [], context = {} } = req.body as { message: string; history: { role: string; content: string }[]; context: Record<string, unknown> };
+    if (!message) return res.status(400).json({ error: "message required" });
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    const send = (delta: string) => res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+    const done = () => { res.write("data: [DONE]\n\n"); res.end(); };
+
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        // Graceful fallback: send a static helpful hint
+        const hints = [
+          "Focus on the key vocabulary in the question stem.",
+          "Consider all answer options carefully before choosing.",
+          "Try to understand the context around unfamiliar words.",
+          "Break the sentence into smaller parts to analyse its structure.",
+        ];
+        const hint = hints[Math.floor(Math.random() * hints.length)];
+        for (const word of hint.split(" ")) { send(word + " "); }
+        return done();
+      }
+
+      const systemPrompt = [
+        "You are an expert English language tutor helping a student practise for a CEFR-aligned assessment.",
+        "Be concise (1-3 sentences), encouraging, and pedagogically precise.",
+        context.cefrLevel ? `The student is currently at ${context.cefrLevel} level.` : "",
+        context.skill ? `The current skill focus is ${context.skill}.` : "",
+      ].filter(Boolean).join(" ");
+
+      const contents = [
+        ...history.map((h) => ({ role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.content }] })),
+        { role: "user", parts: [{ text: message }] },
+      ];
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?key=${apiKey}&alt=sse`;
+      const body = JSON.stringify({ system_instruction: { parts: [{ text: systemPrompt }] }, contents, generationConfig: { maxOutputTokens: 256, temperature: 0.7 } });
+
+      const https = await import("https");
+      const urlObj = new URL(url);
+      const options = { hostname: urlObj.hostname, path: urlObj.pathname + urlObj.search, method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } };
+
+      const apiReq = https.request(options, (apiRes) => {
+        apiRes.on("data", (chunk: Buffer) => {
+          const text = chunk.toString();
+          for (const line of text.split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            const payload = line.slice(6).trim();
+            if (!payload || payload === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(payload);
+              const delta = parsed?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+              if (delta) send(delta);
+            } catch { /* partial chunk, skip */ }
+          }
+        });
+        apiRes.on("end", done);
+        apiRes.on("error", () => done());
+      });
+      apiReq.on("error", () => done());
+      apiReq.write(body);
+      apiReq.end();
+    } catch {
+      done();
+    }
+  });
+
   app.post("/api/score/ai", authMiddleware, async (req, res) => {
     try {
       const { type, content } = req.body;
