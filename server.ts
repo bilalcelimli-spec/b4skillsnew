@@ -3928,7 +3928,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const caller = req.user;
     if (caller?.role === "INST_ADMIN" && caller?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
     const branding = req.body;
-    const adminId = req.headers["x-admin-id"] as string; // Mock admin ID for now
+    const adminId: string = caller?.id ?? caller?.userId ?? "";
 
     try {
       const org = await (prisma.organization as any).update({
@@ -3960,7 +3960,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const caller = req.user;
     if (caller?.role === "INST_ADMIN" && caller?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
     const { candidates } = req.body;
-    const adminId = req.headers["x-admin-id"] as string;
+    const adminId: string = caller?.id ?? caller?.userId ?? "";
     
     let success = 0;
     let failed = 0;
