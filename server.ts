@@ -3069,6 +3069,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const { organizationId } = req.query;
       if (!organizationId) return res.status(400).json({ error: "Organization ID required" });
+      const caller = (req as any).user;
+      if (caller?.role === "INST_ADMIN" && caller?.organizationId !== organizationId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const analytics = await ReportingService.getCohortAnalytics(organizationId as string);
       res.json(analytics);
     } catch (error) {
@@ -3301,6 +3305,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.get("/api/proctoring/report/:sessionId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req, res) => {
     try {
       const { sessionId } = req.params;
+      const caller = (req as any).user;
+      if (caller?.role === "PROCTOR" && dbAvailable) {
+        const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { organizationId: true } });
+        if (!session) return res.status(404).json({ error: "Session not found" });
+        if (session.organizationId && session.organizationId !== caller?.organizationId) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+      }
       const report = await ProctoringService.getTrustReport(sessionId);
       res.json(report);
     } catch (error) {
@@ -3381,6 +3393,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.post("/api/proctoring/audit", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req, res) => {
     const { sessionId } = req.body;
     try {
+      const caller = (req as any).user;
+      if (caller?.role === "PROCTOR" && dbAvailable) {
+        const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { organizationId: true } });
+        if (!session) return res.status(404).json({ error: "Session not found" });
+        if (session.organizationId && session.organizationId !== caller?.organizationId) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+      }
       const { AnomalyDetectionService } = await import("./src/lib/proctoring/anomaly-detection-service.js");
       const trustScore = await AnomalyDetectionService.auditSession(sessionId);
       res.json({ trustScore });
@@ -4605,6 +4625,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.delete("/api/candidates/:id", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
     const { id } = req.params;
     try {
+      const caller = (req as any).user;
+      if (caller?.role === "INST_ADMIN") {
+        const candidate = await prisma.user.findUnique({ where: { id }, select: { organizationId: true } });
+        if (!candidate) return res.status(404).json({ error: "Candidate not found" });
+        if (candidate.organizationId !== caller?.organizationId) return res.status(403).json({ error: "Forbidden" });
+      }
       await prisma.user.update({ where: { id }, data: { role: "CANDIDATE", organizationId: null } });
       res.json({ success: true });
     } catch (err) {
@@ -4915,9 +4941,16 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const { id } = req.params;
       const caller = (req as any).user;
-      const staffRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "TEACHER", "PROCTOR"];
-      if (caller?.id !== id && caller?.userId !== id && !staffRoles.includes(caller?.role)) {
+      const orgScopedRoles = ["INST_ADMIN", "TEACHER", "PROCTOR"];
+      const superRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"];
+      const isSelf = caller?.id === id || caller?.userId === id;
+      if (!isSelf && !superRoles.includes(caller?.role) && !orgScopedRoles.includes(caller?.role)) {
         return res.status(403).json({ error: "Forbidden" });
+      }
+      if (!isSelf && orgScopedRoles.includes(caller?.role)) {
+        const candidate = await prisma.user.findUnique({ where: { id }, select: { organizationId: true } });
+        if (!candidate) return res.status(404).json({ error: "Candidate not found" });
+        if (candidate.organizationId !== caller?.organizationId) return res.status(403).json({ error: "Forbidden" });
       }
       const format = (req.query.format as string) ?? "csv";
       const { buffer, mimeType, filename } = await ReportGenerator.generateCandidateReport(id, format as any);
