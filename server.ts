@@ -285,7 +285,8 @@ async function startServer() {
       setAuthCookies(res, accessToken, refreshToken);
 
       // Send welcome + email verification asynchronously (don't block registration)
-      const verifyToken = crypto.randomBytes(32).toString('hex');
+      // Token is a signed JWT so expiry is enforced without a DB column.
+      const verifyToken = jwt.sign({ userId: user.id, purpose: "verify-email" }, JWT_SECRET, { expiresIn: "24h" });
       await prisma.user.update({ where: { id: user.id }, data: { verifyEmailToken: verifyToken } });
       const verifyLink = `${APP_BASE_URL}/verify-email?token=${verifyToken}`;
       sendEmail(
@@ -521,7 +522,7 @@ async function startServer() {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || user.emailVerified) return res.json({ message: 'Process started if email needs verification' });
 
-    const verifyToken = crypto.randomBytes(32).toString('hex');
+    const verifyToken = jwt.sign({ userId: user.id, purpose: "verify-email" }, JWT_SECRET, { expiresIn: "24h" });
     await prisma.user.update({
       where: { id: user.id },
       data: { verifyEmailToken: verifyToken }
@@ -546,6 +547,15 @@ async function startServer() {
   app.get("/api/auth/verify-email", async (req, res) => {
     const { token } = req.query as { token?: string };
     if (!token) return res.status(400).json({ error: "Token required" });
+    // Verify JWT expiry first (no DB hit needed for expired tokens)
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET) as any;
+    } catch {
+      return res.status(400).json({ error: "Invalid or expired token" });
+    }
+    if (decoded.purpose !== "verify-email") return res.status(400).json({ error: "Invalid token" });
+    // Confirm the token matches what's stored (allows one-time use / invalidation via resend)
     const user = await prisma.user.findFirst({ where: { verifyEmailToken: token } });
     if (!user) return res.status(400).json({ error: "Invalid or expired token" });
     await prisma.user.update({
