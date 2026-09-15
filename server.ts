@@ -1309,6 +1309,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // If S3 is not configured the snapshot URL is omitted but the exam is never blocked.
   app.post("/api/sessions/:id/identity-snapshot", authMiddleware, async (req, res) => {
     const { id } = req.params;
+    if (!(await assertSessionOwnership(req, res, id))) return;
     const { frame, failureReason } = req.body as {
       frame?: string | null;
       failureReason?: string;
@@ -3114,6 +3115,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.get("/api/sessions/:id/adaptive-report", authMiddleware, async (req: any, res) => {
     const { id } = req.params;
     try {
+      if (!(await assertSessionOwnership(req, res, id))) return;
       const { thetaToCefr, thetaToBeps, getCanDo } = await import("./src/lib/cefr/cefr-framework.js");
 
       if (!dbAvailable) {
@@ -3388,6 +3390,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.get("/api/sessions/:id/learning-path", authMiddleware, async (req: any, res) => {
     const { id } = req.params;
     try {
+      if (!(await assertSessionOwnership(req, res, id))) return;
       if (!dbAvailable) {
         // Demo stub: 7-day / 30-day / 90-day milestones
         return res.json({
@@ -3429,6 +3432,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // Event: { event: "complete", data: { sessionId } }  — fired once all responses scored.
   app.get("/api/sessions/:id/scoring-status", authMiddleware, async (req, res) => {
     const { id } = req.params;
+    // Ownership check BEFORE SSE headers so we can still send a 403 JSON response
+    if (!(await assertSessionOwnership(req, res, id))) return;
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -3793,6 +3798,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // --- PHASE 10: POLISHING & ANALYTICS ---
   app.post("/api/sessions/:id/feedback", authMiddleware, async (req, res) => {
     const { id } = req.params;
+    if (!(await assertSessionOwnership(req, res, id))) return;
     const { rating, comment, category, organizationId } = req.body;
     try {
       const feedback = await (prisma as any).feedback.create({
