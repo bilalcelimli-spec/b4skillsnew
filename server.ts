@@ -221,11 +221,19 @@ async function startServer() {
     if (sessionId.startsWith("demo-session-") || !dbAvailable) return true;
     const userId: string | undefined = req.user?.id;
     const role: string | undefined = req.user?.role;
-    const adminRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "PROCTOR", "RATER"];
-    if (role && adminRoles.includes(role)) return true;
+    const superRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"];
+    if (role && superRoles.includes(role)) return true;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return false; }
-    const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { candidateId: true } });
+    const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { candidateId: true, organizationId: true } });
     if (!session) { res.status(404).json({ error: "Session not found" }); return false; }
+    // Org-scoped admin roles: verify the session belongs to their org
+    const orgScopedRoles = ["INST_ADMIN", "PROCTOR", "TEACHER"];
+    if (role && orgScopedRoles.includes(role)) {
+      if (session.organizationId && session.organizationId !== req.user?.organizationId) {
+        res.status(403).json({ error: "Forbidden" }); return false;
+      }
+      return true;
+    }
     if (session.candidateId !== userId) { res.status(403).json({ error: "Forbidden" }); return false; }
     return true;
   };
@@ -5883,6 +5891,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const { generateApiKey } = await import("./src/lib/reporting/score-report-api.js");
         const { orgId } = req.body;
         if (!orgId) return res.status(400).json({ error: "orgId required" });
+        const caller = (req as any).user;
+        if (caller?.role === "INST_ADMIN" && caller?.organizationId !== orgId) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
         const { key, digest } = generateApiKey();
         await prisma.organization.update({ where: { id: orgId }, data: { apiKeyDigest: digest } as any });
         return res.json({ key, note: "Store this key securely — it will not be shown again." });
@@ -5915,6 +5927,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       try {
         const { itemId, value, latencyMs } = req.body;
         if (!itemId || value === undefined) return res.status(400).json({ error: "itemId and value required" });
+        if (!(await assertSessionOwnership(req, res, req.params.id))) return;
         const result = await DiagnosticService.respond(req.params.id, itemId, String(value), Number(latencyMs ?? 0));
         return res.json(result);
       } catch (err: any) {
@@ -5925,6 +5938,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     // GET /api/sessions/diagnostic/:id/report
     app.get("/api/sessions/diagnostic/:id/report", checkRole(["CANDIDATE", "INST_ADMIN", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
       try {
+        if (!(await assertSessionOwnership(req, res, req.params.id))) return;
         const report = await DiagnosticService.getReport(req.params.id);
         return res.json(report);
       } catch (err: any) {
