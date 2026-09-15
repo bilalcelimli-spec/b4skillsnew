@@ -3007,6 +3007,29 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // --- RATING QUEUE API ---
   const { RatingQueueService } = await import("./src/lib/scoring/rating-queue.js");
 
+  // GET /api/rating/stats — aggregate stats for RatingDashboard header
+  app.get("/api/rating/stats", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (_req, res) => {
+    try {
+      if (!dbAvailable) return res.json({ pending: 0, completed: 0, avgTurnaround: null });
+      const [pending, completed, recentCompleted] = await Promise.all([
+        (prisma as any).ratingTask?.count?.({ where: { status: "PENDING" } }) ?? 0,
+        (prisma as any).ratingTask?.count?.({ where: { status: "COMPLETED" } }) ?? 0,
+        (prisma as any).ratingTask?.findMany?.({
+          where: { status: "COMPLETED" },
+          select: { createdAt: true, updatedAt: true },
+          orderBy: { updatedAt: "desc" },
+          take: 50,
+        }) ?? [],
+      ]);
+      const avgMs = recentCompleted.length
+        ? recentCompleted.reduce((sum: number, t: any) => sum + (new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime()), 0) / recentCompleted.length
+        : null;
+      res.json({ pending, completed, avgTurnaroundMs: avgMs ? Math.round(avgMs) : null });
+    } catch (err) {
+      res.json({ pending: 0, completed: 0, avgTurnaroundMs: null });
+    }
+  });
+
   app.get("/api/rating/tasks", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
     try {
       const { status } = req.query;
@@ -3265,6 +3288,27 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.json(event);
     } catch (error) {
       res.status(500).json({ error: "Failed to log proctoring event" });
+    }
+  });
+
+  // POST /api/proctoring/screenshot — store a proctoring frame (base64 JPEG) for review
+  app.post("/api/proctoring/screenshot", authMiddleware, async (req: any, res) => {
+    try {
+      const { sessionId, reason, frame } = req.body;
+      if (!sessionId || !frame) return res.status(400).json({ error: "sessionId and frame required" });
+      // Store as a SCREENSHOT proctoring event with the frame in metadata
+      const severityMap: Record<string, number> = { LOW: 1, MEDIUM: 3, HIGH: 5 };
+      await (prisma as any).proctoringEvent.create({
+        data: {
+          sessionId,
+          type: "SCREENSHOT",
+          severity: severityMap["LOW"],
+          metadata: { reason: reason ?? "periodic", frameLength: String(frame).length, capturedAt: new Date().toISOString() },
+        },
+      });
+      res.json({ stored: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to store screenshot event" });
     }
   });
 
@@ -3879,8 +3923,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     });
   });
 
-  app.patch("/api/organizations/:id/branding", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
+  app.patch("/api/organizations/:id/branding", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
     const { id } = req.params;
+    const caller = req.user;
+    if (caller?.role === "INST_ADMIN" && caller?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
     const branding = req.body;
     const adminId = req.headers["x-admin-id"] as string; // Mock admin ID for now
 
@@ -3909,8 +3955,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/organizations/:id/candidates/bulk-import", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
+  app.post("/api/organizations/:id/candidates/bulk-import", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
     const { id } = req.params;
+    const caller = req.user;
+    if (caller?.role === "INST_ADMIN" && caller?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
     const { candidates } = req.body;
     const adminId = req.headers["x-admin-id"] as string;
     
@@ -4031,8 +4079,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.get("/api/organizations/:id/settings", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
+  app.get("/api/organizations/:id/settings", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
     const { id } = req.params;
+    const caller = req.user;
+    if (caller?.role === "INST_ADMIN" && caller?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
     try {
       const org = await prisma.organization.findUnique({ where: { id }, select: { settings: true } });
       res.json((org?.settings as any) || {});
@@ -4148,8 +4198,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.get("/api/organizations/:id/proctoring-alerts", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req, res) => {
+  app.get("/api/organizations/:id/proctoring-alerts", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req: any, res) => {
     const { id } = req.params;
+    const caller = req.user;
+    if (caller?.role === "PROCTOR" && caller?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
     try {
       const alerts = await (prisma as any).proctoringEvent.findMany({
         where: { session: { organizationId: id }, severity: { gte: 2 } }, // MEDIUM or HIGH
@@ -4507,8 +4559,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.patch("/api/organizations/:id/settings", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
+  app.patch("/api/organizations/:id/settings", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
     const { id } = req.params;
+    const caller = req.user;
+    if (caller?.role === "INST_ADMIN" && caller?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
     try {
       const org = await prisma.organization.findUnique({ where: { id } });
       if (!org) return res.status(404).json({ error: "Organization not found" });
@@ -4539,8 +4593,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.get("/api/organizations/:id/sessions", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "PROCTOR"]), async (req, res) => {
+  app.get("/api/organizations/:id/sessions", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN", "PROCTOR"]), async (req: any, res) => {
     const { id } = req.params;
+    const caller = req.user;
+    if ((caller?.role === "INST_ADMIN" || caller?.role === "PROCTOR") && caller?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
     const { status, limit = "50" } = req.query;
     try {
       const where: any = { organizationId: id };
