@@ -398,6 +398,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     setLoading(true);
     try {
       const res = await fetch("/api/assessment/placement/start", {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), consentToResearch: true }),
@@ -445,6 +446,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
     setError(null);
     try {
       const res = await fetch(`/api/assessment/placement/${placementId}/respond`, {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId: currentItem.id, selectedOption: answer, latencyMs }),

@@ -124,6 +124,7 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
       await fetch("/api/proctoring/screenshot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ sessionId, reason, frame: dataUrl }),
       });
     } catch {

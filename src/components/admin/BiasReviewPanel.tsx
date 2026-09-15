@@ -109,7 +109,7 @@ export function BiasReviewPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/items?status=REVIEW,ACTIVE&limit=100");
+      const res = await fetch("/api/items?status=REVIEW,ACTIVE&limit=100", { credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       // Filter to items that don't have biasReview in metadata
@@ -136,7 +136,7 @@ export function BiasReviewPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/items?status=REVIEW,ACTIVE&limit=100");
+      const res = await fetch("/api/items?status=REVIEW,ACTIVE&limit=100", { credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const items = (data.items ?? data) as Array<{

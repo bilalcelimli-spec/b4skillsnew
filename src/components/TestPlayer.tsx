@@ -278,6 +278,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     if (!sessionId) return;
     try {
       await fetch("/api/proctoring/event", {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, type, severity, metadata })
@@ -390,6 +391,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
 
     try {
       const res = await fetch(`/api/sessions/${sessionId}/respond`, {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId: currentItem.id, value: finalValue, latencyMs: Date.now() - responseStartTime.current, candidateId })

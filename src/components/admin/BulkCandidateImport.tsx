@@ -43,6 +43,7 @@ export const BulkCandidateImport: React.FC<{ orgId: string }> = ({ orgId }) => {
 
     try {
       const res = await fetch(`/api/organizations/${orgId}/candidates/bulk-import`, {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ candidates: data })

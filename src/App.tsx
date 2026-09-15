@@ -209,7 +209,7 @@ export default function App() {
 
           // Load recent activity for the dashboard
           try {
-            const histRes = await fetch(`/api/candidates/${data.user.uid}/history`);
+            const histRes = await fetch(`/api/candidates/${data.user.uid}/history`, { credentials: "include" });
             if (histRes.ok) {
               const sessions = await histRes.json();
               setRecentSessions(Array.isArray(sessions) ? sessions.slice(0, 5) : []);
@@ -246,6 +246,7 @@ export default function App() {
     // Auto-generate certificate
     try {
       const res = await fetch("/api/certificates/generate", {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 

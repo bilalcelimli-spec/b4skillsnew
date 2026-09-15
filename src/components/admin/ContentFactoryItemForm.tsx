@@ -254,6 +254,7 @@ export function ContentFactoryItemForm({ onSuccess }: { onSuccess?: (itemId: str
     setSaving(true);
     try {
       const resp = await fetch("/api/items", {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

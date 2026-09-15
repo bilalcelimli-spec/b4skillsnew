@@ -25,6 +25,7 @@ export const CandidateFeedback: React.FC<FeedbackProps> = ({ sessionId, orgId, o
     setLoading(true);
     try {
       await fetch(`/api/sessions/${sessionId}/feedback`, {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rating, comment, category, organizationId: orgId })

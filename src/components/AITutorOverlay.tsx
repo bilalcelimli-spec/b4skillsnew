@@ -69,6 +69,7 @@ export function useAITutor(context?: TutorContext) {
       const resp = await fetch("/api/ai-tutor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           message: text.trim(),
           history: messages.slice(-6).map((m) => ({ role: m.role, content: m.text })),

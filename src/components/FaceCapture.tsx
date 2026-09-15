@@ -104,6 +104,7 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
       const res = await fetch(`/api/sessions/${sessionId}/identity-snapshot`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ frame: dataUrl }),
         signal: controller.signal,
       });
@@ -256,6 +257,7 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
                     await fetch(`/api/sessions/${sessionId}/identity-snapshot`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
+                      credentials: "include",
                       body: JSON.stringify({ frame: null, failureReason: "max_retries_exceeded" }),
                     });
                   } catch { /* non-fatal — proceed regardless */ }

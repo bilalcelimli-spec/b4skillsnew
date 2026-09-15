@@ -294,6 +294,7 @@ export function ContentFactoryReviewQueue() {
       const resp = await fetch(`/api/items/${item.id}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           reviewType: stageCfg?.reviewType ?? "LANGUAGE_REVIEW",
           verdict,
@@ -518,6 +519,7 @@ export function ContentFactoryReviewQueue() {
                         const r = await fetch(`/api/items/${item.id}/content`, {
                           method: "PATCH",
                           headers: { "Content-Type": "application/json" },
+                          credentials: "include",
                           body: JSON.stringify({ content: parsed, reason: "Manual edit during review" }),
                         });
                         const d = await r.json();
@@ -655,6 +657,7 @@ export function ContentFactoryReviewQueue() {
                       const r = await fetch(`/api/items/${item.id}/pipeline`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
+                        credentials: "include",
                         body: JSON.stringify({ stage: "LANGUAGE_REVIEW" }),
                       });
                       if (r.ok) {

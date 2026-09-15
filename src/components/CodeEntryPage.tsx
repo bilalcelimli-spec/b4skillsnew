@@ -40,6 +40,7 @@ export const CodeEntryPage: React.FC<{ onBack: () => void, onSuccess: (productLi
     try {
       const res = await fetch("/api/codes/redeem", {
         method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           code, candidateId: cid, email: formData.email, name: formData.name, surname: formData.surname, school: formData.school, className: formData.grade
         })

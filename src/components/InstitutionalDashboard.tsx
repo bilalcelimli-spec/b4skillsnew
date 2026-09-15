@@ -89,6 +89,7 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
       const res = await fetch("/api/ecosystem/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ organizationId, webhookUrl, generateApiKey: generateKey })
       });
       const result = await res.json();
@@ -108,6 +109,7 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
       const res = await fetch("/api/onboarding/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ candidates: candidates.map((c: any) => ({ ...c, organizationId })) })
       });
       const results = await res.json();

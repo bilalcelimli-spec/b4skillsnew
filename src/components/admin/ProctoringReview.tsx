@@ -31,6 +31,7 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/organizations/${orgId}/proctoring-alerts`, {
+        credentials: "include",
         headers: { "x-user-email": "bilalcelimli@gmail.com" } // Mock admin auth
       });
       const data = await res.json();

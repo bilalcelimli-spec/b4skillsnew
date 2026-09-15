@@ -67,6 +67,7 @@ export const CandidateProfile: React.FC<{ user: any; onLogout: () => void }> = (
               const res = await fetch("/api/payments/checkout", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "include",
                 body: JSON.stringify({ userId: user.uid, credits: 1 })
               });
               const { url } = await res.json();

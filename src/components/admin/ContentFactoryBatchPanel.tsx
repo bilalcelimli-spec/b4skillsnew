@@ -152,6 +152,7 @@ export function ContentFactoryBatchPanel() {
 
     try {
       const resp = await fetch("/api/content/batch/generate", {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cell, count, notes: notes || undefined }),

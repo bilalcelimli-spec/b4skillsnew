@@ -223,6 +223,7 @@ export const ItemBankManager: React.FC = () => {
 
     try {
       const res = await fetch(`/api/items/${editingItem.id}/assets`, {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newAsset)

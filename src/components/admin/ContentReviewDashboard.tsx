@@ -58,6 +58,7 @@ export const ContentReviewDashboard = () => {
 
     try {
       const res = await fetch(`/api/items/${currentItem.id}`, {
+        credentials: "include",
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -86,6 +87,7 @@ export const ContentReviewDashboard = () => {
     try {
       // Step 1: Call AI to edit content
       const aiRes = await fetch("/api/ai/edit-item", {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -106,6 +108,7 @@ export const ContentReviewDashboard = () => {
 
       // Step 2: Save to DB
       const saveRes = await fetch(`/api/items/${currentItem.id}`, {
+        credentials: "include",
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: preservedContent })

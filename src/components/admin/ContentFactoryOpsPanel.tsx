@@ -204,7 +204,7 @@ export function ContentFactoryOpsPanel() {
       statKey: "missingCodes",
       statLabel: "items missing codes",
       run: async () => {
-        const r = await fetch("/api/content/item-codes/backfill", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ maxItems: 500 }) });
+        const r = await fetch("/api/content/item-codes/backfill", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ maxItems: 500 }) });
         const d = await r.json();
         if (!r.ok) return { ok: false, message: d.error ?? "Backfill failed" };
         return { ok: true, message: `Assigned ${d.assigned} codes`, detail: d.failed > 0 ? `${d.failed} failed — check server logs` : undefined };
@@ -220,7 +220,7 @@ export function ContentFactoryOpsPanel() {
       statKey: "missingEmbeddings",
       statLabel: "items missing embeddings",
       run: async () => {
-        const r = await fetch("/api/content/duplicates/backfill", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ maxItems: 200 }) });
+        const r = await fetch("/api/content/duplicates/backfill", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ maxItems: 200 }) });
         const d = await r.json();
         if (!r.ok) return { ok: false, message: d.error ?? "Backfill failed" };
         return { ok: true, message: `Embedded ${d.processed} items`, detail: d.failed > 0 ? `${d.failed} failed (non-fatal)` : undefined };

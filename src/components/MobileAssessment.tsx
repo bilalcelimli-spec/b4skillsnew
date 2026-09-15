@@ -78,6 +78,7 @@ function useOfflineQueue() {
           await fetch(`/api/sessions/${r.sessionId}/respond`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            credentials: "include",
             body: JSON.stringify({ itemId: r.itemId, value: r.value, latencyMs: r.latencyMs }),
           });
         } catch {
@@ -95,6 +96,7 @@ function useOfflineQueue() {
     const res = await fetch(`/api/sessions/${payload.sessionId}/respond`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ itemId: payload.itemId, value: payload.value, latencyMs: payload.latencyMs }),
     });
     return res.json();
