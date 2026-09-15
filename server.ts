@@ -3698,6 +3698,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
         if (!session) return res.status(404).json({ error: "Session not found" });
 
+        const caller = req.user;
+        if (caller?.role === "INST_ADMIN" && session.organizationId && session.organizationId !== caller?.organizationId) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+
         const theta: number = session.finalTheta ?? session.currentTheta ?? 0;
         const sem:   number = session.finalSem   ?? session.currentSem   ?? 0.5;
 
@@ -5686,12 +5691,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         if (!stateData) return res.status(403).send("Invalid or expired state");
 
         const claims = LtiService.parseIdToken(id_token);
-        // Resolve platform config for validation
+        // Resolve platform config for validation — reject unknown issuers
         const platform = ltiPlatforms.get(claims.iss) ?? LtiService.resolvePlatformConfig(claims.iss, Array.isArray(claims.aud) ? claims.aud[0] : claims.aud);
-        if (platform) {
-          const validation = LtiService.validateLaunchClaims(claims, platform, stateData.nonce);
-          if (!validation.valid) return res.status(403).send(`LTI validation failed: ${validation.reason}`);
-        }
+        if (!platform) return res.status(403).send(`Unknown LTI platform: ${claims.iss}`);
+        const validation = LtiService.validateLaunchClaims(claims, platform, stateData.nonce);
+        if (!validation.valid) return res.status(403).send(`LTI validation failed: ${validation.reason}`);
 
         // Auto-provision user from LTI identity
         const email = (claims as any)["https://purl.imsglobal.org/spec/lti/claim/lis"]?.person_contact_email_primary
@@ -5959,6 +5963,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const orgId   = req.query.orgId as string;
         const days    = parseInt(req.query.days as string ?? "60");
         if (!orgId) return res.status(400).json({ error: "orgId required" });
+        const caller = (req as any).user;
+        if (caller?.role === "INST_ADMIN" && caller?.organizationId !== orgId) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
         const results = await ValidityPolicyService.getExpiringSessions(orgId, days);
         return res.json({ data: results, meta: { count: results.length, withinDays: days } });
       } catch (err: any) {
