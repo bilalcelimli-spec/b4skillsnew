@@ -3087,6 +3087,15 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const { candidates } = req.body;
       if (!Array.isArray(candidates)) return res.status(400).json({ error: "Invalid candidates list" });
+      const caller = (req as any).user;
+      if (caller?.role === "INST_ADMIN") {
+        for (const c of candidates) {
+          if (c.organizationId && c.organizationId !== caller?.organizationId) {
+            return res.status(403).json({ error: "Forbidden: cannot onboard into another organization" });
+          }
+          c.organizationId = caller?.organizationId;
+        }
+      }
       const results = await BulkOnboardingService.onboardingCandidates(candidates);
       res.json(results);
     } catch (error) {
@@ -3098,19 +3107,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.post("/api/codes/generate", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
     try {
       const { organizationId, productLine, count = 1, prefix = "E", expiresAt } = req.body;
-      const targetOrg = organizationId || "b4skills-demo";
+      const caller = (req as any).user;
+      const targetOrg = caller?.role === "INST_ADMIN" ? caller?.organizationId : (organizationId ?? null);
+      if (!targetOrg) return res.status(400).json({ error: "organizationId required" });
 
-      // Ensure the organization exists to prevent foreign key errors
       const org = await prisma.organization.findUnique({ where: { id: targetOrg } });
-      if (!org) {
-        await prisma.organization.create({
-          data: {
-            id: targetOrg,
-            name: targetOrg,
-            slug: targetOrg + "-" + Date.now()
-          }
-        });
-      }
+      if (!org) return res.status(404).json({ error: "Organization not found" });
 
       const codes = [];
       const generated = new Date();
