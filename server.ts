@@ -5224,10 +5224,25 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   const { webhookManager } = await import("./src/lib/webhooks/webhook-manager.js");
   await webhookManager.loadFromDatabase();
 
+  // SSRF guard: reject webhook URLs that resolve to private/loopback addresses
+  const isWebhookUrlSafe = (rawUrl: string): boolean => {
+    try {
+      const u = new URL(rawUrl);
+      if (u.protocol !== "https:") return false;
+      const host = u.hostname.toLowerCase();
+      // Block localhost and common loopback forms
+      if (host === "localhost" || host === "::1") return false;
+      // Block private IPv4 ranges and link-local
+      if (/^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\.|^169\.254\./.test(host)) return false;
+      return true;
+    } catch { return false; }
+  };
+
   app.post("/api/webhooks/register", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: express.Request, res: express.Response) => {
     try {
       const caller = (req as any).user;
       if (caller?.role === "INST_ADMIN") req.body.organizationId = caller.organizationId;
+      if (!isWebhookUrlSafe(req.body.url)) return res.status(400).json({ error: "Webhook URL must be a public HTTPS endpoint" });
       const endpoint = await webhookManager.registerWebhook(req.body);
       res.status(201).json(endpoint);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
