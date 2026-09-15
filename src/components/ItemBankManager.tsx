@@ -93,7 +93,7 @@ export const ItemBankManager: React.FC = () => {
   const fetchItems = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/items?limit=200&offset=0");
+      const res = await fetch("/api/items?limit=200&offset=0", { credentials: "include" });
       const data = await res.json();
       setItems(data);
     } catch (err) {
@@ -134,7 +134,9 @@ export const ItemBankManager: React.FC = () => {
     if (!confirm("Are you sure you want to delete this item?")) return;
 
     try {
-      const res = await fetch(`/api/items/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/items/${id}`, { method: "DELETE",
+        credentials: "include",
+      });
       if (res.ok) fetchItems();
     } catch (err) {
       console.error("Failed to delete item");
@@ -242,7 +244,9 @@ export const ItemBankManager: React.FC = () => {
 
   const handleDeleteAsset = async (assetId: string) => {
     try {
-      const res = await fetch(`/api/assets/${assetId}`, { method: "DELETE" });
+      const res = await fetch(`/api/assets/${assetId}`, { method: "DELETE",
+        credentials: "include",
+      });
       if (res.ok) {
         setEditingItem({
           ...editingItem,

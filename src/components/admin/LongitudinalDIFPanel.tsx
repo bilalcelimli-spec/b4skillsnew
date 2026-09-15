@@ -154,7 +154,7 @@ export function LongitudinalDIFPanel() {
   const load = () => {
     setLoading(true);
     setError(null);
-    fetch("/api/psychometrics/longitudinal-dif")
+    fetch("/api/psychometrics/longitudinal-dif", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : r.json().then((e: { error?: string }) => Promise.reject(e.error ?? "Error"))))
       .then((d: LongDIFPayload) => { setData(d); setLoading(false); })
       .catch((e: string) => { setError(String(e)); setLoading(false); });

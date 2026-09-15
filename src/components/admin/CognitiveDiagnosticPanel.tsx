@@ -100,7 +100,7 @@ export const CognitiveDiagnosticPanel: React.FC = () => {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetch("/api/psychometrics/cognitive-diagnostic")
+    fetch("/api/psychometrics/cognitive-diagnostic", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); })
       .catch((e) => { setError(e.message); setLoading(false); });

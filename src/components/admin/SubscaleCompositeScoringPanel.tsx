@@ -108,7 +108,7 @@ export const SubscaleCompositeScoringPanel: React.FC = () => {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetch("/api/psychometrics/subscale-composite")
+    fetch("/api/psychometrics/subscale-composite", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); })
       .catch((e) => { setError(e.message); setLoading(false); });

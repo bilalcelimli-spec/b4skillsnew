@@ -182,8 +182,8 @@ export function ContentFactoryDashboard() {
     setLoading(true);
     try {
       const [cov, dash] = await Promise.all([
-        fetch("/api/content/coverage").then((r) => r.json()),
-        fetch("/api/content/dashboard").then((r) => r.json()),
+        fetch("/api/content/coverage", { credentials: "include" }).then((r) => r.json()),
+        fetch("/api/content/dashboard", { credentials: "include" }).then((r) => r.json()),
       ]);
       setCoverage(cov);
       setDashboard(dash);
@@ -254,7 +254,7 @@ export function ContentFactoryDashboard() {
               setActiveTab(tab);
               if (tab === "scale-gate" && !scaleGate) {
                 setScaleGateLoading(true);
-                fetch("/api/content/scale-gate")
+                fetch("/api/content/scale-gate", { credentials: "include" })
                   .then((r) => r.json())
                   .then((d) => setScaleGate(d))
                   .catch(() => setScaleGate({ error: "Failed to load" }))
@@ -262,7 +262,7 @@ export function ContentFactoryDashboard() {
               }
               if (tab === "monitor" && !monitorData) {
                 setMonitorLoading(true);
-                fetch("/api/content/monitor")
+                fetch("/api/content/monitor", { credentials: "include" })
                   .then((r) => r.json())
                   .then((d) => setMonitorData(d))
                   .catch(() => setMonitorData(null))
@@ -609,7 +609,7 @@ export function ContentFactoryDashboard() {
                   onClick={() => {
                     setScaleGate(null);
                     setScaleGateLoading(true);
-                    fetch("/api/content/scale-gate").then((r) => r.json()).then(setScaleGate).catch(() => setScaleGate({ error: "Failed" })).finally(() => setScaleGateLoading(false));
+                    fetch("/api/content/scale-gate", { credentials: "include" }).then((r) => r.json()).then(setScaleGate).catch(() => setScaleGate({ error: "Failed" })).finally(() => setScaleGateLoading(false));
                   }}
                   className="flex items-center gap-1.5 text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
                 >
@@ -636,12 +636,14 @@ export function ContentFactoryDashboard() {
               onClick={async () => {
                 setPilotPromoting(true);
                 try {
-                  const r = await fetch("/api/content/pilot/promote", { method: "POST" });
+                  const r = await fetch("/api/content/pilot/promote", { method: "POST",
+        credentials: "include",
+      });
                   const d = await r.json();
                   alert(`Promoted ${d.promoted ?? 0} items to PILOT (PRETEST) status.`);
                   setMonitorData(null);
                   setMonitorLoading(true);
-                  fetch("/api/content/monitor").then((r) => r.json()).then(setMonitorData).finally(() => setMonitorLoading(false));
+                  fetch("/api/content/monitor", { credentials: "include" }).then((r) => r.json()).then(setMonitorData).finally(() => setMonitorLoading(false));
                 } catch { alert("Promotion failed"); }
                 finally { setPilotPromoting(false); }
               }}
@@ -655,12 +657,14 @@ export function ContentFactoryDashboard() {
               onClick={async () => {
                 setCalPromoting(true);
                 try {
-                  const r = await fetch("/api/content/calibration/promote", { method: "POST" });
+                  const r = await fetch("/api/content/calibration/promote", { method: "POST",
+        credentials: "include",
+      });
                   const d = await r.json();
                   alert(`Promoted ${d.promoted ?? 0} items to CALIBRATION stage.`);
                   setMonitorData(null);
                   setMonitorLoading(true);
-                  fetch("/api/content/monitor").then((r) => r.json()).then(setMonitorData).finally(() => setMonitorLoading(false));
+                  fetch("/api/content/monitor", { credentials: "include" }).then((r) => r.json()).then(setMonitorData).finally(() => setMonitorLoading(false));
                 } catch { alert("Calibration promotion failed"); }
                 finally { setCalPromoting(false); }
               }}
@@ -673,7 +677,7 @@ export function ContentFactoryDashboard() {
             <button
               onClick={() => {
                 setMonitorLoading(true);
-                fetch("/api/content/monitor").then((r) => r.json()).then(setMonitorData).catch(() => {}).finally(() => setMonitorLoading(false));
+                fetch("/api/content/monitor", { credentials: "include" }).then((r) => r.json()).then(setMonitorData).catch(() => {}).finally(() => setMonitorLoading(false));
               }}
               className="ml-auto flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--foreground)]"
             >
@@ -776,7 +780,7 @@ export function ContentFactoryDashboard() {
                                       });
                                       setMonitorData(null);
                                       setMonitorLoading(true);
-                                      fetch("/api/content/monitor").then((r) => r.json()).then(setMonitorData).finally(() => setMonitorLoading(false));
+                                      fetch("/api/content/monitor", { credentials: "include" }).then((r) => r.json()).then(setMonitorData).finally(() => setMonitorLoading(false));
                                     }}
                                     className="text-[10px] px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 whitespace-nowrap"
                                   >
@@ -820,7 +824,7 @@ export function ContentFactoryDashboard() {
           </div>
           <ContentFactoryItemForm onSuccess={(id, code) => {
             // Refresh the overview data after successful item creation
-            fetch("/api/content/overview").then(() => {}).catch(() => {});
+            fetch("/api/content/overview", { credentials: "include" }).then(() => {}).catch(() => {});
           }} />
         </div>
       )}

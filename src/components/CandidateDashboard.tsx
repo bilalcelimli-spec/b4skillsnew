@@ -28,7 +28,7 @@ export const CandidateDashboard: React.FC<{ candidateId: string }> = ({ candidat
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/candidates/${candidateId}/history`);
+      const res = await fetch(`/api/candidates/${candidateId}/history`, { credentials: "include" });
       setSessions(await res.json());
     } catch (err) {
       console.error("Failed to fetch candidate history");

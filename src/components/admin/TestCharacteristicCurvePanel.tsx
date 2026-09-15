@@ -127,7 +127,7 @@ export const TestCharacteristicCurvePanel: React.FC = () => {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetch("/api/psychometrics/tcc")
+    fetch("/api/psychometrics/tcc", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); })
       .catch((e) => { setError(e.message); setLoading(false); });

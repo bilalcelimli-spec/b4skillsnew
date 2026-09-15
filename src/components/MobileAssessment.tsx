@@ -137,7 +137,7 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
   // Fetch first item
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/sessions/${sessionId}/next`)
+    fetch(`/api/sessions/${sessionId}/next`, { credentials: "include" })
       .then((r) => r.json())
       .then((data) => {
         if (data.done) { handleComplete(data); return; }
@@ -184,7 +184,7 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
         itemStartRef.current = Date.now();
       } else {
         // Fetch next from GET endpoint
-        const next = await fetch(`/api/sessions/${sessionId}/next`).then((r) => r.json());
+        const next = await fetch(`/api/sessions/${sessionId}/next`, { credentials: "include" }).then((r) => r.json());
         if (next.done) { handleComplete(next); } else { setItem(next.item ?? next); itemStartRef.current = Date.now(); }
       }
     } finally {

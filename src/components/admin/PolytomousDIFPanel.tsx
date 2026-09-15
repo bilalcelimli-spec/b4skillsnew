@@ -92,7 +92,7 @@ export function PolytomousDIFPanel() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(`/api/psychometrics/polytomous-dif?groupVar=${groupVar}`);
+      const r = await fetch(`/api/psychometrics/polytomous-dif?groupVar=${groupVar}`, { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       setData(await r.json());
     } catch (e: any) {

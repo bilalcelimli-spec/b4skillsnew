@@ -101,7 +101,7 @@ export function ItemFitPanel() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/psychometrics/item-fit");
+      const r = await fetch("/api/psychometrics/item-fit", { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       setData(await r.json());
     } catch (e: any) {

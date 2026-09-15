@@ -32,7 +32,7 @@ export const SessionReview: React.FC<SessionReviewProps> = ({ sessionId, onBack 
   const fetchResponses = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/responses`);
+      const res = await fetch(`/api/sessions/${sessionId}/responses`, { credentials: "include" });
       const data = await res.json();
       const arr = Array.isArray(data) ? data : [];
       setResponses(arr);

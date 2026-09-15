@@ -172,7 +172,7 @@ export function AigQualityPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/aig/quality");
+      const res = await fetch("/api/aig/quality", { credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setReport(await res.json());
     } catch (e: any) {

@@ -97,7 +97,7 @@ export function ScoreNormingPanel() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/psychometrics/score-norms");
+      const r = await fetch("/api/psychometrics/score-norms", { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       setData(await r.json());
     } catch (e: any) {

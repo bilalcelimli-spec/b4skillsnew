@@ -170,7 +170,7 @@ export const MSTRoutingPanel: React.FC = () => {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetch("/api/psychometrics/mst-routing")
+    fetch("/api/psychometrics/mst-routing", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); })
       .catch((e) => { setError(e.message); setLoading(false); });

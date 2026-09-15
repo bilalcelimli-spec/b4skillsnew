@@ -129,7 +129,7 @@ export function ScaleEquatingDiagnosticsPanel() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const r = await fetch("/api/psychometrics/scale-equating");
+      const r = await fetch("/api/psychometrics/scale-equating", { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       const json: EquatingPayload = await r.json();
       setData(json);

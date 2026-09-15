@@ -271,7 +271,7 @@ export function ContentFactoryReviewQueue() {
     setSubmitOk(false);
     setSubmitErr(null);
     try {
-      const resp = await fetch(`/api/items?stage=${stage}&limit=50`);
+      const resp = await fetch(`/api/items?stage=${stage}&limit=50`, { credentials: "include" });
       const data = await resp.json();
       setItems(Array.isArray(data) ? data : []);
     } catch {
@@ -524,7 +524,7 @@ export function ContentFactoryReviewQueue() {
                         if (!r.ok) { setEditErr(d.error ?? "Save failed"); return; }
                         setEditing(false);
                         // Refresh item in list
-                        const updated = await fetch(`/api/items?stage=${activeStage}&limit=50`).then((r) => r.json());
+                        const updated = await fetch(`/api/items?stage=${activeStage}&limit=50`, { credentials: "include" }).then((r) => r.json());
                         if (Array.isArray(updated)) setItems(updated);
                       } catch (e) {
                         setEditErr((e as Error).message);
@@ -660,7 +660,7 @@ export function ContentFactoryReviewQueue() {
                       if (r.ok) {
                         setSubmitOk(true);
                         setTimeout(async () => {
-                          const updated = await fetch(`/api/items?stage=EDITING&limit=50`).then((r) => r.json());
+                          const updated = await fetch(`/api/items?stage=EDITING&limit=50`, { credentials: "include" }).then((r) => r.json());
                           if (Array.isArray(updated)) setItems(updated);
                         }, 1000);
                       } else {

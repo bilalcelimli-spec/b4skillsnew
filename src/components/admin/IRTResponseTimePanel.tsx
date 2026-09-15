@@ -141,7 +141,7 @@ export function IRTResponseTimePanel() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const r = await fetch("/api/psychometrics/irt-rt-model");
+      const r = await fetch("/api/psychometrics/irt-rt-model", { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       setData(await r.json());
     } catch (e: any) { setError(e.message); }

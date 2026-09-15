@@ -131,7 +131,7 @@ export function AdaptiveStoppingRulePanel() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/psychometrics/stopping-rule-sim");
+      const r = await fetch("/api/psychometrics/stopping-rule-sim", { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       setData(await r.json());
     } catch (e: any) {

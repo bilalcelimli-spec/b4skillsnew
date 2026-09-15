@@ -167,7 +167,7 @@ export function CsemCurveChart() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/psychometrics/csem-curve?steps=60");
+      const res = await fetch("/api/psychometrics/csem-curve?steps=60", { credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setData(await res.json());
     } catch (e: any) {

@@ -24,7 +24,7 @@ export const ContentReviewDashboard = () => {
   const fetchItems = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/items");
+      const res = await fetch("/api/items", { credentials: "include" });
       const data = await res.json();
       setItems(data);
     } catch (err) {

@@ -149,7 +149,7 @@ export function ScoreReportingAnalyticsPanel() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const r = await fetch("/api/psychometrics/score-reporting");
+      const r = await fetch("/api/psychometrics/score-reporting", { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       setData(await r.json());
     } catch (e: any) { setError(e.message); }

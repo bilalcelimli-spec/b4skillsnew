@@ -80,7 +80,7 @@ export function FraudDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/sessions/fraud-tier/${tier}?limit=100`);
+      const res = await fetch(`/api/sessions/fraud-tier/${tier}?limit=100`, { credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSessions(await res.json());
     } catch (e: any) {
@@ -94,7 +94,9 @@ export function FraudDashboard() {
     setBatchRunning(true);
     setError(null);
     try {
-      const res = await fetch("/api/sessions/fraud-check/batch", { method: "POST" });
+      const res = await fetch("/api/sessions/fraud-check/batch", { method: "POST",
+        credentials: "include",
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setBatchResult(data);

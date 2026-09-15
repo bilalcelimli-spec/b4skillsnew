@@ -102,7 +102,7 @@ export const ItemDriftPanel: React.FC = () => {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetch("/api/psychometrics/item-drift")
+    fetch("/api/psychometrics/item-drift", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); })
       .catch((e) => { setError(e.message); setLoading(false); });

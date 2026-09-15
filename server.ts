@@ -1163,22 +1163,8 @@ async function startServer() {
         }
       }
 
-      // 2. Fall back to x-user-email header (legacy/internal — DB lookup required)
-      const userEmailHeader = req.headers["x-user-email"];
-      const userEmail = Array.isArray(userEmailHeader) ? userEmailHeader[0] : userEmailHeader;
-      if (!userEmail) return res.status(401).json({ error: "Unauthorized" });
-
-      const user = await prisma.user.findUnique({
-        where: { email: userEmail as string },
-        select: { id: true, role: true, organizationId: true }
-      });
-
-      if (!user || !roles.includes(user.role)) {
-        return res.status(403).json({ error: "Forbidden: Insufficient permissions" });
-      }
-
-      req.user = { ...user, userId: user.id };
-      next();
+      // No valid JWT — reject.
+      return res.status(401).json({ error: "Unauthorized" });
     };
   };
 

@@ -140,7 +140,7 @@ export function ScoreReliabilitySubgroupPanel() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/psychometrics/reliability-subgroup");
+      const r = await fetch("/api/psychometrics/reliability-subgroup", { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       setData(await r.json());
     } catch (e: any) {

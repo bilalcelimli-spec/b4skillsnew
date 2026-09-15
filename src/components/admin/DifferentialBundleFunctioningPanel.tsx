@@ -70,7 +70,7 @@ export const DifferentialBundleFunctioningPanel: React.FC = () => {
   const load = useCallback((gv: GroupVar) => {
     setLoading(true);
     setError(null);
-    fetch(`/api/psychometrics/dbf?groupVar=${gv}`)
+    fetch(`/api/psychometrics/dbf?groupVar=${gv}`, { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); })
       .catch((e) => { setError(e.message); setLoading(false); });

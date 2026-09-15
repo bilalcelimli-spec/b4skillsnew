@@ -172,7 +172,9 @@ export function BiasReviewPanel() {
     setReviewingId(itemId);
     setError(null);
     try {
-      const res = await fetch(`/api/items/${itemId}/bias-review`, { method: "POST" });
+      const res = await fetch(`/api/items/${itemId}/bias-review`, { method: "POST",
+        credentials: "include",
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       // Refresh both lists
       await fetchPending();
@@ -187,7 +189,9 @@ export function BiasReviewPanel() {
     setBatchRunning(true);
     setError(null);
     try {
-      const res = await fetch("/api/items/bias-review/batch?limit=50", { method: "POST" });
+      const res = await fetch("/api/items/bias-review/batch?limit=50", { method: "POST",
+        credentials: "include",
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setBatchResult(data);

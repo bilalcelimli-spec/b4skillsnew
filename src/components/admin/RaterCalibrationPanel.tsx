@@ -114,7 +114,7 @@ export function RaterCalibrationPanel() {
   const load = () => {
     setLoading(true);
     setError(null);
-    fetch("/api/psychometrics/rater-calibration")
+    fetch("/api/psychometrics/rater-calibration", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : r.json().then((e: { error?: string }) => Promise.reject(e.error ?? "Error"))))
       .then((d: RaterCalibPayload) => { setData(d); setLoading(false); })
       .catch((e: string) => { setError(String(e)); setLoading(false); });

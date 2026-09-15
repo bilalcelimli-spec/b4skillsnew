@@ -126,7 +126,7 @@ export const ConditionalSEMPanel: React.FC = () => {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetch("/api/psychometrics/conditional-sem")
+    fetch("/api/psychometrics/conditional-sem", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); })
       .catch((e) => { setError(e.message); setLoading(false); });

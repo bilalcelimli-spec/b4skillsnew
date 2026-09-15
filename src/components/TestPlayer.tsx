@@ -193,7 +193,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     setUploadStatus('idle');
     setUploadProgress(0);
     try {
-      const res = await fetch(`/api/sessions/${sid}/next`);
+      const res = await fetch(`/api/sessions/${sid}/next`, { credentials: "include" });
       const data = await res.json();
       
       if (!res.ok || data.error) {
@@ -230,7 +230,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
           const MIN_DISPLAY_MS = depth === 0 ? 2500 : 1200;
           const t0 = Date.now();
           try {
-            const nextRes = await fetch(`/api/sessions/${sid}/next`);
+            const nextRes = await fetch(`/api/sessions/${sid}/next`, { credentials: "include" });
             const nextData = await nextRes.json();
             if (!nextRes.ok || nextData.error) {
               throw new Error(nextData.error || "Fetch failed during section transition");
@@ -289,12 +289,12 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
 
   const fetchStatus = async (sid: string) => {
     try {
-      const res = await fetch(`/api/sessions/${sid}/status`);
+      const res = await fetch(`/api/sessions/${sid}/status`, { credentials: "include" });
       const data = await res.json();
       
       // Fetch real-time insights if enabled
       if (showInsights) {
-        const insightsRes = await fetch(`/api/sessions/${sid}/insights`);
+        const insightsRes = await fetch(`/api/sessions/${sid}/insights`, { credentials: "include" });
         const insightsData = await insightsRes.json();
         const merged = { ...data, ...insightsData };
         setStatus(merged);

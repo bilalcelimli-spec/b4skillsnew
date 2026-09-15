@@ -139,7 +139,7 @@ export function CATItemSelectionPanel() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/psychometrics/cat-sim");
+      const r = await fetch("/api/psychometrics/cat-sim", { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       setData(await r.json());
     } catch (e: any) {

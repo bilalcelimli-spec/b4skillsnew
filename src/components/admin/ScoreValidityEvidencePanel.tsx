@@ -191,7 +191,7 @@ export function ScoreValidityEvidencePanel() {
   const load = () => {
     setLoading(true);
     setError(null);
-    fetch("/api/psychometrics/score-validity")
+    fetch("/api/psychometrics/score-validity", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : r.json().then((e: { error?: string }) => Promise.reject(e.error ?? "Error"))))
       .then((d: ValidityPayload) => { setData(d); setLoading(false); })
       .catch((e: string) => { setError(String(e)); setLoading(false); });

@@ -285,7 +285,9 @@ export function ContentFactoryItemForm({ onSuccess }: { onSuccess?: (itemId: str
       if (!resp.ok) { setError(data.error ?? "Failed to create item"); return; }
 
       // IQS auto-score (non-blocking)
-      fetch(`/api/items/${data.id}/iqs`, { method: "POST" }).catch(() => {});
+      fetch(`/api/items/${data.id}/iqs`, { method: "POST",
+        credentials: "include",
+      }).catch(() => {});
 
       setSuccess({ id: data.id, code: data.itemCode ?? null });
       onSuccess?.(data.id, data.itemCode ?? null);

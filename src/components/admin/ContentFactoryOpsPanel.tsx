@@ -118,7 +118,9 @@ function PilotDryRunCard() {
     setLoading(true);
     setCandidates(null);
     try {
-      const r = await fetch("/api/content/pilot/promote?dryRun=true", { method: "POST" });
+      const r = await fetch("/api/content/pilot/promote?dryRun=true", { method: "POST",
+        credentials: "include",
+      });
       const d = await r.json();
       setCandidates(d.candidates ?? []);
     } catch { setCandidates([]); }
@@ -183,7 +185,7 @@ export function ContentFactoryOpsPanel() {
 
   const loadStats = () => {
     setStatsLoading(true);
-    fetch("/api/content/ops/stats")
+    fetch("/api/content/ops/stats", { credentials: "include" })
       .then((r) => r.json())
       .then(setStats)
       .catch(() => {})
@@ -233,7 +235,9 @@ export function ContentFactoryOpsPanel() {
       statKey: "unscoredIqs",
       statLabel: "unscored items",
       run: async () => {
-        const r = await fetch("/api/items/iqs/batch?onlyUnscored=true", { method: "POST" });
+        const r = await fetch("/api/items/iqs/batch?onlyUnscored=true", { method: "POST",
+        credentials: "include",
+      });
         const d = await r.json();
         if (!r.ok) return { ok: false, message: d.error ?? "IQS batch failed" };
         return { ok: true, message: `Scored ${d.processed ?? d.count ?? "?"} items`, detail: d.failed > 0 ? `${d.failed} failed` : undefined };
