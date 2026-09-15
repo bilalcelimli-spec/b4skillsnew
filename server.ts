@@ -5088,6 +5088,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const { orgId } = req.query;
       if (!orgId) return res.status(400).json({ error: "orgId required" });
+      const caller = (req as any).user;
+      const orgScopedRoles = ["INST_ADMIN", "TEACHER", "PROCTOR"];
+      if (orgScopedRoles.includes(caller?.role) && caller?.organizationId !== orgId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const comparison = await trajectoryAnalyzer.compareCandidateVsCohort(req.params.candidateId, orgId as string);
       res.json(comparison);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
