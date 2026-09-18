@@ -1110,7 +1110,7 @@ async function startServer() {
               upgradePrompt: {
                 message: "Get a full psychometric report with detailed skill breakdowns and a certified CEFR certificate.",
                 skills: ["Deep Psychometrics", "Certified Report", "Speaking & Writing AI Scoring"],
-                callToActionUrl: "#pricing",
+                callToActionUrl: "/pricing",
               },
             },
           });

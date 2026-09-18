@@ -1287,12 +1287,15 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                   <p className="text-white/80 text-sm leading-relaxed mb-4">
                     Unlock a full 4-skill assessment covering Speaking &amp; Writing with a certified CEFR report recognised by employers and universities.
                   </p>
-                  <a
-                    href={result.upgradePrompt.callToActionUrl}
+                  <button
+                    onClick={() => {
+                      onClose();
+                      window.location.href = result.upgradePrompt.callToActionUrl;
+                    }}
                     className="inline-flex items-center gap-2 bg-white text-[#9b276c] font-black text-sm px-5 py-2.5 rounded-xl hover:bg-white/90 transition-colors shadow-lg"
                   >
                     Start Full Assessment <ArrowRight size={15} />
-                  </a>
+                  </button>
                 </div>
               </div>
             </div>
