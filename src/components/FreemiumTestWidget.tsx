@@ -290,6 +290,8 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
 
   // Result
   const [result, setResult] = useState<PlacementResult | null>(null);
+  // Skills covered (from server sectionOrder)
+  const [sectionOrder, setSectionOrder] = useState<string[]>(["GRAMMAR", "VOCABULARY", "READING", "LISTENING"]);
 
   // Confirm quit
   const [showQuitDialog, setShowQuitDialog] = useState(false);
@@ -409,6 +411,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
       setCurrentItem(data.firstItem);
       setMaxItems(data.maxItems ?? 30);
       setItemsAdministered(0);
+      if (data.sectionOrder?.length) setSectionOrder(data.sectionOrder);
       setStep("intro");
     } catch (err: any) {
       setRegError(err.message ?? "An error occurred. Please try again.");
@@ -519,7 +522,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
               General English Test
             </h1>
             <p className="text-slate-500 mt-3 text-base leading-relaxed max-w-sm mx-auto">
-              Free · ~20–30 minutes · CEFR A1–C2 result · Grammar, Vocabulary, Reading &amp; Listening
+              Free · ~20–30 minutes · CEFR A1–C2 result · Grammar, Vocabulary, Reading, Listening, Writing &amp; Speaking
             </p>
           </div>
 
@@ -633,7 +636,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
               {
                 icon: <BarChart3 size={22} className="text-indigo-600" />,
                 bg: "bg-indigo-50 border-indigo-200",
-                title: "10–30 Adaptive Questions",
+                title: `Up to ${maxItems} Adaptive Questions`,
                 body: "The test stops automatically once it has a statistically precise estimate of your level (SEM ≤ 0.35).",
               },
               {
@@ -645,8 +648,8 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
               {
                 icon: <Star size={22} className="text-amber-500" />,
                 bg: "bg-amber-50 border-amber-200",
-                title: "Covers 4 Skills",
-                body: "Reading, Grammar, Vocabulary, and Listening. Give each question your best effort.",
+                title: `Covers ${sectionOrder.length} Skills`,
+                body: `${sectionOrder.map(s => s.charAt(0) + s.slice(1).toLowerCase()).join(", ")}. Give each question your best effort.`,
               },
               {
                 icon: <Shield size={22} className="text-green-600" />,

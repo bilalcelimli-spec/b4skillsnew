@@ -1057,6 +1057,7 @@ async function startServer() {
           placementId: demoId,
           firstItem: { ...firstItem, type: "MULTIPLE_CHOICE", irtA: 1.2, irtB: _DEMO_CEFR_THETA[firstItem.cefrLevel] ?? 0, irtC: 0.2, assets: [] },
           maxItems: MAX_DEMO_ITEMS,
+          sectionOrder: ["GRAMMAR", "VOCABULARY", "READING", "LISTENING"],
         });
       }
       if (url.match(/^\/assessment\/placement\/[^/]+\/respond$/) && method === "POST") {
@@ -1067,12 +1068,13 @@ async function startServer() {
           return res.status(400).json({ error: "Unknown placement session" });
         }
 
-        // Score the response
-        const bodyData = req.body as { itemId?: string; answer?: number };
+        // Score the response — client sends selectedOption; accept legacy `answer` too
+        const bodyData = req.body as { itemId?: string; selectedOption?: number; answer?: number };
         const lastItemId = bodyData?.itemId;
         const lastItem = lastItemId ? state.pool.find(i => i.id === lastItemId) : undefined;
-        const isCorrect = typeof bodyData?.answer === "number" && lastItem
-          ? bodyData.answer === lastItem.content.correctIndex
+        const rawAnswer = bodyData?.selectedOption ?? bodyData?.answer;
+        const isCorrect = typeof rawAnswer === "number" && lastItem
+          ? rawAnswer === lastItem.content.correctIndex
           : false;
 
         state.count++;
