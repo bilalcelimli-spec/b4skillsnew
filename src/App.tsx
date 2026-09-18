@@ -106,7 +106,7 @@ export default function App() {
   const [showCodeEntry, setShowCodeEntry] = useState(false);
   const [activeSession, setActiveSession] = useState<{ orgId: string; sessionId: string; productLine?: string } | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "admin" | "rating" | "institutional" | "teacher" | "content" | "results" | "items" | "profile" | "settings" | "psychometrics">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "admin" | "rating" | "institutional" | "teacher" | "content" | "results" | "profile" | "settings">("dashboard");
   const [testCompleted, setTestCompleted] = useState<{ theta: number; cefr: string; sessionId: string } | null>(null);
   const [branding, setBranding] = useState<any>(null);
   const [certificate, setCertificate] = useState<any>(null);
@@ -136,9 +136,7 @@ export default function App() {
       else if (path === "/institutional") setActiveTab("institutional");
       else if (path === "/teacher") setActiveTab("teacher");
       else if (path === "/profile") setActiveTab("profile");
-      else if (path === "/items") setActiveTab("items");
       else if (path === "/settings") setActiveTab("settings");
-      else if (path === "/psychometrics") setActiveTab("psychometrics");
       else if (path === "/results") setActiveTab("results");
       else if (path === "/content") setActiveTab("content");
       else setActiveTab("dashboard");
@@ -156,8 +154,7 @@ export default function App() {
       const tabPath: Record<string, string> = {
         admin: "/admin", dashboard: "/dashboard", rating: "/rating",
         institutional: "/institutional", teacher: "/teacher", results: "/results",
-        items: "/items", profile: "/profile", settings: "/settings",
-        psychometrics: "/psychometrics",
+        profile: "/profile", settings: "/settings",
       };
       navigate(tabPath[activeTab] ?? "/dashboard", { replace: true });
     }

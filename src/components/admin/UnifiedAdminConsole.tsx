@@ -22,6 +22,7 @@ import {
   ShieldAlert,
   CreditCard,
   BarChart3,
+  TrendingUp,
   Wand2,
   Layers,
   CheckCircle2,
@@ -60,9 +61,7 @@ import { ProctoringReview } from "./ProctoringReview";
 import { BillingDashboard } from "./BillingDashboard";
 import { SessionReview } from "./SessionReview";
 import { CalibrationStudy } from "./CalibrationStudy";
-import { ContentReviewDashboard } from "./ContentReviewDashboard";
 import { ExamCodeManager } from "./ExamCodeManager";
-import { ItemGeneratorPanel } from "./ItemGeneratorPanel";
 import { ItemBankPanel } from "./ItemBankPanel";
 import { ContentFactoryDashboard } from "./ContentFactoryDashboard";
 import { ContentFactoryBatchPanel } from "./ContentFactoryBatchPanel";
@@ -95,6 +94,7 @@ interface NavGroup {
   id: string;
   label: string;
   items: NavItem[];
+  flowHint?: string[];
 }
 
 interface NavItem {
@@ -124,31 +124,40 @@ interface SessionData {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    id: "operations",
-    label: "Operations",
+    id: "monitor",
+    label: "Monitor",
     items: [
-      { id: "overview",   label: "Overview",    icon: <LayoutDashboard size={15} /> },
+      { id: "overview",   label: "Overview",   icon: <LayoutDashboard size={15} /> },
+      { id: "proctoring", label: "Proctoring", icon: <ShieldAlert size={15} /> },
+      { id: "audit",      label: "Audit Log",  icon: <ShieldCheck size={15} /> },
+    ],
+  },
+  {
+    id: "people",
+    label: "People",
+    items: [
       { id: "candidates", label: "Candidates",  icon: <Users size={15} /> },
-      { id: "proctoring", label: "Proctoring",  icon: <ShieldAlert size={15} /> },
-      { id: "billing",    label: "Billing",     icon: <CreditCard size={15} /> },
-      { id: "analytics",  label: "Analytics",   icon: <BarChart3 size={15} /> },
+      { id: "exam-codes", label: "Exam Codes",  icon: <Key size={15} /> },
+      { id: "import",     label: "Bulk Import", icon: <Upload size={15} /> },
     ],
   },
   {
-    id: "content",
-    label: "Content Studio",
+    id: "pipeline",
+    label: "Content Pipeline",
+    flowHint: ["Factory", "Generate", "Review", "Bank", "Calibrate"],
     items: [
-      { id: "ai-generator",     label: "AI Generator",    icon: <Wand2 size={15} /> },
-      { id: "item-bank",        label: "Item Bank",       icon: <Layers size={15} /> },
-      { id: "content-factory",  label: "Content Factory", icon: <BarChart3 size={15} /> },
-      { id: "content-review",   label: "Content Review",  icon: <CheckCircle2 size={15} /> },
-      { id: "calibration",      label: "Calibration",     icon: <Calculator size={15} /> },
+      { id: "content-factory", label: "Content Factory", icon: <BarChart3 size={15} /> },
+      { id: "ai-generator",    label: "Generate",        icon: <Wand2 size={15} /> },
+      { id: "content-review",  label: "Review Queue",    icon: <CheckCircle2 size={15} /> },
+      { id: "item-bank",       label: "Item Bank",       icon: <Layers size={15} /> },
+      { id: "calibration",     label: "Calibration",     icon: <Calculator size={15} /> },
     ],
   },
   {
-    id: "psychometrics",
-    label: "Psychometrics",
+    id: "analytics",
+    label: "Analytics & Science",
     items: [
+      { id: "analytics",     label: "Analytics",     icon: <TrendingUp size={15} /> },
       { id: "engine-config", label: "Engine Config", icon: <Sliders size={15} /> },
     ],
   },
@@ -156,12 +165,10 @@ const NAV_GROUPS: NavGroup[] = [
     id: "platform",
     label: "Platform",
     items: [
-      { id: "branding",      label: "Branding",      icon: <Palette size={15} /> },
-      { id: "exam-codes",    label: "Exam Codes",    icon: <Key size={15} /> },
-      { id: "import",        label: "Bulk Import",   icon: <Upload size={15} /> },
-      { id: "integrations",  label: "Integrations",  icon: <Zap size={15} /> },
-      { id: "audit",         label: "Audit Log",     icon: <ShieldCheck size={15} /> },
-      { id: "settings",      label: "Settings",      icon: <SettingsIcon size={15} /> },
+      { id: "branding",     label: "Branding",     icon: <Palette size={15} /> },
+      { id: "integrations", label: "Integrations", icon: <Zap size={15} /> },
+      { id: "billing",      label: "Billing",      icon: <CreditCard size={15} /> },
+      { id: "settings",     label: "Settings",     icon: <SettingsIcon size={15} /> },
     ],
   },
 ];
@@ -234,6 +241,18 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string }> = ({
                       transition={{ duration: 0.18 }}
                       className="overflow-hidden"
                     >
+                      {group.flowHint && (
+                        <div className="flex items-center gap-0.5 px-2 pb-1.5 overflow-x-hidden">
+                          {group.flowHint.map((step, i) => (
+                            <span key={step} className="flex items-center gap-0.5">
+                              <span className="text-[8px] font-bold text-slate-600 whitespace-nowrap">{step}</span>
+                              {i < group.flowHint!.length - 1 && (
+                                <ChevronRight size={8} className="text-slate-700 flex-shrink-0" />
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <div className="space-y-0.5 pb-2">
                         {group.items.map((item) => (
                           <NavButton
@@ -292,26 +311,10 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string }> = ({
               {activeSection === "analytics" && (
                 <AdvancedAnalytics orgId={ORG_ID} />
               )}
-              {activeSection === "ai-generator" && (
-                <div className="space-y-8">
-                  <ContentFactoryBatchPanel />
-                  <div className="border-t border-[var(--border)] pt-6">
-                    <p className="text-xs text-[var(--muted)] mb-4 font-medium">Legacy generator (unspecced — use Blueprint Batch above for production content)</p>
-                    <ItemGeneratorPanel />
-                  </div>
-                </div>
-              )}
+              {activeSection === "ai-generator" && <ContentFactoryBatchPanel />}
               {activeSection === "item-bank" && <ItemBankPanel />}
               {activeSection === "content-factory" && <ContentFactoryDashboard />}
-              {activeSection === "content-review" && (
-                <div className="space-y-6">
-                  <ContentFactoryReviewQueue />
-                  <div className="border-t border-[var(--border)] pt-4 opacity-60">
-                    <p className="text-xs text-[var(--muted)] mb-2">Legacy Basic QA (deprecated — use Review Queue above)</p>
-                    <ContentReviewDashboard />
-                  </div>
-                </div>
-              )}
+              {activeSection === "content-review" && <ContentFactoryReviewQueue />}
               {activeSection === "calibration" && <CalibrationStudy />}
               {activeSection === "engine-config" && <EngineConfigPanel />}
               {activeSection === "branding" && <BrandingSettings orgId={ORG_ID} />}
@@ -367,23 +370,23 @@ const NavButton: React.FC<{
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SECTION_META: Record<Section, { label: string; desc: string; group: string }> = {
-  overview:       { label: "Overview",       desc: "Sessions, stats & system health", group: "Operations" },
-  candidates:     { label: "Candidates",     desc: "Manage candidates and access",    group: "Operations" },
-  proctoring:     { label: "Proctoring",     desc: "Review flagged sessions",         group: "Operations" },
-  billing:        { label: "Billing",        desc: "Subscription & usage",            group: "Operations" },
-  analytics:      { label: "Analytics",      desc: "Advanced reporting",              group: "Operations" },
-  "ai-generator": { label: "AI Generator",   desc: "Generate assessment items",       group: "Content Studio" },
-  "item-bank":    { label: "Item Bank",      desc: "Exposure control & inventory",    group: "Content Studio" },
-  "content-factory": { label: "Content Factory", desc: "Coverage heatmap, gaps & pipeline", group: "Content Studio" },
-  "content-review": { label: "Content Review", desc: "QA workflow & approvals",      group: "Content Studio" },
-  calibration:    { label: "Calibration",    desc: "IRT calibration study",           group: "Content Studio" },
-  "engine-config": { label: "Engine Config", desc: "CAT parameters & CEFR thresholds", group: "Psychometrics" },
-  branding:       { label: "Branding",       desc: "Logo, colors & messaging",        group: "Platform" },
-  "exam-codes":   { label: "Exam Codes",     desc: "Generate & manage access codes",  group: "Platform" },
-  import:         { label: "Bulk Import",    desc: "CSV candidate import",            group: "Platform" },
-  integrations:   { label: "Integrations",   desc: "Webhooks, SSO & APIs",            group: "Platform" },
-  audit:          { label: "Audit Log",      desc: "Compliance & activity trail",     group: "Platform" },
-  settings:       { label: "Settings",       desc: "Global platform configuration",   group: "Platform" },
+  candidates:        { label: "Candidates",     desc: "Manage candidates and access",          group: "People" },
+  proctoring:        { label: "Proctoring",     desc: "Review flagged sessions",               group: "Monitor" },
+  billing:           { label: "Billing",        desc: "Subscription & usage",                  group: "Platform" },
+  analytics:         { label: "Analytics",      desc: "Advanced reporting",                    group: "Analytics & Science" },
+  "ai-generator":    { label: "Generate",       desc: "AI-powered item generation",            group: "Content Pipeline" },
+  "item-bank":       { label: "Item Bank",      desc: "Exposure control & inventory",          group: "Content Pipeline" },
+  "content-factory": { label: "Content Factory",desc: "Blueprint, coverage gaps & pipeline",   group: "Content Pipeline" },
+  "content-review":  { label: "Review Queue",   desc: "QA workflow & item approvals",          group: "Content Pipeline" },
+  calibration:       { label: "Calibration",    desc: "IRT calibration study",                 group: "Content Pipeline" },
+  "engine-config":   { label: "Engine Config",  desc: "CAT parameters & CEFR thresholds",      group: "Analytics & Science" },
+  branding:          { label: "Branding",       desc: "Logo, colors & messaging",              group: "Platform" },
+  "exam-codes":      { label: "Exam Codes",     desc: "Generate & manage access codes",        group: "People" },
+  import:            { label: "Bulk Import",    desc: "CSV candidate import",                  group: "People" },
+  integrations:      { label: "Integrations",   desc: "Webhooks, SSO & APIs",                  group: "Platform" },
+  audit:             { label: "Audit Log",      desc: "Compliance & activity trail",           group: "Monitor" },
+  settings:          { label: "Settings",       desc: "Global platform configuration",         group: "Platform" },
+  overview:          { label: "Overview",       desc: "Sessions, stats & system health",       group: "Monitor" },
 };
 
 const SectionHeader: React.FC<{ section: Section }> = ({ section }) => {
