@@ -86,6 +86,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
   const [stats, setStats]             = useState<QueueStats | null>(null);
   const [loading, setLoading]         = useState(true);
   const [submitting, setSubmitting]   = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"PENDING" | "CLAIMED" | "COMPLETED" | "FLAGGED">("PENDING");
 
   // Per-dimension rubric scores (0-10, step 0.5)
@@ -198,12 +199,16 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
         body: JSON.stringify({ score, feedback, rubricScores: rubric }),
       });
       if (res.ok) {
+        setSubmitError(null);
         setSelectedTask(null);
         setIsSecondRater(false);
         fetchTasks();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setSubmitError(d.error ?? "Failed to submit rating.");
       }
     } catch (err) {
-      console.error("Failed to submit rating");
+      setSubmitError("Network error — could not submit rating.");
     } finally {
       setSubmitting(false);
     }
@@ -436,6 +441,9 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
                       />
                     </section>
 
+                    {submitError && (
+                      <p className="text-xs text-red-600 font-medium py-1">{submitError}</p>
+                    )}
                     <Button
                       className="w-full h-11 font-bold"
                       onClick={handleSubmit}

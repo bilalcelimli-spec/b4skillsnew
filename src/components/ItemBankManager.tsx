@@ -62,6 +62,7 @@ const SKILL_FORMATS: Record<string, string[]> = {
 export const ItemBankManager: React.FC = () => {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterSkill, setFilterSkill] = useState<string>("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -95,9 +96,9 @@ export const ItemBankManager: React.FC = () => {
     try {
       const res = await fetch("/api/items?limit=200&offset=0", { credentials: "include" });
       const data = await res.json();
-      setItems(data);
+      setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Failed to fetch items");
+      console.error("Failed to fetch items", err);
     } finally {
       setLoading(false);
     }
@@ -121,12 +122,16 @@ export const ItemBankManager: React.FC = () => {
       });
       
       if (res.ok) {
+        setSaveError(null);
         setIsModalOpen(false);
         setEditingItem(null);
         fetchItems();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setSaveError(d.error ?? "Failed to save item.");
       }
     } catch (err) {
-      console.error("Failed to save item");
+      setSaveError("Network error — could not save item.");
     }
   };
 
@@ -819,13 +824,16 @@ export const ItemBankManager: React.FC = () => {
               )}
             </div>
 
-            <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-              <Button variant="ghost" onClick={() => setIsModalOpen(false)} className="font-bold uppercase tracking-widest text-xs">
-                Cancel
-              </Button>
-              <Button onClick={handleSave} className="gap-2 bg-indigo-600 h-12 px-8 rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-100">
-                <Save size={18} /> Save Item
-              </Button>
+            <div className="p-8 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
+              {saveError && <p className="text-xs text-red-600 font-medium flex-1">{saveError}</p>}
+              <div className="flex gap-3 ml-auto">
+                <Button variant="ghost" onClick={() => { setIsModalOpen(false); setSaveError(null); }} className="font-bold uppercase tracking-widest text-xs">
+                  Cancel
+                </Button>
+                <Button onClick={handleSave} className="gap-2 bg-indigo-600 h-12 px-8 rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-100">
+                  <Save size={18} /> Save Item
+                </Button>
+              </div>
             </div>
           </motion.div>
         </div>
