@@ -4578,7 +4578,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       }
       const candidates = await prisma.user.findMany({
         where,
-        include: {
+        select: {
+          id: true, name: true, email: true, role: true, createdAt: true,
           sessions: {
             select: { status: true, completedAt: true, theta: true },
             orderBy: { createdAt: "desc" },
