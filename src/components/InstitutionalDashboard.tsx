@@ -75,6 +75,7 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
     setLoading(true);
     try {
       const res = await fetch(`/api/analytics/cohort?organizationId=${organizationId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch analytics");
       const analytics = await res.json();
       setData(analytics);
     } catch (err) {
