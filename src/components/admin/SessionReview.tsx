@@ -71,7 +71,7 @@ export const SessionReview: React.FC<SessionReviewProps> = ({ sessionId, onBack 
           className="h-9 text-[10px] font-black uppercase tracking-widest rounded-xl gap-2"
         >
           <LineChart size={13} />
-          Detaylı Analiz
+          Detailed Analysis
         </Button>
       </div>
 

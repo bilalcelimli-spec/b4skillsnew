@@ -49,15 +49,15 @@ interface Props {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const AXIS_LABELS: Record<string, string> = {
-  grammar: "Dilbilgisi",
-  vocabulary: "Sözvarlığı",
-  coherence: "Tutarlılık",
-  taskRelevance: "Görev",
-  fluency: "Akıcılık",
-  pronunciationClarity: "Telaffuz",
-  lexicalDiversity: "Çeşitlilik",
-  grammaticalAccuracy: "Doğruluk",
-  discourseStructure: "Söylem",
+  grammar: "Grammar",
+  vocabulary: "Vocabulary",
+  coherence: "Coherence",
+  taskRelevance: "Task",
+  fluency: "Fluency",
+  pronunciationClarity: "Pronunciation",
+  lexicalDiversity: "Diversity",
+  grammaticalAccuracy: "Accuracy",
+  discourseStructure: "Discourse",
 };
 
 function scoreColor(score: number): string {
@@ -189,7 +189,7 @@ export const SubScoreRadar: React.FC<Props> = ({
       {showFeatures && (
         <div>
           <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">
-            Konuşma Özellikleri
+            Speaking Features
           </div>
           <div className="space-y-2.5">
             {featureData.map(({ key, label, value }) => (

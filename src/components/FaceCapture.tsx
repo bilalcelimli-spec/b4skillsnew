@@ -118,15 +118,15 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
       if (uploadAttemptsRef.current >= MAX_UPLOAD_ATTEMPTS) {
         setPhase("upload_failed");
         setErrorMsg(
-          "Kimlik doğrulama 3 denemede başarısız oldu. Sınavı fotoğrafsız başlatabilir veya destek ile iletişime geçebilirsiniz."
+          "Identity verification failed after 3 attempts. You may start the exam without a photo, or contact support."
         );
       } else {
         const isTimeout = err?.name === "AbortError";
         setPhase("error");
         setErrorMsg(
           isTimeout
-            ? `Bağlantı zaman aşımına uğradı (deneme ${uploadAttemptsRef.current}/${MAX_UPLOAD_ATTEMPTS}). Tekrar deneyin.`
-            : `Kimlik doğrulama başarısız (deneme ${uploadAttemptsRef.current}/${MAX_UPLOAD_ATTEMPTS}). Tekrar deneyin.`
+            ? `Connection timed out (attempt ${uploadAttemptsRef.current}/${MAX_UPLOAD_ATTEMPTS}). Please try again.`
+            : `Verification failed (attempt ${uploadAttemptsRef.current}/${MAX_UPLOAD_ATTEMPTS}). Please try again.`
         );
         startCamera();
       }
@@ -147,12 +147,12 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
               <Camera size={20} />
             </div>
             <div>
-              <div className="font-black text-slate-900 text-base">Kimlik Doğrulama</div>
-              <div className="text-xs text-slate-400 font-medium">Identity Verification</div>
+              <div className="font-black text-slate-900 text-base">Identity Verification</div>
+              <div className="text-xs text-slate-400 font-medium">Secure proctoring</div>
             </div>
           </div>
           <p className="text-sm text-slate-500 leading-relaxed">
-            Sınav öncesinde yüzünüzün fotoğrafı alınacaktır. Lütfen kameraya bakın ve iyi aydınlatılmış bir ortamda olun.
+            A photo will be taken before the exam begins. Please face the camera in a well-lit environment.
           </p>
         </div>
 
@@ -265,12 +265,11 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
                 }}
                 className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl py-3"
               >
-                Sınavı Başlat (Fotoğrafsız)
+                Start Exam (Without Photo)
               </Button>
               <p className="text-center text-[10px] text-slate-400 leading-relaxed">
-                Sorun devam ederse{" "}
-                <span className="font-bold text-slate-500">destek@b4skills.com</span>{" "}
-                adresinden bize ulaşın.
+                If the problem persists, contact{" "}
+                <span className="font-bold text-slate-500">support@b4skills.com</span>.
               </p>
             </div>
           )}
@@ -280,8 +279,8 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
           )}
 
           <p className="text-center text-[10px] text-slate-400 leading-relaxed">
-            Fotoğrafınız yalnızca sınav güvenliği amacıyla saklanır ve{" "}
-            <span className="font-bold">sınav bitiminden 90 gün sonra</span> otomatik olarak silinir.
+            Your photo is stored solely for exam security and{" "}
+            <span className="font-bold">automatically deleted 90 days after the exam</span>.
           </p>
         </div>
       </motion.div>

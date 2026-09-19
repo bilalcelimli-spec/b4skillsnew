@@ -147,7 +147,7 @@ export const CandidateManagement: React.FC<{
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-slate-400 hover:text-indigo-600"
-                              title="Detaylı Analiz"
+                              title="Detailed Analysis"
                               onClick={() => onViewAnalysis(cand.lastSessionId)}
                             >
                               <BarChart2 size={16} />

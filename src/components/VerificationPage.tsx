@@ -88,7 +88,7 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
 
   const fmt = (iso?: string) =>
     iso
-      ? new Date(iso).toLocaleDateString("tr-TR", { year: "numeric", month: "long", day: "numeric" })
+      ? new Date(iso).toLocaleDateString("en-GB", { year: "numeric", month: "long", day: "numeric" })
       : "—";
 
   return (
@@ -120,7 +120,7 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
                 type="text"
                 value={inputId}
                 onChange={(e) => setInputId(e.target.value)}
-                placeholder="örn. clxyz1234abcd…"
+                placeholder="e.g. clxyz1234abcd…"
                 autoFocus
                 className="w-full border border-slate-200 rounded-xl px-4 py-3 pr-12 text-sm font-mono text-slate-900 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 transition"
               />
@@ -166,7 +166,7 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
                       "font-black text-sm",
                       result.expired ? "text-amber-800" : "text-emerald-800"
                     )}>
-                      {result.expired ? "Sertifika Süresi Dolmuş" : "Geçerli Sertifika"}
+                      {result.expired ? "Certificate Expired" : "Valid Certificate"}
                     </div>
                     <div className="text-xs text-slate-500 font-mono mt-0.5">{result.certificateId}</div>
                   </div>
@@ -184,20 +184,20 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
 
                 {/* Details */}
                 <div className="grid grid-cols-2 gap-3">
-                  <DetailItem icon={<User size={14} />} label="Aday" value={result.candidateName} />
-                  <DetailItem icon={<Award size={14} />} label="Seviye" value={result.cefrLevel} />
-                  <DetailItem icon={<Building2 size={14} />} label="Kurum" value={result.organization} />
-                  <DetailItem icon={<Calendar size={14} />} label="Düzenleme" value={fmt(result.issuedAt)} />
-                  <DetailItem icon={<Calendar size={14} />} label="Geçerlilik" value={fmt(result.expiresAt)} />
+                  <DetailItem icon={<User size={14} />} label="Candidate" value={result.candidateName} />
+                  <DetailItem icon={<Award size={14} />} label="Level" value={result.cefrLevel} />
+                  <DetailItem icon={<Building2 size={14} />} label="Organisation" value={result.organization} />
+                  <DetailItem icon={<Calendar size={14} />} label="Issued" value={fmt(result.issuedAt)} />
+                  <DetailItem icon={<Calendar size={14} />} label="Valid until" value={fmt(result.expiresAt)} />
                 </div>
               </div>
             ) : (
               <div className="rounded-2xl border border-red-200 bg-red-50 p-6 flex items-center gap-4">
                 <ShieldX size={28} className="text-red-500 shrink-0" />
                 <div>
-                  <div className="font-black text-red-800 text-sm">Sertifika Bulunamadı</div>
+                  <div className="font-black text-red-800 text-sm">Certificate Not Found</div>
                   <div className="text-xs text-red-600 mt-1">
-                    {result.error ?? "Bu kimliğe ait geçerli bir sertifika bulunamadı. Lütfen kodu kontrol edin."}
+                    {result.error ?? "No valid certificate found for this ID. Please check the code and try again."}
                   </div>
                 </div>
               </div>
@@ -207,12 +207,11 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
       </motion.div>
 
       <p className="mt-8 text-xs text-slate-400 text-center max-w-sm">
-        Bu sayfa, b4skills tarafından düzenlenen yetkinlik sertifikalarının gerçekliğini doğrular.
-        Kurumsal entegrasyon için{" "}
+        This page verifies the authenticity of proficiency certificates issued by b4skills.
+        For institutional integration, contact{" "}
         <a href="mailto:support@b4skills.com" className="underline hover:text-slate-600">
           support@b4skills.com
-        </a>{" "}
-        ile iletişime geçin.
+        </a>.
       </p>
     </div>
   );

@@ -327,7 +327,7 @@ const QuestionDrawer: React.FC<{
           {/* Written response */}
           {options.length === 0 && response.value && !response.transcript && (
             <div>
-              <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Yanıt</div>
+              <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Response</div>
               <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-700 leading-relaxed border border-slate-100">
                 {response.value}
               </div>
@@ -426,7 +426,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setData(await res.json());
     } catch (err) {
-      setError("Analiz verisi yüklenemedi.");
+      setError("Failed to load analysis data.");
     } finally {
       setLoading(false);
     }
@@ -482,7 +482,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
       <div className="flex flex-col items-center justify-center py-24 gap-4">
         <AlertTriangle size={40} className="text-rose-400" />
         <p className="text-slate-500 font-medium">{error ?? "Veri bulunamadı."}</p>
-        <Button variant="outline" onClick={onBack}>Geri dön</Button>
+        <Button variant="outline" onClick={onBack}>Back</Button>
       </div>
     );
   }
@@ -548,7 +548,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
         </Button>
         <div className="flex-1">
           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
-            Katılımcı Analizi
+            Participant Analysis
           </h2>
           <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
             Session ID: {sessionId}
@@ -587,12 +587,12 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
               <div className="text-sm text-slate-400 font-medium mt-1">{candidate.email}</div>
               <div className="flex gap-6 mt-3 text-[10px] text-slate-500 font-medium flex-wrap">
                 {session.startedAt && (
-                  <span>Başlangıç: {new Date(session.startedAt).toLocaleString("tr-TR")}</span>
+                  <span>Started: {new Date(session.startedAt).toLocaleString("en-GB")}</span>
                 )}
                 {session.completedAt && (
-                  <span>Bitiş: {new Date(session.completedAt).toLocaleString("tr-TR")}</span>
+                  <span>Completed: {new Date(session.completedAt).toLocaleString("en-GB")}</span>
                 )}
-                <span>Süre: {durationStr}</span>
+                <span>Duration: {durationStr}</span>
               </div>
             </div>
           </div>
@@ -601,7 +601,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
           {personFit && personFit.recommendedAction !== "ACCEPT" && (
             <div className={cn("mt-4 flex items-center gap-3 rounded-xl p-3 border text-sm font-semibold", pfBannerClass)}>
               <AlertTriangle size={16} className="flex-shrink-0" />
-              Person-Fit uyarısı: {personFit.flag} — {personFit.recommendedAction}
+              Person-Fit alert: {personFit.flag} — {personFit.recommendedAction}
             </div>
           )}
         </CardContent>
@@ -618,21 +618,21 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
         />
         <StatCard
           icon={<Target size={20} />}
-          label="Doğruluk"
+          label="Accuracy"
           value={`${stats.pctCorrect}%`}
-          sub={`${stats.totalCorrect}/${stats.totalItems} doğru`}
+          sub={`${stats.totalCorrect}/${stats.totalItems} correct`}
           accent="bg-emerald-50 text-emerald-600"
         />
         <StatCard
           icon={<Zap size={20} />}
-          label="Ort. Yanıt Süresi"
+          label="Avg. Response Time"
           value={formatMs(stats.avgLatencyMs)}
           sub={`Medyan: ${formatMs(stats.medianLatencyMs)}`}
           accent="bg-amber-50 text-amber-600"
         />
         <StatCard
           icon={<Clock size={20} />}
-          label="Test Süresi"
+          label="Test Duration"
           value={durationStr}
           sub={`${stats.totalItems} soru`}
           accent="bg-purple-50 text-purple-600"
@@ -644,11 +644,11 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
         <CardHeader className="bg-slate-50/50 border-b border-slate-100 px-6 py-4">
           <CardTitle className="text-sm font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
             <BarChart3 size={16} className="text-indigo-500" />
-            Yanıt Örüntüsü
+            Response Pattern
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
-          <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Doğru / Yanlış</div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Correct / Incorrect</div>
           <ResponsiveContainer width="100%" height={80}>
             <BarChart data={responseChartData} barSize={8} margin={{ left: 0, right: 0 }}>
               <XAxis dataKey="name" tick={false} axisLine={false} tickLine={false} />
@@ -661,9 +661,9 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
                     <div className="bg-white border border-slate-100 rounded-xl shadow-lg p-3 text-xs">
                       <div className="font-black text-slate-900">{d.name} · {d.skill} · {d.cefr}</div>
                       <div className={d.correct ? "text-emerald-600" : "text-rose-500"}>
-                        {d.correct ? "✓ Doğru" : "✗ Yanlış"}
+                        {d.correct ? "✓ Correct" : "✗ Incorrect"}
                       </div>
-                      <div className="text-slate-400">Süre: {d.latency}s · Zorluk: {d.difficulty}</div>
+                      <div className="text-slate-400">Time: {d.latency}s · Difficulty: {d.difficulty}</div>
                     </div>
                   );
                 }}
@@ -676,7 +676,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
             </BarChart>
           </ResponsiveContainer>
 
-          <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1 mt-4">Yanıt Süresi (saniye)</div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1 mt-4">Response Time (seconds)</div>
           <ResponsiveContainer width="100%" height={80}>
             <BarChart data={responseChartData} barSize={8} margin={{ left: 0, right: 0 }}>
               <XAxis dataKey="name" tick={false} axisLine={false} tickLine={false} />
@@ -688,7 +688,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
                   return (
                     <div className="bg-white border border-slate-100 rounded-xl shadow-lg p-3 text-xs">
                       <div className="font-black text-slate-900">{d.name}</div>
-                      <div className="text-slate-600">Süre: {d.latency}s</div>
+                      <div className="text-slate-600">Time: {d.latency}s</div>
                     </div>
                   );
                 }}
@@ -705,7 +705,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
         <Card className="border-slate-200 shadow-sm rounded-2xl overflow-hidden">
           <CardHeader className="bg-slate-50/50 border-b border-slate-100 px-6 py-4">
             <CardTitle className="text-sm font-black text-slate-900 uppercase tracking-tight">
-              Beceri Kırılımı
+              Skill Breakdown
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 space-y-4">
@@ -737,7 +737,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
         <Card className="border-slate-200 shadow-sm rounded-2xl overflow-hidden">
           <CardHeader className="bg-slate-50/50 border-b border-slate-100 px-6 py-4">
             <CardTitle className="text-sm font-black text-slate-900 uppercase tracking-tight">
-              CEFR Seviye Dağılımı
+              CEFR Level Distribution
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
@@ -787,10 +787,10 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
           <CardContent className="p-6">
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
               {[
-                { label: "Lz (Drasgow 1985)", val: personFit.lz.toFixed(3), note: "< -1.65 → şüpheli" },
-                { label: "ECI (Tatsuoka 1984)", val: personFit.eci.toFixed(3), note: "Aşırı → yanıt tutarsızlığı" },
-                { label: "U3 (van der Linden)", val: personFit.u3.toFixed(3), note: "Hız–doğruluk denge" },
-                { label: "RGI", val: personFit.rgi.toFixed(3), note: "Ort. bilgi oranı" },
+                { label: "Lz (Drasgow 1985)", val: personFit.lz.toFixed(3), note: "< -1.65 → suspicious" },
+                { label: "ECI (Tatsuoka 1984)", val: personFit.eci.toFixed(3), note: "High → response inconsistency" },
+                { label: "U3 (van der Linden)", val: personFit.u3.toFixed(3), note: "Speed–accuracy balance" },
+                { label: "RGI", val: personFit.rgi.toFixed(3), note: "Avg. information ratio" },
               ].map(({ label, val, note }) => (
                 <div key={label} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
                   <div className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">{label}</div>
@@ -821,7 +821,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
         <CardHeader className="bg-slate-50/50 border-b border-slate-100 px-6 py-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <CardTitle className="text-sm font-black text-slate-900 uppercase tracking-tight">
-              Yanıt Tablosu
+              Response Table
               <span className="ml-2 text-slate-400 font-medium normal-case text-xs">
                 ({filteredResponses.length} / {responses.length})
               </span>
@@ -835,7 +835,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
                 onChange={(e) => setSkillFilter(e.target.value as SkillFilter)}
                 className="text-[10px] font-black uppercase tracking-widest border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 bg-white"
               >
-                <option value="ALL">Tüm Beceriler</option>
+                <option value="ALL">All Skills</option>
                 {["READING", "LISTENING", "WRITING", "SPEAKING", "GRAMMAR", "VOCABULARY"].map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
@@ -846,9 +846,9 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
                 onChange={(e) => setCorrectFilter(e.target.value as CorrectnessFilter)}
                 className="text-[10px] font-black uppercase tracking-widest border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 bg-white"
               >
-                <option value="ALL">Tümü</option>
-                <option value="CORRECT">Doğru</option>
-                <option value="INCORRECT">Yanlış</option>
+                <option value="ALL">All</option>
+                <option value="CORRECT">Correct</option>
+                <option value="INCORRECT">Incorrect</option>
               </select>
               {/* RT filter */}
               <select
@@ -856,8 +856,8 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
                 onChange={(e) => setRtFilter(e.target.value as RTFilter)}
                 className="text-[10px] font-black uppercase tracking-widest border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 bg-white"
               >
-                <option value="ALL">Tüm RT</option>
-                <option value="RAPID_GUESS">Hızlı Tahmin</option>
+                <option value="ALL">All RT</option>
+                <option value="RAPID_GUESS">Rapid Guess</option>
                 <option value="NORMAL">Normal</option>
               </select>
             </div>
@@ -873,12 +873,12 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
                   <th className="px-5 py-3 border-b border-slate-100">CEFR</th>
                   <th className="px-5 py-3 border-b border-slate-100">Tür</th>
                   <th className="px-5 py-3 border-b border-slate-100 max-w-xs">Soru (özet)</th>
-                  <th className="px-5 py-3 border-b border-slate-100">Yanıt</th>
+                  <th className="px-5 py-3 border-b border-slate-100">Response</th>
                   <th className="px-5 py-3 border-b border-slate-100 text-center">✓/✗</th>
                   <th className="px-5 py-3 border-b border-slate-100 text-right">Skor</th>
-                  <th className="px-5 py-3 border-b border-slate-100 text-right">Süre</th>
+                  <th className="px-5 py-3 border-b border-slate-100 text-right">Duration</th>
                   <th className="px-5 py-3 border-b border-slate-100">RT</th>
-                  <th className="px-5 py-3 border-b border-slate-100 text-right">Zorluk</th>
+                  <th className="px-5 py-3 border-b border-slate-100 text-right">Difficulty</th>
                   <th className="px-5 py-3 border-b border-slate-100" />
                 </tr>
               </thead>
@@ -886,7 +886,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
                 {filteredResponses.length === 0 ? (
                   <tr>
                     <td colSpan={12} className="px-5 py-10 text-center text-slate-400 text-sm italic">
-                      Filtreler için yanıt bulunamadı.
+                      No responses match the current filters.
                     </td>
                   </tr>
                 ) : filteredResponses.map((r) => (
