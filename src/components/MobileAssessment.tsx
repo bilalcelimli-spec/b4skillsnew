@@ -186,7 +186,9 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
         itemStartRef.current = Date.now();
       } else {
         // Fetch next from GET endpoint
-        const next = await fetch(`/api/sessions/${sessionId}/next`, { credentials: "include" }).then((r) => r.json());
+        const nextRes = await fetch(`/api/sessions/${sessionId}/next`, { credentials: "include" });
+        if (!nextRes.ok) throw new Error(`Failed to fetch next item: ${nextRes.status}`);
+        const next = await nextRes.json();
         if (next.done) { handleComplete(next); } else { setItem(next.item ?? next); itemStartRef.current = Date.now(); }
       }
     } finally {
