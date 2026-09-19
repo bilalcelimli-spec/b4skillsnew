@@ -64,14 +64,18 @@ export const CandidateProfile: React.FC<{ user: any; onLogout: () => void }> = (
           <Button 
             className="bg-white text-indigo-600 hover:bg-indigo-50 h-12 px-6 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl"
             onClick={async () => {
-              const res = await fetch("/api/payments/checkout", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ userId: user.uid, credits: 1 })
-              });
-              const { url } = await res.json();
-              if (url) window.location.href = url;
+              try {
+                const res = await fetch("/api/payments/checkout", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({ userId: user.uid, credits: 1 })
+                });
+                const data = await res.json();
+                if (data.url) window.location.href = data.url;
+              } catch {
+                alert("Unable to start checkout. Please try again.");
+              }
             }}
           >
             <Zap size={16} className="mr-2" /> Buy Credits
