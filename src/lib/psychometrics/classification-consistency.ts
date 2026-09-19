@@ -296,7 +296,7 @@ export function aggregateConsistency(
 export function formatClassificationReport(result: ClassificationResult): string {
   const pct = (result.posteriorProbCorrect * 100).toFixed(1);
   const borderlineNote = result.isBorderline
-    ? ` (Sınır bölgesi: ${result.borderlineLevels[0] ?? "—"} / ${result.borderlineLevels[1] ?? "—"})`
+    ? ` (Borderline: ${result.borderlineLevels[0] ?? "—"} / ${result.borderlineLevels[1] ?? "—"})`
     : "";
   const actionEmoji: Record<string, string> = {
     ACCEPT: "✅",
@@ -304,9 +304,9 @@ export function formatClassificationReport(result: ClassificationResult): string
     EXPERT_REVIEW: "🔴",
   };
   return [
-    `Seviye: ${result.cefrLevel}${borderlineNote}`,
-    `Doğruluk olasılığı: ${pct}%`,
-    `Öneri: ${actionEmoji[result.recommendedAction]} ${result.recommendedAction}`,
+    `Level: ${result.cefrLevel}${borderlineNote}`,
+    `Accuracy probability: ${pct}%`,
+    `Recommendation: ${actionEmoji[result.recommendedAction]} ${result.recommendedAction}`,
     `θ = ${result.thetaEstimate.toFixed(3)}, SEM = ${result.sem.toFixed(3)}`,
   ].join("\n");
 }
