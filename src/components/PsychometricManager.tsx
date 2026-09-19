@@ -20,6 +20,7 @@ export const PsychometricManager: React.FC = () => {
       const res = await fetch("/api/config/system", {
         credentials: "include",
       });
+      if (!res.ok) throw new Error("Failed to fetch config");
       const data = await res.json();
       setConfig(data);
     } catch (err) {

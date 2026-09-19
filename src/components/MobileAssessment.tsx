@@ -99,6 +99,10 @@ function useOfflineQueue() {
       credentials: "include",
       body: JSON.stringify({ itemId: payload.itemId, value: payload.value, latencyMs: payload.latencyMs }),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error ?? `Submit failed: ${res.status}`);
+    }
     return res.json();
   }
 
@@ -132,6 +136,7 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
   const [result, setResult] = useState<{ cefrLevel: string; score: number } | null>(null);
   const [recording, setRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const itemStartRef = useRef(Date.now());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -171,6 +176,7 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
       value = b64;
     }
 
+    setSubmitError(null);
     try {
       const data = await submitResponse({ sessionId, itemId: item.id, value, latencyMs });
 
@@ -191,6 +197,8 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
         const next = await nextRes.json();
         if (next.done) { handleComplete(next); } else { setItem(next.item ?? next); itemStartRef.current = Date.now(); }
       }
+    } catch (err: any) {
+      setSubmitError(err.message ?? "Failed to submit. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -393,6 +401,9 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
 
       {/* Footer / submit */}
       <footer className="px-4 pb-4 pt-2 bg-white border-t border-gray-100">
+        {submitError && (
+          <p className="text-xs text-red-600 text-center mb-2">{submitError}</p>
+        )}
         <button
           onClick={submitAnswer}
           disabled={!canSubmit || submitting}
