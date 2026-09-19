@@ -246,12 +246,13 @@ export default function App() {
         credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           sessionData: { sessionId, theta, cefr, organizationId: userProfile.organizationId },
           candidateProfile: userProfile,
           branding
         })
       });
+      if (!res.ok) throw new Error("Certificate generation failed");
       const cert = await res.json();
       setCertificate(cert);
     } catch (err) {
