@@ -200,7 +200,16 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
 
   const startRecording = useCallback(async () => {
     chunksRef.current = [];
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err: any) {
+      const msg = err?.name === "NotAllowedError"
+        ? "Microphone access was denied. Please allow microphone access to record your response."
+        : "Could not access microphone. Please check your device settings.";
+      alert(msg);
+      return;
+    }
     const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
     mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     mr.onstop = () => {
