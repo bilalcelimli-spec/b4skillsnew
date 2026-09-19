@@ -3155,8 +3155,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if(!examCode) return res.status(404).json({ error: "Code not found" });
       if(examCode.isUsed) return res.status(400).json({ error: "Code is already used" });
       if(examCode.expiresAt && examCode.expiresAt < new Date()) return res.status(400).json({ error: "Code has expired" });
-      
-      res.json({ valid: true, examCode });
+      // Return only fields the frontend needs — never expose usedByEmail (PII) or internal IDs
+      res.json({ valid: true, productLine: examCode.productLine, expiresAt: examCode.expiresAt });
     } catch(err) {
       res.status(500).json({ error: "Validate failed"});
     }
@@ -3165,16 +3165,16 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.post("/api/codes/redeem", loginLimiter, async (req, res) => {
     try {
       const { code, candidateId, email, name, surname, school, className } = req.body;
-      // 1. Verify code
-      const examCode = await prisma.examCode.findUnique({ where: { code } });
-      if(!examCode) return res.status(404).json({ error: "Code not found" });
-      if(examCode.isUsed) return res.status(400).json({ error: "Code already used" });
-
-      // 2. Mark code used
-      await prisma.examCode.update({
-        where: { id: examCode.id },
+      // 1. Atomically claim the code — updateMany with isUsed:false prevents TOCTOU race
+      const examCodeLookup = await prisma.examCode.findUnique({ where: { code } });
+      if(!examCodeLookup) return res.status(404).json({ error: "Code not found" });
+      if(examCodeLookup.expiresAt && examCodeLookup.expiresAt < new Date()) return res.status(400).json({ error: "Code has expired" });
+      const claimed = await prisma.examCode.updateMany({
+        where: { code, isUsed: false },
         data: { isUsed: true, usedByEmail: email, usedAt: new Date() }
       });
+      if (claimed.count === 0) return res.status(400).json({ error: "Code already used" });
+      const examCode = examCodeLookup;
 
       // 3. Upsert user info in DB
       await prisma.organization.upsert({
