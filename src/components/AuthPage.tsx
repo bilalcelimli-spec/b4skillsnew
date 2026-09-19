@@ -4,7 +4,6 @@ import { Mail, Lock, User, Eye, EyeOff, ArrowLeft, Loader2, BrainCircuit } from 
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
 import { cn } from "../lib/utils";
-import { DynamicPage } from "./DynamicPage";
 
 type AuthMode = "signin" | "signup" | "forgot" | "reset" | "verify";
 
@@ -33,20 +32,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
   const [resetToken, setResetToken] = useState(initialToken ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);  const [pendingFeature, setPendingFeature] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    const handleBrokenLinks = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const link = target.closest('a');
-      if (link && link.getAttribute('href') === '#unavailable') {
-        e.preventDefault();
-        setPendingFeature(link.innerText.trim() || 'This Feature');
-      }
-    };
-    document.addEventListener("click", handleBrokenLinks);
-    return () => document.removeEventListener("click", handleBrokenLinks);
-  }, []);
   const clearState = () => {
     setError(null);
     setSuccessMessage(null);
@@ -155,10 +142,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
       setLoading(false);
     }
   };
-
-  if (pendingFeature) {
-    return <DynamicPage pageName={pendingFeature} onBack={() => setPendingFeature(null)} />;
-  }
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] flex font-sans text-slate-800">
@@ -460,9 +443,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
             {/* Footer Terms */}
             <p className="text-center text-xs text-slate-400 mt-8 font-medium">
               By continuing you agree to our{" "}
-              <a href="#unavailable" className="text-slate-600 hover:text-[#9b276c] transition-colors underline decoration-slate-300">Terms</a>{" "}
+              <a href="mailto:hello@b4skills.com?subject=Terms+of+Service" className="text-slate-600 hover:text-[#9b276c] transition-colors underline decoration-slate-300">Terms</a>{" "}
               and{" "}
-              <a href="#unavailable" className="text-slate-600 hover:text-[#9b276c] transition-colors underline decoration-slate-300">Privacy Policy</a>.
+              <a href="mailto:privacy@b4skills.com" className="text-slate-600 hover:text-[#9b276c] transition-colors underline decoration-slate-300">Privacy Policy</a>.
             </p>
           </div>
         </motion.div>

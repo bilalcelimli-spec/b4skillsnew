@@ -96,7 +96,7 @@ export const MethodologyPage: React.FC<Props> = ({ onBack, onStart }) => {
       <SiteNav onStart={onStart ?? onBack ?? (() => window.location.assign("/"))} />
 
       {/* Hero */}
-      <section className="bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white py-24 px-6 text-center">
+      <section className="bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white pt-32 pb-24 px-6 text-center">
         <div className="max-w-3xl mx-auto">
           <p className="text-xs font-black tracking-[0.25em] uppercase text-indigo-300 mb-4">Transparency</p>
           <h1 className="text-4xl md:text-5xl font-black leading-tight mb-6">Assessment Methodology</h1>

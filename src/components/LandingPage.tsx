@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { DynamicPage } from "./DynamicPage";
 import { FreemiumTestWidget } from "./FreemiumTestWidget";
 import { SiteNav } from "./SiteNav";
 import { SiteFooter } from "./SiteFooter";
@@ -16,26 +15,7 @@ const Highlight = ({ children, className }: { children: React.ReactNode, classNa
 );
 
 export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => void }> = ({ onStart, onCodeEntry }) => {
-  const [pendingFeature, setPendingFeature] = useState<string | null>(null);
   const [showFreemiumTest, setShowFreemiumTest] = useState(false);
-
-  useEffect(() => {
-    // Global interceptor for loose-end #unavailable links
-    const handleBrokenLinks = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const link = target.closest('a');
-      if (link && link.getAttribute('href') === '#unavailable') {
-        e.preventDefault();
-        setPendingFeature(link.innerText.trim() || 'This Feature');
-      }
-    };
-    document.addEventListener("click", handleBrokenLinks);
-    return () => document.removeEventListener("click", handleBrokenLinks);
-  }, []);
-
-  if (pendingFeature) {
-    return <DynamicPage pageName={pendingFeature} onBack={() => setPendingFeature(null)} />;
-  }
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] font-sans text-slate-800 overflow-x-hidden">
