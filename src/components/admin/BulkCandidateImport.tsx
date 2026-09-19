@@ -49,10 +49,11 @@ export const BulkCandidateImport: React.FC<{ orgId: string }> = ({ orgId }) => {
         body: JSON.stringify({ candidates: data })
       });
       const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? "Import failed");
       setStatus(result);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to import candidates");
-      setStatus({ success: 0, failed: data.length, errors: ["Network error occurred"] });
+      setStatus({ success: 0, failed: data.length, errors: [err.message ?? "Network error occurred"] });
     } finally {
       setImporting(false);
     }

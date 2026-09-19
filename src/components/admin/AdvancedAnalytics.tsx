@@ -55,6 +55,7 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
       const res = await fetch(`/api/organizations/${orgId}/analytics`, {
         credentials: "include",
       });
+      if (!res.ok) throw new Error("Failed to fetch analytics");
       setData(await res.json());
     } catch (err) {
       console.error("Failed to fetch analytics");

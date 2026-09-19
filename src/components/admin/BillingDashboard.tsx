@@ -29,6 +29,7 @@ export const BillingDashboard: React.FC<{ orgId: string }> = ({ orgId }) => {
       const res = await fetch(`/api/organizations/${orgId}/billing`, {
         credentials: "include",
       });
+      if (!res.ok) throw new Error("Failed to fetch billing data");
       setBilling(await res.json());
     } catch (err) {
       console.error("Failed to fetch billing data");
