@@ -86,18 +86,32 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         const analyticsData = await analyticsRes.json();
         const studentsData = await studentsRes.json();
 
+        // Analytics returns cefrDistribution as [{name, value}] and skillBreakdown as [{skill, avg, count}]
+        const cefrDist: Record<string, number> = {};
+        if (Array.isArray(analyticsData.cefrDistribution)) {
+          analyticsData.cefrDistribution.forEach((d: { name: string; value: number }) => { cefrDist[d.name] = d.value; });
+        }
+        const skillBreak: Record<string, number> = {};
+        if (Array.isArray(analyticsData.skillBreakdown)) {
+          analyticsData.skillBreakdown.forEach((d: { skill: string; avg: number }) => { skillBreak[d.skill] = d.avg; });
+        }
+        const totalStudentsCount = Array.isArray(studentsData) ? studentsData.length : (studentsData.candidates?.length ?? 0);
+        const totalCefr = Object.values(cefrDist).reduce((a, b) => a + b, 0);
+        const avgCefrIdx = totalCefr > 0
+          ? Math.round(["A1","A2","B1","B2","C1","C2"].reduce((acc, lvl, i) => acc + i * (cefrDist[lvl] ?? 0), 0) / totalCefr)
+          : 2;
         const cohort: CohortSummary = {
-          totalStudents: analyticsData.totalCandidates ?? studentsData.candidates?.length ?? 0,
+          totalStudents: analyticsData.totalCandidates ?? totalStudentsCount,
           activeThisWeek: analyticsData.activeThisWeek ?? 0,
-          averageCefrLevel: analyticsData.averageCefrLevel ?? "B1",
+          averageCefrLevel: analyticsData.averageCefrLevel ?? (["A1","A2","B1","B2","C1","C2"][avgCefrIdx] ?? "B1"),
           averageScore: analyticsData.averageScore ?? 0,
           learningVelocity: analyticsData.learningVelocity ?? 0,
-          cefrDistribution: analyticsData.cefrDistribution ?? {},
-          skillBreakdown: analyticsData.skillBreakdown ?? {},
+          cefrDistribution: cefrDist,
+          skillBreakdown: skillBreak,
         };
         setSummary(cohort);
 
-        const rows: StudentRow[] = (studentsData.candidates ?? []).map((c: any) => ({
+        const rows: StudentRow[] = (Array.isArray(studentsData) ? studentsData : (studentsData.candidates ?? [])).map((c: any) => ({
           id: c.id,
           name: c.name ?? "Unknown",
           email: c.email ?? "",
