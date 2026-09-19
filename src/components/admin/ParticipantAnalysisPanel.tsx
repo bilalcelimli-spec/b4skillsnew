@@ -481,7 +481,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
         <AlertTriangle size={40} className="text-rose-400" />
-        <p className="text-slate-500 font-medium">{error ?? "Veri bulunamadı."}</p>
+        <p className="text-slate-500 font-medium">{error ?? "No data found."}</p>
         <Button variant="outline" onClick={onBack}>Back</Button>
       </div>
     );
@@ -756,8 +756,8 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
                       return (
                         <div className="bg-white border border-slate-100 rounded-xl shadow-lg p-3 text-xs">
                           <div className="font-black text-slate-900">{label}</div>
-                          <div className="text-emerald-600">✓ {correct} doğru</div>
-                          <div className="text-rose-500">✗ {incorrect} yanlış</div>
+                          <div className="text-emerald-600">✓ {correct} correct</div>
+                          <div className="text-rose-500">✗ {incorrect} incorrect</div>
                         </div>
                       );
                     }}
@@ -869,13 +869,13 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
               <thead>
                 <tr className="bg-slate-50/30 text-slate-400 text-[8px] uppercase tracking-widest font-black">
                   <th className="px-5 py-3 border-b border-slate-100">#</th>
-                  <th className="px-5 py-3 border-b border-slate-100">Beceri</th>
+                  <th className="px-5 py-3 border-b border-slate-100">Skill</th>
                   <th className="px-5 py-3 border-b border-slate-100">CEFR</th>
-                  <th className="px-5 py-3 border-b border-slate-100">Tür</th>
-                  <th className="px-5 py-3 border-b border-slate-100 max-w-xs">Soru (özet)</th>
+                  <th className="px-5 py-3 border-b border-slate-100">Type</th>
+                  <th className="px-5 py-3 border-b border-slate-100 max-w-xs">Prompt (summary)</th>
                   <th className="px-5 py-3 border-b border-slate-100">Response</th>
                   <th className="px-5 py-3 border-b border-slate-100 text-center">✓/✗</th>
-                  <th className="px-5 py-3 border-b border-slate-100 text-right">Skor</th>
+                  <th className="px-5 py-3 border-b border-slate-100 text-right">Score</th>
                   <th className="px-5 py-3 border-b border-slate-100 text-right">Duration</th>
                   <th className="px-5 py-3 border-b border-slate-100">RT</th>
                   <th className="px-5 py-3 border-b border-slate-100 text-right">Difficulty</th>

@@ -218,7 +218,7 @@ export const SubScoreRadar: React.FC<Props> = ({
             <div className="flex gap-3 mt-3">
               {speakingFeatures?.speechRate && (
                 <div className="flex-1 bg-slate-50 rounded-xl p-3 text-center border border-slate-100">
-                  <div className="text-[8px] font-black uppercase tracking-widest text-slate-400">Konuşma Hızı</div>
+                  <div className="text-[8px] font-black uppercase tracking-widest text-slate-400">Speech Rate</div>
                   <div className="text-base font-black text-slate-800 mt-0.5">
                     {Math.round(speakingFeatures.speechRate)} <span className="text-[9px] font-medium text-slate-400">wpm</span>
                   </div>
@@ -226,9 +226,9 @@ export const SubScoreRadar: React.FC<Props> = ({
               )}
               {speakingFeatures?.pauseDuration !== undefined && (
                 <div className="flex-1 bg-slate-50 rounded-xl p-3 text-center border border-slate-100">
-                  <div className="text-[8px] font-black uppercase tracking-widest text-slate-400">Toplam Duraklama</div>
+                  <div className="text-[8px] font-black uppercase tracking-widest text-slate-400">Total Pause</div>
                   <div className="text-base font-black text-slate-800 mt-0.5">
-                    {speakingFeatures.pauseDuration.toFixed(1)} <span className="text-[9px] font-medium text-slate-400">sn</span>
+                    {speakingFeatures.pauseDuration.toFixed(1)} <span className="text-[9px] font-medium text-slate-400">s</span>
                   </div>
                 </div>
               )}

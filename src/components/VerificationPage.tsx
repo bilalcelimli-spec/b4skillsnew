@@ -100,7 +100,7 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
             b4skills
           </div>
         </div>
-        <h1 className="text-2xl font-black text-slate-900">Sertifika Doğrulama</h1>
+        <h1 className="text-2xl font-black text-slate-900">Certificate Verification</h1>
         <p className="text-sm text-slate-400 mt-1">Certificate Verification Portal</p>
       </div>
 
@@ -113,7 +113,7 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
-              Sertifika Kodu / Certificate ID
+              Certificate ID
             </label>
             <div className="relative">
               <input
@@ -133,9 +133,9 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl py-3 disabled:opacity-50"
           >
             {loading ? (
-              <><Loader2 size={16} className="animate-spin mr-2" /> Sorgulanıyor…</>
+              <><Loader2 size={16} className="animate-spin mr-2" /> Verifying…</>
             ) : (
-              <><Search size={16} className="mr-2" /> Doğrula</>
+              <><Search size={16} className="mr-2" /> Verify</>
             )}
           </Button>
         </form>

@@ -196,7 +196,7 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
           {phase === "uploading" && (
             <div className="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center gap-3">
               <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
-              <span className="text-sm font-bold text-white">Yükleniyor…</span>
+              <span className="text-sm font-bold text-white">Uploading…</span>
             </div>
           )}
 
@@ -204,7 +204,7 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
           {phase === "done" && (
             <div className="absolute inset-0 bg-emerald-900/80 flex flex-col items-center justify-center gap-3">
               <ShieldCheck className="w-10 h-10 text-emerald-400" />
-              <span className="text-sm font-bold text-white">Doğrulandı</span>
+              <span className="text-sm font-bold text-white">Verified</span>
             </div>
           )}
 
@@ -233,7 +233,7 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
               onClick={beginCapture}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl py-3"
             >
-              <Camera size={16} className="mr-2" /> Fotoğraf Çek
+              <Camera size={16} className="mr-2" /> Take Photo
             </Button>
           )}
 
@@ -243,7 +243,7 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
                 onClick={() => { setErrorMsg(null); startCamera(); }}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl py-3"
               >
-                <RefreshCw size={16} className="mr-2" /> Tekrar Dene ({uploadAttemptsRef.current}/{MAX_UPLOAD_ATTEMPTS})
+                <RefreshCw size={16} className="mr-2" /> Try Again ({uploadAttemptsRef.current}/{MAX_UPLOAD_ATTEMPTS})
               </Button>
             </>
           )}
