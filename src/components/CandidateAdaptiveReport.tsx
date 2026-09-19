@@ -199,7 +199,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
               {report.candidateName ?? "Candidate"} — Adaptive Report
             </h2>
             <p className="text-sm text-slate-400">
-              {new Date(report.completedAt).toLocaleString()} · {report.totalItems} items · {report.stopReason}
+              {report.completedAt ? new Date(report.completedAt).toLocaleString() : "—"} · {report.totalItems} items · {report.stopReason}
             </p>
           </div>
         </div>

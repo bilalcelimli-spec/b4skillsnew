@@ -183,6 +183,15 @@ async function startServer() {
     legacyHeaders: false,
   });
 
+  // Freemium placement: 10 starts per IP per hour prevents memory-exhaustion abuse
+  const placementLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 10,
+    message: { error: 'Too many test attempts. Please try again in an hour.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
   const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     try {
       let token = req.cookies.accessToken;
@@ -4675,7 +4684,16 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     itemsAdministered: number; maxItems: number;
     name: string; email: string;
     skillBreakdown: Record<string, { total: number; correct: number }>;
+    createdAt: number;
   }> = {};
+
+  // Purge placement sessions older than 2 hours (abandoned tests)
+  setInterval(() => {
+    const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+    for (const id of Object.keys(placementSessions)) {
+      if (placementSessions[id].createdAt < cutoff) delete placementSessions[id];
+    }
+  }, 30 * 60 * 1000); // runs every 30 min
 
   const CEFR_BANDS: { level: string; minTheta: number }[] = [
     { level: "C2", minTheta: 2.67 }, { level: "C1", minTheta: 1.67 },
@@ -4754,10 +4772,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     return { ...item, content: safeContent };
   };
 
-  app.post("/api/assessment/placement/start", async (req, res) => {
+  app.post("/api/assessment/placement/start", placementLimiter, async (req, res) => {
     try {
       const { name, email, consentToResearch } = req.body;
       if (!name || !email) return res.status(400).json({ error: "name and email are required" });
+      // Hard cap on concurrent in-memory sessions to prevent memory exhaustion
+      if (Object.keys(placementSessions).length >= 500) {
+        return res.status(503).json({ error: "Service temporarily busy. Please try again shortly." });
+      }
 
       let allItems: any[] = [];
       try {
@@ -4808,6 +4830,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         itemsAdministered: 0, maxItems: 36,
         name: name.trim(), email: email.trim().toLowerCase(),
         skillBreakdown: {},
+        createdAt: Date.now(),
       };
 
       // sectionOrder lets the frontend render the section breadcrumb directly

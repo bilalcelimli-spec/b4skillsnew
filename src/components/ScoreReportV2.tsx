@@ -485,7 +485,7 @@ export function ScoreReport({ data, onDownloadPDF, onShareCertificate, className
           <p style={{ fontSize: "0.6875rem", color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
             LinguAdapt Adaptive Assessment · IRT 3PL scoring · CEFR-aligned ·{" "}
             {data.certificateId ? `Certificate ID: ${data.certificateId}` : `Session: ${data.sessionId}`} ·{" "}
-            Completed {new Date(data.completedAt).toLocaleString()}
+            {data.completedAt ? `Completed ${new Date(data.completedAt).toLocaleString()}` : ""}
           </p>
           <p style={{ fontSize: "0.625rem", color: "var(--text-muted)", margin: "4px 0 0", lineHeight: 1.4 }}>
             Scan QR code or visit{" "}
