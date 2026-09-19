@@ -199,7 +199,7 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string }> = ({
   };
 
   return (
-    <div className="flex h-full w-full bg-slate-50 rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
+    <div className="flex min-h-screen w-full bg-slate-50 overflow-hidden">
       {/* ── Sidebar ─────────────────────────────────────────────────── */}
       <aside className="w-52 bg-slate-900 flex flex-col shrink-0 overflow-y-auto">
         {/* Logo / title */}

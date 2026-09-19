@@ -446,8 +446,8 @@ export default function App() {
         </div>
       )}
 
-      {/* Sidebar (desktop only) */}
-      <aside className="w-64 bg-slate-900 text-white p-6 hidden md:flex flex-col" style={{ backgroundColor: branding?.secondaryColor || "#0f172a" }}>
+      {/* Sidebar (desktop only) — hidden when admin console occupies full width */}
+      <aside className={cn("w-64 bg-slate-900 text-white p-6 flex-col", activeTab === "admin" && isAdmin ? "hidden" : "hidden md:flex")} style={{ backgroundColor: branding?.secondaryColor || "#0f172a" }}>
         <div className="flex items-center gap-2 mb-12">
           {branding?.logoUrl ? (
             <img src={branding.logoUrl} alt="Logo" className="w-8 h-8 rounded" referrerPolicy="no-referrer" />
@@ -523,9 +523,9 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className={cn("flex-1 overflow-y-auto min-w-0", activeTab === "admin" && isAdmin ? "p-4" : "p-6 md:p-8")}>
-        {/* Mobile top bar */}
-        <div className="flex items-center justify-between mb-6 md:hidden">
+      <main className={cn("flex-1 overflow-y-auto min-w-0", activeTab === "admin" && isAdmin ? "p-0" : "p-6 md:p-8")}>
+        {/* Mobile top bar — hidden in admin mode (admin console owns its own chrome) */}
+        <div className={cn("flex items-center justify-between mb-6 md:hidden", activeTab === "admin" && isAdmin && "hidden")}>
           <button
             onClick={() => setMobileMenuOpen(true)}
             className="p-2 rounded-xl bg-slate-900 text-white"
