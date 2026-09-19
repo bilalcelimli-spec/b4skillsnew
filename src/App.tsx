@@ -284,7 +284,7 @@ export default function App() {
   if (!user && location.pathname === "/methodology") {
     return (
       <Suspense fallback={<PageLoader />}>
-        <MethodologyPage onBack={() => navigate("/")} />
+        <MethodologyPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} />
       </Suspense>
     );
   }
@@ -301,16 +301,16 @@ export default function App() {
   }
 
   if (!user && location.pathname === "/schools") {
-    return <Suspense fallback={<PageLoader />}><SchoolsPage onBack={() => navigate("/")} /></Suspense>;
+    return <Suspense fallback={<PageLoader />}><SchoolsPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense>;
   }
   if (!user && location.pathname === "/academia") {
-    return <Suspense fallback={<PageLoader />}><AcademiaPage onBack={() => navigate("/")} /></Suspense>;
+    return <Suspense fallback={<PageLoader />}><AcademiaPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense>;
   }
   if (!user && location.pathname === "/corporate") {
-    return <Suspense fallback={<PageLoader />}><CorporatePage onBack={() => navigate("/")} /></Suspense>;
+    return <Suspense fallback={<PageLoader />}><CorporatePage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense>;
   }
   if (!user && location.pathname === "/language-schools") {
-    return <Suspense fallback={<PageLoader />}><LanguageSchoolsPage onBack={() => navigate("/")} /></Suspense>;
+    return <Suspense fallback={<PageLoader />}><LanguageSchoolsPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense>;
   }
 
   // Email verification link — /verify-email?token=...
@@ -329,7 +329,11 @@ export default function App() {
   if (!user && seoVariant) {
     return (
       <Suspense fallback={<PageLoader />}>
-        <SeoLandingPage variant={seoVariant} onStart={() => setShowLanding(false)} />
+        <SeoLandingPage
+          variant={seoVariant}
+          onStart={() => { setShowLanding(false); navigate("/"); }}
+          onPricing={() => navigate("/pricing")}
+        />
       </Suspense>
     );
   }

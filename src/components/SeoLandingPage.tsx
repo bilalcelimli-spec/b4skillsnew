@@ -12,6 +12,7 @@ export type SeoVariant =
 interface Props {
   variant: SeoVariant;
   onStart: () => void;
+  onPricing?: () => void;
 }
 
 const META: Record<SeoVariant, { title: string; description: string; h1: string; sub: string; keywords: string; icon: React.ReactNode; audience: string; bullets: string[] }> = {
@@ -106,7 +107,7 @@ const SOCIAL_PROOF = [
   { stat: "< 15 min", label: "Quick Check Duration" },
 ];
 
-export const SeoLandingPage: React.FC<Props> = ({ variant, onStart }) => {
+export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing }) => {
   const m = META[variant];
 
   useEffect(() => {
@@ -147,7 +148,7 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart }) => {
               Start Free <ArrowRight size={16} />
             </button>
             <button
-              onClick={onStart}
+              onClick={() => onPricing ? onPricing() : window.location.assign("/pricing")}
               className="inline-flex items-center gap-2 px-8 py-4 bg-white/10 hover:bg-white/20 text-white font-bold rounded-2xl border border-white/20 transition-colors text-sm"
             >
               View Pricing

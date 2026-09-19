@@ -1,14 +1,16 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import {
-  ArrowLeft, BrainCircuit, ShieldCheck, BarChart3, Users,
+  BrainCircuit, ShieldCheck, BarChart3, Users,
   ChevronRight, BookOpen, Target, Layers, Zap, GraduationCap,
   PlayCircle, Sparkles, Award, Globe2, Building2, Briefcase, TrendingUp, CheckCircle2
 } from 'lucide-react';
 import { Highlight, Check, Pillar, SmallFeature, ProductCard, PersonaPanel } from './SchoolsPage';
+import { SiteNav } from './SiteNav';
+import { SiteFooter } from './SiteFooter';
 
 // ─── Main Component ────────────────────────────────────────────────────────────
-export const CorporatePage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+export const CorporatePage: React.FC<{ onBack: () => void; onStart?: () => void }> = ({ onBack, onStart }) => {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 overflow-x-hidden selection:bg-[#9b276c]/20 flex flex-col">
       
@@ -18,24 +20,7 @@ export const CorporatePage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         <div className="absolute bottom-[20%] left-[-10%] w-[40vw] h-[40vw] bg-blue-100/40 rounded-full blur-[120px]" />
       </div>
 
-      {/* ── NAV ─────────────────────────────────────────────────────────────── */}
-      <nav className="fixed top-0 left-0 w-full z-50 bg-white/80 backdrop-blur-xl border-b border-white/20 shadow-[0_4px_30px_rgba(0,0,0,0.03)] py-4 px-6 md:px-12 flex justify-between items-center transition-all">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-black text-sm uppercase tracking-wider transition-colors group bg-white/50 px-4 py-2 rounded-xl"
-        >
-          <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back
-        </button>
-        <div className="bg-gradient-to-r from-[#9b276c] to-[#c73289] text-white font-bold text-xl px-4 py-1.5 -skew-x-6 rounded-lg tracking-tight flex items-center shadow-lg shadow-[#9b276c]/20">
-          <span style={{ textShadow: '0 0 12px rgba(255,255,255,0.4)' }}>b4skills</span>
-        </div>
-        <button
-          onClick={onBack}
-          className="hidden md:flex items-center gap-2 bg-slate-900 hover:bg-[#9b276c] text-white font-black text-xs uppercase tracking-widest px-6 py-3 rounded-xl transition-all shadow-xl hover:-translate-y-0.5"
-        >
-          Contact Enterprise Sales <ChevronRight size={14} />
-        </button>
-      </nav>
+      <SiteNav onStart={onStart ?? onBack} />
 
       {/* ── HERO ────────────────────────────────────────────────────────────── */}
       <section className="pt-32 pb-16 lg:py-32 relative z-10">
@@ -229,9 +214,7 @@ export const CorporatePage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </div>
         </div>
       </section>
-      <footer className="py-10 bg-slate-950 border-t border-white/10 text-center relative z-10 w-full">
-        <p className="text-slate-500 text-sm font-medium">© {new Date().getFullYear()} b4skills Inc. — Transforming Educational Assessment.</p>
-      </footer>
+      <SiteFooter />
     </div>
   );
 };

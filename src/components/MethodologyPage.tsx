@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { ArrowLeft, BrainCircuit, ShieldCheck, Users, BarChart3, CheckCircle2, ChevronDown } from "lucide-react";
+import { BrainCircuit, ShieldCheck, Users, BarChart3, CheckCircle2, ChevronDown } from "lucide-react";
 import { cn } from "../lib/utils";
+import { SiteNav } from "./SiteNav";
+import { SiteFooter } from "./SiteFooter";
 
 interface Props {
   onBack?: () => void;
+  onStart?: () => void;
 }
 
 const SECTIONS = [
@@ -78,7 +81,7 @@ const FAQ_ITEMS = [
   },
 ];
 
-export const MethodologyPage: React.FC<Props> = ({ onBack }) => {
+export const MethodologyPage: React.FC<Props> = ({ onBack, onStart }) => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   useEffect(() => {
@@ -90,14 +93,7 @@ export const MethodologyPage: React.FC<Props> = ({ onBack }) => {
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] font-sans text-slate-800">
-      {onBack && (
-        <button
-          onClick={onBack}
-          className="fixed top-5 left-5 z-40 flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-900 bg-white/80 backdrop-blur px-4 py-2 rounded-full shadow-sm border border-slate-200 transition-colors"
-        >
-          <ArrowLeft size={16} /> Back
-        </button>
-      )}
+      <SiteNav onStart={onStart ?? onBack ?? (() => window.location.assign("/"))} />
 
       {/* Hero */}
       <section className="bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white py-24 px-6 text-center">
@@ -169,6 +165,7 @@ export const MethodologyPage: React.FC<Props> = ({ onBack }) => {
           ))}
         </div>
       </section>
+      <SiteFooter />
     </div>
   );
 };
