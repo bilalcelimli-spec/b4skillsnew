@@ -4746,6 +4746,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     });
   };
 
+  // Strip answer-revealing fields before sending an item to the client
+  const stripAnswers = (item: any) => {
+    if (!item) return item;
+    const { correctIndex: _ci, correctOption: _co, correctAnswer: _ca, isCorrect: _ic, ...safeContent } = item.content ?? {};
+    return { ...item, content: safeContent };
+  };
+
   app.post("/api/assessment/placement/start", async (req, res) => {
     try {
       const { name, email, consentToResearch } = req.body;
@@ -4806,7 +4813,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       // from the server response (no more hardcoded 4-skill list in the UI).
       return res.json({
         placementId: pId,
-        firstItem,
+        firstItem: stripAnswers(firstItem),
         maxItems: 36,
         sectionOrder: FREEMIUM_PLACEMENT_SKILLS,
       });
@@ -4940,7 +4947,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       }
       sess.usedIds.add(nextItem.id);
       return res.json({
-        complete: false, nextItem,
+        complete: false, nextItem: stripAnswers(nextItem),
         itemsAdministered: sess.itemsAdministered,
         currentCefrBand: thetaToCefr(sess.theta),
       });
