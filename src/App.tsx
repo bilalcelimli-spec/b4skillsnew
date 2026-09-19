@@ -209,7 +209,7 @@ export default function App() {
             const histRes = await fetch(`/api/candidates/${data.user.uid}/history`, { credentials: "include" });
             if (histRes.ok) {
               const sessions = await histRes.json();
-              setRecentSessions(Array.isArray(sessions) ? sessions.slice(0, 5) : []);
+              setRecentSessions(Array.isArray(sessions) ? sessions.slice(0, 20) : []);
             }
           } catch (_err) {
             // Non-blocking — dashboard still renders without history
@@ -683,7 +683,7 @@ export default function App() {
                   <div className="space-y-4">
                     {recentSessions.length === 0 ? (
                       <p className="text-sm text-slate-400 font-medium py-4 text-center">No assessments taken yet. Start your first test above!</p>
-                    ) : recentSessions.map((s: any) => (
+                    ) : recentSessions.slice(0, 5).map((s: any) => (
                       <ActivityItem
                         key={s.id}
                         title={s.metadata?.productLine || "Assessment"}

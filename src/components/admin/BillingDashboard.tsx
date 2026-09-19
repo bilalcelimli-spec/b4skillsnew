@@ -74,7 +74,7 @@ export const BillingDashboard: React.FC<{ orgId: string }> = ({ orgId }) => {
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Assessment Credits Remaining</div>
             <div className="mt-8 pt-6 border-t border-indigo-100 flex items-center justify-between">
               <div className="text-[10px] font-bold text-indigo-900 uppercase tracking-widest">Tier: {billing?.licenseType}</div>
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Expires: {new Date(billing?.expiryDate).toLocaleDateString()}</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Expires: {billing?.expiryDate ? new Date(billing.expiryDate).toLocaleDateString() : "—"}</div>
             </div>
           </CardContent>
         </Card>

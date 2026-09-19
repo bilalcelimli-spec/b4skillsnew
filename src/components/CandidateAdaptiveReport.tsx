@@ -598,7 +598,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
                   <option value="">-- Select a session --</option>
                   {sessionHistory.map((s: any) => (
                     <option key={s.id} value={s.id}>
-                      {new Date(s.completedAt).toLocaleDateString("en-GB")} — {s.cefrLevel ?? "?"} (θ={s.theta?.toFixed(2) ?? "?"})
+                      {s.completedAt ? new Date(s.completedAt).toLocaleDateString("en-GB") : "—"} — {s.cefrLevel ?? "?"} (θ={s.theta?.toFixed(2) ?? "?"})
                     </option>
                   ))}
                 </select>

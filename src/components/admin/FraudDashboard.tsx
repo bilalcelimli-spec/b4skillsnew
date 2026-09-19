@@ -203,7 +203,7 @@ export function FraudDashboard() {
                           <TierBadge tier={(s.tier ?? activeTier) as FraudTier} />
                         </td>
                         <td className="px-4 py-2.5 text-slate-400">
-                          {new Date(s.auditedAt).toLocaleDateString()}
+                          {s.auditedAt ? new Date(s.auditedAt).toLocaleDateString() : "—"}
                         </td>
                         <td className="px-4 py-2.5 text-slate-400 text-right">
                           {expandedId === s.sessionId ? "▲" : "▼"}

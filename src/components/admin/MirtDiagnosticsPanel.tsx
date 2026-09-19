@@ -234,7 +234,7 @@ export function MirtDiagnosticsPanel() {
                               {c.candidateName ?? c.sessionId.slice(0, 8) + "…"}
                             </td>
                             <td className="px-4 py-2 text-slate-500">
-                              {new Date(c.completedAt).toLocaleDateString()}
+                              {c.completedAt ? new Date(c.completedAt).toLocaleDateString() : "—"}
                             </td>
                             {c.vector.map((v, i) => (
                               <td key={i} className="px-3 py-2 text-right font-mono"
