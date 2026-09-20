@@ -1,4 +1,5 @@
 import "dotenv/config";
+import PDFDocument from "pdfkit";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -3822,6 +3823,204 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     } catch (err) {
       console.error("adaptive-report error:", err);
       res.status(500).json({ error: "Failed to build adaptive report"});
+    }
+  });
+
+  // ── GET /api/sessions/:id/report.pdf — downloadable PDF score report ─────────
+  app.get("/api/sessions/:id/report.pdf", authMiddleware, async (req: any, res) => {
+    const { id } = req.params;
+    try {
+      if (!(await assertSessionOwnership(req, res, id))) return;
+      const { thetaToCefr, thetaToBeps } = await import("./src/lib/cefr/cefr-framework.js");
+
+      const session = await (prisma.session.findUnique as any)({
+        where: { id },
+        include: {
+          user: { select: { name: true, email: true } },
+          scoreReport: true,
+          responses: {
+            orderBy: { order: "asc" },
+            include: { item: { select: { skill: true, cefrLevel: true } } },
+          },
+        },
+      }) as any;
+      if (!session) return res.status(404).json({ error: "Session not found" });
+
+      const theta: number = session.finalTheta ?? session.currentTheta ?? 0;
+      const sem:   number = session.finalSem   ?? session.currentSem   ?? 0.5;
+      const cefr  = thetaToCefr(theta);
+      const beps  = thetaToBeps(theta);
+      const sr    = session.scoreReport as any;
+      const candidateName = session.user?.name ?? session.user?.email ?? "Candidate";
+      const completedAt = session.completedAt ?? session.updatedAt ?? new Date();
+      const dateStr = new Date(completedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+      const productLine = session.productLine ?? "English Assessment";
+      const safeFileName = `b4skills_report_${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}_${new Date(completedAt).toISOString().slice(0, 10)}.pdf`;
+
+      // Build per-skill breakdown
+      const skillMap: Record<string, number[]> = {};
+      for (const r of session.responses ?? []) {
+        const sk = r.item?.skill ?? "UNKNOWN";
+        if (!skillMap[sk]) skillMap[sk] = [];
+        if (r.thetaAfter != null) skillMap[sk].push(r.thetaAfter);
+      }
+      const skills = Object.entries(skillMap).map(([skill, thetas]) => {
+        const t = thetas.length ? thetas[thetas.length - 1] : theta;
+        return { skill, theta: t, cefr: thetaToCefr(t) };
+      });
+
+      // Override from scoreReport scored columns when available
+      const scoredFields: Record<string, number | null> = {
+        READING: sr?.readingScore ?? null, LISTENING: sr?.listeningScore ?? null,
+        WRITING: sr?.writingScore ?? null, SPEAKING: sr?.speakingScore ?? null,
+      };
+
+      const CEFR_ORDER = ["PRE_A1","A1","A2","B1","B2","C1","C2"];
+      const CEFR_HEX: Record<string, string> = {
+        PRE_A1: "#94a3b8", A1: "#64748b", A2: "#94a3b8",
+        B1: "#3b82f6", B2: "#1a56db", C1: "#7c3aed", C2: "#059669",
+      };
+      const bandHex = CEFR_HEX[cefr] ?? "#1a56db";
+      const SKILL_LABEL: Record<string, string> = {
+        READING: "Reading", LISTENING: "Listening", WRITING: "Writing",
+        SPEAKING: "Speaking", GRAMMAR: "Grammar", VOCABULARY: "Vocabulary",
+      };
+
+      const doc = new PDFDocument({ size: "A4", margin: 0, info: {
+        Title: `B4Skills Assessment Report — ${candidateName}`,
+        Author: "B4Skills Assessment Platform",
+        Subject: `CEFR ${cefr} English Assessment`,
+        CreationDate: new Date(),
+      }});
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeFileName}"`);
+      doc.pipe(res);
+
+      const W = 595.28, H = 841.89;
+      const M = 48; // side margin
+
+      // ── Header band ─────────────────────────────────────────────────────
+      doc.rect(0, 0, W, 110).fill(bandHex);
+      doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(22).text("B4Skills", M, 28);
+      doc.font("Helvetica").fontSize(10).fillColor("rgba(255,255,255,0.8)").text("English Assessment Platform", M, 54);
+      doc.font("Helvetica").fontSize(10).fillColor("rgba(255,255,255,0.7)").text(dateStr, W - M - 120, 28, { width: 120, align: "right" });
+      doc.font("Helvetica").fontSize(10).fillColor("rgba(255,255,255,0.7)").text(productLine, W - M - 120, 44, { width: 120, align: "right" });
+
+      // ── CEFR badge (right side of header) ───────────────────────────────
+      const badgeX = W - M - 64, badgeY = 20, badgeW = 64, badgeH = 60;
+      doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 8).fillAndStroke("rgba(255,255,255,0.18)", "rgba(255,255,255,0.4)");
+      doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(26).text(cefr.replace("_", " "), badgeX, badgeY + 10, { width: badgeW, align: "center" });
+      doc.font("Helvetica").fontSize(8).fillColor("rgba(255,255,255,0.8)").text("CEFR LEVEL", badgeX, badgeY + 44, { width: badgeW, align: "center" });
+
+      // ── Candidate info section ───────────────────────────────────────────
+      let y = 128;
+      doc.fillColor("#1e293b").font("Helvetica-Bold").fontSize(18).text(candidateName, M, y);
+      y += 24;
+      doc.fillColor("#64748b").font("Helvetica").fontSize(10).text(session.user?.email ?? "", M, y);
+      y += 20;
+      doc.moveTo(M, y).lineTo(W - M, y).strokeColor("#e2e8f0").lineWidth(1).stroke();
+      y += 16;
+
+      // ── Score summary boxes ──────────────────────────────────────────────
+      const boxW = (W - M * 2 - 16) / 3;
+      const boxes = [
+        { label: "CEFR Level",  value: cefr.replace("_", " "), color: bandHex },
+        { label: "BEPS Score",  value: String(beps),            color: "#1a56db" },
+        { label: "Theta (θ)",   value: theta.toFixed(2),        color: "#7c3aed" },
+      ];
+      for (let i = 0; i < boxes.length; i++) {
+        const bx = M + i * (boxW + 8);
+        doc.roundedRect(bx, y, boxW, 68, 6).fill("#f8fafc");
+        doc.fillColor(boxes[i].color).font("Helvetica-Bold").fontSize(22).text(boxes[i].value, bx + 8, y + 10, { width: boxW - 16, align: "center" });
+        doc.fillColor("#94a3b8").font("Helvetica").fontSize(9).text(boxes[i].label, bx + 8, y + 42, { width: boxW - 16, align: "center" });
+      }
+      y += 84;
+
+      // Confidence interval line
+      const ciLo = thetaToCefr(theta - 1.96 * sem);
+      const ciHi = thetaToCefr(theta + 1.96 * sem);
+      doc.fillColor("#64748b").font("Helvetica").fontSize(9)
+        .text(`95% Confidence Interval: ${ciLo} – ${ciHi}  |  SEM: ${sem.toFixed(2)}`, M, y);
+      y += 20;
+      doc.moveTo(M, y).lineTo(W - M, y).strokeColor("#e2e8f0").lineWidth(1).stroke();
+      y += 16;
+
+      // ── Skill breakdown ──────────────────────────────────────────────────
+      doc.fillColor("#1e293b").font("Helvetica-Bold").fontSize(12).text("Skill Profile", M, y);
+      y += 18;
+
+      const DISPLAY_SKILLS = ["READING", "LISTENING", "WRITING", "SPEAKING", "GRAMMAR", "VOCABULARY"];
+      const colW = (W - M * 2 - 12) / 2;
+      let col = 0;
+      for (const skillKey of DISPLAY_SKILLS) {
+        const entry = skills.find((s) => s.skill === skillKey);
+        const t = entry?.theta ?? theta;
+        const band = entry?.cefr ?? cefr;
+        const hex = CEFR_HEX[band] ?? "#1a56db";
+        const scoredScore = scoredFields[skillKey];
+        const sx = M + col * (colW + 12);
+        const sy = y;
+        const rowH = 44;
+
+        doc.roundedRect(sx, sy, colW, rowH, 5).fill("#f8fafc");
+        // skill name
+        doc.fillColor("#1e293b").font("Helvetica-Bold").fontSize(10)
+          .text(SKILL_LABEL[skillKey] ?? skillKey, sx + 10, sy + 8);
+        // CEFR badge inline
+        doc.roundedRect(sx + colW - 52, sy + 8, 44, 20, 4).fill(hex + "22");
+        doc.fillColor(hex).font("Helvetica-Bold").fontSize(10)
+          .text(band.replace("_", " "), sx + colW - 52, sy + 13, { width: 44, align: "center" });
+        // theta bar
+        const barFull = colW - 20;
+        const frac = Math.min(1, Math.max(0, (t + 4) / 8));
+        doc.rect(sx + 10, sy + 32, barFull, 5).fill("#e2e8f0");
+        doc.rect(sx + 10, sy + 32, barFull * frac, 5).fill(hex);
+        // theta value
+        doc.fillColor("#64748b").font("Helvetica").fontSize(8)
+          .text(`θ ${t.toFixed(2)}${scoredScore != null ? "  |  " + scoredScore.toFixed(0) + " pts" : ""}`, sx + 10, sy + 24);
+
+        col++;
+        if (col >= 2) { col = 0; y += rowH + 8; }
+      }
+      if (col !== 0) y += 44 + 8;
+      y += 4;
+
+      // ── CEFR Scale bar ───────────────────────────────────────────────────
+      doc.moveTo(M, y).lineTo(W - M, y).strokeColor("#e2e8f0").lineWidth(1).stroke();
+      y += 14;
+      doc.fillColor("#1e293b").font("Helvetica-Bold").fontSize(12).text("CEFR Scale", M, y);
+      y += 14;
+      const levels = ["A1","A2","B1","B2","C1","C2"];
+      const segW = (W - M * 2) / levels.length;
+      for (let i = 0; i < levels.length; i++) {
+        const lv = levels[i];
+        const lx = M + i * segW;
+        const isActive = lv === cefr;
+        doc.rect(lx, y, segW - 2, 20).fill(isActive ? (CEFR_HEX[lv] ?? "#1a56db") : "#f1f5f9");
+        doc.fillColor(isActive ? "#ffffff" : "#94a3b8").font(isActive ? "Helvetica-Bold" : "Helvetica").fontSize(9)
+          .text(lv, lx, y + 5, { width: segW - 2, align: "center" });
+      }
+      y += 36;
+
+      // ── Certificate ID (if any) ──────────────────────────────────────────
+      if (sr?.certificateId) {
+        doc.fillColor("#64748b").font("Helvetica").fontSize(9)
+          .text(`Certificate ID: ${sr.certificateId}`, M, y);
+        doc.fillColor("#3b82f6").font("Helvetica").fontSize(9)
+          .text(`Verify at: ${APP_BASE_URL}/verify/${sr.certificateId}`, M + 200, y);
+        y += 16;
+      }
+
+      // ── Footer ───────────────────────────────────────────────────────────
+      doc.rect(0, H - 40, W, 40).fill("#f8fafc");
+      doc.fillColor("#94a3b8").font("Helvetica").fontSize(8)
+        .text("This report was generated by the B4Skills Adaptive Assessment Platform. Results are based on Item Response Theory (IRT).", M, H - 28, { width: W - M * 2, align: "center" });
+
+      doc.end();
+    } catch (err) {
+      console.error("PDF report error:", err);
+      if (!res.headersSent) res.status(500).json({ error: "Failed to generate PDF" });
     }
   });
 

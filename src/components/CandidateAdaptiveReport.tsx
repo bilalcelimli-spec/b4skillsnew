@@ -234,13 +234,14 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
           >
             {shareCopied ? <><Check size={14} className="text-emerald-500" /> Copied!</> : <><Share2 size={14} /> Share</>}
           </button>
-          <button
-            onClick={() => window.print()}
-            title="Download as PDF"
+          <a
+            href={`/api/sessions/${sessionId}/report.pdf`}
+            download
+            title="Download PDF report"
             className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-400 rounded-lg px-3 py-1.5 transition-colors"
           >
-            <Printer size={14} /> Save PDF
-          </button>
+            <Printer size={14} /> PDF İndir
+          </a>
         </div>
         {/* CEFR badge */}
         <div
