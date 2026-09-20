@@ -6,6 +6,7 @@
  * product-line name consumed by server-engine.ts.
  */
 
+import { useEffect, useRef } from "react";
 import { motion } from "motion/react";
 import { Clock, Zap, BarChart2, BookOpen, TrendingUp, ShieldCheck, ChevronRight } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -89,9 +90,24 @@ interface Props {
 }
 
 export function AssessmentModeSelector({ onSelect, allowedProductLine, className }: Props) {
-  const visible = allowedProductLine && !["General", "general"].includes(allowedProductLine)
-    ? MODES.filter((m) => m.productLine === allowedProductLine)
-    : MODES;
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const filtered = allowedProductLine
+    ? MODES.filter((m) => norm(m.productLine) === norm(allowedProductLine))
+    : [];
+  // If the code restricts to a specific product line that matches exactly one mode,
+  // auto-start immediately so the candidate lands directly in the exam.
+  const visible = filtered.length > 0 ? filtered : MODES;
+
+  // Auto-start when there is exactly one allowed mode (code-entry candidates)
+  const autoStartRef = useRef(false);
+  useEffect(() => {
+    if (filtered.length === 1 && !autoStartRef.current) {
+      autoStartRef.current = true;
+      onSelect(filtered[0].productLine);
+    }
+  }, [filtered.length]);
+
+  if (filtered.length === 1) return null; // auto-starting, hide selector
 
   return (
     <div className={cn("space-y-3", className)}>
