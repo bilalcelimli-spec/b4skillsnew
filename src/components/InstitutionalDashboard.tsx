@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader } from "./ui/Card";
 import { Button } from "./ui/Button";
-import { 
-  Users, 
-  TrendingUp, 
-  BarChart3, 
-  Map, 
-  Download, 
-  Filter, 
+import {
+  Users,
+  TrendingUp,
+  BarChart3,
+  Map,
+  Download,
+  Upload,
+  Filter,
   Calendar,
   Globe,
   Award,
@@ -60,6 +61,43 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
   const [webhookUrl, setWebhookUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCsvImport = async (file: File) => {
+    if (!organizationId || csvImporting) return;
+    setCsvImporting(true);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      const header = lines[0]?.toLowerCase() ?? "";
+      const nameIdx = header.split(",").findIndex(h => h.trim() === "name");
+      const emailIdx = header.split(",").findIndex(h => h.trim() === "email");
+      if (nameIdx === -1 || emailIdx === -1) {
+        alert("CSV must have 'name' and 'email' columns in the first row.");
+        return;
+      }
+      const candidates = lines.slice(1).map(line => {
+        const cols = line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+        return { name: cols[nameIdx] ?? "", email: cols[emailIdx] ?? "" };
+      }).filter(c => c.email.includes("@"));
+      if (!candidates.length) { alert("No valid rows found."); return; }
+      const res = await fetch(`/api/organizations/${organizationId}/candidates/bulk-import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ candidates }),
+      });
+      const result = await res.json();
+      setOnboardingStatus(result);
+      fetchAnalytics();
+    } catch {
+      alert("CSV import failed. Please check the file format.");
+    } finally {
+      setCsvImporting(false);
+      if (csvInputRef.current) csvInputRef.current.value = "";
+    }
+  };
 
   const handleExportCSV = async () => {
     if (!organizationId || exporting) return;
@@ -348,17 +386,40 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
           <Card className="rounded-[32px] border-slate-100 shadow-sm overflow-hidden">
             <CardHeader className="p-6 font-black uppercase tracking-widest text-xs text-slate-400 border-b border-slate-50">Bulk Candidate Onboarding</CardHeader>
             <CardContent className="p-8 space-y-6">
+              {/* CSV Upload */}
+              <div className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center">
+                <Upload size={24} className="mx-auto mb-2 text-indigo-400" />
+                <p className="text-xs font-semibold text-slate-500 mb-3">
+                  Upload a CSV with <code className="bg-slate-50 px-1 rounded text-indigo-600">name</code> and <code className="bg-slate-50 px-1 rounded text-indigo-600">email</code> columns
+                </p>
+                <input
+                  ref={csvInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCsvImport(f); }}
+                />
+                <Button
+                  variant="ghost"
+                  disabled={csvImporting}
+                  onClick={() => csvInputRef.current?.click()}
+                  className="gap-2 border border-indigo-200 text-indigo-600 hover:bg-indigo-50 rounded-xl px-4 py-2 text-xs font-bold"
+                >
+                  <Upload size={14} /> {csvImporting ? "Importing…" : "Choose CSV File"}
+                </Button>
+              </div>
+              <p className="text-xs text-slate-400 text-center">— or paste JSON below —</p>
               <p className="text-sm text-slate-500 font-medium leading-relaxed">
-                Paste a JSON array of candidate objects to mass-create accounts. 
+                Paste a JSON array of candidate objects to mass-create accounts.
                 Each object should include <code className="bg-slate-50 px-1.5 py-0.5 rounded text-indigo-600 font-bold">name</code> and <code className="bg-slate-50 px-1.5 py-0.5 rounded text-indigo-600 font-bold">email</code>.
               </p>
-              <textarea 
-                className="w-full h-64 p-6 font-mono text-xs bg-slate-50 border border-slate-100 rounded-[32px] focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+              <textarea
+                className="w-full h-40 p-6 font-mono text-xs bg-slate-50 border border-slate-100 rounded-[32px] focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                 placeholder='[{"name": "John Doe", "email": "john@example.com"}]'
                 value={bulkData}
                 onChange={(e) => setBulkData(e.target.value)}
               />
-              <Button 
+              <Button
                 className="w-full bg-indigo-600 h-14 rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl shadow-indigo-100"
                 onClick={handleBulkOnboarding}
               >

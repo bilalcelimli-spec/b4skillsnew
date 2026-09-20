@@ -3510,6 +3510,38 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const { WebhookService } = await import("./src/lib/ecosystem/webhook-service.js");
       await WebhookService.dispatchTestCompleted(id);
 
+      // Send results email (non-blocking — never fails the response)
+      (async () => {
+        try {
+          const sess = await (prisma.session.findUnique as any)({
+            where: { id },
+            include: {
+              user: { select: { email: true, name: true } },
+              scoreReport: { select: { overallCefr: true } },
+            },
+          }) as { cefrLevel?: string; user?: { email: string; name?: string }; scoreReport?: { overallCefr?: string } } | null;
+          if (!sess?.user?.email) return;
+          const cefr = sess.scoreReport?.overallCefr ?? sess.cefrLevel ?? "—";
+          const name = sess.user.name ?? "Candidate";
+          const reportUrl = `${APP_BASE_URL}/dashboard`;
+          await sendEmail(
+            sess.user.email,
+            `Your B4Skills Assessment Results — ${cefr}`,
+            emailTemplate({
+              heading: `Your results are ready, ${name}!`,
+              body: `<p style="font-size:16px;color:#334155;line-height:1.6">You've completed your <strong>B4Skills</strong> adaptive English assessment.</p>
+                     <p style="font-size:32px;font-weight:800;color:#4f46e5;text-align:center;margin:24px 0">${cefr}</p>
+                     <p style="font-size:14px;color:#64748b;line-height:1.6">Log in to view your full skill breakdown, CEFR can-do statements, and personalised learning recommendations.</p>`,
+              ctaLabel: "View Full Report",
+              ctaUrl: reportUrl,
+              footer: "Your certificate will be available on your dashboard.",
+            }),
+          );
+        } catch (emailErr) {
+          console.error("[email] Results email failed:", emailErr);
+        }
+      })();
+
       res.json({ status: "ok" });
     } catch (err) {
       res.status(500).json({ error: "Failed to complete session" });
