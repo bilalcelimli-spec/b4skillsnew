@@ -63,6 +63,32 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
   const [exporting, setExporting] = useState(false);
   const [csvImporting, setCsvImporting] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteProductLine, setInviteProductLine] = useState("General English");
+  const [inviteSending, setInviteSending] = useState(false);
+  const [lastInviteCode, setLastInviteCode] = useState<string | null>(null);
+
+  const handleSendInvite = async () => {
+    if (!inviteEmail.trim() || inviteSending) return;
+    setInviteSending(true);
+    try {
+      const res = await fetch("/api/codes/send-invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: inviteEmail.trim(), name: inviteName.trim() || undefined, productLine: inviteProductLine, organizationId, expiresInDays: 30 }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Failed");
+      setLastInviteCode(result.code);
+      setInviteEmail(""); setInviteName("");
+    } catch (err: any) {
+      alert(`Invite failed: ${err.message}`);
+    } finally {
+      setInviteSending(false);
+    }
+  };
 
   const handleCsvImport = async (file: File) => {
     if (!organizationId || csvImporting) return;
@@ -462,6 +488,50 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Single-candidate invite card */}
+          <Card className="rounded-[32px] border-slate-100 shadow-sm overflow-hidden lg:col-span-2">
+            <CardHeader className="p-6 font-black uppercase tracking-widest text-xs text-slate-400 border-b border-slate-50">Send Exam Invitation</CardHeader>
+            <CardContent className="p-8 space-y-4">
+              <p className="text-sm text-slate-500 font-medium">Generate a unique access code and email it directly to a candidate.</p>
+              <div className="flex flex-wrap gap-3">
+                <input
+                  className="flex-1 min-w-[180px] h-10 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  placeholder="Candidate email"
+                  type="email"
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                />
+                <input
+                  className="flex-1 min-w-[140px] h-10 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  placeholder="Name (optional)"
+                  value={inviteName}
+                  onChange={e => setInviteName(e.target.value)}
+                />
+                <select
+                  className="flex-1 min-w-[160px] h-10 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  value={inviteProductLine}
+                  onChange={e => setInviteProductLine(e.target.value)}
+                >
+                  {["General English","15-Min Diagnostic","Academia","Corporate","Primary","Junior"].map(pl => (
+                    <option key={pl} value={pl}>{pl}</option>
+                  ))}
+                </select>
+                <Button
+                  onClick={handleSendInvite}
+                  disabled={inviteSending || !inviteEmail.trim()}
+                  className="gap-2 bg-indigo-600 h-10 px-6 rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-100 disabled:opacity-60"
+                >
+                  {inviteSending ? "Sending…" : "Send Invite"}
+                </Button>
+              </div>
+              {lastInviteCode && (
+                <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 font-medium">
+                  ✓ Invite sent. Access code: <span className="font-mono font-bold">{lastInviteCode}</span>
                 </div>
               )}
             </CardContent>

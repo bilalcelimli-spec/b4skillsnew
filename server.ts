@@ -3197,6 +3197,46 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // POST /api/codes/send-invite — generate a single exam code and email it to a candidate
+  app.post("/api/codes/send-invite", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
+    try {
+      const { email, name, productLine, organizationId: bodyOrgId, expiresInDays } = req.body;
+      if (!email || !productLine) return res.status(400).json({ error: "email and productLine required" });
+      const orgId = bodyOrgId || req.user?.organizationId;
+      if (!orgId) return res.status(400).json({ error: "organizationId required" });
+      if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== orgId)
+        return res.status(403).json({ error: "Forbidden" });
+      const prefix = orgId.slice(0, 4).toUpperCase();
+      const code = `${prefix}-${crypto.randomBytes(3).toString("hex").toUpperCase()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+      const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 86400_000) : null;
+      await prisma.examCode.create({
+        data: { code, organizationId: orgId, productLine, expiresAt },
+      });
+      const candidateName = name || email.split("@")[0];
+      const testUrl = `${APP_BASE_URL}/?code=${encodeURIComponent(code)}`;
+      await sendEmail(
+        email,
+        `Your B4Skills Assessment Invitation — ${productLine}`,
+        emailTemplate({
+          heading: `You've been invited to take the B4Skills ${productLine} assessment`,
+          body: `<p style="font-size:15px;color:#334155;line-height:1.6">Hello ${candidateName},</p>
+                 <p style="font-size:15px;color:#334155;line-height:1.6">Your unique access code is:</p>
+                 <p style="font-size:28px;font-weight:800;color:#4f46e5;text-align:center;letter-spacing:0.12em;margin:24px 0;font-family:monospace">${code}</p>
+                 <p style="font-size:13px;color:#64748b;line-height:1.6">
+                   ${expiresAt ? `This code expires on <strong>${expiresAt.toLocaleDateString()}</strong>.` : "This code does not expire."}
+                 </p>`,
+          ctaLabel: "Start Your Assessment",
+          ctaUrl: testUrl,
+          footer: "If you did not expect this invitation, please ignore this email.",
+        }),
+      );
+      res.json({ code, expiresAt });
+    } catch (err) {
+      console.error("[send-invite] error:", err);
+      res.status(500).json({ error: "Failed to send invite" });
+    }
+  });
+
   app.post("/api/codes/validate", async (req, res) => {
     try {
       const { code } = req.body;
