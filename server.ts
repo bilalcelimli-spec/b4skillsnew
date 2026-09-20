@@ -5925,10 +5925,6 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
     // ── LTI launch callback (step 3 — platform redirects here with id_token)
     // POST /api/lms/lti/launch
-    // SECURITY NOTE: parseIdToken() does NOT verify the JWT RS256 signature; it
-    // only checks structural validity and exp/iat claims. Until JWKS-based
-    // verification is implemented, this endpoint is gated behind LTI_ENABLED so
-    // it cannot be reached on deployments that haven't explicitly opted in.
     app.post("/api/lms/lti/launch", async (req, res) => {
       if (!process.env.LTI_ENABLED) return res.status(503).json({ error: "LTI integration not enabled" });
       try {
@@ -5938,10 +5934,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const stateData = LtiService.consumeState(state);
         if (!stateData) return res.status(403).send("Invalid or expired state");
 
-        const claims = LtiService.parseIdToken(id_token);
+        // Peek at iss/aud without full verification first so we can look up the JWKS endpoint
+        const rawClaims = LtiService.parseIdToken(id_token);
         // Resolve platform config for validation — reject unknown issuers
-        const platform = ltiPlatforms.get(claims.iss) ?? LtiService.resolvePlatformConfig(claims.iss, Array.isArray(claims.aud) ? claims.aud[0] : claims.aud);
-        if (!platform) return res.status(403).send(`Unknown LTI platform: ${claims.iss}`);
+        const platform = ltiPlatforms.get(rawClaims.iss) ?? LtiService.resolvePlatformConfig(rawClaims.iss, Array.isArray(rawClaims.aud) ? rawClaims.aud[0] : rawClaims.aud);
+        if (!platform) return res.status(403).send(`Unknown LTI platform: ${rawClaims.iss}`);
+
+        // Verify RS256 signature using the platform's JWKS endpoint
+        const claims = await LtiService.verifyIdTokenRS256(id_token, platform.jwksEndpoint);
         const validation = LtiService.validateLaunchClaims(claims, platform, stateData.nonce);
         if (!validation.valid) return res.status(403).send(`LTI validation failed: ${validation.reason}`);
 

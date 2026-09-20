@@ -284,6 +284,57 @@ export const LtiService = {
   },
 
   /**
+   * Fetch the platform's JWKS and verify the RS256 signature of an LTI ID token.
+   * Caches JWKS per endpoint for 10 minutes to avoid hammering the LMS on every launch.
+   *
+   * @throws Error if signature verification fails or key is not found
+   */
+  async verifyIdTokenRS256(idToken: string, jwksEndpoint: string): Promise<LtiLaunchClaims> {
+    const [headerB64, payloadB64, sigB64] = idToken.split(".");
+    if (!headerB64 || !payloadB64 || !sigB64) throw new Error("Malformed JWT");
+
+    const header = JSON.parse(Buffer.from(headerB64, "base64url").toString());
+    const kid: string | undefined = header.kid;
+
+    // Fetch + cache JWKS
+    const cacheKey = jwksEndpoint;
+    const cached = LtiService._jwksCache.get(cacheKey);
+    let keys: Array<{ kty: string; kid?: string; n: string; e: string; alg?: string; use?: string }>;
+    if (cached && Date.now() - cached.fetchedAt < 600_000) {
+      keys = cached.keys;
+    } else {
+      const resp = await fetch(jwksEndpoint);
+      if (!resp.ok) throw new Error(`JWKS fetch failed: ${resp.status}`);
+      const jwks = await resp.json() as { keys: typeof keys };
+      keys = jwks.keys.filter((k) => k.kty === "RSA" && (!k.use || k.use === "sig"));
+      LtiService._jwksCache.set(cacheKey, { keys, fetchedAt: Date.now() });
+    }
+
+    const key = kid ? keys.find((k) => k.kid === kid) : keys[0];
+    if (!key) throw new Error(`No matching JWK for kid=${kid ?? "(none)"}`);
+
+    // Reconstruct RSA public key from n/e
+    const pubKey = crypto.createPublicKey({
+      key: {
+        kty: "RSA",
+        n: key.n,
+        e: key.e,
+      },
+      format: "jwk",
+    });
+
+    const signingInput = `${headerB64}.${payloadB64}`;
+    const sig = Buffer.from(sigB64, "base64url");
+    const valid = crypto.verify("sha256", Buffer.from(signingInput), { key: pubKey, padding: crypto.constants.RSA_PKCS1_PADDING }, sig);
+    if (!valid) throw new Error("LTI ID token RS256 signature verification failed");
+
+    return LtiService.parseIdToken(idToken);
+  },
+
+  /** @internal JWKS cache: endpoint → { keys, fetchedAt } */
+  _jwksCache: new Map<string, { keys: Array<{ kty: string; kid?: string; n: string; e: string; alg?: string; use?: string }>; fetchedAt: number }>(),
+
+  /**
    * Determine if the LTI user has instructor role.
    * Checks the full URN roles claim for Instructor/TeachingAssistant/Administrator.
    */
