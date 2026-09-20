@@ -36,6 +36,7 @@ import {
   Settings as SettingsIcon,
   ChevronDown,
   ChevronRight,
+  LogOut,
   Activity,
   Clock,
   ArrowUpRight,
@@ -177,8 +178,9 @@ const NAV_GROUPS: NavGroup[] = [
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const UnifiedAdminConsole: React.FC<{ orgId?: string }> = ({
+export const UnifiedAdminConsole: React.FC<{ orgId?: string; onLogout?: () => void }> = ({
   orgId: propOrgId,
+  onLogout,
 }) => {
   const ORG_ID = propOrgId ?? "";
   const [activeSection, setActiveSection] = useState<Section>("overview");
@@ -213,7 +215,7 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string }> = ({
         </div>
 
         {/* Nav groups */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {NAV_GROUPS.map((group) => {
             const collapsed = collapsedGroups.has(group.id);
             return (
@@ -270,6 +272,19 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string }> = ({
             );
           })}
         </nav>
+
+        {/* Logout */}
+        {onLogout && (
+          <div className="px-3 pb-4 pt-2 border-t border-slate-800">
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-all"
+            >
+              <LogOut size={14} />
+              Sign out
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* ── Main content ─────────────────────────────────────────────── */}

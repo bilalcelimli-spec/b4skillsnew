@@ -547,7 +547,7 @@ export default function App() {
         </div>
         {activeTab === "admin" && isAdmin ? (
           <Suspense fallback={<PageLoader />}>
-            <UnifiedAdminConsole orgId={userProfile?.organizationId} />
+            <UnifiedAdminConsole orgId={userProfile?.organizationId} onLogout={() => signOut()} />
           </Suspense>
         ) : activeTab === "rating" && isRater ? (
           <Suspense fallback={<PageLoader />}>
