@@ -3123,6 +3123,115 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // --- REPORTING API ---
   const { ReportingService } = await import("./src/lib/reporting/reporting-service.js");
 
+  // ── GET /api/organizations/:id/benchmark — org CEFR dist vs platform avg ────
+  app.get("/api/organizations/:id/benchmark", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
+    const { id } = req.params;
+    if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
+    try {
+      const CEFR_LEVELS = ["A1","A2","B1","B2","C1","C2"];
+      const toIdx = (c: string) => CEFR_LEVELS.indexOf(c.replace("_"," ").trim());
+
+      // Org distribution
+      const orgReports = await prisma.scoreReport.findMany({
+        where: { session: { organizationId: id, status: "COMPLETED" } },
+        select: { overallCefr: true, session: { select: { completedAt: true } } },
+      } as any);
+
+      // Platform distribution (all orgs, anonymized)
+      const allReports = await prisma.scoreReport.findMany({
+        where: { session: { status: "COMPLETED" } },
+        select: { overallCefr: true },
+      } as any);
+
+      const toDist = (rows: { overallCefr: string | null }[]) => {
+        const counts: Record<string, number> = Object.fromEntries(CEFR_LEVELS.map(l => [l, 0]));
+        for (const r of rows) {
+          const lv = (r.overallCefr ?? "").replace("_PLUS","").replace("_"," ").trim();
+          if (counts[lv] !== undefined) counts[lv]++;
+        }
+        const total = Object.values(counts).reduce((a,b)=>a+b,0) || 1;
+        return CEFR_LEVELS.map(l => ({ level: l, count: counts[l], pct: Math.round((counts[l]/total)*100) }));
+      };
+
+      const orgDist  = toDist(orgReports as any[]);
+      const platDist = toDist(allReports as any[]);
+
+      const avgIdx = (rows: { overallCefr: string | null }[]) => {
+        const idxs = rows.map((r:any) => toIdx(r.overallCefr ?? "B1")).filter(i => i >= 0);
+        return idxs.length ? idxs.reduce((a,b)=>a+b,0)/idxs.length : 2;
+      };
+      const orgAvgIdx  = avgIdx(orgReports as any[]);
+      const platAvgIdx = avgIdx(allReports as any[]);
+      const delta = orgAvgIdx - platAvgIdx;
+
+      res.json({
+        orgDistribution:      orgDist,
+        platformDistribution: platDist,
+        orgAvgCefr:      CEFR_LEVELS[Math.round(orgAvgIdx)]  ?? "B1",
+        platformAvgCefr: CEFR_LEVELS[Math.round(platAvgIdx)] ?? "B1",
+        deltaLevels: delta,
+        totalOrgSessions: orgReports.length,
+        totalPlatformSessions: allReports.length,
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Benchmark failed" });
+    }
+  });
+
+  // ── GET /api/organizations/:id/cohort-trends — multi-period CEFR shift ───────
+  app.get("/api/organizations/:id/cohort-trends", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
+    const { id } = req.params;
+    const periods = Math.min(12, Math.max(2, parseInt(req.query.periods as string) || 6));
+    const unit: "month" | "quarter" = req.query.unit === "quarter" ? "quarter" : "month";
+    if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
+    try {
+      const CEFR_LEVELS = ["A1","A2","B1","B2","C1","C2"];
+
+      const sessions = await prisma.session.findMany({
+        where: { organizationId: id, status: "COMPLETED", completedAt: { not: null } },
+        select: { completedAt: true, finalTheta: true, scoreReport: { select: { overallCefr: true } } },
+        orderBy: { completedAt: "asc" },
+      } as any);
+
+      const bucket = (d: Date) => {
+        if (unit === "quarter") {
+          const q = Math.floor(d.getMonth() / 3) + 1;
+          return `${d.getFullYear()} Q${q}`;
+        }
+        return `${d.toLocaleString("en-GB", { month: "short" })} ${d.getFullYear()}`;
+      };
+
+      const map: Map<string, { thetas: number[]; cefrs: number[] }> = new Map();
+      for (const s of sessions as any[]) {
+        if (!s.completedAt) continue;
+        const key = bucket(new Date(s.completedAt));
+        if (!map.has(key)) map.set(key, { thetas: [], cefrs: [] });
+        const entry = map.get(key)!;
+        if (s.finalTheta != null) entry.thetas.push(s.finalTheta);
+        const cIdx = CEFR_LEVELS.indexOf((s.scoreReport?.overallCefr ?? "").replace("_"," ").trim());
+        if (cIdx >= 0) entry.cefrs.push(cIdx);
+      }
+
+      // Take last N periods
+      const sorted = [...map.entries()].slice(-periods);
+
+      const trend = sorted.map(([period, { thetas, cefrs }]) => {
+        const avgTheta = thetas.length ? thetas.reduce((a,b)=>a+b,0)/thetas.length : null;
+        const avgCefrIdx = cefrs.length ? cefrs.reduce((a,b)=>a+b,0)/cefrs.length : null;
+        return {
+          period,
+          avgTheta: avgTheta != null ? parseFloat(avgTheta.toFixed(3)) : null,
+          avgCefr: avgCefrIdx != null ? (CEFR_LEVELS[Math.round(avgCefrIdx)] ?? "B1") : null,
+          count: thetas.length,
+        };
+      });
+
+      res.json({ trend, unit, periods: trend.length });
+    } catch (err) {
+      res.status(500).json({ error: "Cohort trends failed" });
+    }
+  });
+
   app.get("/api/analytics/cohort", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
     try {
       const { organizationId } = req.query;

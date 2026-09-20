@@ -55,7 +55,9 @@ interface AnalyticsData {
 export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ organizationId }) => {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState<"analytics" | "onboarding" | "ecosystem">("analytics");
+  const [activeView, setActiveView] = useState<"analytics" | "benchmark" | "onboarding" | "ecosystem">("analytics");
+  const [benchmark, setBenchmark] = useState<any | null>(null);
+  const [trends, setTrends] = useState<any[] | null>(null);
   const [bulkData, setBulkData] = useState("");
   const [onboardingStatus, setOnboardingStatus] = useState<any>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
@@ -171,6 +173,17 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
     }
   };
 
+  const fetchBenchmark = async () => {
+    try {
+      const [bmRes, trRes] = await Promise.all([
+        fetch(`/api/organizations/${organizationId}/benchmark`, { credentials: "include" }),
+        fetch(`/api/organizations/${organizationId}/cohort-trends?periods=6`, { credentials: "include" }),
+      ]);
+      if (bmRes.ok) setBenchmark(await bmRes.json());
+      if (trRes.ok) setTrends((await trRes.json()).trend ?? []);
+    } catch {}
+  };
+
   const handleUpdateEcosystem = async (generateKey = false) => {
     try {
       const res = await fetch("/api/ecosystem/config", {
@@ -238,8 +251,15 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
             >
               <BarChart3 size={16} className="mr-2" /> Analytics
             </Button>
-            <Button 
-              variant={activeView === "onboarding" ? "secondary" : "ghost"} 
+            <Button
+              variant={activeView === "benchmark" ? "secondary" : "ghost"}
+              className={cn("px-5 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all", activeView === "benchmark" ? "bg-white shadow-sm text-indigo-600" : "text-slate-400 hover:text-slate-600")}
+              onClick={() => { setActiveView("benchmark"); fetchBenchmark(); }}
+            >
+              <TrendingUp size={16} className="mr-2" /> Benchmark
+            </Button>
+            <Button
+              variant={activeView === "onboarding" ? "secondary" : "ghost"}
               className={cn("px-5 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all", activeView === "onboarding" ? "bg-white shadow-sm text-indigo-600" : "text-slate-400 hover:text-slate-600")}
               onClick={() => setActiveView("onboarding")}
             >
@@ -407,6 +427,94 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
             </Card>
           </div>
         </>
+      ) : activeView === "benchmark" ? (
+        <div className="space-y-8">
+          {/* Summary cards */}
+          {benchmark ? (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Org avg */}
+                <Card className="rounded-[24px] border-slate-100 shadow-sm p-6 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Your Organisation</p>
+                  <p className="text-4xl font-black text-indigo-600">{benchmark.orgAvgCefr}</p>
+                  <p className="text-xs text-slate-500 mt-1">Average CEFR · {benchmark.totalOrgSessions} sessions</p>
+                </Card>
+                {/* Platform avg */}
+                <Card className="rounded-[24px] border-slate-100 shadow-sm p-6 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Platform Average</p>
+                  <p className="text-4xl font-black text-slate-600">{benchmark.platformAvgCefr}</p>
+                  <p className="text-xs text-slate-500 mt-1">Anonymous · {benchmark.totalPlatformSessions} sessions</p>
+                </Card>
+                {/* Delta */}
+                <Card className="rounded-[24px] border-slate-100 shadow-sm p-6 text-center">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">vs. Platform</p>
+                  <p className={`text-4xl font-black ${benchmark.deltaLevels >= 0 ? "text-emerald-600" : "text-rose-500"}`}>
+                    {benchmark.deltaLevels >= 0 ? "+" : ""}{benchmark.deltaLevels.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {Math.abs(benchmark.deltaLevels) < 0.25 ? "On par with platform" : benchmark.deltaLevels > 0 ? "Above platform average" : "Below platform average"}
+                  </p>
+                </Card>
+              </div>
+
+              {/* CEFR distribution comparison chart */}
+              <Card className="rounded-[32px] border-slate-100 shadow-sm overflow-hidden">
+                <CardHeader className="p-6 font-black uppercase tracking-widest text-xs text-slate-400 border-b border-slate-50">
+                  CEFR Distribution — Your Organisation vs. Platform
+                </CardHeader>
+                <CardContent className="h-72 p-6">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={benchmark.orgDistribution.map((d: any, i: number) => ({
+                      level: d.level,
+                      "Your Org": d.pct,
+                      "Platform": benchmark.platformDistribution[i]?.pct ?? 0,
+                    }))}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="level" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10, fontWeight: "bold" }} />
+                      <YAxis unit="%" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                      <Tooltip contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 20px 25px -5px rgba(0,0,0,.1)", padding: "12px" }} formatter={(v: any) => `${v}%`} />
+                      <Bar dataKey="Your Org" fill="#6366f1" radius={[6,6,0,0]} barSize={28} />
+                      <Bar dataKey="Platform"  fill="#cbd5e1" radius={[6,6,0,0]} barSize={28} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Loading benchmark data…</div>
+          )}
+
+          {/* Multi-period trend */}
+          <Card className="rounded-[32px] border-slate-100 shadow-sm overflow-hidden">
+            <CardHeader className="p-6 font-black uppercase tracking-widest text-xs text-slate-400 border-b border-slate-50">
+              Cohort Progress — Period-over-Period CEFR Shift
+            </CardHeader>
+            <CardContent className="h-72 p-6">
+              {trends && trends.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trends.map(t => ({ ...t, avgTheta: t.avgTheta ?? 0 }))}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10, fontWeight: "bold" }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10 }} domain={[-3, 3]}
+                      tickFormatter={(v: number) => v.toFixed(1)} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 20px 25px -5px rgba(0,0,0,.1)", padding: "12px" }}
+                      formatter={(v: any, name: string) => [name === "avgTheta" ? `θ ${Number(v).toFixed(2)}` : v, name === "avgTheta" ? "Avg θ" : "Sessions"]}
+                    />
+                    <Line type="monotone" dataKey="avgTheta" stroke="#6366f1" strokeWidth={3}
+                      dot={(p: any) => <circle key={p.index} cx={p.cx} cy={p.cy} r={5} fill="#6366f1" stroke="#fff" strokeWidth={2} />}
+                      label={(p: any) => <text key={p.index} x={p.x} y={p.y - 12} textAnchor="middle" fontSize={9} fontWeight="bold" fill="#6366f1">{(trends ?? [])[p.index]?.avgCefr ?? ""}</text>}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+                  {trends === null ? "Loading trend data…" : "Not enough data yet — run assessments across multiple months to see trends."}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       ) : activeView === "onboarding" ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <Card className="rounded-[32px] border-slate-100 shadow-sm overflow-hidden">
