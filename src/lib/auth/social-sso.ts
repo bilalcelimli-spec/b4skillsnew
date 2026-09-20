@@ -102,9 +102,10 @@ function httpsPost(url: string, body: string, headers: Record<string, string>): 
 export async function verifyGoogleIdToken(idToken: string): Promise<SocialProfile> {
   // Verify via Google's tokeninfo endpoint (simple, no library needed)
   // For production, use google-auth-library: OAuth2Client.verifyIdToken()
+  if (!GOOGLE_CLIENT_ID) throw new Error("GOOGLE_CLIENT_ID is not configured — cannot verify Google tokens");
   const info = await httpsGet(`${GOOGLE_TOKEN_INFO_URL}?id_token=${encodeURIComponent(idToken)}`);
   if (info.error) throw new Error(`Google token invalid: ${info.error_description ?? info.error}`);
-  if (GOOGLE_CLIENT_ID && info.aud !== GOOGLE_CLIENT_ID) throw new Error("Token audience mismatch");
+  if (info.aud !== GOOGLE_CLIENT_ID) throw new Error("Token audience mismatch");
   return {
     provider:      "google",
     providerId:    info.sub,

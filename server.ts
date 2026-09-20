@@ -17,6 +17,12 @@ import { SecretsManager } from "./src/lib/secrets/secrets-manager.js";
 import { buildCorsMiddleware, buildHelmetMiddleware } from "./src/lib/security/http-security.js";
 import { RegisterBody, LoginBody, ForgotPasswordBody, ResetPasswordBody } from "./src/lib/security/schemas/auth.js";
 import { SessionLaunchBody, SessionRespondBody, SessionCompleteBody, SessionFeedbackBody } from "./src/lib/security/schemas/sessions.js";
+import { CreateItemBody, UpdateItemBody, ItemPipelineBody, ItemReviewBody, ItemContentPatchBody, RatingClaimBody, RatingSubmitBody } from "./src/lib/security/schemas/items.js";
+import { SystemConfigBody } from "./src/lib/security/schemas/calibration.js";
+import { CreateWebhookBody, BrandingPatchBody, UpdateSettingsBody, SsoConfigBody } from "./src/lib/security/schemas/organizations.js";
+import { ProctoringEventBody } from "./src/lib/security/schemas/proctoring.js";
+import { AITutorBody, SpeakingMultimodalBody } from "./src/lib/security/schemas/ai.js";
+import { GenerateCodesBody } from "./src/lib/security/schemas/codes.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -535,7 +541,9 @@ async function startServer() {
 
   // POST /api/auth/verify-email — send (or resend) a verification link
   app.post("/api/auth/verify-email", passwordResetLimiter, async (req, res) => {
-    const { email } = req.body;
+    const body = validate(ForgotPasswordBody, req.body, res);
+    if (!body) return;
+    const { email } = body;
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || user.emailVerified) return res.json({ message: 'Process started if email needs verification' });
 
@@ -634,6 +642,7 @@ async function startServer() {
 
   // POST /api/auth/social/google/id-token — mobile/SPA flow (pass ID token directly)
   app.post("/api/auth/social/google/id-token", socialAuthLimiter, async (req, res) => {
+    if (!process.env.GOOGLE_CLIENT_ID) return res.status(503).json({ error: "Google OAuth is not configured on this server" });
     try {
       const { idToken } = req.body;
       if (!idToken || typeof idToken !== "string") return res.status(400).json({ error: "idToken required" });
@@ -1330,6 +1339,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       failureReason?: string;
     };
 
+    if (failureReason !== undefined && (typeof failureReason !== "string" || failureReason.length > 500)) {
+      return res.status(400).json({ error: "failureReason must be a string ≤ 500 characters" });
+    }
+    if (frame !== undefined && frame !== null && (typeof frame !== "string" || frame.length > 5_000_000)) {
+      return res.status(400).json({ error: "frame must be a base64 string ≤ 5 MB" });
+    }
+
     // Candidate hit max retries — record the failure and unblock the exam
     if (!frame && failureReason) {
       try {
@@ -1743,8 +1759,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const items = await prisma.item.findMany({
           where,
           orderBy: { createdAt: "desc" },
-          take: Math.min(parseInt(limit), 100),
-          skip: parseInt(offset),
+          take: Math.min(parseInt(limit) || 50, 100),
+          skip: parseInt(offset) || 0,
           select: {
             id: true, itemCode: true, type: true, skill: true, cefrLevel: true,
             status: true, pipelineStage: true, iqScore: true, subskill: true,
@@ -1764,7 +1780,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         return res.json(items);
       }
 
-      const items = await AssessmentService.getAllItems(parseInt(limit), parseInt(offset));
+      const items = await AssessmentService.getAllItems(parseInt(limit) || 50, parseInt(offset) || 0);
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch items" });
@@ -1773,7 +1789,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   app.post("/api/items", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
     try {
-      const item = await AssessmentService.createItem(req.body);
+      const body = validate(CreateItemBody, req.body, res);
+      if (!body) return;
+      const item = await AssessmentService.createItem(body);
       res.json(item);
     } catch (error) {
       res.status(500).json({ error: "Failed to create item" });
@@ -1932,7 +1950,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // Response: NDJSON stream of progress events so the client can render a live progress bar.
   app.post("/api/items/iqs/batch", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
     const onlyUnscored = req.query.onlyUnscored !== "false";
-    const concurrency  = Math.min(Math.max(parseInt(String(req.query.concurrency ?? "5"), 10), 1), 20);
+    const concurrency  = Math.min(Math.max(parseInt(String(req.query.concurrency ?? "5"), 10) || 5, 1), 20);
 
     try {
       const { computeAndPersistIqs } = await import("./src/lib/psychometrics/item-quality-score.js");
@@ -1982,7 +2000,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.put("/api/items/:id", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "ITEM_WRITER"]), async (req, res) => {
     try {
       const { id } = req.params;
-      const item = await AssessmentService.updateItem(id, req.body);
+      const body = validate(UpdateItemBody, req.body, res);
+      if (!body) return;
+      const item = await AssessmentService.updateItem(id, body);
       res.json(item);
     } catch (error) {
       res.status(500).json({ error: "Failed to update item" });
@@ -2088,14 +2108,23 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         if (!cell?.cefr || !cell?.skill || !cell?.subskill) {
           return res.status(400).json({ error: "cell.cefr, cell.skill, cell.subskill are required" });
         }
-        if (count < 1 || count > 20) {
+        if (typeof cell.cefr !== "string" || cell.cefr.length > 10 ||
+            typeof cell.skill !== "string" || cell.skill.length > 50 ||
+            typeof cell.subskill !== "string" || cell.subskill.length > 100) {
+          return res.status(400).json({ error: "cell fields must be short strings" });
+        }
+        const safeCount = Number(count) || 5;
+        if (safeCount < 1 || safeCount > 20) {
           return res.status(400).json({ error: "count must be 1–20 (§190 controlled batches)" });
+        }
+        if (notes !== undefined && (typeof notes !== "string" || notes.length > 5_000)) {
+          return res.status(400).json({ error: "notes must be a string ≤ 5000 characters" });
         }
 
         const { runBatchGeneration } = await import("./src/lib/content-factory/batch-generator.js");
         const result = await runBatchGeneration({
           cell,
-          count,
+          count: safeCount,
           triggeredBy: req.user.userId,
           notes: notes ?? undefined,
         });
@@ -2137,9 +2166,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         if (!text || !skill || !cefrLevel) {
           return res.status(400).json({ error: "text, skill, and cefrLevel are required" });
         }
+        if (typeof text !== "string" || text.length > 50_000) {
+          return res.status(400).json({ error: "text must be a string ≤ 50 000 characters" });
+        }
 
         const { embedText, checkDuplicate } = await import("./src/lib/content-factory/duplicate-detector.js");
-        const embedding = await embedText(String(text));
+        const embedding = await embedText(text);
         const result = await checkDuplicate(embedding, skill, cefrLevel, excludeId);
         res.json({ result, embeddingDim: embedding.length });
       } catch (err) {
@@ -2160,7 +2192,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
         const { skill, cefrLevel, maxItems = 200 } = req.body;
         const { backfillEmbeddings } = await import("./src/lib/content-factory/duplicate-detector.js");
-        const result = await backfillEmbeddings(skill, cefrLevel, Math.min(Number(maxItems), 500));
+        const result = await backfillEmbeddings(skill, cefrLevel, Math.min(Number(maxItems) || 200, 500));
         res.json(result);
       } catch (err) {
         console.error("[content/duplicates/backfill]", err);
@@ -2437,7 +2469,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     async (req: any, res) => {
       try {
         if (!dbAvailable) return res.status(503).json({ error: "Database required" });
-        const maxItems = Math.min(Number(req.body?.maxItems ?? 500), 2000);
+        const maxItems = Math.min(Number(req.body?.maxItems ?? 500) || 500, 2000);
         const { backfillItemCodes } = await import("./src/lib/content-factory/item-codes.js");
         const result = await backfillItemCodes(maxItems);
         res.json(result);
@@ -2457,11 +2489,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     async (req: any, res) => {
       try {
         if (!dbAvailable) return res.status(503).json({ error: "Database required" });
+        const body = validate(ItemContentPatchBody, req.body, res);
+        if (!body) return;
         const { id } = req.params;
-        const { content, reason } = req.body;
-        if (!content || typeof content !== "object") {
-          return res.status(400).json({ error: "content object required" });
-        }
+        const { content, reason } = body;
 
         const item = await prisma.item.findUnique({
           where: { id },
@@ -2508,6 +2539,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const { suspend, note, compromised = false } = req.body;
         if (typeof suspend !== "boolean") {
           return res.status(400).json({ error: "suspend (boolean) required" });
+        }
+        if (note !== undefined && (typeof note !== "string" || note.length > 2_000)) {
+          return res.status(400).json({ error: "note must be a string ≤ 2000 characters" });
         }
         const updated = await prisma.item.update({
           where: { id },
@@ -2556,7 +2590,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // POST /api/items/bias-review/batch — run bias review on up to `limit` unreviewed items
   app.post("/api/items/bias-review/batch", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]), async (req, res) => {
     try {
-      const limit = Math.min(parseInt(String(req.query.limit ?? "50")), 200);
+      const limit = Math.min(parseInt(String(req.query.limit ?? "50")) || 50, 200);
       if (!dbAvailable) return res.json({ processed: 0, passed: 0, flagged: 0 });
       const items = await prisma.item.findMany({
         where: { status: { in: ["REVIEW", "ACTIVE"] as any }, metadata: { path: ["biasReview"], equals: undefined } },
@@ -2577,7 +2611,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.get("/api/sessions/fraud-tier/:tier", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
     try {
       const { tier } = req.params;
-      const limit = Math.min(parseInt(String(req.query.limit ?? "100")), 200);
+      const limit = Math.min(parseInt(String(req.query.limit ?? "100")) || 100, 200);
       if (!dbAvailable) return res.json([]);
       // FLAGGED status = high-risk; COMPLETED with metadata.fraudTier = tier for lower tiers
       const where = tier.toUpperCase() === "HIGH"
@@ -2920,15 +2954,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "LANGUAGE_REVIEWER", "CEFR_REVIEWER", "MODERATOR", "CONTENT_ADMIN"]),
     async (req: any, res) => {
       try {
+        const body = validate(ItemReviewBody, req.body, res);
+        if (!body) return;
         const { id } = req.params;
         const reviewerId = req.user.userId;
         const { reviewType, verdict, stageTarget, notes, revisionsReq,
           constructClarity, cefrFit, cefrFitLabel, languageNaturalness,
-          distractorQuality, fairnessScore, ambiguityRisk } = req.body;
-
-        if (!["APPROVE", "MINOR_REVISION", "MAJOR_REVISION", "REJECT"].includes(verdict)) {
-          return res.status(400).json({ error: "Invalid verdict" });
-        }
+          distractorQuality, fairnessScore, ambiguityRisk } = body;
 
         const review = await prisma.itemReview.create({
           data: {
@@ -2978,8 +3010,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
     async (req, res) => {
       try {
+        const body = validate(ItemPipelineBody, req.body, res);
+        if (!body) return;
         const { id } = req.params;
-        const { stage } = req.body;
+        const { stage } = body;
         const item = await prisma.item.update({
           where: { id },
           data: { pipelineStage: stage as any },
@@ -3047,8 +3081,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   app.post("/api/rating/tasks/:id/claim", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
     try {
+      const body = validate(RatingClaimBody, req.body, res);
+      if (!body) return;
       const { id } = req.params;
-      const { raterId } = req.body;
+      const { raterId } = body;
       const task = await RatingQueueService.claimTask(id, raterId);
       res.json(task);
     } catch (error) {
@@ -3058,8 +3094,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   app.post("/api/rating/tasks/:id/submit", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
     try {
+      const body = validate(RatingSubmitBody, req.body, res);
+      if (!body) return;
       const { id } = req.params;
-      const { score, feedback } = req.body;
+      const { score, feedback } = body;
       const task = await RatingQueueService.submitRating(id, score, feedback);
       res.json(task);
     } catch (error) {
@@ -3125,7 +3163,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // --- EXAM CODES API ---
   app.post("/api/codes/generate", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
     try {
-      const { organizationId, productLine, count = 1, prefix = "E", expiresAt } = req.body;
+      const body = validate(GenerateCodesBody, req.body, res);
+      if (!body) return;
+      const { organizationId, productLine, quantity: count = 1, prefix = "E", expiresAt } = body;
       const caller = (req as any).user;
       const targetOrg = caller?.role === "INST_ADMIN" ? caller?.organizationId : (organizationId ?? null);
       if (!targetOrg) return res.status(400).json({ error: "organizationId required" });
@@ -3140,7 +3180,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const ran = crypto.randomBytes(4).toString("hex").toUpperCase() + crypto.randomBytes(4).toString("hex").toUpperCase();
         codes.push(`${prefix}-${ran}`);
       }
-      
+
       const created = await prisma.examCode.createMany({
         data: codes.map(c => ({
           code: c,
@@ -3279,7 +3319,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   app.put("/api/config/system", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
     try {
-      const config = await AssessmentService.updateSystemConfig(req.body);
+      const body = validate(SystemConfigBody, req.body, res);
+      if (!body) return;
+      const config = await AssessmentService.updateSystemConfig(body.config);
       res.json(config);
     } catch (error) {
       res.status(500).json({ error: "Failed to update system config" });
@@ -3287,14 +3329,23 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
   const { ProctoringService } = await import("./src/lib/proctoring/proctoring-service.js");
 
-  app.post("/api/proctoring/event", authMiddleware, async (req, res) => {
+  app.post("/api/proctoring/event", authMiddleware, async (req: any, res) => {
     try {
-      const { sessionId, type, severity, metadata } = req.body;
-      // Map string severity to Int as defined in the Prisma schema (1=Low, 3=Medium, 5=High)
-      const severityMap: Record<string, number> = { LOW: 1, MEDIUM: 3, HIGH: 5 };
-      const severityInt = typeof severity === "number" ? severity : (severityMap[String(severity).toUpperCase()] ?? 1);
+      const body = validate(ProctoringEventBody, req.body, res);
+      if (!body) return;
+      const caller = req.user;
+      // Verify session ownership: candidates may only log events for their own sessions;
+      // PROCTORs and admins may log for any session in their org.
+      const privileged = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"].includes(caller?.role);
+      if (!privileged && dbAvailable) {
+        const session = await prisma.session.findUnique({ where: { id: body.sessionId }, select: { candidateId: true } });
+        if (!session) return res.status(404).json({ error: "Session not found" });
+        if (session.candidateId !== caller?.userId) return res.status(403).json({ error: "Forbidden" });
+      }
+      const severityMap: Record<string, number> = { INFO: 1, WARNING: 3, CRITICAL: 5 };
+      const severityInt = severityMap[body.severity ?? "INFO"] ?? 1;
       const event = await (prisma as any).proctoringEvent.create({
-        data: { sessionId, type, severity: severityInt, metadata: metadata ?? null }
+        data: { sessionId: body.sessionId, type: body.eventType, severity: severityInt, metadata: body.metadata ?? null }
       });
       res.json(event);
     } catch (error) {
@@ -3467,26 +3518,40 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   // --- PHASE 7: ADVANCED AI & MULTIMODAL ---
   app.post("/api/ai/score/speaking-multimodal", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
-    const { audioBase64, mimeType, prompt } = req.body;
+    const body = validate(SpeakingMultimodalBody, req.body, res);
+    if (!body) return;
     try {
       const { GeminiScoringService } = await import("./src/lib/scoring/gemini-scoring-service.js");
-      const result = await GeminiScoringService.scoreSpeaking(audioBase64, mimeType, prompt || "Please respond to the task.");
+      const result = await GeminiScoringService.scoreSpeaking(body.audioBase64, body.mimeType, body.prompt || "Please respond to the task.");
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: "Failed to perform multimodal scoring" });
     }
   });
 
-  app.get("/api/sessions/:id/responses", authMiddleware, async (req, res) => {
+  app.get("/api/sessions/:id/responses", authMiddleware, async (req: any, res) => {
     const { id } = req.params;
     try {
       if (!(await assertSessionOwnership(req, res, id))) return;
+      const session = await prisma.session.findUnique({ where: { id }, select: { status: true } });
+      const isCompleted = !session || session.status === "COMPLETED";
+      // Allow admins/raters to see full item content at all times
+      const privileged = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"].includes(req.user?.role);
       const responses = await prisma.response.findMany({
         where: { sessionId: id },
         include: { item: true },
-        orderBy: { order: "asc" }
+        orderBy: { order: "asc" },
+        take: 500,
       });
-      res.json(responses);
+      // Strip answer keys from item content if the session is still active and caller is not privileged
+      const sanitized = (!isCompleted && !privileged)
+        ? responses.map((r: any) => {
+            if (!r.item?.content) return r;
+            const { correctIndex: _ci, correctOption: _co, correctAnswer: _ca, isCorrect: _ic, ...safeContent } = r.item.content as any;
+            return { ...r, item: { ...r.item, content: safeContent } };
+          })
+        : responses;
+      res.json(sanitized);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch session responses" });
     }
@@ -3539,6 +3604,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           const responses = await prisma.response.findMany({
             where: { sessionId: id },
             include: { item: { select: { skill: true, type: true } } },
+            take: 500,
           });
           const skillBuckets: Record<string, { correct: number; total: number }> = {};
           for (const r of responses) {
@@ -3917,6 +3983,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const responses = await prisma.response.findMany({
           where: { sessionId: id, item: { skill: { in: ["WRITING", "SPEAKING"] } } },
           select: { id: true, metadata: true },
+          take: 100,
         });
 
         const pending = responses.filter(r => !(r.metadata as any)?.aiScore && !(r.metadata as any)?.pendingAsyncScore === false);
@@ -3959,7 +4026,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const { id } = req.params;
     const caller = req.user;
     if (caller?.role === "INST_ADMIN" && caller?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
-    const branding = req.body;
+    const branding = validate(BrandingPatchBody, req.body, res);
+    if (!branding) return;
     const adminId: string = caller?.id ?? caller?.userId ?? "";
 
     try {
@@ -4270,15 +4338,18 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.post("/api/sessions/:id/feedback", authMiddleware, async (req, res) => {
     const { id } = req.params;
     if (!(await assertSessionOwnership(req, res, id))) return;
-    const { rating, comment, category, organizationId } = req.body;
+    const body = validate(SessionFeedbackBody, req.body, res);
+    if (!body) return;
     try {
+      // Derive organizationId from the session — never trust client-supplied value
+      const session = dbAvailable ? await prisma.session.findUnique({ where: { id }, select: { organizationId: true } }) : null;
       const feedback = await (prisma as any).feedback.create({
         data: {
           sessionId: id,
-          organizationId,
-          rating,
-          comment,
-          category
+          organizationId: session?.organizationId ?? null,
+          rating: body.rating,
+          comment: body.comment ?? null,
+          category: body.categories?.[0] ?? null,
         }
       });
       res.json(feedback);
@@ -4423,8 +4494,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // Mock AI Scoring Endpoint (Simulation)
   // POST /api/ai-tutor — streaming AI tutor using Gemini; falls back to a static hint if key absent
   app.post("/api/ai-tutor", authMiddleware, async (req: any, res) => {
-    const { message, history = [], context = {} } = req.body as { message: string; history: { role: string; content: string }[]; context: Record<string, unknown> };
-    if (!message) return res.status(400).json({ error: "message required" });
+    const body = validate(AITutorBody, req.body, res);
+    if (!body) return;
+    const { message, history, context } = body;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -4608,12 +4680,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const { id } = req.params;
     const caller = req.user;
     if (caller?.role === "INST_ADMIN" && caller?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
+    const patch = validate(UpdateSettingsBody, req.body, res);
+    if (!patch) return;
     try {
       const org = await prisma.organization.findUnique({ where: { id } });
       if (!org) return res.status(404).json({ error: "Organization not found" });
 
       const existingSettings = (org.settings as any) || {};
-      const updatedSettings = { ...existingSettings, ...req.body };
+      const updatedSettings = { ...existingSettings, ...patch };
 
       const updated = await prisma.organization.update({
         where: { id },
@@ -4627,10 +4701,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   app.put("/api/organizations/:id/sso-config", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
     const { id } = req.params;
+    const body = validate(SsoConfigBody, req.body, res);
+    if (!body) return;
     try {
       const updated = await (prisma.organization as any).update({
         where: { id },
-        data: { ssoConfig: req.body }
+        data: { ssoConfig: body }
       });
       res.json(updated.ssoConfig || {});
     } catch (err) {
@@ -4772,7 +4848,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     return { ...item, content: safeContent };
   };
 
-  app.post("/api/assessment/placement/start", placementLimiter, async (req, res) => {
+  app.post("/api/assessment/placement/start", placementLimiter, express.json({ limit: "4kb" }), async (req, res) => {
     try {
       const { name, email, consentToResearch } = req.body;
       if (!name || !email) return res.status(400).json({ error: "name and email are required" });
@@ -4847,7 +4923,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/assessment/placement/:id/respond", async (req, res) => {
+  app.post("/api/assessment/placement/:id/respond", express.json({ limit: "4kb" }), async (req, res) => {
     try {
       const { id } = req.params;
       const sess = placementSessions[id];
@@ -5221,11 +5297,15 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.post("/api/bi/export/:orgId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), biOrgGuard, async (req: express.Request, res: express.Response) => {
     try {
       const { format, from: fromDate, to: toDate, skill } = req.body;
+      const fromD = fromDate ? new Date(fromDate) : undefined;
+      const toD   = toDate   ? new Date(toDate)   : undefined;
+      if (fromD && isNaN(fromD.getTime())) return res.status(400).json({ error: "Invalid 'from' date" });
+      if (toD   && isNaN(toD.getTime()))   return res.status(400).json({ error: "Invalid 'to' date" });
       const result = await dataExporter.exportAssessments({
         organizationId: req.params.orgId,
         format: format ?? "json",
-        from: fromDate ? new Date(fromDate) : undefined,
-        to: toDate ? new Date(toDate) : undefined,
+        from: fromD,
+        to: toD,
       });
       if (result.format === "json") return res.json(JSON.parse(result.data.toString()));
       res.setHeader("Content-Type", result.format === "csv" ? "text/csv" : "application/octet-stream");
@@ -5246,8 +5326,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   app.get("/api/sla/:orgId/range", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), biOrgGuard, async (req: express.Request, res: express.Response) => {
     try {
-      const from = new Date(req.query.from as string || Date.now() - 30 * 86400000);
-      const to   = new Date(req.query.to   as string || Date.now());
+      const from = new Date((req.query.from as string) || Date.now() - 30 * 86400000);
+      const to   = new Date((req.query.to   as string) || Date.now());
+      if (isNaN(from.getTime())) return res.status(400).json({ error: "Invalid 'from' date" });
+      if (isNaN(to.getTime()))   return res.status(400).json({ error: "Invalid 'to' date" });
       const report = await slaManager.evaluateSLACompliance(req.params.orgId, from, to);
       res.json(report);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
@@ -5263,20 +5345,25 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const u = new URL(rawUrl);
       if (u.protocol !== "https:") return false;
       const host = u.hostname.toLowerCase();
-      // Block localhost and common loopback forms
-      if (host === "localhost" || host === "::1") return false;
-      // Block private IPv4 ranges and link-local
-      if (/^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\.|^169\.254\./.test(host)) return false;
+      // Block all loopback and unspecified forms
+      if (host === "localhost" || host === "::1" || host === "0:0:0:0:0:0:0:1" || host === "0.0.0.0") return false;
+      // Block private/link-local IPv4 and loopback
+      if (/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/.test(host)) return false;
+      // Block IPv4-mapped IPv6 private addresses
+      if (/^::ffff:(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/.test(host)) return false;
+      // Block IPv6 unique-local (fc00::/7 — fc and fd prefixes) and link-local (fe80::/10)
+      if (/^f[cd][0-9a-f]|^fe[89ab][0-9a-f]:/i.test(host)) return false;
       return true;
     } catch { return false; }
   };
 
   app.post("/api/webhooks/register", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: express.Request, res: express.Response) => {
     try {
+      const body = validate(CreateWebhookBody, req.body, res);
+      if (!body) return;
       const caller = (req as any).user;
-      if (caller?.role === "INST_ADMIN") req.body.organizationId = caller.organizationId;
-      if (!isWebhookUrlSafe(req.body.url)) return res.status(400).json({ error: "Webhook URL must be a public HTTPS endpoint" });
-      const endpoint = await webhookManager.registerWebhook(req.body);
+      if (!isWebhookUrlSafe(body.url)) return res.status(400).json({ error: "Webhook URL must be a public HTTPS endpoint" });
+      const endpoint = await webhookManager.registerWebhook({ ...body, organizationId: caller?.role === "INST_ADMIN" ? caller.organizationId : undefined } as any);
       res.status(201).json(endpoint);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
@@ -5389,16 +5476,17 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   app.post("/api/cultural/compliance/:region/check-eligibility", async (req: express.Request, res: express.Response) => {
     try {
-      const { attemptsThisYear, daysSinceLastAttempt } = req.body;
-      const result = isTestingAllowed(req.params.region as any, attemptsThisYear ?? 0, daysSinceLastAttempt ?? 999);
+      const attemptsThisYear = typeof req.body?.attemptsThisYear === "number" ? req.body.attemptsThisYear : 0;
+      const daysSinceLastAttempt = typeof req.body?.daysSinceLastAttempt === "number" ? req.body.daysSinceLastAttempt : 999;
+      const result = isTestingAllowed(req.params.region as any, attemptsThisYear, daysSinceLastAttempt);
       res.json(result);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 
   app.post("/api/cultural/compliance/:region/format-score", async (req: express.Request, res: express.Response) => {
     try {
-      const { score } = req.body;
-      if (score === undefined) return res.status(400).json({ error: "score required" });
+      const score = req.body?.score;
+      if (typeof score !== "number") return res.status(400).json({ error: "score must be a number" });
       const formatted = formatScore(score, req.params.region as any);
       res.json({ formatted, region: req.params.region, rawScore: score });
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
@@ -5609,7 +5697,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
     app.post("/api/admin/item-bank/promote", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
       try {
-        const minN = typeof req.body?.minN === "number" ? req.body.minN : 200;
+        const minN = typeof req.body?.minN === "number" ? Math.max(1, Math.min(req.body.minN, 10_000)) : 200;
         const promoted = await expansionEngine.promoteCalibrated(minN);
         res.json({ promoted });
       } catch (err) { res.status(500).json({ error: "Internal server error" }); }
@@ -5777,7 +5865,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
     // ── LTI launch callback (step 3 — platform redirects here with id_token)
     // POST /api/lms/lti/launch
+    // SECURITY NOTE: parseIdToken() does NOT verify the JWT RS256 signature; it
+    // only checks structural validity and exp/iat claims. Until JWKS-based
+    // verification is implemented, this endpoint is gated behind LTI_ENABLED so
+    // it cannot be reached on deployments that haven't explicitly opted in.
     app.post("/api/lms/lti/launch", async (req, res) => {
+      if (!process.env.LTI_ENABLED) return res.status(503).json({ error: "LTI integration not enabled" });
       try {
         const { id_token, state } = req.body;
         if (!id_token || !state) return res.status(400).send("Missing id_token or state");
@@ -5940,8 +6033,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     // GET /api/reports/candidates/:candidateId/history
     app.get("/api/reports/candidates/:candidateId/history", reportAuth, async (req, res) => {
       try {
-        const limit  = Math.min(parseInt(req.query.limit  as string ?? "20"), 100);
-        const offset = parseInt(req.query.offset as string ?? "0");
+        const limit  = Math.min(parseInt(req.query.limit  as string ?? "20") || 20, 100);
+        const offset = parseInt(req.query.offset as string ?? "0") || 0;
         const orgId  = req.apiOrg?.id;
         if (!orgId && !req.user) return res.status(401).json({ error: "Cannot determine organisation" });
         const resolvedOrgId = orgId ?? (await prisma.user.findUnique({ where: { id: req.user?.userId }, select: { organizationId: true } }))?.organizationId ?? "";
@@ -5971,6 +6064,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const { sessionIds } = req.body;
         if (!Array.isArray(sessionIds) || sessionIds.length === 0 || sessionIds.length > 200) {
           return res.status(400).json({ error: "sessionIds must be a non-empty array of ≤ 200 IDs" });
+        }
+        if (sessionIds.some((id: unknown) => typeof id !== "string" || id.length > 100)) {
+          return res.status(400).json({ error: "Each sessionId must be a string" });
         }
         const callerOrgId = req.apiOrg?.id;
         if (!callerOrgId) return res.status(400).json({ error: "API key required for batch requests" });
@@ -6072,7 +6168,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     app.get("/api/admin/expiring-certificates", checkRole(["INST_ADMIN", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
       try {
         const orgId   = req.query.orgId as string;
-        const days    = parseInt(req.query.days as string ?? "60");
+        const days    = parseInt(req.query.days as string ?? "60") || 60;
         if (!orgId) return res.status(400).json({ error: "orgId required" });
         const caller = (req as any).user;
         if (caller?.role === "INST_ADMIN" && caller?.organizationId !== orgId) {

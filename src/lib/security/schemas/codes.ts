@@ -3,11 +3,16 @@ import { CuidLike, NonEmptyString } from "./common.js";
 
 export const GenerateCodesBody = z.object({
   productLineId: CuidLike.optional(),
+  productLine: z.string().trim().max(200).optional(),
   organizationId: CuidLike.optional(),
   quantity: z.number().int().min(1).max(10_000),
   expiresAt: z.string().datetime().optional(),
   prefix: z.string().trim().regex(/^[A-Z0-9-]{0,10}$/).optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.record(z.string().max(100), z.union([z.string().max(500), z.number(), z.boolean(), z.null()])).optional().superRefine((obj, ctx) => {
+    if (obj && Object.keys(obj).length > 20) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "metadata may not exceed 20 keys" });
+    }
+  }),
 }).strict();
 
 const CodeString = z.string().trim().min(4).max(64).regex(/^[A-Za-z0-9-]+$/);

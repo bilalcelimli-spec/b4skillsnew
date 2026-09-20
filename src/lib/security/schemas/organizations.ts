@@ -18,7 +18,11 @@ export const BulkImportCandidatesBody = z.object({
     email: Email,
     name: ShortText.optional(),
     externalId: ShortText.optional(),
-    metadata: z.record(z.string(), z.unknown()).optional(),
+    metadata: z.record(z.string().max(100), z.union([z.string().max(500), z.number(), z.boolean(), z.null()])).optional().superRefine((obj, ctx) => {
+      if (obj && Object.keys(obj).length > 20) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "metadata may not exceed 20 keys" });
+      }
+    }),
   })).min(1).max(5000),
   sendInvite: z.boolean().optional(),
   cohortId: CuidLike.optional(),
@@ -47,8 +51,16 @@ export const UpdateSettingsBody = z.object({
   name: ShortText.optional(),
   timezone: z.string().max(60).optional(),
   locale: z.string().max(20).optional(),
-  features: z.record(z.string(), z.boolean()).optional(),
-  limits: z.record(z.string(), z.number()).optional(),
+  features: z.record(z.string().max(100), z.boolean()).superRefine((obj, ctx) => {
+    if (Object.keys(obj).length > 100) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "features may not exceed 100 keys" });
+    }
+  }).optional(),
+  limits: z.record(z.string().max(100), z.number()).superRefine((obj, ctx) => {
+    if (Object.keys(obj).length > 50) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "limits may not exceed 50 keys" });
+    }
+  }).optional(),
 }).strict();
 
 export const SsoConfigBody = z.object({
@@ -60,11 +72,19 @@ export const SsoConfigBody = z.object({
   clientSecret: z.string().max(500).optional(),
   issuer: ShortText.optional(),
   discoveryUrl: z.string().url().max(2048).optional(),
-  attributes: z.record(z.string(), z.string()).optional(),
+  attributes: z.record(z.string().max(100), z.string().max(500)).superRefine((obj, ctx) => {
+    if (Object.keys(obj).length > 30) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "attributes may not exceed 30 keys" });
+    }
+  }).optional(),
 }).strict();
 
 export const EcosystemConfigBody = z.object({
-  config: z.record(z.string(), z.unknown()),
+  config: z.record(z.string().max(200), z.unknown()).superRefine((obj, ctx) => {
+    if (Object.keys(obj).length > 100) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "config may not exceed 100 keys" });
+    }
+  }),
 }).strict();
 
 export const WebhookIdParams = z.object({ id: CuidLike, webhookId: CuidLike });

@@ -29,12 +29,32 @@ export const AIEditItemBody = z.object({
   keepOriginalAnswer: z.boolean().optional(),
 }).strict();
 
+const FlatAIValue = z.union([z.string().max(10_000), z.number(), z.boolean(), z.null()]);
+const BoundedRecord = z.record(z.string().max(100), FlatAIValue).superRefine((obj, ctx) => {
+  if (Object.keys(obj).length > 50) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "record may not exceed 50 keys" });
+  }
+});
+
 export const ScoreAIBody = z.object({
   itemId: CuidLike,
-  response: z.union([z.string().max(100_000), z.record(z.string(), z.unknown())]),
-  rubric: z.record(z.string(), z.unknown()).optional(),
+  response: z.union([z.string().max(100_000), BoundedRecord]),
+  rubric: BoundedRecord.optional(),
   sessionId: CuidLike.optional(),
   targetCefr: CefrLevel.optional(),
+}).strict();
+
+export const AITutorBody = z.object({
+  message: z.string().min(1).max(5_000),
+  history: z.array(z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string().max(10_000),
+  })).max(20).default([]),
+  context: z.object({
+    cefrLevel: z.string().max(10).optional(),
+    skill: z.string().max(50).optional(),
+    itemId: z.string().max(100).optional(),
+  }).default({}),
 }).strict();
 
 export const CertificateGenerateBody = z.object({

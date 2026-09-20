@@ -22,7 +22,11 @@ export const ProctoringEventBody = z.object({
   ]),
   severity: ProctorSeverity.optional(),
   timestamp: z.string().datetime().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.record(z.string().max(100), z.union([z.string().max(500), z.number(), z.boolean(), z.null()])).optional().superRefine((obj, ctx) => {
+    if (obj && Object.keys(obj).length > 20) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "metadata may not exceed 20 keys" });
+    }
+  }),
   screenshotUrl: z.string().url().max(2048).optional(),
 }).strict();
 

@@ -413,8 +413,10 @@ export async function generateCohortExcel(data: CohortReportData): Promise<Buffe
 // ---------------------------------------------------------------------------
 
 function escapeCSV(val: unknown): string {
-  const str = String(val ?? "");
-  return str.includes(",") || str.includes('"') || str.includes("\n")
+  let str = String(val ?? "");
+  // Prefix formula-trigger characters to prevent CSV injection
+  if (str.length > 0 && "=+-@|%".includes(str[0])) str = `'${str}`;
+  return str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")
     ? `"${str.replace(/"/g, '""')}"`
     : str;
 }

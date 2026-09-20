@@ -21,7 +21,17 @@ const ItemStatus = z.enum(["DRAFT", "REVIEW", "ACTIVE", "PRETEST", "RETIRED"]);
 
 const Skill = z.enum(["READING", "LISTENING", "WRITING", "SPEAKING", "GRAMMAR", "VOCABULARY"]);
 
-const ItemPayload = z.record(z.string(), z.unknown());
+const FlatItemValue = z.union([z.string().max(10_000), z.number(), z.boolean(), z.null()]);
+const BoundedOption = z.record(z.string().max(100), FlatItemValue).superRefine((obj, ctx) => {
+  if (Object.keys(obj).length > 20) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "option record may not exceed 20 keys" });
+  }
+});
+const ItemPayload = z.record(z.string().max(200), z.unknown()).superRefine((obj, ctx) => {
+  if (Object.keys(obj).length > 100) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "item payload may not exceed 100 keys" });
+  }
+});
 
 export const CreateItemBody = z.object({
   type: ItemType,
@@ -29,12 +39,16 @@ export const CreateItemBody = z.object({
   skill: Skill.optional(),
   stem: LongText.optional(),
   prompt: LongText.optional(),
-  options: z.array(z.record(z.string(), z.unknown())).max(20).optional(),
-  answer: z.union([z.string().max(10_000), z.array(z.string().max(10_000)).max(50), z.record(z.string(), z.unknown())]).optional(),
+  options: z.array(BoundedOption).max(20).optional(),
+  answer: z.union([z.string().max(10_000), z.array(z.string().max(10_000)).max(50), z.record(z.string().max(100), FlatItemValue)]).optional(),
   imageUrl: z.string().url().max(2048).optional(),
   audioUrl: z.string().url().max(2048).optional(),
   tags: z.array(z.string().max(50)).max(30).optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.record(z.string().max(100), FlatItemValue).optional().superRefine((obj, ctx) => {
+    if (obj && Object.keys(obj).length > 20) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "metadata may not exceed 20 keys" });
+    }
+  }),
   status: ItemStatus.optional(),
   payload: ItemPayload.optional(),
 }).strict().passthrough();
@@ -77,13 +91,13 @@ export const BulkGenerateRouteBody = z.object({
 }).strict();
 
 export const PreviewItemBody = z.object({
-  payload: z.record(z.string(), z.unknown()),
+  payload: ItemPayload,
   type: ItemType.optional(),
 }).strict();
 
 export const EditItemBody = z.object({
   id: CuidLike,
-  changes: z.record(z.string(), z.unknown()),
+  changes: ItemPayload,
   reason: NonEmptyString.max(2000).optional(),
 }).strict();
 
@@ -92,7 +106,46 @@ export const AssetUploadBody = z.object({
   url: z.string().url().max(2048),
   mimeType: z.string().max(100).optional(),
   sizeBytes: z.number().int().nonnegative().max(100 * 1024 * 1024).optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.record(z.string().max(100), z.union([z.string().max(500), z.number(), z.boolean(), z.null()])).optional().superRefine((obj, ctx) => {
+    if (obj && Object.keys(obj).length > 10) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "metadata may not exceed 10 keys" });
+    }
+  }),
+}).strict();
+
+const PipelineStage = z.enum([
+  "AI_DRAFT", "HUMAN_DRAFT", "EDITING", "LANGUAGE_REVIEW",
+  "CEFR_REVIEW", "FAIRNESS_REVIEW", "MODERATION", "APPROVED_FOR_PILOT",
+  "PILOT", "ANALYSIS", "CALIBRATION", "LIVE", "FLAGGED",
+  "SUSPENDED", "RETIRED", "COMPROMISED",
+]);
+
+export const ItemPipelineBody = z.object({
+  stage: PipelineStage,
+}).strict();
+
+export const ItemReviewBody = z.object({
+  reviewType: z.string().max(50).optional(),
+  verdict: z.enum(["APPROVE", "MINOR_REVISION", "MAJOR_REVISION", "REJECT"]),
+  stageTarget: PipelineStage.optional(),
+  notes: z.string().max(5_000).optional(),
+  revisionsReq: z.array(z.string().max(500)).max(20).optional(),
+  constructClarity: z.number().int().min(1).max(5).nullable().optional(),
+  cefrFit: z.number().int().min(1).max(5).nullable().optional(),
+  cefrFitLabel: z.string().max(10).nullable().optional(),
+  languageNaturalness: z.number().int().min(1).max(5).nullable().optional(),
+  distractorQuality: z.number().int().min(1).max(5).nullable().optional(),
+  fairnessScore: z.number().int().min(1).max(5).nullable().optional(),
+  ambiguityRisk: z.number().int().min(1).max(5).nullable().optional(),
+}).strict();
+
+export const ItemContentPatchBody = z.object({
+  content: z.record(z.string().max(200), z.unknown()).superRefine((obj, ctx) => {
+    if (Object.keys(obj).length > 100) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "content may not exceed 100 keys" });
+    }
+  }),
+  reason: z.string().max(2_000).optional(),
 }).strict();
 
 export const RatingClaimBody = z.object({
