@@ -25,6 +25,14 @@
     <meta name="msapplication-config" content="/browserconfig.xml" />
     <!-- Web manifest (supplementary — VitePWA also injects one) -->
     <link rel="manifest" href="/manifest.json" />
+    <style>
+      @media print {
+        .no-print { display: none !important; }
+        aside, nav, header { display: none !important; }
+        body { background: #fff !important; }
+        main { padding: 0 !important; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

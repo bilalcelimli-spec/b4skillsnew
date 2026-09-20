@@ -59,6 +59,28 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
   const [onboardingStatus, setOnboardingStatus] = useState<any>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportCSV = async () => {
+    if (!organizationId || exporting) return;
+    setExporting(true);
+    try {
+      const res = await fetch(`/api/organizations/${organizationId}/candidates/export.csv`, { credentials: "include" });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `b4skills_candidates_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    } catch {
+      alert("Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     fetchAnalytics();
@@ -170,8 +192,12 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
           <Button variant="outline" className="gap-2 h-11 px-5 rounded-xl border-slate-200 font-bold text-slate-600 hover:bg-slate-50">
             <Filter size={18} /> Filter
           </Button>
-          <Button className="gap-2 bg-indigo-600 h-11 px-6 rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-100">
-            <Download size={18} /> Export Report
+          <Button
+            onClick={handleExportCSV}
+            disabled={exporting}
+            className="gap-2 bg-indigo-600 h-11 px-6 rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-100 disabled:opacity-60"
+          >
+            <Download size={18} /> {exporting ? "Exporting…" : "Export CSV"}
           </Button>
         </div>
       </header>

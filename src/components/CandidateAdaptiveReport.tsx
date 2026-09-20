@@ -14,7 +14,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { RefreshCw, CheckCircle2, XCircle, ChevronRight, TrendingUp, BarChart2, ListChecks, Lightbulb } from "lucide-react";
+import { RefreshCw, CheckCircle2, XCircle, ChevronRight, TrendingUp, BarChart2, ListChecks, Lightbulb, Printer } from "lucide-react";
 import { getCanDo, thetaToBeps, type CanDoDescriptor } from "../lib/cefr/cefr-framework";
 import { NextLevelGap } from "./NextLevelGap";
 import { ErrorIntelligenceMap } from "./ErrorIntelligenceMap";
@@ -202,6 +202,15 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
               {report.completedAt ? new Date(report.completedAt).toLocaleString() : "—"} · {report.totalItems} items · {report.stopReason}
             </p>
           </div>
+        </div>
+        <div className="flex items-center gap-2 no-print">
+          <button
+            onClick={() => window.print()}
+            title="Download as PDF"
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-400 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            <Printer size={14} /> Save PDF
+          </button>
         </div>
         {/* CEFR badge */}
         <div

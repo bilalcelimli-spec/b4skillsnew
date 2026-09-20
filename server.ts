@@ -4676,6 +4676,65 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // GET /api/organizations/:id/candidates/export.csv — CSV download for org admins
+  app.get("/api/organizations/:id/candidates/export.csv", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
+    const { id } = req.params;
+    if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
+    try {
+      const candidates = await prisma.user.findMany({
+        where: { organizationId: id, role: "CANDIDATE" },
+        select: {
+          id: true, name: true, email: true, createdAt: true,
+          sessions: {
+            where: { status: "COMPLETED" },
+            select: {
+              completedAt: true, theta: true, cefrLevel: true,
+              scoreReport: {
+                select: {
+                  overallCefr: true,
+                  readingScore: true, listeningScore: true,
+                  writingScore: true, speakingScore: true,
+                  diagnosticReport: true,
+                },
+              },
+            },
+            orderBy: { completedAt: "desc" },
+            take: 1,
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 5000,
+      });
+
+      const rows: string[] = [
+        "id,name,email,registered_at,last_test_date,cefr_level,theta,reading_score,listening_score,writing_score,speaking_score",
+      ];
+      for (const c of candidates) {
+        const s = (c as any).sessions?.[0];
+        const sr = s?.scoreReport;
+        const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+        rows.push([
+          escape(c.id),
+          escape(c.name ?? ""),
+          escape(c.email),
+          escape(c.createdAt.toISOString()),
+          escape(s?.completedAt?.toISOString() ?? ""),
+          escape(sr?.overallCefr ?? s?.cefrLevel ?? ""),
+          escape(s?.theta != null ? (s.theta as number).toFixed(3) : ""),
+          escape(sr?.readingScore ?? ""),
+          escape(sr?.listeningScore ?? ""),
+          escape(sr?.writingScore ?? ""),
+          escape(sr?.speakingScore ?? ""),
+        ].join(","));
+      }
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="b4skills_candidates_${id}_${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send("﻿" + rows.join("\r\n")); // BOM for Excel UTF-8
+    } catch (err) {
+      res.status(500).json({ error: "CSV export failed" });
+    }
+  });
+
   app.patch("/api/organizations/:id/settings", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
     const { id } = req.params;
     const caller = req.user;
@@ -6356,6 +6415,63 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       });
     } catch (err: any) {
       return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // GET /api/teacher/classes/:id/export.csv — CSV report for a class
+  app.get("/api/teacher/classes/:id/export.csv", checkRole(teacherRoles), async (req: any, res) => {
+    try {
+      const user = req.user as { userId: string; role: string };
+      const cls = await prisma.class.findUnique({
+        where: { id: req.params.id },
+        include: {
+          members: {
+            include: {
+              user: {
+                select: {
+                  id: true, name: true, email: true,
+                  sessions: {
+                    where: { status: "COMPLETED" },
+                    select: {
+                      completedAt: true, theta: true, cefrLevel: true,
+                      scoreReport: {
+                        select: { overallCefr: true, readingScore: true, listeningScore: true, writingScore: true, speakingScore: true },
+                      },
+                    },
+                    orderBy: { completedAt: "desc" },
+                    take: 1,
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!cls) return res.status(404).json({ error: "Class not found" });
+      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
+      if (!isAdmin && cls.teacherId !== user.userId) return res.status(403).json({ error: "Access denied" });
+
+      const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      const rows = [
+        "name,email,last_test_date,cefr_level,theta,reading,listening,writing,speaking",
+        ...cls.members.map(({ user: u }) => {
+          const s = (u as any).sessions?.[0];
+          const sr = s?.scoreReport;
+          return [
+            escape(u.name ?? ""), escape(u.email),
+            escape(s?.completedAt?.toISOString() ?? ""),
+            escape(sr?.overallCefr ?? s?.cefrLevel ?? ""),
+            escape(s?.theta != null ? (s.theta as number).toFixed(3) : ""),
+            escape(sr?.readingScore ?? ""), escape(sr?.listeningScore ?? ""),
+            escape(sr?.writingScore ?? ""), escape(sr?.speakingScore ?? ""),
+          ].join(",");
+        }),
+      ];
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${cls.name.replace(/[^a-z0-9]/gi, "_")}_${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send("﻿" + rows.join("\r\n"));
+    } catch (err) {
+      res.status(500).json({ error: "CSV export failed" });
     }
   });
 

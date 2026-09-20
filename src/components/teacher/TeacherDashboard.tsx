@@ -1,5 +1,18 @@
 import React, { useCallback, useEffect, useState } from "react";
 
+async function downloadClassCsv(classId: string, className: string) {
+  const res = await fetch(`/api/teacher/classes/${classId}/export.csv`, { credentials: "include" });
+  if (!res.ok) { alert("Export failed. Please try again."); return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${className.replace(/[^a-z0-9]/gi, "_")}_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
+
 interface StudentRow {
   id: string;
   name: string;
@@ -275,6 +288,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     <div style={{ display: "flex", gap: "16px", marginTop: "12px", fontSize: "13px", color: "#64748b" }}>
                       <span>{cls._count?.members ?? 0} students</span>
                       <span>{cls._count?.assignments ?? 0} assignments</span>
+                    </div>
+                    <div style={{ marginTop: "12px", borderTop: "1px solid #f1f5f9", paddingTop: "12px" }}>
+                      <button
+                        onClick={() => downloadClassCsv(cls.id, cls.name)}
+                        style={{ fontSize: "12px", color: "#4f46e5", border: "1px solid #e0e7ff", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}
+                      >
+                        ↓ Export CSV
+                      </button>
                     </div>
                   </div>
                 ))}
