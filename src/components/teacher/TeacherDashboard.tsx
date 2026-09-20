@@ -71,7 +71,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   organizationId,
   instructorId,
 }) => {
-  const [activeTab, setActiveTab] = useState<"students" | "classes">("students");
+  const [activeTab, setActiveTab] = useState<"students" | "classes" | "assignments">("students");
   const [summary, setSummary] = useState<CohortSummary | null>(null);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,6 +91,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     memberCount: number;
     assessedCount: number;
   }>>({});
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [newAssign, setNewAssign] = useState({ classId: "", productLine: "General English", dueAt: "" });
+  const [creatingAssign, setCreatingAssign] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -185,9 +189,40 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     }
   }, []);
 
+  const fetchAssignments = useCallback(async () => {
+    setAssignLoading(true);
+    try {
+      const res = await fetch("/api/teacher/assignments", { credentials: "include" });
+      if (res.ok) setAssignments(await res.json());
+    } finally {
+      setAssignLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (activeTab === "classes") fetchClasses();
-  }, [activeTab, fetchClasses]);
+    else if (activeTab === "assignments") { fetchClasses(); fetchAssignments(); }
+  }, [activeTab, fetchClasses, fetchAssignments]);
+
+  const handleCreateAssignment = async () => {
+    if (!newAssign.productLine) return;
+    setCreatingAssign(true);
+    try {
+      const res = await fetch("/api/teacher/assignments", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          classId: newAssign.classId || undefined,
+          productLine: newAssign.productLine,
+          dueAt: newAssign.dueAt || undefined,
+        }),
+      });
+      if (res.ok) { setNewAssign({ classId: "", productLine: "General English", dueAt: "" }); fetchAssignments(); }
+    } finally {
+      setCreatingAssign(false);
+    }
+  };
 
   const handleCreateClass = async () => {
     if (!newClassName.trim()) return;
@@ -229,7 +264,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           Teacher Dashboard
         </h1>
         <div role="tablist" style={{ display: "flex", gap: "4px", background: "#f1f5f9", borderRadius: "8px", padding: "4px" }}>
-          {(["students", "classes"] as const).map((tab) => (
+          {(["students", "classes", "assignments"] as const).map((tab) => (
             <button
               key={tab}
               role="tab"
@@ -242,7 +277,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 boxShadow: activeTab === tab ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
               }}
             >
-              {tab === "students" ? "Students" : "Classes"}
+              {tab === "students" ? "Students" : tab === "classes" ? "Classes" : "Assignments"}
             </button>
           ))}
         </div>
@@ -344,6 +379,70 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       >
                         ↓ Export CSV
                       </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Assignments Tab */}
+      {activeTab === "assignments" && (
+        <div>
+          {/* Create assignment */}
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "20px", marginBottom: "20px" }}>
+            <h2 style={{ fontSize: "14px", fontWeight: 600, margin: "0 0 12px" }}>New Assignment</h2>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <select
+                value={newAssign.classId}
+                onChange={e => setNewAssign(a => ({ ...a, classId: e.target.value }))}
+                style={{ flex: "1 1 160px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
+              >
+                <option value="">All classes (org-wide)</option>
+                {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select
+                value={newAssign.productLine}
+                onChange={e => setNewAssign(a => ({ ...a, productLine: e.target.value }))}
+                style={{ flex: "1 1 180px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
+              >
+                {["General English","15-Min Diagnostic","Academia","Corporate","Primary","Junior"].map(pl => (
+                  <option key={pl} value={pl}>{pl}</option>
+                ))}
+              </select>
+              <input
+                type="date"
+                value={newAssign.dueAt}
+                onChange={e => setNewAssign(a => ({ ...a, dueAt: e.target.value }))}
+                style={{ flex: "1 1 140px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
+                placeholder="Due date (optional)"
+              />
+              <button
+                onClick={handleCreateAssignment}
+                disabled={creatingAssign}
+                style={{ background: "#4f46e5", color: "#fff", border: "none", borderRadius: "8px", padding: "8px 20px", fontWeight: 600, fontSize: "14px", cursor: "pointer", opacity: creatingAssign ? 0.6 : 1 }}
+              >
+                {creatingAssign ? "Creating…" : "Create"}
+              </button>
+            </div>
+          </div>
+          {/* Assignment list */}
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "20px" }}>
+            <h2 style={{ fontSize: "16px", fontWeight: 600, margin: "0 0 16px" }}>Assignments ({assignments.length})</h2>
+            {assignLoading ? (
+              <div style={{ color: "#64748b", padding: "24px", textAlign: "center" }}>Loading…</div>
+            ) : assignments.length === 0 ? (
+              <div style={{ color: "#94a3b8", padding: "24px", textAlign: "center" }}>No assignments yet.</div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "12px" }}>
+                {assignments.map(a => (
+                  <div key={a.id} style={{ border: "1px solid #e2e8f0", borderRadius: "10px", padding: "14px" }}>
+                    <div style={{ fontWeight: 600, fontSize: "14px", color: "#0f172a", marginBottom: "4px" }}>{a.productLine}</div>
+                    {a.class && <div style={{ fontSize: "12px", color: "#4f46e5" }}>{a.class.name}</div>}
+                    <div style={{ fontSize: "12px", color: "#64748b", marginTop: "6px" }}>
+                      {a.dueAt ? `Due: ${new Date(a.dueAt).toLocaleDateString()}` : "No due date"} · {a._count?.sessions ?? 0} attempts
                     </div>
                   </div>
                 ))}
