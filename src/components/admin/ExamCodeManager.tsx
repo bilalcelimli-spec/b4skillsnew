@@ -29,7 +29,7 @@ export const ExamCodeManager: React.FC<{ orgId?: string }> = ({ orgId }) => {
         body: JSON.stringify({
           organizationId: orgId,
           productLine,
-          count,
+          quantity: count,
         }),
       });
 

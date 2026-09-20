@@ -14,7 +14,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { RefreshCw, CheckCircle2, XCircle, ChevronRight, TrendingUp, BarChart2, ListChecks, Lightbulb, Printer } from "lucide-react";
+import { RefreshCw, CheckCircle2, XCircle, ChevronRight, TrendingUp, BarChart2, ListChecks, Lightbulb, Printer, Share2, Check } from "lucide-react";
 import { getCanDo, thetaToBeps, type CanDoDescriptor } from "../lib/cefr/cefr-framework";
 import { NextLevelGap } from "./NextLevelGap";
 import { ErrorIntelligenceMap } from "./ErrorIntelligenceMap";
@@ -134,6 +134,9 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
   const [growthFromId, setGrowthFromId] = useState<string>("");
   const [growthData, setGrowthData] = useState<any | null>(null);
   const [growthLoading, setGrowthLoading] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -153,6 +156,23 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
       })
       .finally(() => setLoading(false));
   }, [sessionId]);
+
+  async function handleShare() {
+    setShareLoading(true);
+    try {
+      const r = await fetch(`/api/sessions/${sessionId}/share`, { method: "POST", credentials: "include" });
+      if (!r.ok) throw new Error("Failed");
+      const { url } = await r.json();
+      setShareUrl(url);
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 3000);
+    } catch {
+      alert("Could not generate share link. Please try again.");
+    } finally {
+      setShareLoading(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -206,6 +226,14 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
           </div>
         </div>
         <div className="flex items-center gap-2 no-print">
+          <button
+            onClick={handleShare}
+            disabled={shareLoading}
+            title="Share results link"
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-indigo-700 border border-slate-200 hover:border-indigo-400 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+          >
+            {shareCopied ? <><Check size={14} className="text-emerald-500" /> Copied!</> : <><Share2 size={14} /> Share</>}
+          </button>
           <button
             onClick={() => window.print()}
             title="Download as PDF"

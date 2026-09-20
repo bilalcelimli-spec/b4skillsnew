@@ -7,6 +7,7 @@ import { CefrLevelCard } from "./components/CefrLevelCard";
 import { AuthPage } from "./components/AuthPage";
 import { CodeEntryPage } from "./components/CodeEntryPage";
 import { VerificationPage } from "./components/VerificationPage";
+import { SharedReportPage } from "./components/SharedReportPage";
 import type { SeoVariant } from "./components/SeoLandingPage";
 type User = { uid: string; email: string; displayName?: string; role?: string };
 
@@ -264,6 +265,12 @@ export default function App() {
   const verifyMatch = location.pathname.match(/^\/verify\/(.+)/);
   if (verifyMatch) {
     return <VerificationPage certId={verifyMatch[1]} />;
+  }
+
+  // Public shared score report page — no auth required
+  const shareMatch = location.pathname.match(/^\/share\/([a-f0-9]{32})/);
+  if (shareMatch) {
+    return <SharedReportPage token={shareMatch[1]} />;
   }
 
   if (loading) {

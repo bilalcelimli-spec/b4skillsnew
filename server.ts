@@ -3825,6 +3825,58 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // ── POST /api/sessions/:id/share — generate a shareable results token ────────
+  app.post("/api/sessions/:id/share", authMiddleware, async (req: any, res) => {
+    const { id } = req.params;
+    try {
+      if (!(await assertSessionOwnership(req, res, id))) return;
+      const report = await prisma.scoreReport.findUnique({ where: { sessionId: id } });
+      if (!report) return res.status(404).json({ error: "Score report not found" });
+      // Use existing diagnosticReport JSON to store shareToken without schema change
+      const existing = (report.diagnosticReport as any) ?? {};
+      let token: string = existing.shareToken;
+      if (!token) {
+        token = crypto.randomBytes(16).toString("hex");
+        await prisma.scoreReport.update({
+          where: { sessionId: id },
+          data: { diagnosticReport: { ...(existing as object), shareToken: token } },
+        });
+      }
+      res.json({ token, url: `${APP_BASE_URL}/share/${token}` });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to generate share link" });
+    }
+  });
+
+  // ── GET /api/share/:token — public score summary (no auth) ────────────────
+  app.get("/api/share/:token", async (req, res) => {
+    const { token } = req.params;
+    if (!token || token.length < 16) return res.status(400).json({ error: "Invalid token" });
+    try {
+      // Full-table scan capped at 5000; for large deployments a dedicated column index is preferred.
+      const all = await (prisma.scoreReport.findMany as any)({
+        include: { session: { include: { user: { select: { name: true } } } } },
+        take: 5000,
+      }) as Array<{ sessionId: string; overallCefr: string; overallScore: number; readingScore: number; listeningScore: number; writingScore: number; speakingScore: number; createdAt: Date; diagnosticReport: unknown; session?: { user?: { name?: string } } }>;
+      const report = all.find((r) => (r.diagnosticReport as any)?.shareToken === token);
+      if (!report) return res.status(404).json({ error: "Share link not found or expired" });
+      res.json({
+        candidateName: report.session?.user?.name ?? "Candidate",
+        cefr: report.overallCefr,
+        score: report.overallScore,
+        skills: {
+          reading: report.readingScore,
+          listening: report.listeningScore,
+          writing: report.writingScore,
+          speaking: report.speakingScore,
+        },
+        completedAt: report.createdAt.toISOString(),
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to retrieve shared report" });
+    }
+  });
+
   // ── GET /api/sessions/:id/full-analysis (admin-facing detailed view) ─────────
   app.get(
     "/api/sessions/:id/full-analysis",
