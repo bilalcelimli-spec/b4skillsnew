@@ -34,10 +34,11 @@ interface TestPlayerProps {
   organizationId: string;
   candidateId: string;
   productLine?: string;
+  startingSkill?: string;
   onComplete: (finalTheta: number | null, sessionId: string) => void;
 }
 
-export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidateId, productLine, onComplete }) => {
+export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidateId, productLine, startingSkill, onComplete }) => {
   const { t } = useTranslation();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentItem, setCurrentItem] = useState<Item | null>(null);
@@ -121,7 +122,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ candidateId, organizationId, productLine })
+          body: JSON.stringify({ candidateId, organizationId, productLine, ...(startingSkill ? { startingSkill } : {}) })
         });
         const data = await res.json();
         

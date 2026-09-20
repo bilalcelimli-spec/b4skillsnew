@@ -104,7 +104,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [showLanding, setShowLanding] = useState(true);
   const [showCodeEntry, setShowCodeEntry] = useState(false);
-  const [activeSession, setActiveSession] = useState<{ orgId: string; sessionId: string; productLine?: string } | null>(null);
+  const [activeSession, setActiveSession] = useState<{ orgId: string; sessionId: string; productLine?: string; startingSkill?: string } | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"dashboard" | "admin" | "rating" | "institutional" | "teacher" | "content" | "results" | "profile" | "settings">("dashboard");
   const [testCompleted, setTestCompleted] = useState<{ theta: number; cefr: string; sessionId: string } | null>(null);
@@ -358,6 +358,7 @@ export default function App() {
           organizationId={activeSession.orgId}
           candidateId={user.uid}
           productLine={activeSession.productLine}
+          startingSkill={activeSession.startingSkill}
           onComplete={handleTestComplete}
         />
       </Suspense>
@@ -576,6 +577,11 @@ export default function App() {
                 setTestCompleted(null);
                 setSelectedHistorySessionId(null);
                 setActiveTab(testCompleted ? "dashboard" : "results");
+              }}
+              onRetakeSkill={(skill, orgId) => {
+                setTestCompleted(null);
+                setSelectedHistorySessionId(null);
+                setActiveSession({ orgId: orgId || userProfile?.organizationId || "", sessionId: "new", productLine: "15-Min Diagnostic", startingSkill: skill });
               }}
             />
           </Suspense>

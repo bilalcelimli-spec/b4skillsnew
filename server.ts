@@ -3731,9 +3731,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       res.json({
         sessionId: id,
-        candidateId:   session.userId,
-        candidateName: session.user?.name ?? session.user?.email ?? undefined,
-        completedAt:   (session.completedAt ?? session.updatedAt ?? new Date()).toISOString(),
+        candidateId:     session.userId,
+        candidateName:   session.user?.name ?? session.user?.email ?? undefined,
+        organizationId:  session.organizationId,
+        completedAt:     (session.completedAt ?? session.updatedAt ?? new Date()).toISOString(),
         finalTheta: theta,
         finalSem:   sem,
         beps,

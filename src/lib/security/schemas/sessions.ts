@@ -12,6 +12,8 @@ export const SessionLaunchBody = z.object({
   productLineId: CuidLike.optional(),
   examCode: z.string().trim().max(64).optional(),
   startingSkill: z.enum(["READING", "LISTENING", "WRITING", "SPEAKING", "GRAMMAR", "VOCABULARY"]).optional(),
+  /** When set, limits the session to only this skill (one-skill retake). */
+  focusSkill: z.enum(["READING", "LISTENING", "WRITING", "SPEAKING", "GRAMMAR", "VOCABULARY"]).optional(),
   metadata: z.record(z.string().max(100), FlatValue).optional().superRefine((obj, ctx) => {
     if (obj && Object.keys(obj).length > 20) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "metadata may not exceed 20 keys" });

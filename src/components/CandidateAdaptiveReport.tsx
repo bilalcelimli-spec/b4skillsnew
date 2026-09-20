@@ -57,6 +57,7 @@ interface AdaptiveReport {
   sessionId: string;
   candidateId?: string;
   candidateName?: string;
+  organizationId?: string;
   completedAt: string;
   finalTheta: number;
   finalSem: number;
@@ -121,9 +122,10 @@ function ThetaBar({ theta, sem, color }: { theta: number; sem: number; color: st
 interface Props {
   sessionId: string;
   onClose?: () => void;
+  onRetakeSkill?: (skill: string, organizationId: string) => void;
 }
 
-export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
+export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: Props) {
   const [report, setReport] = useState<AdaptiveReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"overview" | "insights" | "items" | "trajectory" | "cando" | "growth">("overview");
@@ -247,6 +249,15 @@ export function CandidateAdaptiveReport({ sessionId, onClose }: Props) {
                   style={{ backgroundColor: `${SKILL_COLORS[i % 6]}15`, color: SKILL_COLORS[i % 6] }}>
                   {s.cefrLevel.replace("_", " ")}
                 </span>
+                {onRetakeSkill && (
+                  <button
+                    title={`Retake ${s.skill}`}
+                    onClick={() => onRetakeSkill(s.skill, report.organizationId ?? "")}
+                    className="no-print text-[10px] font-semibold text-indigo-500 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 rounded px-1.5 py-0.5 flex-shrink-0 transition-colors"
+                  >
+                    Retake
+                  </button>
+                )}
               </div>
             ))}
           </div>
