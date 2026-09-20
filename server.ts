@@ -3774,15 +3774,23 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       }));
 
       // Aggregate skill-level ability estimates from scoreReport or response data
-      const skillMap: Record<string, { thetas: number[]; cefrLevel: string }> = {};
+      const skillMap: Record<string, { thetas: number[]; sems: number[]; cefrLevel: string }> = {};
       for (const r of responses) {
-        if (!skillMap[r.skill]) skillMap[r.skill] = { thetas: [], cefrLevel: r.cefrLevel };
+        if (!skillMap[r.skill]) skillMap[r.skill] = { thetas: [], sems: [], cefrLevel: r.cefrLevel };
         if (r.thetaAfter != null) skillMap[r.skill].thetas.push(r.thetaAfter);
+        if (r.semAfter   != null) skillMap[r.skill].sems.push(r.semAfter);
       }
-      const skillScores = Object.entries(skillMap).map(([skill, { thetas, cefrLevel: cl }]) => {
-        const t = thetas.length ? thetas[thetas.length - 1] : theta;
-        return { skill, theta: t, cefrLevel: thetaToCefr(t) };
-      });
+      const skillScores: { skill: string; theta: number; sem: number; cefrLevel: string; ciLo: string; ciHi: string }[] =
+        Object.entries(skillMap).map(([skill, { thetas, sems }]) => {
+          const t  = thetas.length ? thetas[thetas.length - 1] : theta;
+          const s  = sems.length   ? sems[sems.length - 1]     : sem;
+          return {
+            skill, theta: t, sem: s,
+            cefrLevel: thetaToCefr(t),
+            ciLo: thetaToCefr(t - 1.96 * s),
+            ciHi: thetaToCefr(t + 1.96 * s),
+          };
+        });
 
       // Supplement from scoreReport if available
       const sr = session.scoreReport as any;
@@ -3794,9 +3802,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
             if (existing) {
               existing.theta = val.theta ?? existing.theta;
               existing.cefrLevel = thetaToCefr(existing.theta);
+              existing.ciLo = thetaToCefr(existing.theta - 1.96 * existing.sem);
+              existing.ciHi = thetaToCefr(existing.theta + 1.96 * existing.sem);
             } else {
-              const t2 = val.theta ?? theta;
-              skillScores.push({ skill: sk.toUpperCase(), theta: t2, cefrLevel: thetaToCefr(t2) });
+              const t2  = val.theta ?? theta;
+              const s2  = val.sem ?? sem;
+              skillScores.push({ skill: sk.toUpperCase(), theta: t2, sem: s2, cefrLevel: thetaToCefr(t2), ciLo: thetaToCefr(t2 - 1.96 * s2), ciHi: thetaToCefr(t2 + 1.96 * s2) });
             }
           }
         } catch {}

@@ -29,7 +29,10 @@ import {
 interface SkillScore {
   skill: string;
   theta: number;
+  sem: number;
   cefrLevel: string;
+  ciLo: string;
+  ciHi: string;
 }
 
 interface RubricScores {
@@ -263,32 +266,44 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
           <ThetaBar theta={report.finalTheta} sem={report.finalSem} color={cefrColor} />
         </div>
         <div className="rounded-xl border border-slate-200 p-4 bg-white col-span-2">
-          <p className="text-xs font-medium text-slate-600 mb-3">Skill Profile (6D MIRT)</p>
-          <div className="space-y-1.5">
-            {report.skillScores.map((s, i) => (
-              <div key={s.skill} className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 w-20 flex-shrink-0">{s.skill}</span>
-                <div className="flex-1">
-                  <ThetaBar theta={s.theta} sem={0.3} color={SKILL_COLORS[i % 6]} />
+          <p className="text-xs font-medium text-slate-600 mb-3">Skill Profile — CEFR per Skill</p>
+          <div className="space-y-2.5">
+            {report.skillScores.map((s, i) => {
+              const color = SKILL_COLORS[i % 6];
+              const ciSame = s.ciLo === s.ciHi;
+              return (
+                <div key={s.skill} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    {/* Skill name */}
+                    <span className="text-xs font-semibold text-slate-600 w-24 flex-shrink-0 capitalize">
+                      {s.skill.charAt(0) + s.skill.slice(1).toLowerCase()}
+                    </span>
+                    {/* CEFR badge — prominent */}
+                    <span className="text-sm font-black px-2 py-0.5 rounded-md flex-shrink-0"
+                      style={{ backgroundColor: `${CEFR_COLORS[s.cefrLevel] ?? color}18`, color: CEFR_COLORS[s.cefrLevel] ?? color, border: `1.5px solid ${CEFR_COLORS[s.cefrLevel] ?? color}40` }}>
+                      {s.cefrLevel.replace("_", " ")}
+                    </span>
+                    {/* CI */}
+                    <span className="text-[10px] text-slate-400 flex-shrink-0">
+                      {ciSame ? "95% CI: ±0" : `95% CI: ${s.ciLo.replace("_"," ")}–${s.ciHi.replace("_"," ")}`}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400 ml-auto flex-shrink-0">
+                      θ {s.theta >= 0 ? "+" : ""}{s.theta.toFixed(2)} ±{(s.sem ?? 0).toFixed(2)}
+                    </span>
+                    {onRetakeSkill && (
+                      <button
+                        title={`Retake ${s.skill}`}
+                        onClick={() => onRetakeSkill(s.skill, report.organizationId ?? "")}
+                        className="no-print text-[10px] font-semibold text-indigo-500 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 rounded px-1.5 py-0.5 flex-shrink-0 transition-colors"
+                      >
+                        Retake
+                      </button>
+                    )}
+                  </div>
+                  <ThetaBar theta={s.theta} sem={s.sem ?? 0.35} color={CEFR_COLORS[s.cefrLevel] ?? color} />
                 </div>
-                <span className="text-xs font-mono font-semibold flex-shrink-0" style={{ color: SKILL_COLORS[i % 6] }}>
-                  {s.theta >= 0 ? "+" : ""}{s.theta.toFixed(2)}
-                </span>
-                <span className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0"
-                  style={{ backgroundColor: `${SKILL_COLORS[i % 6]}15`, color: SKILL_COLORS[i % 6] }}>
-                  {s.cefrLevel.replace("_", " ")}
-                </span>
-                {onRetakeSkill && (
-                  <button
-                    title={`Retake ${s.skill}`}
-                    onClick={() => onRetakeSkill(s.skill, report.organizationId ?? "")}
-                    className="no-print text-[10px] font-semibold text-indigo-500 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 rounded px-1.5 py-0.5 flex-shrink-0 transition-colors"
-                  >
-                    Retake
-                  </button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

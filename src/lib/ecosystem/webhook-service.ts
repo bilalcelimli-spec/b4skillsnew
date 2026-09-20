@@ -1,40 +1,44 @@
 import { prisma } from "../prisma";
 import crypto from "crypto";
+import { webhookManager } from "../webhooks/webhook-manager";
 
 /**
  * Webhook Service
- * Dispatches events to institutional partner endpoints.
+ * Dispatches assessment.completed events to all registered endpoints for the org,
+ * plus any legacy single-URL configured in organization.settings.webhookUrl.
  */
 export const WebhookService = {
-  /**
-   * Dispatch a test completion event
-   */
   async dispatchTestCompleted(sessionId: string) {
-    const session = await prisma.session.findUnique({
+    const session = await (prisma.session.findUnique as any)({
       where: { id: sessionId },
       include: {
-        organization: true,
-        candidate: true,
-        scoreReport: true,
+        user: { select: { id: true, email: true, name: true } },
+        organization: { select: { id: true, settings: true } },
+        scoreReport: {
+          select: {
+            overallScore: true, overallCefr: true,
+            readingScore: true, listeningScore: true,
+            writingScore: true, speakingScore: true,
+            certificateId: true,
+          },
+        },
       },
-    });
+    }) as any;
 
-    if (!session || !session.organization.settings) return;
+    if (!session) return;
 
-    const settings = session.organization.settings as any;
-    const webhookUrl = settings.webhookUrl;
-
-    if (!webhookUrl) return;
+    const APP_BASE_URL = process.env.APP_BASE_URL ?? process.env.VITE_APP_URL ?? "https://b4skills.com";
+    const certId = session.scoreReport?.certificateId;
 
     const payload = {
-      event: "test.completed",
+      event: "assessment.completed" as const,
       timestamp: new Date().toISOString(),
       data: {
         sessionId: session.id,
         candidate: {
-          id: session.candidate.id,
-          email: session.candidate.email,
-          name: session.candidate.name,
+          id: session.user?.id,
+          email: session.user?.email,
+          name: session.user?.name,
         },
         score: {
           overall: session.scoreReport?.overallScore,
@@ -44,31 +48,41 @@ export const WebhookService = {
           writing: session.scoreReport?.writingScore,
           speaking: session.scoreReport?.speakingScore,
         },
-        metadata: session.metadata,
+        certificate_url: certId ? `${APP_BASE_URL}/verify/${certId}` : null,
+        report_url: `${APP_BASE_URL}/dashboard`,
       },
     };
 
-    const payloadString = JSON.stringify(payload);
-    const webhookSecret = (settings.webhookSecret as string) || "";
-    const signature = webhookSecret
-      ? crypto.createHmac("sha256", webhookSecret).update(payloadString).digest("hex")
-      : "";
+    const orgId = session.organization?.id ?? session.organizationId;
 
-    try {
-      const res = await fetch(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-b4skills-Signature": signature,
-        },
-        body: payloadString,
-      });
-
-      if (!res.ok) {
-        console.error(`Webhook dispatch failed for ${webhookUrl}: ${res.statusText}`);
+    // 1. Fire via webhookManager (handles retry, delivery log, all registered endpoints)
+    if (orgId) {
+      try {
+        await webhookManager.triggerEvent("assessment.completed", orgId, payload);
+      } catch (err) {
+        console.error("[webhook] webhookManager.triggerEvent failed:", err);
       }
-    } catch (err) {
-      console.error(`Webhook dispatch error for ${webhookUrl}:`, err);
+    }
+
+    // 2. Legacy fallback: single webhookUrl in organization.settings
+    const settings = session.organization?.settings as any;
+    const legacyUrl = settings?.webhookUrl;
+    if (legacyUrl) {
+      const payloadString = JSON.stringify(payload);
+      const secret = (settings.webhookSecret as string) ?? "";
+      const sig = secret
+        ? crypto.createHmac("sha256", secret).update(payloadString).digest("hex")
+        : "";
+      try {
+        const r = await fetch(legacyUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-b4skills-Signature": sig },
+          body: payloadString,
+        });
+        if (!r.ok) console.error(`[webhook] Legacy delivery failed for ${legacyUrl}: ${r.statusText}`);
+      } catch (err) {
+        console.error(`[webhook] Legacy delivery error for ${legacyUrl}:`, err);
+      }
     }
   },
 };
