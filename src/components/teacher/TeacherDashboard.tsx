@@ -84,6 +84,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [classLoading, setClassLoading] = useState(false);
   const [newClassName, setNewClassName] = useState("");
   const [creatingClass, setCreatingClass] = useState(false);
+  const [expandedClassId, setExpandedClassId] = useState<string | null>(null);
+  const [classSkills, setClassSkills] = useState<Record<string, {
+    cefrDistribution: Record<string, number>;
+    averageTheta: number;
+    memberCount: number;
+    assessedCount: number;
+  }>>({});
 
   useEffect(() => {
     const fetchData = async () => {
@@ -278,20 +285,61 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "12px" }}>
                 {classes.map((cls) => (
                   <div key={cls.id} style={{ border: "1px solid #e2e8f0", borderRadius: "10px", padding: "16px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div
+                      style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", cursor: "pointer" }}
+                      onClick={async () => {
+                        const next = expandedClassId === cls.id ? null : cls.id;
+                        setExpandedClassId(next);
+                        if (next && !classSkills[next]) {
+                          const r = await fetch(`/api/teacher/classes/${next}/skills`, { credentials: "include" });
+                          if (r.ok) {
+                            const d = await r.json();
+                            setClassSkills(prev => ({ ...prev, [next]: d }));
+                          }
+                        }
+                      }}
+                    >
                       <div style={{ fontWeight: 600, color: "#0f172a", fontSize: "15px" }}>{cls.name}</div>
-                      <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "999px", background: cls.status === "ACTIVE" ? "#dcfce7" : "#f1f5f9", color: cls.status === "ACTIVE" ? "#16a34a" : "#64748b" }}>
-                        {cls.status}
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "999px", background: cls.status === "ACTIVE" ? "#dcfce7" : "#f1f5f9", color: cls.status === "ACTIVE" ? "#16a34a" : "#64748b" }}>
+                          {cls.status}
+                        </span>
+                        <span style={{ fontSize: "12px", color: "#94a3b8" }}>{expandedClassId === cls.id ? "▲" : "▼"}</span>
+                      </div>
                     </div>
                     {cls.description && <div style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>{cls.description}</div>}
                     <div style={{ display: "flex", gap: "16px", marginTop: "12px", fontSize: "13px", color: "#64748b" }}>
                       <span>{cls._count?.members ?? 0} students</span>
                       <span>{cls._count?.assignments ?? 0} assignments</span>
                     </div>
+                    {expandedClassId === cls.id && classSkills[cls.id] && (() => {
+                      const s = classSkills[cls.id];
+                      const dist = s.cefrDistribution ?? {};
+                      const levels = ["A1","A2","B1","B2","C1","C2"];
+                      const maxCount = Math.max(...Object.values(dist), 1);
+                      return (
+                        <div style={{ marginTop: "12px", borderTop: "1px solid #f1f5f9", paddingTop: "12px" }}>
+                          <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "8px" }}>
+                            Assessed: {s.assessedCount}/{s.memberCount} · Avg θ: {s.averageTheta?.toFixed(2) ?? "—"}
+                          </div>
+                          <div style={{ display: "flex", gap: "4px", alignItems: "flex-end", height: "60px" }}>
+                            {levels.map(lvl => {
+                              const n = dist[lvl] ?? 0;
+                              return (
+                                <div key={lvl} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
+                                  <div style={{ fontSize: "10px", color: "#64748b" }}>{n > 0 ? n : ""}</div>
+                                  <div style={{ width: "100%", height: `${Math.round((n / maxCount) * 44) + 4}px`, background: CEFR_COLOR[lvl] ?? "#e2e8f0", borderRadius: "3px 3px 0 0", minHeight: "4px" }} />
+                                  <div style={{ fontSize: "10px", color: "#64748b" }}>{lvl}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <div style={{ marginTop: "12px", borderTop: "1px solid #f1f5f9", paddingTop: "12px" }}>
                       <button
-                        onClick={() => downloadClassCsv(cls.id, cls.name)}
+                        onClick={(e) => { e.stopPropagation(); downloadClassCsv(cls.id, cls.name); }}
                         style={{ fontSize: "12px", color: "#4f46e5", border: "1px solid #e0e7ff", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}
                       >
                         ↓ Export CSV
