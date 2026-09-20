@@ -3123,6 +3123,85 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // --- REPORTING API ---
   const { ReportingService } = await import("./src/lib/reporting/reporting-service.js");
 
+  // ── GET /api/organizations — list all orgs (SUPER_ADMIN only) ───────────────
+  app.get("/api/organizations", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (_req, res) => {
+    try {
+      const orgs = await prisma.organization.findMany({
+        select: {
+          id: true, name: true, slug: true, createdAt: true,
+          _count: { select: { users: true, sessions: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      res.json(orgs);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to list organizations" });
+    }
+  });
+
+  // ── POST /api/organizations — create a new organization ───────────────────
+  app.post("/api/organizations", checkRole(["SUPER_ADMIN"]), async (req: any, res) => {
+    const { name, slug, adminEmail, adminName, adminPassword, type, credits } = req.body;
+    if (!name?.trim() || !slug?.trim()) return res.status(400).json({ error: "name and slug are required" });
+    const safeSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    try {
+      // Check slug uniqueness
+      const existing = await prisma.organization.findUnique({ where: { slug: safeSlug } });
+      if (existing) return res.status(409).json({ error: "Slug already taken — choose a different one" });
+
+      const org = await prisma.organization.create({
+        data: {
+          name: name.trim(),
+          slug: safeSlug,
+          settings: { type: type ?? "corporate", credits: credits ?? 0 },
+        },
+      });
+
+      // Optionally create an INST_ADMIN user for this org
+      if (adminEmail?.trim()) {
+        const password = adminPassword?.trim() || crypto.randomBytes(8).toString("hex");
+        const hashed = await bcrypt.hash(password, 10);
+        await (prisma.user as any).create({
+          data: {
+            email: adminEmail.trim().toLowerCase(),
+            name: adminName?.trim() || adminEmail.trim(),
+            password: hashed,
+            role: "INST_ADMIN",
+            organizationId: org.id,
+            emailVerified: true,
+          },
+        });
+        res.status(201).json({ org, adminPassword: adminPassword ? undefined : password });
+      } else {
+        res.status(201).json({ org });
+      }
+    } catch (err: any) {
+      if (err?.code === "P2002") return res.status(409).json({ error: "Slug already taken" });
+      res.status(500).json({ error: "Failed to create organization" });
+    }
+  });
+
+  // ── PATCH /api/organizations/:id — update org name / settings ─────────────
+  app.patch("/api/organizations/:id", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
+    const { id } = req.params;
+    if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
+    const { name, settings } = req.body;
+    try {
+      const org = await prisma.organization.findUnique({ where: { id } });
+      if (!org) return res.status(404).json({ error: "Not found" });
+      const updated = await prisma.organization.update({
+        where: { id },
+        data: {
+          ...(name?.trim() ? { name: name.trim() } : {}),
+          ...(settings ? { settings: { ...(org.settings as object ?? {}), ...settings } } : {}),
+        },
+      });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update organization" });
+    }
+  });
+
   // ── GET /api/organizations/:id/benchmark — org CEFR dist vs platform avg ────
   app.get("/api/organizations/:id/benchmark", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
     const { id } = req.params;

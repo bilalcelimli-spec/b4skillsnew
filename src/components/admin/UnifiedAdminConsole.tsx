@@ -34,6 +34,7 @@ import {
   Zap,
   ShieldCheck,
   Settings as SettingsIcon,
+  Building2,
   ChevronDown,
   ChevronRight,
   LogOut,
@@ -67,6 +68,7 @@ import { ItemBankPanel } from "./ItemBankPanel";
 import { ContentFactoryDashboard } from "./ContentFactoryDashboard";
 import { ContentFactoryBatchPanel } from "./ContentFactoryBatchPanel";
 import { ContentFactoryReviewQueue } from "./ContentFactoryReviewQueue";
+import { OrganizationManagement } from "./OrganizationManagement";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -89,7 +91,8 @@ type Section =
   | "import"
   | "integrations"
   | "audit"
-  | "settings";
+  | "settings"
+  | "organizations";
 
 interface NavGroup {
   id: string;
@@ -166,6 +169,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: "platform",
     label: "Platform",
     items: [
+      { id: "organizations", label: "Organisations", icon: <Building2 size={15} /> },
       { id: "branding",     label: "Branding",     icon: <Palette size={15} /> },
       { id: "integrations", label: "Integrations", icon: <Zap size={15} /> },
       { id: "billing",      label: "Billing",      icon: <CreditCard size={15} /> },
@@ -344,6 +348,7 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string; onLogout?: () => vo
               )}
               {activeSection === "audit" && <AuditLogView orgId={ORG_ID} />}
               {activeSection === "settings" && <GlobalSettings orgId={ORG_ID} />}
+              {activeSection === "organizations" && <OrganizationManagement />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -401,6 +406,7 @@ const SECTION_META: Record<Section, { label: string; desc: string; group: string
   integrations:      { label: "Integrations",   desc: "Webhooks, SSO & APIs",                  group: "Platform" },
   audit:             { label: "Audit Log",      desc: "Compliance & activity trail",           group: "Monitor" },
   settings:          { label: "Settings",       desc: "Global platform configuration",         group: "Platform" },
+  organizations:     { label: "Organisations",  desc: "Create & manage tenant organisations",  group: "Platform" },
   overview:          { label: "Overview",       desc: "Sessions, stats & system health",       group: "Monitor" },
 };
 
