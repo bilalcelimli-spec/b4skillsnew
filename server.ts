@@ -3202,6 +3202,85 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // ── GET /api/organizations/:id/users — list org members ──────────────────────
+  app.get("/api/organizations/:id/users", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
+    const { id } = req.params;
+    if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
+    try {
+      const users = await prisma.user.findMany({
+        where: { organizationId: id },
+        select: { id: true, name: true, email: true, role: true, createdAt: true, emailVerified: true },
+        orderBy: { createdAt: "desc" },
+      });
+      res.json(users);
+    } catch {
+      res.status(500).json({ error: "Failed to list users" });
+    }
+  });
+
+  // ── POST /api/organizations/:id/users — add user to org (create account) ──────
+  app.post("/api/organizations/:id/users", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
+    const { id } = req.params;
+    if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
+    const { email, name, role = "CANDIDATE", password } = req.body;
+    if (!email?.trim()) return res.status(400).json({ error: "email is required" });
+    const allowedRoles = ["CANDIDATE", "TEACHER", "INST_ADMIN"];
+    if (!allowedRoles.includes(role)) return res.status(400).json({ error: "Invalid role" });
+    try {
+      const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+      if (existing) {
+        if (existing.organizationId !== id) return res.status(409).json({ error: "Email already belongs to a different organisation" });
+        return res.status(409).json({ error: "Email already registered in this organisation" });
+      }
+      const rawPw = password?.trim() || Array.from({ length: 12 }, () => "abcdefghjkmnpqrstuvwxyz23456789ABCDEFGHJKMNPQRSTUVWXYZ"[Math.floor(Math.random() * 54)]).join("");
+      const hashed = await bcrypt.hash(rawPw, 12);
+      const user = await prisma.user.create({
+        data: { email: email.toLowerCase().trim(), name: name?.trim() || email.split("@")[0], password: hashed, role, organizationId: id },
+        select: { id: true, email: true, name: true, role: true, createdAt: true },
+      });
+      res.status(201).json({ user, generatedPassword: !password?.trim() ? rawPw : undefined });
+    } catch (err: any) {
+      if (err?.code === "P2002") return res.status(409).json({ error: "Email already registered" });
+      res.status(500).json({ error: "Failed to create user" });
+    }
+  });
+
+  // ── PATCH /api/organizations/:id/users/:userId — change role or name ──────────
+  app.patch("/api/organizations/:id/users/:userId", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
+    const { id, userId } = req.params;
+    if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
+    const { role, name } = req.body;
+    const allowedRoles = ["CANDIDATE", "TEACHER", "INST_ADMIN"];
+    if (role && !allowedRoles.includes(role)) return res.status(400).json({ error: "Invalid role" });
+    try {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user || user.organizationId !== id) return res.status(404).json({ error: "User not found in this organisation" });
+      const updated = await prisma.user.update({
+        where: { id: userId },
+        data: { ...(role ? { role } : {}), ...(name?.trim() ? { name: name.trim() } : {}) },
+        select: { id: true, email: true, name: true, role: true },
+      });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ error: "Failed to update user" });
+    }
+  });
+
+  // ── DELETE /api/organizations/:id/users/:userId — remove user from org ────────
+  app.delete("/api/organizations/:id/users/:userId", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
+    const { id, userId } = req.params;
+    if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
+    if (req.user?.id === userId) return res.status(400).json({ error: "Cannot remove yourself" });
+    try {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user || user.organizationId !== id) return res.status(404).json({ error: "User not found in this organisation" });
+      await prisma.user.update({ where: { id: userId }, data: { organizationId: null } });
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ error: "Failed to remove user" });
+    }
+  });
+
   // ── GET /api/organizations/:id/benchmark — org CEFR dist vs platform avg ────
   app.get("/api/organizations/:id/benchmark", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
     const { id } = req.params;
