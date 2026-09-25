@@ -4756,11 +4756,19 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const { id } = req.params;
     const caller = req.user;
     if (caller?.role === "INST_ADMIN" && caller?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
-    const { candidates } = req.body;
+    const { candidates, sendInvite = false, examCode, classId } = req.body;
     const adminId: string = caller?.id ?? caller?.userId ?? "";
-    
+
+    // Fetch org branding for invite email
+    let orgName = "b4skills";
+    try {
+      const org = await prisma.organization.findUnique({ where: { id }, select: { name: true } });
+      if (org?.name) orgName = org.name;
+    } catch { /* non-fatal */ }
+
     let success = 0;
     let failed = 0;
+    let invited = 0;
     const errors: string[] = [];
 
     for (const cand of candidates) {
@@ -4781,6 +4789,43 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           failed++;
           errors.push(`User ${cand.email} already exists`);
         }
+
+        // Add to class if classId provided
+        if (classId && user) {
+          try {
+            await prisma.classMember.upsert({
+              where: { classId_userId: { classId, userId: user.id } },
+              create: { classId, userId: user.id },
+              update: {},
+            });
+          } catch { /* non-fatal */ }
+        }
+
+        // Send invite email if requested (new users only or always, depending on flag)
+        if (sendInvite && user) {
+          try {
+            const testUrl = examCode
+              ? `${APP_BASE_URL}/english-level-test?code=${examCode}`
+              : `${APP_BASE_URL}/english-level-test`;
+            const codeSection = examCode
+              ? `<p style="font-size:18px;font-weight:bold;text-align:center;letter-spacing:0.15em;padding:12px;background:#f0f4ff;border-radius:8px;color:#4f46e5;">Test Code: ${examCode}</p>`
+              : "";
+            await sendEmail(
+              user.email,
+              `You've been invited to take an English assessment — ${orgName}`,
+              emailTemplate({
+                heading: "You're invited to take an English assessment",
+                body: `<p>Your teacher at <strong>${orgName}</strong> has invited you to complete an English proficiency assessment on b4skills.</p>
+${codeSection}
+<p>The assessment typically takes 15–45 minutes and will give you an official CEFR proficiency level. You'll receive your results immediately after completing the test.</p>`,
+                ctaLabel: "Start Your Assessment",
+                ctaUrl: testUrl,
+                footer: `This invitation was sent by ${orgName}. If you believe this was sent in error, please disregard this email.`,
+              })
+            );
+            invited++;
+          } catch { /* non-fatal — don't block import */ }
+        }
       } catch (err) {
         failed++;
         errors.push(`Failed to create ${cand.email}: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -4800,7 +4845,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       });
     }
 
-    res.json({ success, failed, errors });
+    res.json({ success, failed, invited, errors });
   });
 
   // --- PHASE 9: ECOSYSTEM & COMPLIANCE ---
@@ -7229,6 +7274,123 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // PUT /api/teacher/classes/:id/target — set target CEFR level for the class
+  app.put("/api/teacher/classes/:id/target", checkRole(teacherRoles), async (req: any, res) => {
+    try {
+      const { targetCefr } = req.body;
+      const validLevels = ["A1", "A2", "B1", "B2", "C1", "C2", null, ""];
+      if (!validLevels.includes(targetCefr ?? null)) return res.status(400).json({ error: "Invalid CEFR level" });
+      const updated = await prisma.class.update({
+        where: { id: req.params.id },
+        data: { targetCefr: targetCefr || null },
+      });
+      return res.json({ ok: true, targetCefr: updated.targetCefr });
+    } catch (err: any) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // GET /api/teacher/classes/:id/report — full class summary report
+  app.get("/api/teacher/classes/:id/report", checkRole(teacherRoles), async (req: any, res) => {
+    try {
+      if (!dbAvailable) return res.json({ members: [], cefrDistribution: {}, skillHeatmap: {}, completedCount: 0, totalCount: 0 });
+
+      const cls = await prisma.class.findUnique({
+        where: { id: req.params.id },
+        include: {
+          members: {
+            include: {
+              user: {
+                select: { id: true, name: true, email: true },
+              },
+            },
+          },
+        },
+      });
+      if (!cls) return res.status(404).json({ error: "Class not found" });
+
+      // Fetch latest completed session + score report per member
+      const memberIds = cls.members.map((m: any) => m.userId);
+      const sessions = await prisma.session.findMany({
+        where: { candidateId: { in: memberIds }, status: "COMPLETED" },
+        include: {
+          scoreReport: {
+            select: {
+              overallCefr: true, readingScore: true, listeningScore: true,
+              writingScore: true, speakingScore: true, grammarScore: true,
+              vocabularyScore: true, id: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      // Keep only the latest session per candidate
+      const latestByCandidate = new Map<string, any>();
+      for (const s of sessions as any[]) {
+        if (!latestByCandidate.has(s.candidateId)) latestByCandidate.set(s.candidateId, s);
+      }
+
+      const CEFR_LEVELS = ["PRE_A1","A1","A2","B1","B2","C1","C2"];
+      const SKILLS = ["READING","LISTENING","WRITING","SPEAKING","GRAMMAR","VOCABULARY"];
+      const cefrDistribution: Record<string, number> = {};
+      // skillHeatmap[skill][cefrLevel] = count
+      const skillHeatmap: Record<string, Record<string, number>> = {};
+      SKILLS.forEach(sk => { skillHeatmap[sk] = {}; });
+
+      const memberRows = cls.members.map((m: any) => {
+        const session = latestByCandidate.get(m.userId);
+        const sr = session?.scoreReport;
+        const cefrLevel = sr?.overallCefr ?? session?.cefrLevel ?? null;
+
+        if (cefrLevel) {
+          cefrDistribution[cefrLevel] = (cefrDistribution[cefrLevel] ?? 0) + 1;
+          // Assign to skill heatmap based on available skill scores
+          const skillMap: Record<string, number | null> = {
+            READING: sr?.readingScore, LISTENING: sr?.listeningScore,
+            WRITING: sr?.writingScore, SPEAKING: sr?.speakingScore,
+            GRAMMAR: sr?.grammarScore, VOCABULARY: sr?.vocabularyScore,
+          };
+          for (const [sk, score] of Object.entries(skillMap)) {
+            if (score != null) {
+              skillHeatmap[sk][cefrLevel] = (skillHeatmap[sk][cefrLevel] ?? 0) + 1;
+            }
+          }
+        }
+
+        const isOnTrack = cls.targetCefr && cefrLevel
+          ? CEFR_LEVELS.indexOf(cefrLevel) >= CEFR_LEVELS.indexOf(cls.targetCefr)
+          : null;
+
+        return {
+          userId: m.userId,
+          name: m.user?.name ?? "Unknown",
+          email: m.user?.email ?? "",
+          cefrLevel,
+          scoreReportId: sr?.id ?? null,
+          completed: !!session,
+          isOnTrack,
+        };
+      });
+
+      const completedCount = memberRows.filter((r: any) => r.completed).length;
+
+      return res.json({
+        classId: cls.id,
+        className: cls.name,
+        targetCefr: cls.targetCefr,
+        members: memberRows,
+        cefrDistribution,
+        skillHeatmap,
+        completedCount,
+        totalCount: memberRows.length,
+      });
+    } catch (err: any) {
+      console.error("[class-report]", err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // GET /api/teacher/classes/:id/skills — aggregated skill stats for the class
   app.get("/api/teacher/classes/:id/skills", checkRole(teacherRoles), async (req: any, res) => {
     try {
@@ -7334,13 +7496,23 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const assignments = await prisma.assignment.findMany({
         where: isAdmin ? undefined : { class: { teacherId: user.userId } },
         include: {
-          class: { select: { id: true, name: true } },
+          class: { select: { id: true, name: true, _count: { select: { members: true } } } },
           _count: { select: { sessions: true } },
         },
         orderBy: { createdAt: "desc" },
         take: 50,
       });
-      return res.json(assignments);
+
+      const now = new Date();
+      const enriched = assignments.map((a: any) => {
+        let windowStatus: "PENDING" | "OPEN" | "CLOSED" = "OPEN";
+        if (a.openAt && new Date(a.openAt) > now) windowStatus = "PENDING";
+        else if (a.dueAt && new Date(a.dueAt) < now) windowStatus = "CLOSED";
+        const memberCount = a.class?._count?.members ?? 0;
+        const notStarted = Math.max(0, memberCount - (a._count?.sessions ?? 0));
+        return { ...a, windowStatus, memberCount, notStarted };
+      });
+      return res.json(enriched);
     } catch (err: any) {
       return res.status(500).json({ error: "Internal server error" });
     }

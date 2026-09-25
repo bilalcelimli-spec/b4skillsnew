@@ -61,10 +61,26 @@ interface ClassRow {
   name: string;
   description?: string | null;
   status: string;
+  targetCefr?: string | null;
   teacherId?: string | null;
   teacher?: { id: string; name?: string | null; email: string } | null;
   _count?: { members: number; assignments: number };
   createdAt: string;
+}
+
+interface ClassReportData {
+  classId: string;
+  className: string;
+  targetCefr: string | null;
+  members: Array<{
+    userId: string; name: string; email: string;
+    cefrLevel: string | null; scoreReportId: string | null;
+    completed: boolean; isOnTrack: boolean | null;
+  }>;
+  cefrDistribution: Record<string, number>;
+  skillHeatmap: Record<string, Record<string, number>>;
+  completedCount: number;
+  totalCount: number;
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
@@ -93,12 +109,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   }>>({});
   const [assignments, setAssignments] = useState<any[]>([]);
   const [assignLoading, setAssignLoading] = useState(false);
-  const [newAssign, setNewAssign] = useState({ classId: "", productLine: "General English", dueAt: "" });
+  const [newAssign, setNewAssign] = useState({ classId: "", productLine: "General English", openAt: "", dueAt: "" });
   const [creatingAssign, setCreatingAssign] = useState(false);
   const [sendingReport, setSendingReport] = useState<string | null>(null);
   const [reportSent, setReportSent] = useState<string | null>(null);
   const [classTrends, setClassTrends] = useState<Record<string, { period: string; avgTheta: number | null; avgCefr: string | null; count: number }[]>>({});
   const [loadingTrends, setLoadingTrends] = useState<string | null>(null);
+  const [classReports, setClassReports] = useState<Record<string, ClassReportData>>({});
+  const [loadingReport, setLoadingReport] = useState<string | null>(null);
+  const [viewingReport, setViewingReport] = useState<string | null>(null);
+  const [settingTarget, setSettingTarget] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -219,10 +239,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         body: JSON.stringify({
           classId: newAssign.classId || undefined,
           productLine: newAssign.productLine,
+          openAt: newAssign.openAt || undefined,
           dueAt: newAssign.dueAt || undefined,
         }),
       });
-      if (res.ok) { setNewAssign({ classId: "", productLine: "General English", dueAt: "" }); fetchAssignments(); }
+      if (res.ok) { setNewAssign({ classId: "", productLine: "General English", openAt: "", dueAt: "" }); fetchAssignments(); }
     } finally {
       setCreatingAssign(false);
     }
@@ -261,6 +282,38 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       }
     } finally {
       setSendingReport(null);
+    }
+  };
+
+  const handleSetTargetCefr = async (classId: string, targetCefr: string) => {
+    setSettingTarget(classId);
+    try {
+      const r = await fetch(`/api/teacher/classes/${classId}/target`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetCefr: targetCefr || null }),
+      });
+      if (r.ok) {
+        setClasses(prev => prev.map(c => c.id === classId ? { ...c, targetCefr: targetCefr || null } : c));
+      }
+    } finally {
+      setSettingTarget(null);
+    }
+  };
+
+  const handleLoadClassReport = async (classId: string) => {
+    if (classReports[classId]) { setViewingReport(classId); return; }
+    setLoadingReport(classId);
+    try {
+      const r = await fetch(`/api/teacher/classes/${classId}/report`, { credentials: "include" });
+      if (r.ok) {
+        const d = await r.json();
+        setClassReports(prev => ({ ...prev, [classId]: d }));
+        setViewingReport(classId);
+      }
+    } finally {
+      setLoadingReport(null);
     }
   };
 
@@ -437,12 +490,36 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       );
                     })()}
                     <div style={{ marginTop: "12px", borderTop: "1px solid #f1f5f9", paddingTop: "12px" }}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); downloadClassCsv(cls.id, cls.name); }}
-                        style={{ fontSize: "12px", color: "#4f46e5", border: "1px solid #e0e7ff", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}
-                      >
-                        ↓ Export CSV
-                      </button>
+                      {/* Target CEFR */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                        <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 600 }}>Target:</span>
+                        <select
+                          value={cls.targetCefr ?? ""}
+                          onChange={(e) => { e.stopPropagation(); handleSetTargetCefr(cls.id, e.target.value); }}
+                          disabled={settingTarget === cls.id}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "2px 6px", background: "#fff", color: "#0f172a" }}
+                        >
+                          <option value="">No target</option>
+                          {["A1","A2","B1","B2","C1","C2"].map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                        {settingTarget === cls.id && <span style={{ fontSize: "10px", color: "#94a3b8" }}>Saving…</span>}
+                      </div>
+                      {/* Actions */}
+                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleLoadClassReport(cls.id); }}
+                          style={{ fontSize: "12px", color: "#0f172a", border: "1px solid #e2e8f0", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}
+                        >
+                          {loadingReport === cls.id ? "Loading…" : "📊 Class Report"}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); downloadClassCsv(cls.id, cls.name); }}
+                          style={{ fontSize: "12px", color: "#4f46e5", border: "1px solid #e0e7ff", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}
+                        >
+                          ↓ Export CSV
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -477,11 +554,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 ))}
               </select>
               <input
-                type="date"
+                type="datetime-local"
+                value={newAssign.openAt}
+                onChange={e => setNewAssign(a => ({ ...a, openAt: e.target.value }))}
+                style={{ flex: "1 1 160px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
+                title="Opens at (optional)"
+              />
+              <input
+                type="datetime-local"
                 value={newAssign.dueAt}
                 onChange={e => setNewAssign(a => ({ ...a, dueAt: e.target.value }))}
-                style={{ flex: "1 1 140px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
-                placeholder="Due date (optional)"
+                style={{ flex: "1 1 160px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
+                title="Due date (optional)"
               />
               <button
                 onClick={handleCreateAssignment}
@@ -503,10 +587,25 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "12px" }}>
                 {assignments.map(a => (
                   <div key={a.id} style={{ border: "1px solid #e2e8f0", borderRadius: "10px", padding: "14px" }}>
-                    <div style={{ fontWeight: 600, fontSize: "14px", color: "#0f172a", marginBottom: "4px" }}>{a.productLine}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div style={{ fontWeight: 600, fontSize: "14px", color: "#0f172a", marginBottom: "4px" }}>{a.productLine}</div>
+                      <span style={{
+                        fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "999px",
+                        background: a.windowStatus === "OPEN" ? "#dcfce7" : a.windowStatus === "PENDING" ? "#fef9c3" : "#f1f5f9",
+                        color: a.windowStatus === "OPEN" ? "#16a34a" : a.windowStatus === "PENDING" ? "#a16207" : "#64748b",
+                      }}>
+                        {a.windowStatus ?? "OPEN"}
+                      </span>
+                    </div>
                     {a.class && <div style={{ fontSize: "12px", color: "#4f46e5" }}>{a.class.name}</div>}
                     <div style={{ fontSize: "12px", color: "#64748b", marginTop: "6px" }}>
-                      {a.dueAt ? `Due: ${new Date(a.dueAt).toLocaleDateString()}` : "No due date"} · {a._count?.sessions ?? 0} attempts
+                      {a.openAt ? `Opens: ${new Date(a.openAt).toLocaleString()}` : ""}
+                      {a.openAt && a.dueAt ? " · " : ""}
+                      {a.dueAt ? `Due: ${new Date(a.dueAt).toLocaleString()}` : "No due date"}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
+                      {a._count?.sessions ?? 0} started
+                      {a.notStarted > 0 && <span style={{ color: "#f97316", marginLeft: "6px" }}>{a.notStarted} not started</span>}
                     </div>
                   </div>
                 ))}
@@ -674,6 +773,157 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
       </div>
       </>}
+
+      {/* Class Report Modal */}
+      {viewingReport && classReports[viewingReport] && (() => {
+        const rpt = classReports[viewingReport];
+        const SKILLS = ["READING","LISTENING","WRITING","SPEAKING","GRAMMAR","VOCABULARY"];
+        const CEFR_LEVELS = ["A1","A2","B1","B2","C1","C2"];
+        const maxHeat = Math.max(...SKILLS.flatMap(sk => CEFR_LEVELS.map(lv => rpt.skillHeatmap[sk]?.[lv] ?? 0)), 1);
+        const onTrackCount = rpt.members.filter(m => m.isOnTrack === true).length;
+        const needsSupportCount = rpt.members.filter(m => m.isOnTrack === false).length;
+        return (
+          <div
+            style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "32px 16px" }}
+            onClick={() => setViewingReport(null)}
+          >
+            <div
+              style={{ background: "#fff", borderRadius: "16px", maxWidth: "900px", width: "100%", padding: "32px", position: "relative" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px" }}>
+                <div>
+                  <h2 style={{ fontSize: "20px", fontWeight: 700, color: "#0f172a", margin: 0 }}>{rpt.className}</h2>
+                  <p style={{ fontSize: "13px", color: "#64748b", margin: "4px 0 0" }}>
+                    {rpt.completedCount}/{rpt.totalCount} students completed
+                    {rpt.targetCefr ? ` · Target: ${rpt.targetCefr}` : ""}
+                  </p>
+                </div>
+                <button onClick={() => setViewingReport(null)} style={{ border: "none", background: "none", fontSize: "20px", cursor: "pointer", color: "#64748b" }}>✕</button>
+              </div>
+
+              {/* On-track summary */}
+              {rpt.targetCefr && (
+                <div style={{ display: "flex", gap: "12px", marginBottom: "24px" }}>
+                  <div style={{ flex: 1, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "16px", textAlign: "center" }}>
+                    <div style={{ fontSize: "28px", fontWeight: 700, color: "#16a34a" }}>{onTrackCount}</div>
+                    <div style={{ fontSize: "12px", color: "#15803d", fontWeight: 600 }}>On Track ✓</div>
+                  </div>
+                  <div style={{ flex: 1, background: "#fef9c3", border: "1px solid #fde047", borderRadius: "10px", padding: "16px", textAlign: "center" }}>
+                    <div style={{ fontSize: "28px", fontWeight: 700, color: "#a16207" }}>{rpt.completedCount - onTrackCount - needsSupportCount}</div>
+                    <div style={{ fontSize: "12px", color: "#854d0e", fontWeight: 600 }}>Not Assessed</div>
+                  </div>
+                  <div style={{ flex: 1, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "10px", padding: "16px", textAlign: "center" }}>
+                    <div style={{ fontSize: "28px", fontWeight: 700, color: "#dc2626" }}>{needsSupportCount}</div>
+                    <div style={{ fontSize: "12px", color: "#b91c1c", fontWeight: 600 }}>Needs Support</div>
+                  </div>
+                </div>
+              )}
+
+              {/* CEFR distribution */}
+              <div style={{ marginBottom: "24px" }}>
+                <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#0f172a", margin: "0 0 12px" }}>CEFR Distribution</h3>
+                <div style={{ display: "flex", gap: "8px", alignItems: "flex-end", height: "80px" }}>
+                  {CEFR_LEVELS.map(lv => {
+                    const n = rpt.cefrDistribution[lv] ?? 0;
+                    const max = Math.max(...Object.values(rpt.cefrDistribution), 1);
+                    return (
+                      <div key={lv} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "3px" }}>
+                        <div style={{ fontSize: "11px", color: "#64748b" }}>{n || ""}</div>
+                        <div style={{ width: "100%", height: `${Math.round((n / max) * 60) + 4}px`, background: CEFR_COLOR[lv] ?? "#e2e8f0", borderRadius: "3px 3px 0 0", minHeight: "4px", opacity: lv === rpt.targetCefr ? 1 : 0.7, boxShadow: lv === rpt.targetCefr ? `0 0 0 2px ${CEFR_COLOR[lv]}` : "none" }} />
+                        <div style={{ fontSize: "11px", fontWeight: 600, color: CEFR_COLOR[lv] ?? "#64748b" }}>{lv}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Skill × CEFR Heatmap */}
+              <div style={{ marginBottom: "24px", overflowX: "auto" }}>
+                <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#0f172a", margin: "0 0 12px" }}>Skill × CEFR Heatmap</h3>
+                <table style={{ borderCollapse: "collapse", fontSize: "12px", width: "100%" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: "6px 10px", textAlign: "left", color: "#64748b", fontWeight: 600 }}>Skill</th>
+                      {CEFR_LEVELS.map(lv => (
+                        <th key={lv} style={{ padding: "6px 8px", textAlign: "center", color: CEFR_COLOR[lv], fontWeight: 700 }}>{lv}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {SKILLS.map(sk => (
+                      <tr key={sk}>
+                        <td style={{ padding: "6px 10px", fontWeight: 600, color: "#334155", textTransform: "capitalize" }}>{sk.charAt(0) + sk.slice(1).toLowerCase()}</td>
+                        {CEFR_LEVELS.map(lv => {
+                          const n = rpt.skillHeatmap[sk]?.[lv] ?? 0;
+                          const intensity = n / maxHeat;
+                          return (
+                            <td key={lv} style={{ padding: "6px 8px", textAlign: "center", borderRadius: "4px", background: n > 0 ? `rgba(99,102,241,${0.1 + intensity * 0.7})` : "#f8fafc", color: n > 0 ? "#1e1b4b" : "#cbd5e1", fontWeight: n > 0 ? 700 : 400 }}>
+                              {n > 0 ? n : "·"}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Student list */}
+              <div>
+                <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#0f172a", margin: "0 0 12px" }}>Students</h3>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                        {["Name", "CEFR", "Status", "Report"].map(h => (
+                          <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "#64748b", fontWeight: 600, fontSize: "11px", textTransform: "uppercase" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rpt.members.map(m => (
+                        <tr key={m.userId} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: "8px 10px" }}>
+                            <div style={{ fontWeight: 500, color: "#0f172a" }}>{m.name}</div>
+                            <div style={{ fontSize: "11px", color: "#94a3b8" }}>{m.email}</div>
+                          </td>
+                          <td style={{ padding: "8px 10px" }}>
+                            {m.cefrLevel ? (
+                              <span style={{ background: (CEFR_COLOR[m.cefrLevel.replace("_", "")] ?? "#e2e8f0") + "22", color: CEFR_COLOR[m.cefrLevel.replace("_", "")] ?? "#64748b", padding: "2px 8px", borderRadius: "999px", fontWeight: 700, fontSize: "12px" }}>
+                                {m.cefrLevel.replace("_", " ")}
+                              </span>
+                            ) : <span style={{ color: "#94a3b8", fontSize: "12px" }}>—</span>}
+                          </td>
+                          <td style={{ padding: "8px 10px" }}>
+                            {!m.completed ? (
+                              <span style={{ fontSize: "11px", color: "#94a3b8" }}>Not started</span>
+                            ) : m.isOnTrack === true ? (
+                              <span style={{ fontSize: "11px", fontWeight: 700, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: "999px" }}>✓ On Track</span>
+                            ) : m.isOnTrack === false ? (
+                              <span style={{ fontSize: "11px", fontWeight: 700, color: "#dc2626", background: "#fef2f2", padding: "2px 8px", borderRadius: "999px" }}>⚠ Needs Support</span>
+                            ) : (
+                              <span style={{ fontSize: "11px", color: "#22c55e" }}>Completed</span>
+                            )}
+                          </td>
+                          <td style={{ padding: "8px 10px" }}>
+                            {m.scoreReportId ? (
+                              <a href={`/results/${m.scoreReportId}`} target="_blank" rel="noreferrer" style={{ fontSize: "12px", color: "#4f46e5", fontWeight: 600, textDecoration: "none" }}>
+                                View →
+                              </a>
+                            ) : <span style={{ fontSize: "12px", color: "#94a3b8" }}>—</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

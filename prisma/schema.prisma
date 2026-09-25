@@ -972,6 +972,7 @@ model Class {
   teacher        User?         @relation("ClassTeacher", fields: [teacherId], references: [id])
   description    String?
   status         ClassStatus   @default(ACTIVE)
+  targetCefr     String?       // target CEFR level for the class (e.g. "B2")
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
