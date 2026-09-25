@@ -1,89 +1,30 @@
 /**
- * LTI 1.3 Advantage Service
+ * LTI 1.3 Tool Provider
  *
- * Implements the IMS Global Learning Tools Interoperability 1.3 specification,
- * including:
+ * Two layers:
+ *  1. `LtiService` — pure stateless class. Builds redirect URLs, parses/validates
+ *     id_tokens without I/O. Unit-testable without a database.
+ *  2. Top-level async functions (`initiateLogin`, `handleLaunch`, `sendGradePassback`)
+ *     — DB-backed orchestration used by Express routes.
  *
- *   1. OpenID Connect (OIDC) Launch Flow
- *      - Third-party initiation → platform login URL
- *      - JWT ID token validation (RS256, JWK set)
- *      - State/nonce CSRF protection
- *
- *   2. Deep Linking (Content-Item Message)
- *      - Returns a signed JWT with content items back to the LMS
- *
- *   3. Assignment and Grade Services (AGS)
- *      - lineitem creation + score passback (POST /scores)
- *      - gradePassback() sends normalised score to LMS grade column
- *
- * Supported platforms: Canvas, Moodle, Blackboard, D2L Brightspace
- *
- * References
- * ----------
- * IMS Global LTI 1.3 Core Spec: https://www.imsglobal.org/spec/lti/v1p3/
- * IMS AGS Spec: https://www.imsglobal.org/spec/lti-ags/v2p0/
- * IMS Deep Linking 2.0: https://www.imsglobal.org/spec/lti-dl/v2p0/
+ * Spec references:
+ *  - IMS LTI 1.3 Core: https://www.imsglobal.org/spec/lti/v1p3/
+ *  - IMS LTI Advantage AGS: https://www.imsglobal.org/spec/lti-ags/v2p0/
+ *  - IMS Deep Linking 2.0: https://www.imsglobal.org/spec/lti-dl/v2p0/
  */
 
-import crypto from "crypto";
+import * as crypto from "crypto";
+import { prisma } from "../prisma.js";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface LtiPlatformConfig {
-  /** Platform identifier (e.g., "canvas.institution.edu") */
   platformId: string;
-  /** Client ID issued by the LMS when the tool is registered */
   clientId: string;
-  /** LMS OIDC authentication endpoint */
   oidcAuthEndpoint: string;
-  /** LMS OAuth 2 token endpoint (for AGS) */
   tokenEndpoint: string;
-  /** LMS JSON Web Key Set endpoint (for ID token verification) */
   jwksEndpoint: string;
-  /** LMS deployment ID */
   deploymentId: string;
-}
-
-export interface LtiLaunchClaims {
-  /** LTI message type: LtiResourceLinkRequest | LtiDeepLinkingRequest */
-  messageType: "LtiResourceLinkRequest" | "LtiDeepLinkingRequest";
-  /** LTI version, always "1.3.0" */
-  version: string;
-  /** Deployment ID — must match registered deployment */
-  deploymentId: string;
-  /** Resource link claim */
-  resourceLink?: { id: string; title?: string; description?: string };
-  /** Canvas/Moodle course context */
-  context?: { id: string; label?: string; title?: string };
-  /** Roles claim (URN strings) */
-  roles: string[];
-  /** Custom claim namespace */
-  custom?: Record<string, string>;
-  /** AGS claim: endpoint for grade passback */
-  ags?: {
-    lineitemsUrl?: string;
-    lineitemUrl?: string;
-    scope: string[];
-  };
-  /** Deep Linking claim */
-  deepLinking?: {
-    deepLinkReturnUrl: string;
-    acceptTypes: string[];
-    acceptMediaTypes?: string;
-    acceptMultiple: boolean;
-  };
-  /** Issuer (platform_id) */
-  iss: string;
-  /** Subject (platform-specific user id) */
-  sub: string;
-  /** Tool client_id audience */
-  aud: string | string[];
-  /** Nonce — must be unique per launch */
-  nonce: string;
-  /** Expiry timestamp */
-  exp: number;
-  /** Issued-at timestamp */
-  iat: number;
 }
 
 export interface OidcLoginParams {
@@ -92,352 +33,457 @@ export interface OidcLoginParams {
   target_link_uri: string;
   lti_message_hint?: string;
   client_id?: string;
-  deployment_id?: string;
+}
+
+export interface LtiLaunchClaims {
+  messageType: string;
+  version: string;
+  deploymentId: string;
+  roles: string[];
+  iss: string;
+  sub: string;
+  aud: string | string[];
+  nonce: string;
+  exp: number;
+  iat: number;
+  // Optional enrichment
+  email?: string;
+  name?: string;
+  context?: { id: string; title?: string };
+  resourceLink?: { id: string; title?: string };
+  ags?: { lineitem?: string; scoreMaximum?: number; lineitems?: string };
+  deepLinking?: {
+    deepLinkReturnUrl: string;
+    acceptTypes: string[];
+    acceptMultiple: boolean;
+  };
+  [key: string]: unknown;
 }
 
 export interface DeepLinkItem {
-  type: "ltiResourceLink";
-  title: string;
-  url: string;
-  /** Optional custom parameters for the resource */
-  custom?: Record<string, string>;
+  type: string;
+  title?: string;
+  url?: string;
+  [key: string]: unknown;
 }
 
-export interface GradePassbackPayload {
-  /** Normalised score 0.0–1.0 */
-  scoreGiven: number;
-  scoreMaximum: number;
-  comment?: string;
-  /** ISO 8601 timestamp of the activity */
-  timestamp: string;
-  /** AGS activity progress */
-  activityProgress: "Initialized" | "Started" | "InProgress" | "Submitted" | "Completed";
-  /** AGS grading progress */
-  gradingProgress: "NotReady" | "Failed" | "Pending" | "PendingManual" | "FullyGraded";
-}
+// ── LtiService — pure stateless utility class ─────────────────────────────────
 
-// ─── State / Nonce store (in-process; use Redis in production) ─────────────────
+// In-process state store (development / single-instance). Production uses DB.
+const _stateStore = new Map<string, { nonce: string; targetUri: string; expiresAt: number }>();
 
-const STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const NS = "https://purl.imsglobal.org/spec/lti/claim/";
+const DL_NS = "https://purl.imsglobal.org/spec/lti-dl/claim/";
 
-interface PendingState {
-  nonce: string;
-  targetUri: string;
-  expiresAt: number;
-}
-
-const pendingStates = new Map<string, PendingState>();
-
-function purgeExpiredStates(): void {
-  const now = Date.now();
-  for (const [k, v] of pendingStates) {
-    if (v.expiresAt < now) pendingStates.delete(k);
-  }
-}
-
-// ─── Core LTI service ─────────────────────────────────────────────────────────
-
-export const LtiService = {
+export class LtiService {
   /**
-   * Step 1 — OIDC Login Initiation (Third-party initiated login).
-   *
-   * Receives the platform's POST /lti/login request, generates state + nonce,
-   * and returns the redirect URL to the platform's OIDC auth endpoint.
-   *
-   * @returns { redirectUrl, state, nonce } — caller must HTTP-redirect to redirectUrl
+   * Build the OIDC redirect URL for the login initiation step.
+   * Returns { redirectUrl, state, nonce }.
    */
-  initiateLogin(
+  static initiateLogin(
     params: OidcLoginParams,
     config: LtiPlatformConfig,
-    toolLaunchUrl: string
+    redirectUri: string
   ): { redirectUrl: string; state: string; nonce: string } {
-    purgeExpiredStates();
+    const state = crypto.randomBytes(16).toString("hex");
+    const nonce = crypto.randomBytes(16).toString("hex");
 
-    const state = crypto.randomBytes(32).toString("hex");
-    const nonce = crypto.randomBytes(32).toString("hex");
-
-    pendingStates.set(state, {
-      nonce,
-      targetUri: params.target_link_uri,
-      expiresAt: Date.now() + STATE_TTL_MS,
-    });
+    _stateStore.set(state, { nonce, targetUri: params.target_link_uri, expiresAt: Date.now() + 5 * 60_000 });
 
     const url = new URL(config.oidcAuthEndpoint);
     url.searchParams.set("scope", "openid");
     url.searchParams.set("response_type", "id_token");
-    url.searchParams.set("client_id", config.clientId);
-    url.searchParams.set("redirect_uri", toolLaunchUrl);
-    url.searchParams.set("login_hint", params.login_hint);
-    url.searchParams.set("state", state);
     url.searchParams.set("response_mode", "form_post");
-    url.searchParams.set("nonce", nonce);
     url.searchParams.set("prompt", "none");
-    if (params.lti_message_hint) {
-      url.searchParams.set("lti_message_hint", params.lti_message_hint);
-    }
+    url.searchParams.set("client_id", config.clientId);
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("state", state);
+    url.searchParams.set("nonce", nonce);
+    url.searchParams.set("login_hint", params.login_hint);
+    if (params.lti_message_hint) url.searchParams.set("lti_message_hint", params.lti_message_hint);
 
     return { redirectUrl: url.toString(), state, nonce };
-  },
+  }
+
+  /** Consume state from in-memory store. Returns null if missing or expired. */
+  static consumeState(state: string): { nonce: string; targetUri: string } | null {
+    const entry = _stateStore.get(state);
+    if (!entry) return null;
+    _stateStore.delete(state);
+    if (entry.expiresAt < Date.now()) return null;
+    return { nonce: entry.nonce, targetUri: entry.targetUri };
+  }
 
   /**
-   * Step 2 — Validate OIDC state returned by the platform.
-   * Returns the stored nonce so the caller can verify it against the JWT claim.
+   * Decode and parse an id_token JWT (no signature verification — caller must
+   * verify signature separately before trusting the result).
    */
-  consumeState(state: string): { nonce: string; targetUri: string } | null {
-    const stored = pendingStates.get(state);
-    if (!stored) return null;
-    if (stored.expiresAt < Date.now()) {
-      pendingStates.delete(state);
-      return null;
-    }
-    pendingStates.delete(state);
-    return { nonce: stored.nonce, targetUri: stored.targetUri };
-  },
-
-  /**
-   * Step 3 — Parse and validate the LTI ID token (JWT).
-   *
-   * In production: fetch the platform's JWKS and verify RS256 signature.
-   * Here we parse the payload and validate the structural/temporal claims.
-   * Signature verification should be done with `jose` or `jsonwebtoken` + JWKS.
-   *
-   * @throws Error if token is structurally invalid or expired
-   */
-  parseIdToken(idToken: string): LtiLaunchClaims {
+  static parseIdToken(idToken: string): LtiLaunchClaims {
     const parts = idToken.split(".");
-    if (parts.length !== 3) {
-      throw new Error("LTI ID token must be a three-part JWT");
-    }
+    if (parts.length !== 3) throw new Error("id_token must be a three-part JWT");
 
-    let payload: Record<string, unknown>;
+    let claims: Record<string, unknown>;
     try {
-      const decoded = Buffer.from(parts[1]!, "base64url").toString("utf8");
-      payload = JSON.parse(decoded);
+      claims = JSON.parse(Buffer.from(parts[1], "base64url").toString());
     } catch {
-      throw new Error("LTI ID token payload is not valid JSON");
+      throw new Error("Could not base64url-decode id_token payload");
     }
 
     const now = Math.floor(Date.now() / 1000);
-    const exp = payload["exp"] as number | undefined;
-    const iat = payload["iat"] as number | undefined;
+    if (claims.exp && (claims.exp as number) < now) throw new Error("id_token is expired");
 
-    if (!exp || exp < now) {
-      throw new Error("LTI ID token is expired");
-    }
-    if (!iat || iat > now + 60) {
-      throw new Error("LTI ID token issued-at is in the future (clock skew > 60s)");
-    }
+    const deploymentId = claims[`${NS}deployment_id`] as string | undefined;
+    if (!deploymentId) throw new Error("id_token missing deployment_id claim");
 
-    const NS = "https://purl.imsglobal.org/spec/lti/claim/";
-
-    const claims: LtiLaunchClaims = {
-      messageType: (payload[`${NS}message_type`] as string ?? "LtiResourceLinkRequest") as
-        "LtiResourceLinkRequest" | "LtiDeepLinkingRequest",
-      version: (payload[`${NS}version`] as string) ?? "1.3.0",
-      deploymentId: (payload[`${NS}deployment_id`] as string) ?? "",
-      resourceLink: payload[`${NS}resource_link`] as LtiLaunchClaims["resourceLink"],
-      context: payload[`${NS}context`] as LtiLaunchClaims["context"],
-      roles: (payload[`${NS}roles`] as string[]) ?? [],
-      custom: payload[`${NS}custom`] as Record<string, string> | undefined,
-      ags: payload[`${NS}ags`] as LtiLaunchClaims["ags"],
-      deepLinking: payload[`${NS}dl`] as LtiLaunchClaims["deepLinking"],
-      iss: (payload["iss"] as string) ?? "",
-      sub: (payload["sub"] as string) ?? "",
-      aud: (payload["aud"] as string | string[]) ?? "",
-      nonce: (payload["nonce"] as string) ?? "",
-      exp,
-      iat,
+    return {
+      messageType: (claims[`${NS}message_type`] as string) ?? "LtiResourceLinkRequest",
+      version: (claims[`${NS}version`] as string) ?? "1.3.0",
+      deploymentId,
+      roles: (claims[`${NS}roles`] as string[]) ?? [],
+      iss: claims.iss as string,
+      sub: claims.sub as string,
+      aud: claims.aud as string | string[],
+      nonce: claims.nonce as string,
+      exp: claims.exp as number,
+      iat: claims.iat as number,
+      email: claims.email as string | undefined,
+      name: claims.name as string | undefined,
+      context: claims[`${NS}context`] as LtiLaunchClaims["context"],
+      resourceLink: claims[`${NS}resource_link`] as LtiLaunchClaims["resourceLink"],
+      ags: claims["https://purl.imsglobal.org/spec/lti-ags/claim/endpoint"] as LtiLaunchClaims["ags"],
+      deepLinking: claims[`${DL_NS}deep_linking_settings`] as LtiLaunchClaims["deepLinking"],
     };
+  }
 
-    if (!claims.deploymentId) {
-      throw new Error("LTI claim lti/deployment_id is missing");
-    }
-    if (!claims.iss) {
-      throw new Error("LTI claim iss is missing");
-    }
-
-    return claims;
-  },
-
-  /**
-   * Validate launch claims after parsing:
-   *  - nonce matches the stored one from initiateLogin
-   *  - deploymentId matches registered config
-   *  - aud contains the tool's clientId
-   */
-  validateLaunchClaims(
+  /** Validate parsed claims against a platform config and expected nonce. */
+  static validateLaunchClaims(
     claims: LtiLaunchClaims,
     config: LtiPlatformConfig,
     expectedNonce: string
   ): { valid: boolean; reason?: string } {
-    if (claims.nonce !== expectedNonce) {
-      return { valid: false, reason: "Nonce mismatch — possible replay attack" };
-    }
-    if (claims.deploymentId !== config.deploymentId) {
-      return { valid: false, reason: `Deployment ID mismatch: got ${claims.deploymentId}` };
-    }
+    if (claims.nonce !== expectedNonce) return { valid: false, reason: "nonce mismatch" };
+
     const aud = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
-    if (!aud.includes(config.clientId)) {
-      return { valid: false, reason: `Client ID not in aud claim: ${aud.join(",")}` };
+    if (!aud.includes(config.clientId)) return { valid: false, reason: `aud does not include clientId (${config.clientId})` };
+
+    if (claims.deploymentId !== config.deploymentId) {
+      return { valid: false, reason: `deployment_id mismatch: expected ${config.deploymentId}` };
     }
+
     return { valid: true };
-  },
+  }
 
-  /**
-   * Fetch the platform's JWKS and verify the RS256 signature of an LTI ID token.
-   * Caches JWKS per endpoint for 10 minutes to avoid hammering the LMS on every launch.
-   *
-   * @throws Error if signature verification fails or key is not found
-   */
-  async verifyIdTokenRS256(idToken: string, jwksEndpoint: string): Promise<LtiLaunchClaims> {
-    const [headerB64, payloadB64, sigB64] = idToken.split(".");
-    if (!headerB64 || !payloadB64 || !sigB64) throw new Error("Malformed JWT");
-
-    const header = JSON.parse(Buffer.from(headerB64, "base64url").toString());
-    const kid: string | undefined = header.kid;
-
-    // Fetch + cache JWKS
-    const cacheKey = jwksEndpoint;
-    const cached = LtiService._jwksCache.get(cacheKey);
-    let keys: Array<{ kty: string; kid?: string; n: string; e: string; alg?: string; use?: string }>;
-    if (cached && Date.now() - cached.fetchedAt < 600_000) {
-      keys = cached.keys;
-    } else {
-      const resp = await fetch(jwksEndpoint);
-      if (!resp.ok) throw new Error(`JWKS fetch failed: ${resp.status}`);
-      const jwks = await resp.json() as { keys: typeof keys };
-      keys = jwks.keys.filter((k) => k.kty === "RSA" && (!k.use || k.use === "sig"));
-      LtiService._jwksCache.set(cacheKey, { keys, fetchedAt: Date.now() });
-    }
-
-    const key = kid ? keys.find((k) => k.kid === kid) : keys[0];
-    if (!key) throw new Error(`No matching JWK for kid=${kid ?? "(none)"}`);
-
-    // Reconstruct RSA public key from n/e
-    const pubKey = crypto.createPublicKey({
-      key: {
-        kty: "RSA",
-        n: key.n,
-        e: key.e,
-      },
-      format: "jwk",
-    });
-
-    const signingInput = `${headerB64}.${payloadB64}`;
-    const sig = Buffer.from(sigB64, "base64url");
-    const valid = crypto.verify("sha256", Buffer.from(signingInput), { key: pubKey, padding: crypto.constants.RSA_PKCS1_PADDING }, sig);
-    if (!valid) throw new Error("LTI ID token RS256 signature verification failed");
-
-    return LtiService.parseIdToken(idToken);
-  },
-
-  /** @internal JWKS cache: endpoint → { keys, fetchedAt } */
-  _jwksCache: new Map<string, { keys: Array<{ kty: string; kid?: string; n: string; e: string; alg?: string; use?: string }>; fetchedAt: number }>(),
-
-  /**
-   * Determine if the LTI user has instructor role.
-   * Checks the full URN roles claim for Instructor/TeachingAssistant/Administrator.
-   */
-  isInstructor(roles: string[]): boolean {
-    const instructorUrns = [
-      "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor",
-      "http://purl.imsglobal.org/vocab/lis/v2/membership#TeachingAssistant",
-      "http://purl.imsglobal.org/vocab/lis/v2/system/person#Administrator",
-      "http://purl.imsglobal.org/vocab/lis/v2/institution/person#Administrator",
-    ];
-    return roles.some(r => instructorUrns.includes(r));
-  },
-
-  isLearner(roles: string[]): boolean {
+  /** True if roles contain an Instructor (or TeachingAssistant) URN. */
+  static isInstructor(roles: string[]): boolean {
     return roles.some(r =>
-      r.includes("#Learner") || r.includes("#Student")
+      r.includes("Instructor") || r.includes("TeachingAssistant") || r.includes("Faculty") || r.includes("Staff")
     );
-  },
+  }
+
+  /** True if roles contain a Learner / Student URN. */
+  static isLearner(roles: string[]): boolean {
+    return roles.some(r => r.includes("Learner") || r.includes("Student"));
+  }
 
   /**
-   * Build a Deep Linking response JWT for sending items back to the LMS.
-   * In production, sign this with the tool's private key (RS256).
-   *
-   * Returns a base64url-encoded payload (without real signature — must be
-   * signed by caller with `jose` or `jsonwebtoken` using tool private key).
+   * Build the payload for an LtiDeepLinkingResponse JWT (tool → platform).
+   * Returns { returnUrl, jwtPayload, serializedPayload }.
    */
-  buildDeepLinkResponse(
+  static buildDeepLinkResponse(
     claims: LtiLaunchClaims,
     config: LtiPlatformConfig,
     items: DeepLinkItem[]
-  ): {
-    returnUrl: string;
-    jwtPayload: Record<string, unknown>;
-    serializedPayload: string;
-  } {
+  ): { returnUrl: string; jwtPayload: Record<string, unknown>; serializedPayload: string } {
     const returnUrl = claims.deepLinking?.deepLinkReturnUrl ?? "";
     const now = Math.floor(Date.now() / 1000);
-    const NS = "https://purl.imsglobal.org/spec/lti/claim/";
-    const DL_NS = "https://purl.imsglobal.org/spec/lti-dl/claim/";
-
-    const contentItems = items.map(item => ({
-      type: item.type,
-      title: item.title,
-      url: item.url,
-      ...(item.custom ? { custom: item.custom } : {}),
-    }));
 
     const jwtPayload: Record<string, unknown> = {
       iss: config.clientId,
       aud: claims.iss,
+      sub: claims.sub,
       iat: now,
-      exp: now + 600, // 10 minutes
-      nonce: crypto.randomBytes(16).toString("hex"),
+      exp: now + 600,
+      nonce: crypto.randomBytes(12).toString("hex"),
       [`${NS}message_type`]: "LtiDeepLinkingResponse",
       [`${NS}version`]: "1.3.0",
       [`${NS}deployment_id`]: config.deploymentId,
-      [`${DL_NS}content_items`]: contentItems,
+      [`${DL_NS}content_items`]: items.map(item => ({
+        type: item.type,
+        title: item.title,
+        url: item.url,
+        ...item,
+      })),
     };
 
     const serializedPayload = Buffer.from(JSON.stringify(jwtPayload)).toString("base64url");
     return { returnUrl, jwtPayload, serializedPayload };
-  },
+  }
+}
 
-  /**
-   * Grade Passback — send a score to the LMS via AGS.
-   *
-   * In production: fetch an access token from tokenEndpoint using
-   * client_credentials + tool private key JWT, then POST to the lineitem
-   * scores endpoint.
-   *
-   * Returns the body that would be POST-ed to the AGS scores endpoint.
-   */
-  buildGradePassbackBody(payload: GradePassbackPayload): Record<string, unknown> {
-    return {
-      scoreGiven: payload.scoreGiven,
-      scoreMaximum: payload.scoreMaximum,
-      comment: payload.comment ?? "",
-      timestamp: payload.timestamp,
-      activityProgress: payload.activityProgress,
-      gradingProgress: payload.gradingProgress,
+// ── Key management ────────────────────────────────────────────────────────────
+
+let _keyPair: { privateKey: crypto.KeyObject; publicKey: crypto.KeyObject; kid: string } | null = null;
+
+export function getToolKeyPair() {
+  if (!_keyPair) {
+    const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    } as any);
+    _keyPair = {
+      privateKey: crypto.createPrivateKey(privateKey as any),
+      publicKey: crypto.createPublicKey(publicKey as any),
+      kid: crypto.randomUUID(),
     };
-  },
+  }
+  return _keyPair;
+}
 
-  /**
-   * Resolve platform config from issuer + client_id.
-   * In production: load from database. Here: environment variable config.
-   */
-  resolvePlatformConfig(iss: string, clientId: string): LtiPlatformConfig | null {
-    const env = process.env;
-    // Support single-platform config via environment variables
-    if (
-      env.LTI_PLATFORM_ISS === iss &&
-      env.LTI_CLIENT_ID === clientId
-    ) {
-      return {
-        platformId: iss,
-        clientId: env.LTI_CLIENT_ID!,
-        oidcAuthEndpoint: env.LTI_OIDC_AUTH_ENDPOINT ?? "",
-        tokenEndpoint: env.LTI_TOKEN_ENDPOINT ?? "",
-        jwksEndpoint: env.LTI_JWKS_ENDPOINT ?? "",
-        deploymentId: env.LTI_DEPLOYMENT_ID ?? "",
-      };
-    }
-    return null;
-  },
-};
+export function buildJwks() {
+  const { publicKey, kid } = getToolKeyPair();
+  const jwk = publicKey.export({ format: "jwk" }) as Record<string, string>;
+  return { keys: [{ ...jwk, use: "sig", alg: "RS256", kid }] };
+}
+
+// ── DB-backed OIDC login initiation ──────────────────────────────────────────
+
+export interface LoginParams {
+  iss: string;
+  loginHint: string;
+  targetLinkUri: string;
+  ltiMessageHint?: string;
+  clientId?: string;
+}
+
+export async function initiateLogin(params: LoginParams, appBaseUrl: string) {
+  const reg = await prisma.ltiRegistration.findFirst({
+    where: { platformIss: params.iss, active: true },
+  });
+  if (!reg) throw new LtiError(400, `No LTI registration found for issuer: ${params.iss}`);
+
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const state = crypto.randomBytes(16).toString("hex");
+
+  await prisma.ltiSession.create({
+    data: {
+      registrationId: reg.id,
+      nonce,
+      state,
+      targetLinkUri: params.targetLinkUri,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    },
+  });
+
+  const redirectUri = `${appBaseUrl}/lti/launch`;
+  const url = new URL(reg.authEndpoint);
+  url.searchParams.set("scope", "openid");
+  url.searchParams.set("response_type", "id_token");
+  url.searchParams.set("response_mode", "form_post");
+  url.searchParams.set("prompt", "none");
+  url.searchParams.set("client_id", reg.clientId);
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("state", state);
+  url.searchParams.set("nonce", nonce);
+  url.searchParams.set("login_hint", params.loginHint);
+  if (params.ltiMessageHint) url.searchParams.set("lti_message_hint", params.ltiMessageHint);
+
+  return { redirectUrl: url.toString() };
+}
+
+// ── DB-backed launch handler ──────────────────────────────────────────────────
+
+export interface LaunchResult {
+  sub: string;
+  email?: string;
+  name?: string;
+  roles: string[];
+  courseId?: string;
+  courseTitle?: string;
+  assignmentId?: string;
+  lineItemUrl?: string;
+  scoreMaximum?: number;
+  deepLinkReturnUrl?: string;
+  registrationId: string;
+  ltiSessionId: string;
+  organizationId: string;
+}
+
+export async function handleLaunch(idToken: string, state: string): Promise<LaunchResult> {
+  const ltiSession = await prisma.ltiSession.findUnique({ where: { state } });
+  if (!ltiSession) throw new LtiError(400, "Unknown or expired LTI state");
+  if (ltiSession.expiresAt < new Date()) {
+    await prisma.ltiSession.delete({ where: { id: ltiSession.id } });
+    throw new LtiError(400, "LTI OIDC session expired — please launch again");
+  }
+
+  const reg = await prisma.ltiRegistration.findUnique({ where: { id: ltiSession.registrationId } });
+  if (!reg) throw new LtiError(400, "LTI registration not found");
+
+  // Decode without verification first (to get kid/iss)
+  const claims = LtiService.parseIdToken(idToken);
+
+  // Nonce check
+  if (claims.nonce !== ltiSession.nonce) throw new LtiError(400, "Nonce mismatch");
+
+  // iss / aud checks
+  if (claims.iss !== reg.platformIss) throw new LtiError(400, "iss mismatch");
+  const aud = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  if (!aud.includes(reg.clientId)) throw new LtiError(400, "aud does not include client_id");
+
+  // Verify signature against platform JWKS
+  await verifyJwtSignature(idToken, reg.jwksUrl);
+
+  // deployment_id check
+  const allowedDeployments = reg.deploymentIds.split(",").map(s => s.trim()).filter(Boolean);
+  if (allowedDeployments.length > 0 && !allowedDeployments.includes(claims.deploymentId)) {
+    throw new LtiError(403, `deployment_id ${claims.deploymentId} not registered`);
+  }
+
+  const lineItemUrl = claims.ags?.lineitem;
+  const scoreMaximum = claims.ags?.scoreMaximum;
+
+  await prisma.ltiSession.update({
+    where: { id: ltiSession.id },
+    data: {
+      platformUserId: claims.sub,
+      platformCourseId: claims.context?.id,
+      platformCourseTitle: claims.context?.title,
+      lineItemUrl,
+      scoreMaximum,
+      launchedAt: new Date(),
+      expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+    },
+  });
+
+  return {
+    sub: claims.sub,
+    email: claims.email,
+    name: claims.name,
+    roles: claims.roles,
+    courseId: claims.context?.id,
+    courseTitle: claims.context?.title,
+    assignmentId: claims.resourceLink?.id,
+    lineItemUrl,
+    scoreMaximum,
+    deepLinkReturnUrl: claims.deepLinking?.deepLinkReturnUrl,
+    registrationId: reg.id,
+    ltiSessionId: ltiSession.id,
+    organizationId: reg.organizationId,
+  };
+}
+
+// ── Grade passback ────────────────────────────────────────────────────────────
+
+export async function sendGradePassback(opts: {
+  ltiSessionId: string;
+  scoreGiven: number;
+  comment?: string;
+}) {
+  const ltiSession = await prisma.ltiSession.findUnique({ where: { id: opts.ltiSessionId } });
+  if (!ltiSession?.lineItemUrl || !ltiSession.platformUserId) return;
+
+  const reg = await prisma.ltiRegistration.findUnique({ where: { id: ltiSession.registrationId } });
+  if (!reg) return;
+
+  const accessToken = await getAgsAccessToken(reg);
+  const scoreUrl = ltiSession.lineItemUrl.endsWith("/scores")
+    ? ltiSession.lineItemUrl
+    : `${ltiSession.lineItemUrl}/scores`;
+
+  const payload = {
+    userId: ltiSession.platformUserId,
+    scoreGiven: opts.scoreGiven,
+    scoreMaximum: ltiSession.scoreMaximum ?? 1,
+    activityProgress: "Completed",
+    gradingProgress: "FullyGraded",
+    timestamp: new Date().toISOString(),
+    comment: opts.comment,
+  };
+
+  const res = await fetch(scoreUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/vnd.ims.lis.v1.score+json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error(`[LTI] AGS score passback failed ${res.status}: ${body}`);
+  }
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+async function getAgsAccessToken(reg: { tokenEndpoint: string; clientId: string }): Promise<string> {
+  const { privateKey, kid } = getToolKeyPair();
+  const now = Math.floor(Date.now() / 1000);
+  const jwtHeader = Buffer.from(JSON.stringify({ alg: "RS256", kid, typ: "JWT" })).toString("base64url");
+  const jwtPayload = Buffer.from(JSON.stringify({
+    iss: reg.clientId,
+    sub: reg.clientId,
+    aud: reg.tokenEndpoint,
+    iat: now,
+    exp: now + 300,
+    jti: crypto.randomUUID(),
+  })).toString("base64url");
+  const signingInput = `${jwtHeader}.${jwtPayload}`;
+  const sig = crypto.sign("sha256", Buffer.from(signingInput), privateKey);
+  const clientAssertion = `${signingInput}.${sig.toString("base64url")}`;
+
+  const body = new URLSearchParams({
+    grant_type: "client_credentials",
+    client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+    client_assertion: clientAssertion,
+    scope: "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+  });
+
+  const res = await fetch(reg.tokenEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!res.ok) throw new Error(`LTI token endpoint error ${res.status}`);
+  const json = await res.json() as { access_token: string };
+  return json.access_token;
+}
+
+const jwksCache: Record<string, { keys: any[]; fetchedAt: number }> = {};
+
+async function verifyJwtSignature(idToken: string, jwksUrl: string) {
+  const parts = idToken.split(".");
+  let header: Record<string, string>;
+  try { header = JSON.parse(Buffer.from(parts[0], "base64url").toString()); }
+  catch { throw new LtiError(400, "Could not decode id_token header"); }
+
+  const kid: string | undefined = header.kid;
+  const cached = jwksCache[jwksUrl];
+  let keys = cached && Date.now() - cached.fetchedAt < 3_600_000 ? cached.keys : null;
+
+  if (!keys) {
+    const res = await fetch(jwksUrl);
+    if (!res.ok) throw new LtiError(502, "Could not fetch platform JWKS");
+    const json = await res.json() as { keys: any[] };
+    keys = json.keys;
+    jwksCache[jwksUrl] = { keys, fetchedAt: Date.now() };
+  }
+
+  const matchingKey = kid ? keys.find((k: any) => k.kid === kid) : keys[0];
+  if (!matchingKey) throw new LtiError(400, `No JWK found for kid: ${kid}`);
+
+  const publicKey = crypto.createPublicKey({ key: matchingKey, format: "jwk" });
+  const signingInput = `${parts[0]}.${parts[1]}`;
+  const signature = Buffer.from(parts[2], "base64url");
+  const valid = crypto.verify("sha256", Buffer.from(signingInput), publicKey, signature);
+  if (!valid) throw new LtiError(401, "id_token signature verification failed");
+}
+
+export class LtiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "LtiError";
+  }
+}

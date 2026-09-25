@@ -42,6 +42,7 @@ model Organization {
   examCodes     ExamCode[]
   classes       Class[]
   assignments   Assignment[]
+  ltiRegistrations LtiRegistration[]
 }
 
 model ExamCode {
@@ -1040,4 +1041,54 @@ model License {
   credits         Int       @default(0)
   expiresAt       DateTime?
   createdAt       DateTime  @default(now())
+}
+
+// ─── LTI 1.3 ────────────────────────────────────────────────────────────────
+
+model LtiRegistration {
+  id              String    @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  // Platform identity
+  platformIss     String    // e.g. "https://canvas.instructure.com"
+  clientId        String    @unique
+  // OIDC endpoints on the platform
+  authEndpoint    String
+  tokenEndpoint   String
+  jwksUrl         String
+  // Deployment IDs this registration accepts (comma-separated)
+  deploymentIds   String    @default("")
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sessions        LtiSession[]
+
+  @@index([organizationId])
+  @@index([platformIss])
+}
+
+model LtiSession {
+  id                 String   @id @default(cuid())
+  registrationId     String
+  registration       LtiRegistration @relation(fields: [registrationId], references: [id])
+  // State for OIDC return handshake
+  nonce              String   @unique
+  state              String   @unique
+  // Populated after successful launch
+  platformUserId     String?
+  platformCourseId   String?
+  platformCourseTitle String?
+  lineItemUrl        String?  // AGS endpoint for grade passback
+  scoreMaximum       Float?
+  targetLinkUri      String?
+  // Linked b4skills entities
+  assessmentSessionId String?
+  userId              String?
+  expiresAt          DateTime
+  launchedAt         DateTime?
+  createdAt          DateTime @default(now())
+
+  @@index([state])
+  @@index([assessmentSessionId])
 }

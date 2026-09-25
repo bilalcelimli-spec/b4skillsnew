@@ -6834,84 +6834,69 @@ ${codeSection}
     const { createCanvasAdapter } = await import("./src/lib/lms/canvas-adapter.js");
     const { createMoodleAdapter } = await import("./src/lib/lms/moodle-adapter.js");
 
-    // In-memory platform registry (production: store in DB)
-    const ltiPlatforms: Map<string, any> = new Map();
+    const { initiateLogin: ltiInitLogin, handleLaunch: ltiHandleLaunch, buildJwks: ltiBuildJwks, LtiError } =
+      await import("./src/lib/lti/lti-service.js");
+    const APP_BASE_LMS = process.env.APP_URL ?? "http://localhost:3001";
 
     // ── LTI OIDC login initiation (step 1 of 3-step LTI 1.3 launch)
     // POST /api/lms/lti/login  — receives iss, login_hint, target_link_uri from LMS
-    app.post("/api/lms/lti/login", (req, res) => {
+    app.post("/api/lms/lti/login", async (req, res) => {
       try {
         const { iss, login_hint, target_link_uri, lti_message_hint, client_id } = req.body;
-        const platform = ltiPlatforms.get(iss) ?? LtiService.resolvePlatformConfig(iss, client_id ?? "");
-        if (!platform) return res.status(400).json({ error: `Unknown LTI platform: ${iss}` });
-        const toolLaunchUrl = `${req.protocol}://${req.get("host")}/api/lms/lti/launch`;
-        const { redirectUrl } = LtiService.initiateLogin(
-          { iss, login_hint, target_link_uri, lti_message_hint, client_id },
-          platform,
-          toolLaunchUrl,
-        );
+        if (!iss || !login_hint || !target_link_uri) {
+          return res.status(400).json({ error: "Missing required LTI login parameters" });
+        }
+        const { redirectUrl } = await ltiInitLogin({ iss, loginHint: login_hint, targetLinkUri: target_link_uri, ltiMessageHint: lti_message_hint, clientId: client_id }, APP_BASE_LMS);
         return res.redirect(redirectUrl);
       } catch (err: any) {
-        return res.status(400).json({ error: err.message });
+        const status = err instanceof LtiError ? err.status : 400;
+        return res.status(status).json({ error: err.message });
       }
     });
 
     // ── LTI launch callback (step 3 — platform redirects here with id_token)
     // POST /api/lms/lti/launch
-    app.post("/api/lms/lti/launch", async (req, res) => {
-      if (!process.env.LTI_ENABLED) return res.status(503).json({ error: "LTI integration not enabled" });
+    app.post("/api/lms/lti/launch", async (req: any, res) => {
       try {
         const { id_token, state } = req.body;
         if (!id_token || !state) return res.status(400).send("Missing id_token or state");
 
-        const stateData = LtiService.consumeState(state);
-        if (!stateData) return res.status(403).send("Invalid or expired state");
+        const launch = await ltiHandleLaunch(id_token, state);
 
-        // Peek at iss/aud without full verification first so we can look up the JWKS endpoint
-        const rawClaims = LtiService.parseIdToken(id_token);
-        // Resolve platform config for validation — reject unknown issuers
-        const platform = ltiPlatforms.get(rawClaims.iss) ?? LtiService.resolvePlatformConfig(rawClaims.iss, Array.isArray(rawClaims.aud) ? rawClaims.aud[0] : rawClaims.aud);
-        if (!platform) return res.status(403).send(`Unknown LTI platform: ${rawClaims.iss}`);
-
-        // Verify RS256 signature using the platform's JWKS endpoint
-        const claims = await LtiService.verifyIdTokenRS256(id_token, platform.jwksEndpoint);
-        const validation = LtiService.validateLaunchClaims(claims, platform, stateData.nonce);
-        if (!validation.valid) return res.status(403).send(`LTI validation failed: ${validation.reason}`);
-
-        // Auto-provision user from LTI identity
-        const email = (claims as any)["https://purl.imsglobal.org/spec/lti/claim/lis"]?.person_contact_email_primary
-                    ?? `${claims.sub}@lti.linguadapt.com`;
-        const name  = (claims as any).name ?? claims.sub;
-
-        let user = await prisma.user.findUnique({ where: { email } });
-        if (!user) {
-          user = await prisma.user.create({
-            data: { email, name, role: "CANDIDATE" as const, emailVerified: new Date() },
+        let user = launch.email
+          ? await prisma.user.findFirst({ where: { email: launch.email, organizationId: launch.organizationId } })
+          : null;
+        if (!user && launch.email) {
+          user = await (prisma.user.create as any)({
+            data: { email: launch.email, name: launch.name ?? launch.email, organizationId: launch.organizationId, role: "CANDIDATE", emailVerified: true },
           });
         }
+        if (!user) return res.status(400).send("Could not resolve user from LTI launch");
 
-        const accessToken  = jwt.sign({ userId: user.id }, JWT_SECRET,     { expiresIn: "15m" });
-        const refreshToken = jwt.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: "7d"  });
-        await prisma.user.update({ where: { id: user.id }, data: { refreshToken } });
-        setAuthCookies(res, accessToken, refreshToken);
+        await prisma.ltiSession.update({ where: { id: launch.ltiSessionId }, data: { userId: user.id } });
 
-        // Redirect to assessment start, carrying deep-link context
-        const targetUri = claims.resourceLink?.id
-          ? `/assessment?lti_resource=${encodeURIComponent(claims.resourceLink.id)}`
-          : "/dashboard";
-        return res.redirect(targetUri);
+        const accessToken = jwt.sign(
+          { uid: user.id, email: user.email, role: user.role, organizationId: user.organizationId },
+          JWT_SECRET,
+          { expiresIn: "15m" }
+        );
+        res.cookie("accessToken", accessToken, { httpOnly: true, sameSite: "none", secure: true, maxAge: 15 * 60 * 1000 });
+
+        const targetUri = launch.deepLinkReturnUrl
+          ?? `${APP_BASE_LMS}/?lti_session=${launch.ltiSessionId}`;
+        return res.redirect(302, targetUri);
       } catch (err: any) {
+        const status = err instanceof LtiError ? err.status : 500;
         console.error("[lti] launch error:", err.message);
-        return res.status(401).send("LTI launch failed");
+        return res.status(status).send(err.message);
       }
     });
 
     // ── LTI JWKS endpoint (tool public keys)
     // GET /api/lms/lti/jwks
     app.get("/api/lms/lti/jwks", (_req, res) => {
-      // Return an empty JWKS; in production, expose the tool's public key
       res.setHeader("Cache-Control", "public, max-age=3600");
-      return res.json({ keys: [] });
+      return res.json(ltiBuildJwks());
     });
 
     // ── Canvas grade passback
@@ -6955,23 +6940,25 @@ ${codeSection}
       }
     });
 
-    // ── LMS platform registration (admin CRUD)
-    // GET /api/lms/platforms
-    app.get("/api/lms/platforms", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), (_req, res) => {
-      const platforms = [...ltiPlatforms.values()];
-      return res.json({ platforms });
+    // ── LMS platform registration (admin CRUD) — now delegated to /api/lti/registrations
+    // GET /api/lms/platforms — thin shim for backwards compatibility
+    app.get("/api/lms/platforms", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
+      const regs = await prisma.ltiRegistration.findMany({ where: { active: true }, orderBy: { createdAt: "desc" } });
+      return res.json({ platforms: regs.map(r => ({ platformId: r.platformIss, clientId: r.clientId, deploymentId: r.deploymentIds })) });
     });
 
-    // POST /api/lms/platforms — register a new LMS platform
-    app.post("/api/lms/platforms", checkRole(["SUPER_ADMIN"]), (req, res) => {
+    // POST /api/lms/platforms — register via the DB-backed endpoint
+    app.post("/api/lms/platforms", checkRole(["SUPER_ADMIN"]), async (req: any, res) => {
+      const { platformId, clientId, oidcAuthEndpoint, tokenEndpoint, jwksEndpoint, deploymentId, organizationId } = req.body;
+      if (!platformId || !clientId) return res.status(400).json({ error: "platformId and clientId required" });
       try {
-        const { platformId, clientId, oidcAuthEndpoint, tokenEndpoint, jwksEndpoint, deploymentId } = req.body;
-        if (!platformId || !clientId) return res.status(400).json({ error: "platformId and clientId required" });
-        const config = { platformId, clientId, oidcAuthEndpoint, tokenEndpoint, jwksEndpoint, deploymentId };
-        ltiPlatforms.set(platformId, config);
-        return res.status(201).json({ platform: config });
+        const reg = await prisma.ltiRegistration.create({
+          data: { platformIss: platformId, clientId, authEndpoint: oidcAuthEndpoint ?? "", tokenEndpoint: tokenEndpoint ?? "", jwksUrl: jwksEndpoint ?? "", deploymentIds: deploymentId ?? "", organizationId: organizationId ?? req.user?.organizationId ?? "" },
+        });
+        return res.status(201).json({ platform: reg });
       } catch (err: any) {
-        return res.status(400).json({ error: err.message });
+        if (err?.code === "P2002") return res.status(409).json({ error: "client_id already registered" });
+        throw err;
       }
     });
   }
@@ -7921,6 +7908,128 @@ ${entries}
 </feed>`
     );
   });
+
+  // ── LTI 1.3 Tool Provider ────────────────────────────────────────────────
+  {
+    const { buildJwks, initiateLogin, handleLaunch, sendGradePassback, LtiError } =
+      await import("./src/lib/lti/lti-service.js");
+    const APP_BASE_URL_LTI = process.env.APP_URL ?? "http://localhost:3001";
+
+    // JWKS — platform fetches this to verify tool signatures (AGS client_credentials)
+    app.get("/.well-known/jwks.json", (_req, res) => {
+      res.json(buildJwks());
+    });
+
+    // OIDC login initiation — platform redirects here first
+    app.get("/lti/login", async (req, res) => {
+      try {
+        const { iss, login_hint: loginHint, target_link_uri: targetLinkUri, lti_message_hint: ltiMessageHint, client_id: clientId } = req.query as Record<string, string>;
+        if (!iss || !loginHint || !targetLinkUri) {
+          return res.status(400).send("Missing required LTI login parameters (iss, login_hint, target_link_uri)");
+        }
+        const { redirectUrl } = await initiateLogin({ iss, loginHint, targetLinkUri, ltiMessageHint, clientId }, APP_BASE_URL_LTI);
+        return res.redirect(302, redirectUrl);
+      } catch (err: any) {
+        const status = err instanceof LtiError ? err.status : 500;
+        return res.status(status).send(err.message);
+      }
+    });
+
+    // OIDC redirect — platform POSTs id_token here after user auth
+    app.post("/lti/launch", express.urlencoded({ extended: false }), async (req: any, res) => {
+      try {
+        const { id_token: idToken, state } = req.body as { id_token?: string; state?: string };
+        if (!idToken || !state) return res.status(400).send("Missing id_token or state");
+
+        const launch = await handleLaunch(idToken, state);
+
+        // Find or create a b4skills user from the LTI identity
+        let user = launch.email
+          ? await prisma.user.findFirst({ where: { email: launch.email, organizationId: launch.organizationId } })
+          : null;
+        if (!user && launch.email) {
+          user = await (prisma.user.create as any)({
+            data: {
+              email: launch.email,
+              name: launch.name ?? launch.email,
+              organizationId: launch.organizationId,
+              role: "CANDIDATE",
+              emailVerified: true,
+            },
+          });
+        }
+        if (!user) return res.status(400).send("Could not resolve user from LTI launch");
+
+        // Persist userId on ltiSession for grade passback
+        await prisma.ltiSession.update({ where: { id: launch.ltiSessionId }, data: { userId: user.id } });
+
+        // Issue a short-lived auth cookie so the SPA recognises the user
+        const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret";
+        const accessToken = (await import("jsonwebtoken")).default.sign(
+          { uid: user.id, email: user.email, role: user.role, organizationId: user.organizationId },
+          JWT_SECRET,
+          { expiresIn: "15m" }
+        );
+        res.cookie("accessToken", accessToken, { httpOnly: true, sameSite: "none", secure: true, maxAge: 15 * 60 * 1000 });
+
+        // Redirect to assessment, encoding ltiSessionId in query so the SPA can pass it back
+        const returnUri = launch.deepLinkReturnUrl
+          ?? `${APP_BASE_URL_LTI}/?lti_session=${launch.ltiSessionId}`;
+        return res.redirect(302, returnUri);
+      } catch (err: any) {
+        const status = err instanceof LtiError ? err.status : 500;
+        console.error("[LTI launch error]", err.message);
+        return res.status(status).send(err.message);
+      }
+    });
+
+    // Admin: list LTI registrations for an org
+    app.get("/api/lti/registrations", authMiddleware, checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
+      const orgId = req.query.organizationId ?? req.user?.organizationId;
+      const regs = await prisma.ltiRegistration.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: "desc" } });
+      return res.json(regs);
+    });
+
+    // Admin: create a registration
+    app.post("/api/lti/registrations", authMiddleware, checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
+      const { organizationId, platformIss, clientId, authEndpoint, tokenEndpoint, jwksUrl, deploymentIds } = req.body;
+      if (!platformIss || !clientId || !authEndpoint || !tokenEndpoint || !jwksUrl) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+      try {
+        const reg = await prisma.ltiRegistration.create({
+          data: { organizationId: organizationId ?? req.user.organizationId, platformIss, clientId, authEndpoint, tokenEndpoint, jwksUrl, deploymentIds: deploymentIds ?? "" },
+        });
+        return res.status(201).json(reg);
+      } catch (err: any) {
+        if (err?.code === "P2002") return res.status(409).json({ error: "A registration with this client_id already exists" });
+        throw err;
+      }
+    });
+
+    // Admin: update / deactivate
+    app.put("/api/lti/registrations/:id", authMiddleware, checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
+      const reg = await prisma.ltiRegistration.findUnique({ where: { id: req.params.id } });
+      if (!reg) return res.status(404).json({ error: "Registration not found" });
+      const updated = await prisma.ltiRegistration.update({ where: { id: req.params.id }, data: req.body });
+      return res.json(updated);
+    });
+
+    // Admin: delete
+    app.delete("/api/lti/registrations/:id", authMiddleware, checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
+      await prisma.ltiRegistration.delete({ where: { id: req.params.id } });
+      return res.status(204).end();
+    });
+
+    // Internal: trigger grade passback after a session finalises
+    // Called from assessment finalize pipeline with ltiSessionId from session metadata
+    app.post("/api/lti/grade-passback", authMiddleware, async (req: any, res) => {
+      const { ltiSessionId, scoreGiven, comment } = req.body;
+      if (!ltiSessionId) return res.status(400).json({ error: "ltiSessionId required" });
+      await sendGradePassback({ ltiSessionId, scoreGiven: scoreGiven ?? 0, comment });
+      return res.json({ ok: true });
+    });
+  }
 
   // ── Q3: Realtime WebSocket Dashboard ────────────────────────────────────
   // Import http module to get underlying server for WS attachment
