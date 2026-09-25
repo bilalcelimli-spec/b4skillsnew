@@ -3281,6 +3281,73 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // ── POST /api/organizations/:id/users/:userId/reset-password ────────────────
+  app.post("/api/organizations/:id/users/:userId/reset-password", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
+    const { id, userId } = req.params;
+    if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
+    if (req.user?.id === userId) return res.status(400).json({ error: "Use your own reset-password flow" });
+    try {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user || user.organizationId !== id) return res.status(404).json({ error: "User not found in this organisation" });
+      const newPw = Array.from({ length: 12 }, () => "abcdefghjkmnpqrstuvwxyz23456789ABCDEFGHJKMNPQRSTUVWXYZ"[Math.floor(Math.random() * 54)]).join("");
+      const hashed = await bcrypt.hash(newPw, 12);
+      await prisma.user.update({ where: { id: userId }, data: { password: hashed, refreshToken: null } });
+      // Optionally notify the user
+      (async () => {
+        try {
+          if (!user.email) return;
+          await sendEmail(user.email, "Your B4Skills password has been reset",
+            emailTemplate({
+              heading: "Your password has been reset",
+              body: `<p style="font-size:15px;color:#334155;line-height:1.6">Your account password has been reset by your organisation administrator.</p>
+                     <p style="font-size:15px;color:#334155;line-height:1.6">Your new temporary password is:</p>
+                     <p style="font-size:24px;font-weight:800;color:#4f46e5;text-align:center;letter-spacing:0.12em;margin:24px 0;font-family:monospace">${newPw}</p>
+                     <p style="font-size:13px;color:#64748b">Please log in and change your password immediately.</p>`,
+              ctaLabel: "Log In Now",
+              ctaUrl: APP_BASE_URL,
+            }),
+          );
+        } catch { /* email optional */ }
+      })();
+      res.json({ newPassword: newPw });
+    } catch {
+      res.status(500).json({ error: "Failed to reset password" });
+    }
+  });
+
+  // ── GET /api/organizations/:id/credits — org credit balance ──────────────────
+  app.get("/api/organizations/:id/credits", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
+    const { id } = req.params;
+    if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
+    try {
+      const org = await prisma.organization.findUnique({ where: { id }, select: { settings: true, _count: { select: { sessions: true } } } });
+      if (!org) return res.status(404).json({ error: "Not found" });
+      const settings = (org.settings as any) ?? {};
+      const credits: number = settings.credits ?? 0;
+      res.json({ credits, sessionsTotal: org._count.sessions });
+    } catch {
+      res.status(500).json({ error: "Failed to fetch credits" });
+    }
+  });
+
+  // ── POST /api/organizations/:id/credits — add credits (SUPER_ADMIN only) ─────
+  app.post("/api/organizations/:id/credits", checkRole(["SUPER_ADMIN"]), async (req: any, res) => {
+    const { id } = req.params;
+    const { amount } = req.body;
+    if (!Number.isInteger(amount) || amount === 0) return res.status(400).json({ error: "amount must be a non-zero integer" });
+    try {
+      const org = await prisma.organization.findUnique({ where: { id }, select: { settings: true } });
+      if (!org) return res.status(404).json({ error: "Not found" });
+      const settings = (org.settings as any) ?? {};
+      const current: number = settings.credits ?? 0;
+      const newCredits = Math.max(0, current + amount);
+      await prisma.organization.update({ where: { id }, data: { settings: { ...settings, credits: newCredits } } });
+      res.json({ credits: newCredits, delta: amount });
+    } catch {
+      res.status(500).json({ error: "Failed to update credits" });
+    }
+  });
+
   // ── GET /api/organizations/:id/benchmark — org CEFR dist vs platform avg ────
   app.get("/api/organizations/:id/benchmark", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
     const { id } = req.params;
@@ -3825,24 +3892,50 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
             where: { id },
             include: {
               user: { select: { email: true, name: true } },
-              scoreReport: { select: { overallCefr: true } },
+              scoreReport: { select: { overallCefr: true, overallScore: true, diagnosticReport: true, certificateId: true } },
             },
-          }) as { cefrLevel?: string; user?: { email: string; name?: string }; scoreReport?: { overallCefr?: string } } | null;
+          }) as { cefrLevel?: string; user?: { email: string; name?: string }; scoreReport?: { overallCefr?: string; overallScore?: number; diagnosticReport?: any; certificateId?: string | null } } | null;
           if (!sess?.user?.email) return;
           const cefr = sess.scoreReport?.overallCefr ?? sess.cefrLevel ?? "—";
+          const score = sess.scoreReport?.overallScore != null ? Math.round(sess.scoreReport.overallScore * 100) : null;
           const name = sess.user.name ?? "Candidate";
-          const reportUrl = `${APP_BASE_URL}/dashboard`;
+
+          // Auto-generate shareToken if not already present
+          let shareToken: string | null = null;
+          try {
+            const diag = (sess.scoreReport?.diagnosticReport as any) ?? {};
+            if (diag.shareToken) {
+              shareToken = diag.shareToken;
+            } else {
+              shareToken = crypto.randomBytes(16).toString("hex");
+              await (prisma.scoreReport.updateMany as any)({
+                where: { sessionId: id },
+                data: { diagnosticReport: { ...diag, shareToken } },
+              });
+            }
+          } catch { /* shareToken optional */ }
+
+          const certId = sess.scoreReport?.certificateId;
+          const reportUrl = shareToken ? `${APP_BASE_URL}/share/${shareToken}` : `${APP_BASE_URL}/dashboard`;
+          const certUrl = certId ? `${APP_BASE_URL}/verify/${certId}` : null;
+
           await sendEmail(
             sess.user.email,
-            `Your B4Skills Assessment Results — ${cefr}`,
+            `Your B4Skills Results — ${cefr}`,
             emailTemplate({
               heading: `Your results are ready, ${name}!`,
               body: `<p style="font-size:16px;color:#334155;line-height:1.6">You've completed your <strong>B4Skills</strong> adaptive English assessment.</p>
-                     <p style="font-size:32px;font-weight:800;color:#4f46e5;text-align:center;margin:24px 0">${cefr}</p>
-                     <p style="font-size:14px;color:#64748b;line-height:1.6">Log in to view your full skill breakdown, CEFR can-do statements, and personalised learning recommendations.</p>`,
-              ctaLabel: "View Full Report",
+                     <div style="text-align:center;margin:28px 0">
+                       <div style="display:inline-block;background:#f0f4ff;border:2px solid #c7d2fe;border-radius:16px;padding:20px 40px">
+                         <div style="font-size:40px;font-weight:900;color:#4f46e5;letter-spacing:-1px">${cefr}</div>
+                         ${score != null ? `<div style="font-size:14px;color:#6366f1;font-weight:700;margin-top:4px">Score: ${score}/100</div>` : ""}
+                       </div>
+                     </div>
+                     <p style="font-size:14px;color:#64748b;line-height:1.6">Your personalised report includes skill-by-skill CEFR levels, confidence intervals, and learning recommendations.</p>
+                     ${certUrl ? `<p style="font-size:13px;color:#64748b;margin-top:8px">🎓 Your certificate is ready — <a href="${certUrl}" style="color:#4f46e5;font-weight:700">view & verify here</a>.</p>` : ""}`,
+              ctaLabel: "View Your Full Report",
               ctaUrl: reportUrl,
-              footer: "Your certificate will be available on your dashboard.",
+              footer: "This report link is shareable — you can send it to universities, employers, or language programmes.",
             }),
           );
         } catch (emailErr) {

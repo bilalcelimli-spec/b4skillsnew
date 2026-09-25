@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Building2, Plus, Users, Activity, ChevronRight, Check, X, RefreshCw, ArrowLeft, UserPlus, Pencil, Trash2, ShieldAlert, GraduationCap, User } from "lucide-react";
+import { Building2, Plus, Users, Activity, ChevronRight, Check, X, RefreshCw, ArrowLeft, UserPlus, Pencil, Trash2, ShieldAlert, GraduationCap, User, KeyRound, CreditCard } from "lucide-react";
 
 interface Org {
   id: string;
@@ -156,6 +156,9 @@ const OrgDetail: React.FC<OrgDetailProps> = ({ org, onBack }) => {
   const [editRole, setEditRole] = useState<AllowedRole>("CANDIDATE");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [resetting, setResetting] = useState<string | null>(null);
+  const [resetPw, setResetPw] = useState<{ userId: string; pw: string } | null>(null);
+  const [credits, setCredits] = useState<number | null>(null);
   const [search, setSearch] = useState("");
 
   const fetchUsers = useCallback(async () => {
@@ -166,7 +169,23 @@ const OrgDetail: React.FC<OrgDetailProps> = ({ org, onBack }) => {
     } finally { setLoading(false); }
   }, [org.id]);
 
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+  useEffect(() => {
+    fetchUsers();
+    fetch(`/api/organizations/${org.id}/credits`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setCredits(d.credits); })
+      .catch(() => {});
+  }, [fetchUsers, org.id]);
+
+  const handleResetPassword = async (userId: string) => {
+    if (!window.confirm("Reset this user's password? They will be emailed a temporary password and logged out of all sessions.")) return;
+    setResetting(userId);
+    try {
+      const r = await fetch(`/api/organizations/${org.id}/users/${userId}/reset-password`, { method: "POST", credentials: "include" });
+      const data = await r.json();
+      if (r.ok) setResetPw({ userId, pw: data.newPassword });
+    } finally { setResetting(null); }
+  };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -224,13 +243,30 @@ const OrgDetail: React.FC<OrgDetailProps> = ({ org, onBack }) => {
         </button>
         <div className="flex-1 min-w-0">
           <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h2>
-          <p className="text-xs text-slate-400 font-mono">{org.slug} · {users.length} members</p>
+          <p className="text-xs text-slate-400 font-mono">{org.slug} · {users.length} members
+            {credits !== null && <span className="ml-3 inline-flex items-center gap-1 text-indigo-500"><CreditCard size={10} />{credits.toLocaleString()} credits</span>}
+          </p>
         </div>
         <button onClick={() => { setShowAddForm(true); setAddedPw(null); setAddError(null); }}
           className="flex items-center gap-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-2 transition-colors">
           <UserPlus size={13} /> Add User
         </button>
       </div>
+
+      {/* Reset password result */}
+      {resetPw && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+          <KeyRound size={15} className="text-amber-600 mt-0.5 shrink-0" />
+          <div className="flex-1 text-sm">
+            <p className="font-semibold text-amber-800">Password reset successfully.</p>
+            <p className="text-amber-700 mt-1">
+              New temporary password: <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-xs">{resetPw.pw}</code>
+              <span className="text-amber-600 text-xs ml-2">— a notification email has been sent to the user.</span>
+            </p>
+          </div>
+          <button onClick={() => setResetPw(null)} className="text-amber-500 hover:text-amber-700"><X size={13} /></button>
+        </div>
+      )}
 
       {/* Generated password notice */}
       {addedPw && (
@@ -328,7 +364,13 @@ const OrgDetail: React.FC<OrgDetailProps> = ({ org, onBack }) => {
                     </button>
                   </>
                 )}
+                <button onClick={() => handleResetPassword(u.id)} disabled={resetting === u.id}
+                  title="Reset password"
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-amber-600 hover:border-amber-200 transition-colors disabled:opacity-50">
+                  {resetting === u.id ? <RefreshCw size={11} className="animate-spin" /> : <KeyRound size={11} />}
+                </button>
                 <button onClick={() => handleRemove(u.id)} disabled={deleting === u.id}
+                  title="Remove from org"
                   className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-colors disabled:opacity-50">
                   {deleting === u.id ? <RefreshCw size={11} className="animate-spin" /> : <Trash2 size={11} />}
                 </button>
