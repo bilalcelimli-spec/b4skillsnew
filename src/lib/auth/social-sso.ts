@@ -16,6 +16,7 @@
 
 import crypto from "crypto";
 import https from "https";
+import { OAuth2Client } from "google-auth-library";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -61,11 +62,12 @@ export function consumeOAuthState(state: string): OAuthStatePayload | null {
 
 // ── Google ────────────────────────────────────────────────────────────────────
 
-const GOOGLE_TOKEN_INFO_URL = "https://oauth2.googleapis.com/tokeninfo";
-const GOOGLE_JWKS_URL       = "https://www.googleapis.com/oauth2/v3/certs";
 const GOOGLE_CLIENT_ID      = process.env.GOOGLE_CLIENT_ID ?? "";
 const GOOGLE_CLIENT_SECRET  = process.env.GOOGLE_CLIENT_SECRET ?? "";
 const GOOGLE_REDIRECT_URI   = process.env.GOOGLE_REDIRECT_URI ?? `${process.env.APP_URL ?? "http://localhost:3001"}/api/auth/social/google/callback`;
+
+// Singleton OAuth2Client — reuses cached Google public key certificates
+const googleOAuth2Client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 function httpsGet(url: string): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -100,19 +102,24 @@ function httpsPost(url: string, body: string, headers: Record<string, string>): 
 
 /** Verify a Google ID token and return the profile. */
 export async function verifyGoogleIdToken(idToken: string): Promise<SocialProfile> {
-  // Verify via Google's tokeninfo endpoint (simple, no library needed)
-  // For production, use google-auth-library: OAuth2Client.verifyIdToken()
   if (!GOOGLE_CLIENT_ID) throw new Error("GOOGLE_CLIENT_ID is not configured — cannot verify Google tokens");
-  const info = await httpsGet(`${GOOGLE_TOKEN_INFO_URL}?id_token=${encodeURIComponent(idToken)}`);
-  if (info.error) throw new Error(`Google token invalid: ${info.error_description ?? info.error}`);
-  if (info.aud !== GOOGLE_CLIENT_ID) throw new Error("Token audience mismatch");
+  // OAuth2Client.verifyIdToken() verifies the JWT signature using Google's cached
+  // public key certs (JWKS), checks expiry, iat, and audience. No tokeninfo
+  // round-trip needed — faster and resilient to tokeninfo endpoint outages.
+  const ticket = await googleOAuth2Client.verifyIdToken({
+    idToken,
+    audience: GOOGLE_CLIENT_ID,
+  });
+  const payload = ticket.getPayload();
+  if (!payload) throw new Error("Google token verification returned no payload");
+  if (!payload.email) throw new Error("Google token missing email claim");
   return {
     provider:      "google",
-    providerId:    info.sub,
-    email:         info.email,
-    name:          info.name ?? info.email,
-    picture:       info.picture,
-    emailVerified: info.email_verified === "true" || info.email_verified === true,
+    providerId:    payload.sub,
+    email:         payload.email,
+    name:          payload.name ?? payload.email,
+    picture:       payload.picture,
+    emailVerified: payload.email_verified ?? false,
   };
 }
 
