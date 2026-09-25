@@ -45,6 +45,7 @@ const ProgressTrendChart     = lazy(() => import("./components/ProgressTrendChar
 const MethodologyPage        = lazy(() => import("./components/MethodologyPage").then(m => ({ default: m.MethodologyPage })));
 const PricingPage            = lazy(() => import("./components/PricingPage").then(m => ({ default: m.PricingPage })));
 const AccessibilityStatementPage = lazy(() => import("./components/AccessibilityStatementPage").then(m => ({ default: m.AccessibilityStatementPage })));
+const ResearchPage               = lazy(() => import("./components/ResearchPage").then(m => ({ default: m.ResearchPage })));
 const SchoolsPage            = lazy(() => import("./components/SchoolsPage").then(m => ({ default: m.SchoolsPage })));
 const AcademiaPage           = lazy(() => import("./components/AcademiaPage").then(m => ({ default: m.AcademiaPage })));
 const CorporatePage          = lazy(() => import("./components/CorporatePage").then(m => ({ default: m.CorporatePage })));
@@ -317,6 +318,14 @@ export default function App() {
     return (
       <Suspense fallback={<PageLoader />}>
         <AccessibilityStatementPage onStart={() => { setShowLanding(false); navigate("/"); }} />
+      </Suspense>
+    );
+  }
+
+  if (location.pathname === "/research") {
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <ResearchPage onStart={() => { setShowLanding(false); navigate("/"); }} />
       </Suspense>
     );
   }

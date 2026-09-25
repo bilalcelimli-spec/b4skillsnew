@@ -152,6 +152,9 @@ export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
             <a href="/methodology" className="text-slate-600 hover:text-[#9b276c] font-bold transition-colors">
               Methodology
             </a>
+            <a href="/research" className="text-slate-600 hover:text-[#9b276c] font-bold transition-colors">
+              Research
+            </a>
             <a href="/pricing" className="text-slate-600 hover:text-[#9b276c] font-bold transition-colors">
               Pricing
             </a>
@@ -198,7 +201,7 @@ export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
         >
           <a href="/#solutions" onClick={() => setMobileMenuOpen(false)}>Solutions</a>
           <a href="/#technology" onClick={() => setMobileMenuOpen(false)}>Technology & Pedagogy</a>
-          <a href="/#research" onClick={() => setMobileMenuOpen(false)}>Research</a>
+          <a href="/research" onClick={() => setMobileMenuOpen(false)}>Research</a>
           {onCodeEntry && (
             <button onClick={onCodeEntry} className="text-left font-bold text-slate-800">Enter Exam Code</button>
           )}

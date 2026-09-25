@@ -6652,6 +6652,63 @@ ${codeSection}
     });
   }
 
+  // ── Public Research API ───────────────────────────────────────────────────
+  {
+    const { ConcurrentValidityService } = await import("./src/lib/psychometrics/concurrent-validity.js");
+
+    // GET /api/research/concurrent-validity/summary — public aggregate stats (no PII)
+    // Merges data across all organizations so the public page shows the full corpus.
+    app.get("/api/research/concurrent-validity/summary", async (_req, res) => {
+      try {
+        const orgs = await prisma.organization.findMany({ select: { id: true } });
+        type Row = { externalTest: string; n: number; pearsonR: number; spearmanRho: number; exactCefrAgreement: number; adjacentCefrAgreement: number; blandAltmanMeanDiff: number; blandAltmanLoA: { lower: number; upper: number } };
+        const testAccum = new Map<string, Row>();
+
+        await Promise.all(
+          orgs.map(async (org) => {
+            try {
+              const summary = await ConcurrentValidityService.getSummary(org.id);
+              for (const analysis of summary.byTest) {
+                if (analysis.n < 3) continue;
+                const existing = testAccum.get(analysis.externalTest);
+                if (!existing) {
+                  testAccum.set(analysis.externalTest, {
+                    externalTest: analysis.externalTest,
+                    n: analysis.n,
+                    pearsonR: analysis.pearsonR,
+                    spearmanRho: analysis.spearmanRho,
+                    exactCefrAgreement: analysis.exactCefrAgreement,
+                    adjacentCefrAgreement: analysis.adjacentCefrAgreement,
+                    blandAltmanMeanDiff: analysis.blandAltmanMeanDiff,
+                    blandAltmanLoA: analysis.blandAltmanLoA,
+                  });
+                } else {
+                  // Weighted average by n
+                  const total = existing.n + analysis.n;
+                  existing.pearsonR = (existing.pearsonR * existing.n + analysis.pearsonR * analysis.n) / total;
+                  existing.spearmanRho = (existing.spearmanRho * existing.n + analysis.spearmanRho * analysis.n) / total;
+                  existing.exactCefrAgreement = (existing.exactCefrAgreement * existing.n + analysis.exactCefrAgreement * analysis.n) / total;
+                  existing.adjacentCefrAgreement = (existing.adjacentCefrAgreement * existing.n + analysis.adjacentCefrAgreement * analysis.n) / total;
+                  existing.blandAltmanMeanDiff = (existing.blandAltmanMeanDiff * existing.n + analysis.blandAltmanMeanDiff * analysis.n) / total;
+                  existing.n = total;
+                }
+              }
+            } catch { /* single org failure is non-fatal */ }
+          })
+        );
+
+        const tests = Array.from(testAccum.values());
+        res.json({
+          lastUpdated: new Date().toISOString().slice(0, 10),
+          totalPairs: tests.reduce((s, r) => s + r.n, 0),
+          tests,
+        });
+      } catch (err) {
+        res.status(500).json({ error: "Validity data unavailable" });
+      }
+    });
+  }
+
   // ── Research / Publication Pipeline ─────────────────────────────────────
   {
     const { generatePublicationPackage } = await import("./src/lib/research/publication-pipeline.js");
@@ -7721,6 +7778,7 @@ ${codeSection}
       { loc: "/language-schools", priority: "0.7", changefreq: "monthly" },
       { loc: "/methodology", priority: "0.6", changefreq: "monthly" },
       { loc: "/accessibility-statement", priority: "0.4", changefreq: "yearly" },
+      { loc: "/research", priority: "0.7", changefreq: "monthly" },
     ];
     const urlTags = urls
       .map(
@@ -7786,7 +7844,7 @@ ${entries}
     "/", "/pricing", "/methodology", "/schools", "/corporate", "/academia",
     "/language-schools", "/english-level-test", "/ingilizce-seviye-testi",
     "/cefr-english-test", "/english-assessment-for-universities",
-    "/english-assessment-for-companies", "/accessibility-statement",
+    "/english-assessment-for-companies", "/accessibility-statement", "/research",
   ]);
 
   // Vite middleware for development
@@ -7943,6 +8001,11 @@ ${entries}
         title: "Accessibility Statement — B4Skills",
         description: "B4Skills WCAG 2.1 AA accessibility commitment, known limitations, accommodation requests, and contact information.",
         keywords: "accessibility, wcag, b4skills accessibility, screen reader, disability accommodation",
+      },
+      "/research": {
+        title: "Validity Research — B4Skills",
+        description: "Psychometric validity evidence: concurrent validity with IELTS, TOEFL, Cambridge. IRT, CAT, DIF, and AI scoring methodology.",
+        keywords: "english test validity, cefr concurrent validity, irt psychometrics, cat adaptive testing research, ielts correlation",
       },
     };
 

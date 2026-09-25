@@ -26,6 +26,7 @@ export const SiteFooter: React.FC = () => (
         <h4 className="text-slate-900 font-bold mb-4">Resources</h4>
         <ul className="space-y-3 text-sm text-slate-600">
           <li><a href="/methodology" className="hover:text-[#9b276c] transition-colors">Assessment Methodology</a></li>
+          <li><a href="/research" className="hover:text-[#9b276c] transition-colors">Validity Research</a></li>
           <li><a href="mailto:hello@b4skills.com" className="hover:text-[#9b276c] transition-colors">Support</a></li>
           <li><a href="/pricing" className="hover:text-[#9b276c] transition-colors">Pricing</a></li>
         </ul>
