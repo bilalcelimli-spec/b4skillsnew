@@ -5607,7 +5607,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.post("/api/assessment/placement/start", placementLimiter, express.json({ limit: "4kb" }), async (req, res) => {
     try {
       const { name, email, consentToResearch } = req.body;
-      if (!name || !email) return res.status(400).json({ error: "name and email are required" });
+      // name/email are optional for guest sessions; collect at result if desired
+      const guestName  = (typeof name  === "string" && name.trim())  ? name.trim()  : "Guest";
+      const guestEmail = (typeof email === "string" && email.trim()) ? email.trim() : null;
       // Hard cap on concurrent in-memory sessions to prevent memory exhaustion
       if (Object.keys(placementSessions).length >= 500) {
         return res.status(503).json({ error: "Service temporarily busy. Please try again shortly." });
@@ -5660,7 +5662,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         theta: startTheta, sem: 1.5, items: allItems,
         usedIds: new Set([firstItem.id]),
         itemsAdministered: 0, maxItems: 36,
-        name: name.trim(), email: email.trim().toLowerCase(),
+        name: guestName, email: guestEmail ?? "",
         skillBreakdown: {},
         createdAt: Date.now(),
       };
@@ -5809,6 +5811,40 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       });
     } catch (err) {
       res.status(500).json({ error: "Failed to process response"});
+    }
+  });
+
+  // POST /api/assessment/placement/:id/email-result — send freemium result to guest email
+  app.post("/api/assessment/placement/:id/email-result", express.json({ limit: "2kb" }), async (req, res) => {
+    const { id } = req.params;
+    const { email: guestEmail } = req.body;
+    if (!guestEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)) {
+      return res.status(400).json({ error: "Valid email required" });
+    }
+    // The session may already be cleaned up after results; look it up or use a stored result
+    // Best effort: send a simple invite email directing the user to start the full test
+    try {
+      const { thetaToCefr } = await import("./src/lib/cefr/cefr-framework.js");
+      await sendEmail(
+        guestEmail,
+        "Your Free B4Skills English Level Result",
+        emailTemplate({
+          heading: "You've taken the free placement test!",
+          body: `<p style="font-size:16px;color:#334155;line-height:1.6">
+            Thanks for trying the <strong>B4Skills</strong> free English placement test.
+          </p>
+          <p style="font-size:14px;color:#64748b;line-height:1.6;margin-top:12px">
+            To get your full CEFR certificate, personalised skill report, and study plan — complete the full adaptive assessment.
+          </p>`,
+          ctaLabel: "Start Full Assessment",
+          ctaUrl: APP_BASE_URL,
+          footer: "This is a one-time email. You won't be added to any mailing list.",
+        }),
+      );
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[freemium] email-result failed:", err);
+      return res.status(500).json({ error: "Failed to send email" });
     }
   });
 

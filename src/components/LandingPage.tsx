@@ -22,7 +22,10 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
       {/* Freemium Test Widget Overlay */}
       <AnimatePresence>
         {showFreemiumTest && (
-          <FreemiumTestWidget onClose={() => setShowFreemiumTest(false)} />
+          <FreemiumTestWidget
+            onClose={() => setShowFreemiumTest(false)}
+            onSignup={() => { setShowFreemiumTest(false); onStart(); }}
+          />
         )}
       </AnimatePresence>
       {/* ─── NAVBAR ─── */}

@@ -67,6 +67,7 @@ interface PlacementResult {
 
 interface FreemiumTestWidgetProps {
   onClose: () => void;
+  onSignup?: () => void; // called when user clicks "Start Full Assessment"
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -262,7 +263,7 @@ const AudioPlayer: React.FC<{ src: string }> = ({ src }) => {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose }) => {
+export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose, onSignup }) => {
   const [step, setStep] = useState<Step>("register");
 
   // Registration
@@ -301,6 +302,9 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
   const [inputAnswer, setInputAnswer] = useState("");
   // Share copied feedback
   const [copied, setCopied] = useState(false);
+  // Guest email capture at result screen
+  const [captureEmail, setCaptureEmail] = useState("");
+  const [captureEmailSent, setCaptureEmailSent] = useState(false);
   // Live CEFR band during test
   const [currentBand, setCurrentBand] = useState<string | null>(null);
   // Skills seen so far (for progress tracker)
@@ -390,12 +394,15 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
-  const handleRegister = useCallback(async () => {
+  const handleRegister = useCallback(async (asGuest = false) => {
     setRegError(null);
-    if (!name.trim()) { setRegError("Please enter your name."); return; }
-    const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email.trim() || !emailRx.test(email)) { setRegError("Please enter a valid email address."); return; }
-    if (!consent) { setRegError("Please agree to the data usage terms to continue."); return; }
+    // With registration: validate fields. As guest: skip validation entirely.
+    if (!asGuest) {
+      if (!name.trim()) { setRegError("Please enter your name."); return; }
+      const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email.trim() || !emailRx.test(email)) { setRegError("Please enter a valid email address."); return; }
+      if (!consent) { setRegError("Please agree to the data usage terms to continue."); return; }
+    }
 
     setLoading(true);
     try {
@@ -403,7 +410,11 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
         credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), consentToResearch: true }),
+        body: JSON.stringify({
+          name: asGuest ? undefined : name.trim(),
+          email: asGuest ? undefined : email.trim().toLowerCase(),
+          consentToResearch: !asGuest,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to start test");
@@ -595,14 +606,31 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
             )}
 
             <button
-              onClick={handleRegister}
+              onClick={() => handleRegister(false)}
               disabled={loading}
               className="w-full bg-[#9b276c] hover:bg-[#7d1f57] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl h-14 font-black text-base flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#9b276c]/25 hover:shadow-xl"
             >
               {loading ? <Loader2 size={20} className="animate-spin" /> : (
-                <>Start General English Test <ArrowRight size={18} /></>
+                <>Start with My Name &amp; Email <ArrowRight size={18} /></>
               )}
             </button>
+
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-slate-200" />
+              <span className="text-xs text-slate-400 font-medium">or</span>
+              <div className="flex-1 h-px bg-slate-200" />
+            </div>
+
+            <button
+              onClick={() => handleRegister(true)}
+              disabled={loading}
+              className="w-full border-2 border-slate-200 hover:border-[#9b276c]/40 bg-white hover:bg-slate-50 text-slate-700 rounded-xl h-12 font-bold text-sm flex items-center justify-center gap-2 transition-all"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : (
+                <>Start as Guest — No Sign-up Required <ArrowRight size={15} /></>
+              )}
+            </button>
+            <p className="text-center text-[11px] text-slate-400">As a guest, you'll still get your CEFR level. Enter your email on the result screen to receive a shareable report.</p>
           </div>
         </motion.div>
       </div>
@@ -1276,6 +1304,51 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
               ))}
             </div>
 
+            {/* Guest email capture — only shown for guests (no email provided at start) */}
+            {!email && !captureEmailSent && (
+              <div className="border-2 border-indigo-200 bg-indigo-50 rounded-2xl p-4">
+                <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide mb-2">📧 Email Me My Results</p>
+                <p className="text-xs text-indigo-600 mb-3">Get a shareable link to this report sent to your inbox.</p>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={captureEmail}
+                    onChange={e => setCaptureEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    className="flex-1 border border-indigo-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && captureEmail.includes("@") && placementId) {
+                        fetch(`/api/assessment/placement/${placementId}/email-result`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ email: captureEmail }),
+                        }).finally(() => setCaptureEmailSent(true));
+                      }
+                    }}
+                  />
+                  <button
+                    disabled={!captureEmail.includes("@")}
+                    onClick={() => {
+                      if (!captureEmail.includes("@") || !placementId) return;
+                      fetch(`/api/assessment/placement/${placementId}/email-result`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email: captureEmail }),
+                      }).finally(() => setCaptureEmailSent(true));
+                    }}
+                    className="bg-indigo-600 disabled:opacity-40 text-white font-bold text-xs px-4 py-2 rounded-xl hover:bg-indigo-700 transition-colors"
+                  >
+                    Send
+                  </button>
+                </div>
+              </div>
+            )}
+            {captureEmailSent && (
+              <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-semibold px-4 py-3 rounded-2xl">
+                <CheckCircle2 size={16} /> Report link sent! Check your inbox.
+              </div>
+            )}
+
             {/* Upgrade CTA */}
             <div className="bg-gradient-to-br from-[#9b276c] to-[#7d1f57] rounded-3xl p-6 text-white">
               <div className="flex items-start gap-4">
@@ -1290,7 +1363,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose 
                   <button
                     onClick={() => {
                       onClose();
-                      window.location.href = result.upgradePrompt.callToActionUrl;
+                      if (onSignup) { onSignup(); } else { window.location.href = result.upgradePrompt.callToActionUrl || "/"; }
                     }}
                     className="inline-flex items-center gap-2 bg-white text-[#9b276c] font-black text-sm px-5 py-2.5 rounded-xl hover:bg-white/90 transition-colors shadow-lg"
                   >

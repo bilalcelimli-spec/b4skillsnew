@@ -19,6 +19,7 @@ import { getCanDo, thetaToBeps, type CanDoDescriptor } from "../lib/cefr/cefr-fr
 import { NextLevelGap } from "./NextLevelGap";
 import { ErrorIntelligenceMap } from "./ErrorIntelligenceMap";
 import { LearningPathView } from "./LearningPathView";
+import { AITutorOverlay } from "./AITutorOverlay";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
   ResponsiveContainer, Area, AreaChart, Legend,
@@ -837,6 +838,16 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
           )}
         </motion.div>
       )}
+
+      {/* AI Tutor — floating coaching bubble, context-aware for this report */}
+      <AITutorOverlay
+        context={{
+          cefrBand: report.cefrLevel.replace("_", " "),
+          skill: report.skillScores.length > 0
+            ? report.skillScores.reduce((a, b) => a.theta < b.theta ? a : b).skill
+            : undefined,
+        }}
+      />
     </div>
   );
 }
