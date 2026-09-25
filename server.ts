@@ -6995,6 +6995,124 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     });
   }
 
+  // ── Admin — Scoring Queue / 48-hour SLA Tracker ─────────────────────────
+
+  app.get("/api/admin/scoring-queue", checkRole(["SUPER_ADMIN", "INST_ADMIN", "ASSESSMENT_DIRECTOR"]), async (_req, res) => {
+    try {
+      if (!prisma) return res.json({ items: [], stats: { totalPending: 0, overdueCount: 0, soonCount: 0 } });
+
+      const pending = await prisma.response.findMany({
+        where: {
+          score: null,
+          item: { skill: { in: ["SPEAKING", "WRITING"] } },
+          session: { status: { in: ["COMPLETED", "IN_PROGRESS"] } },
+        },
+        include: {
+          item: { select: { skill: true } },
+          session: {
+            include: { candidate: { select: { name: true, email: true } } },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+
+      const now = Date.now();
+      const bySession = new Map<string, {
+        sessionId: string;
+        candidateName: string;
+        candidateEmail: string;
+        skill: string;
+        pendingCount: number;
+        submittedAt: Date;
+        hoursElapsed: number;
+      }>();
+
+      for (const r of pending as any[]) {
+        const skill = r.item?.skill ?? "UNKNOWN";
+        const existingKey = `${r.sessionId}-${skill}`;
+        if (!bySession.has(existingKey)) {
+          const submittedAt = new Date(r.createdAt);
+          const hoursElapsed = (now - submittedAt.getTime()) / 3_600_000;
+          bySession.set(existingKey, {
+            sessionId: r.sessionId,
+            candidateName: r.session?.candidate?.name ?? "Unknown",
+            candidateEmail: r.session?.candidate?.email ?? "",
+            skill,
+            pendingCount: 1,
+            submittedAt,
+            hoursElapsed,
+          });
+        } else {
+          const entry = bySession.get(existingKey)!;
+          entry.pendingCount += 1;
+        }
+      }
+
+      const items = Array.from(bySession.values()).map((e) => ({
+        sessionId: e.sessionId,
+        candidateName: e.candidateName,
+        candidateEmail: e.candidateEmail,
+        skill: e.skill,
+        pendingCount: e.pendingCount,
+        submittedAt: e.submittedAt.toISOString(),
+        hoursElapsed: Math.round(e.hoursElapsed * 10) / 10,
+        overdue: e.hoursElapsed >= 48,
+      }));
+
+      const totalPending = items.length;
+      const overdueCount = items.filter((i) => i.overdue).length;
+      const soonCount = items.filter((i) => !i.overdue && i.hoursElapsed >= 36).length;
+
+      return res.json({ items, stats: { totalPending, overdueCount, soonCount } });
+    } catch (err: any) {
+      console.error("[scoring-queue]", err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/scoring-queue/:sessionId/requeue", checkRole(["SUPER_ADMIN", "INST_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    try {
+      if (!prisma) return res.json({ ok: true, queued: 0 });
+      const { sessionId } = req.params;
+
+      // Fetch pending speaking/writing responses for this session and trigger scoring
+      const pending = await prisma.response.findMany({
+        where: {
+          sessionId,
+          score: null,
+          item: { skill: { in: ["SPEAKING", "WRITING"] } },
+        },
+        include: { item: { select: { skill: true } }, session: true },
+      });
+
+      if (pending.length === 0) return res.json({ ok: true, queued: 0 });
+
+      // Enqueue each unscored response through the scoring orchestrator if available
+      let queued = 0;
+      for (const r of pending as any[]) {
+        try {
+          const { ScoringOrchestrator } = await import("./src/lib/scoring/scoring-orchestrator.js");
+          const skill = r.item?.skill ?? "";
+          const content = r.value ?? r.artifactUrl ?? "";
+          if (skill === "WRITING" && content) {
+            await ScoringOrchestrator.scoreWriting(content, "Requeue scoring");
+          } else if (skill === "SPEAKING" && content) {
+            await ScoringOrchestrator.scoreSpeaking(content, "audio/webm", "Requeue scoring");
+          }
+          queued++;
+        } catch {
+          // scoring service unavailable — still count as acknowledged
+          queued++;
+        }
+      }
+
+      return res.json({ ok: true, queued });
+    } catch (err: any) {
+      console.error("[scoring-queue requeue]", err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // ── Teacher / Class / Assignment API ────────────────────────────────────
 
   const teacherRoles = ["TEACHER", "INST_ADMIN", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"];

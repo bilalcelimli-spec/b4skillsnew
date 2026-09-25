@@ -92,7 +92,8 @@ type Section =
   | "integrations"
   | "audit"
   | "settings"
-  | "organizations";
+  | "organizations"
+  | "scoring-queue";
 
 interface NavGroup {
   id: string;
@@ -132,8 +133,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Monitor",
     items: [
       { id: "overview",   label: "Overview",   icon: <LayoutDashboard size={15} /> },
-      { id: "proctoring", label: "Proctoring", icon: <ShieldAlert size={15} /> },
-      { id: "audit",      label: "Audit Log",  icon: <ShieldCheck size={15} /> },
+      { id: "proctoring",     label: "Proctoring",    icon: <ShieldAlert size={15} /> },
+      { id: "scoring-queue", label: "Scoring Queue", icon: <Clock size={15} /> },
+      { id: "audit",         label: "Audit Log",     icon: <ShieldCheck size={15} /> },
     ],
   },
   {
@@ -349,6 +351,7 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string; onLogout?: () => vo
               {activeSection === "audit" && <AuditLogView orgId={ORG_ID} />}
               {activeSection === "settings" && <GlobalSettings orgId={ORG_ID} />}
               {activeSection === "organizations" && <OrganizationManagement />}
+              {activeSection === "scoring-queue" && <ScoringQueuePanel />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -408,6 +411,7 @@ const SECTION_META: Record<Section, { label: string; desc: string; group: string
   settings:          { label: "Settings",       desc: "Global platform configuration",         group: "Platform" },
   organizations:     { label: "Organisations",  desc: "Create & manage tenant organisations",  group: "Platform" },
   overview:          { label: "Overview",       desc: "Sessions, stats & system health",       group: "Monitor" },
+  "scoring-queue":   { label: "Scoring Queue",  desc: "Speaking/Writing SLA tracker — 48 h",   group: "Monitor" },
 };
 
 const SectionHeader: React.FC<{ section: Section }> = ({ section }) => {
@@ -879,3 +883,206 @@ function formatDate(v: any): string {
     return "—";
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCORING QUEUE PANEL — 48-hour SLA tracker for Speaking/Writing responses
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ScoringQueueItem {
+  sessionId: string;
+  candidateName: string;
+  candidateEmail: string;
+  skill: string;
+  pendingCount: number;
+  submittedAt: string;
+  hoursElapsed: number;
+  overdue: boolean;
+}
+
+interface ScoringQueueStats {
+  totalPending: number;
+  overdueCount: number;
+  soonCount: number;
+}
+
+const ScoringQueuePanel: React.FC = () => {
+  const [items, setItems] = useState<ScoringQueueItem[]>([]);
+  const [stats, setStats] = useState<ScoringQueueStats>({ totalPending: 0, overdueCount: 0, soonCount: 0 });
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"all" | "overdue" | "ok">("all");
+  const [requeueing, setRequeueing] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/scoring-queue", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setItems(data.items ?? []);
+        setStats(data.stats ?? { totalPending: 0, overdueCount: 0, soonCount: 0 });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleRequeue = async (sessionId: string) => {
+    setRequeueing(sessionId);
+    try {
+      await fetch(`/api/admin/scoring-queue/${sessionId}/requeue`, {
+        method: "POST",
+        credentials: "include",
+      });
+      await load();
+    } finally {
+      setRequeueing(null);
+    }
+  };
+
+  const visible = items.filter((i) => {
+    if (filter === "overdue") return i.overdue;
+    if (filter === "ok") return !i.overdue;
+    return true;
+  });
+
+  const hoursColor = (h: number) =>
+    h >= 48 ? "text-rose-600 font-bold" : h >= 36 ? "text-amber-500 font-semibold" : "text-slate-600";
+
+  return (
+    <div className="p-6 space-y-5">
+      {/* Stat bar */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 text-center">
+          <div className="text-2xl font-black text-slate-900">{stats.totalPending}</div>
+          <div className="text-xs text-slate-500 mt-0.5">Pending Responses</div>
+        </div>
+        <div className={`rounded-xl border shadow-sm p-4 text-center ${stats.overdueCount > 0 ? "bg-rose-50 border-rose-200" : "bg-white border-slate-100"}`}>
+          <div className={`text-2xl font-black ${stats.overdueCount > 0 ? "text-rose-600" : "text-slate-900"}`}>{stats.overdueCount}</div>
+          <div className="text-xs text-slate-500 mt-0.5">Overdue (&gt;48 h)</div>
+        </div>
+        <div className={`rounded-xl border shadow-sm p-4 text-center ${stats.soonCount > 0 ? "bg-amber-50 border-amber-200" : "bg-white border-slate-100"}`}>
+          <div className={`text-2xl font-black ${stats.soonCount > 0 ? "text-amber-500" : "text-slate-900"}`}>{stats.soonCount}</div>
+          <div className="text-xs text-slate-500 mt-0.5">Due in &lt;12 h</div>
+        </div>
+      </div>
+
+      {/* Filter + refresh */}
+      <div className="flex items-center gap-3">
+        {(["all", "overdue", "ok"] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors ${
+              filter === f
+                ? "bg-indigo-600 text-white"
+                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            {f === "all" ? "All" : f === "overdue" ? "Overdue" : "On Track"}
+          </button>
+        ))}
+        <button
+          onClick={load}
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50"
+        >
+          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+          Refresh
+        </button>
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex items-center justify-center h-40 text-slate-400 text-sm">Loading…</div>
+      ) : visible.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-40 gap-2 text-slate-400">
+          <CheckCircle2 size={32} className="text-emerald-400" />
+          <span className="text-sm font-medium">No pending responses — all clear!</span>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <th className="px-4 py-3 text-left">Candidate</th>
+                <th className="px-4 py-3 text-left">Session ID</th>
+                <th className="px-4 py-3 text-left">Skill</th>
+                <th className="px-4 py-3 text-left">Submitted</th>
+                <th className="px-4 py-3 text-left">Hours Elapsed</th>
+                <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-left">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {visible.map((item) => (
+                <tr
+                  key={`${item.sessionId}-${item.skill}`}
+                  className={item.overdue ? "bg-rose-50/40" : "hover:bg-slate-50/60"}
+                >
+                  <td className="px-4 py-3">
+                    <div className="font-semibold text-slate-900 text-xs">{item.candidateName}</div>
+                    <div className="text-[10px] text-slate-400">{item.candidateEmail}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="font-mono text-[10px] text-slate-500">{item.sessionId.slice(0, 8)}…</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      item.skill === "SPEAKING" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
+                    }`}>
+                      {item.skill}
+                    </span>
+                    {item.pendingCount > 1 && (
+                      <span className="ml-1 text-[10px] text-slate-400">×{item.pendingCount}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-500">
+                    {new Date(item.submittedAt).toLocaleString()}
+                  </td>
+                  <td className={`px-4 py-3 text-xs ${hoursColor(item.hoursElapsed)}`}>
+                    {item.hoursElapsed.toFixed(1)} h
+                  </td>
+                  <td className="px-4 py-3">
+                    {item.overdue ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">
+                        ⚠ OVERDUE
+                      </span>
+                    ) : item.hoursElapsed >= 36 ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
+                        ⏰ Due Soon
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
+                        ✓ On Track
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => handleRequeue(item.sessionId)}
+                      disabled={requeueing === item.sessionId}
+                      className="px-2 py-1 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 transition-colors"
+                    >
+                      {requeueing === item.sessionId ? "…" : "Requeue"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {stats.overdueCount > 0 && (
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-rose-50 border border-rose-200">
+          <Clock size={16} className="text-rose-500 mt-0.5 shrink-0" />
+          <div className="text-xs text-rose-700">
+            <span className="font-bold">{stats.overdueCount} session{stats.overdueCount > 1 ? "s" : ""} exceeded the 48-hour SLA.</span>{" "}
+            Use "Requeue" to trigger re-scoring, or follow up with the AI scoring service.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
