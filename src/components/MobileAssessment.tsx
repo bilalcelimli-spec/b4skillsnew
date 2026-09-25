@@ -169,11 +169,18 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
     const latencyMs = Date.now() - itemStartRef.current;
     let value: string | number = selected !== null ? selected : openText;
 
-    // For speaking items: convert audio to base64
+    // For speaking items: convert audio to base64 (chunked to avoid stack overflow on large blobs)
     if (item.type === "OPEN_RESPONSE" && item.skill === "SPEAKING" && audioBlob) {
-      const arrayBuf = await audioBlob.arrayBuffer();
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuf)));
-      value = b64;
+      value = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          // Strip "data:audio/...;base64," prefix
+          resolve(dataUrl.split(",")[1] ?? "");
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(audioBlob);
+      });
     }
 
     setSubmitError(null);
@@ -206,11 +213,17 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
 
   // ── Speaking recorder ──────────────────────────────────────────────────────
 
+  const getBestMimeType = (): string => {
+    // Safari supports audio/mp4; Chrome/Firefox prefer audio/webm
+    const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus", "audio/ogg"];
+    return candidates.find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+  };
+
   const startRecording = useCallback(async () => {
     chunksRef.current = [];
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     } catch (err: any) {
       const msg = err?.name === "NotAllowedError"
         ? "Microphone access was denied. Please allow microphone access to record your response."
@@ -218,14 +231,16 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
       alert(msg);
       return;
     }
-    const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
+    const mimeType = getBestMimeType();
+    const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    const resolvedMime = mr.mimeType || "audio/webm";
     mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     mr.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      const blob = new Blob(chunksRef.current, { type: resolvedMime });
       setAudioBlob(blob);
       stream.getTracks().forEach((t) => t.stop());
     };
-    mr.start();
+    mr.start(250); // timeslice: collect chunks every 250ms for reliable onstop on iOS
     mediaRecorderRef.current = mr;
     setRecording(true);
   }, []);
@@ -241,7 +256,7 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 gap-4">
+      <div className="flex flex-col items-center justify-center min-h-dvh bg-gray-50 gap-4">
         <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
         <p className="text-gray-500 text-sm">Loading assessment…</p>
       </div>
@@ -250,7 +265,7 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
 
   if (complete && result) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-blue-50 to-white px-6 py-12 text-center">
+      <div className="flex flex-col items-center justify-center min-h-dvh bg-gradient-to-b from-blue-50 to-white px-6 py-12 text-center">
         <motion.div initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring" }}>
           <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-6" />
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Assessment Complete</h1>
@@ -266,7 +281,7 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
 
   if (!item) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4 text-center px-6">
+      <div className="flex flex-col items-center justify-center min-h-dvh gap-4 text-center px-6">
         <RotateCcw className="w-10 h-10 text-gray-400" />
         <p className="text-gray-600">Unable to load question. Please check your connection.</p>
         <button onClick={() => window.location.reload()} className="mt-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm">
@@ -288,14 +303,17 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
 
   return (
     <div
-      className="flex flex-col min-h-screen bg-gray-50"
+      className="flex flex-col min-h-dvh bg-gray-50"
       style={{
-        paddingTop: mobile.safeAreaInsets.top || 16,
-        paddingBottom: mobile.safeAreaInsets.bottom || 16,
+        paddingTop: mobile.safeAreaInsets.top > 0 ? mobile.safeAreaInsets.top : 16,
+        paddingBottom: mobile.safeAreaInsets.bottom > 0 ? mobile.safeAreaInsets.bottom : 8,
       }}
     >
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 sticky top-0 z-10">
+      <header
+        className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 sticky z-10"
+        style={{ top: mobile.safeAreaInsets.top > 0 ? mobile.safeAreaInsets.top : 0 }}
+      >
         <div className="flex items-center gap-2">
           <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${SKILL_COLORS[item.skill] ?? "bg-gray-100 text-gray-700"}`}>
             {item.skill}

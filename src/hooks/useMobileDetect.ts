@@ -15,6 +15,21 @@ export interface MobileInfo {
   safeAreaInsets: { top: number; bottom: number; left: number; right: number };
 }
 
+// Inject the CSS custom-property bridge exactly once, synchronously, before
+// any getInfo() call reads the computed values. Without this the first read
+// always returns 0 because the vars don't exist yet.
+if (typeof document !== "undefined" && !document.getElementById("__mbl-safe-area")) {
+  const style = document.createElement("style");
+  style.id = "__mbl-safe-area";
+  style.textContent = `:root{--sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px);--sal:env(safe-area-inset-left,0px);--sar:env(safe-area-inset-right,0px)}`;
+  document.head.appendChild(style);
+}
+
+function parsePx(value: string): number {
+  const n = parseFloat(value);
+  return isNaN(n) ? 0 : n;
+}
+
 function getInfo(): MobileInfo {
   if (typeof window === "undefined") {
     return {
@@ -30,13 +45,11 @@ function getInfo(): MobileInfo {
   const isMobile = isTouch && w < 768;
   const isTablet = isTouch && w >= 768 && w < 1024;
 
-  // CSS env() safe-area values via computed style trick
-  const el = document.documentElement;
-  const cs = getComputedStyle(el);
-  const safeTop    = parseInt(cs.getPropertyValue("--sat")  || "0", 10);
-  const safeBottom = parseInt(cs.getPropertyValue("--sab")  || "0", 10);
-  const safeLeft   = parseInt(cs.getPropertyValue("--sal")  || "0", 10);
-  const safeRight  = parseInt(cs.getPropertyValue("--sar")  || "0", 10);
+  const cs = getComputedStyle(document.documentElement);
+  const safeTop    = parsePx(cs.getPropertyValue("--sat"));
+  const safeBottom = parsePx(cs.getPropertyValue("--sab"));
+  const safeLeft   = parsePx(cs.getPropertyValue("--sal"));
+  const safeRight  = parsePx(cs.getPropertyValue("--sar"));
 
   return {
     isMobile,
@@ -57,20 +70,12 @@ export function useMobileDetect(): MobileInfo {
     function update() { setInfo(getInfo()); }
     window.addEventListener("resize", update, { passive: true });
     window.addEventListener("orientationchange", update, { passive: true });
-    // Inject CSS vars for safe-area once
-    const style = document.createElement("style");
-    style.textContent = `
-      :root {
-        --sat: env(safe-area-inset-top, 0px);
-        --sab: env(safe-area-inset-bottom, 0px);
-        --sal: env(safe-area-inset-left, 0px);
-        --sar: env(safe-area-inset-right, 0px);
-      }
-    `;
-    document.head.appendChild(style);
+    // Re-read after first paint — env() values may settle after layout
+    const t = requestAnimationFrame(() => setInfo(getInfo()));
     return () => {
       window.removeEventListener("resize", update);
       window.removeEventListener("orientationchange", update);
+      cancelAnimationFrame(t);
     };
   }, []);
 
