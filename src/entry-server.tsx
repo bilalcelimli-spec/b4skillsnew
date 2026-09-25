@@ -10,6 +10,7 @@ import { renderToString } from "react-dom/server";
 import { LandingPage } from "./components/LandingPage";
 import { PricingPage } from "./components/PricingPage";
 import { MethodologyPage } from "./components/MethodologyPage";
+import { AccessibilityStatementPage } from "./components/AccessibilityStatementPage";
 import { SchoolsPage } from "./components/SchoolsPage";
 import { CorporatePage } from "./components/CorporatePage";
 import { AcademiaPage } from "./components/AcademiaPage";
@@ -30,6 +31,7 @@ const ROUTE_FACTORIES: Record<string, () => React.ReactElement> = {
   "/": () => <LandingPage onStart={NOOP} onCodeEntry={NOOP} />,
   "/pricing": () => <PricingPage onBack={NOOP} onStart={NOOP} />,
   "/methodology": () => <MethodologyPage onBack={NOOP} />,
+  "/accessibility-statement": () => <AccessibilityStatementPage />,
   "/schools": () => <SchoolsPage onBack={NOOP} />,
   "/corporate": () => <CorporatePage onBack={NOOP} />,
   "/academia": () => <AcademiaPage onBack={NOOP} />,

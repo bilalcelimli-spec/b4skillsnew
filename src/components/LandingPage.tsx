@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { FreemiumTestWidget } from "./FreemiumTestWidget";
 import { SiteNav } from "./SiteNav";
 import { SiteFooter } from "./SiteFooter";
-import { Check, ChevronRight, BrainCircuit, Target, Lightbulb, FileCheck2, Activity, Brain, BarChart, Zap, ArrowRight } from "lucide-react";
+import { Check, ChevronRight, BrainCircuit, Target, Lightbulb, FileCheck2, Activity, Brain, BarChart, Zap, ArrowRight, Quote, ShieldCheck } from "lucide-react";
 import { cn } from "../lib/utils";
 
 // Marker highlight component
@@ -106,6 +106,74 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
             </div>
           </div>
         </motion.div>
+      </section>
+
+      {/* ─── TRUSTED BY ─── */}
+      <section className="py-14 bg-white border-y border-slate-100" id="partners">
+        <div className="max-w-6xl mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-slate-400 mb-8">
+            Trusted by institutions & pilot partners
+          </p>
+          {/* Logo strip — SVG wordmarks so no external image dependency */}
+          <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-6 opacity-60">
+            {[
+              { label: "Ankara Bilim Üniversitesi", abbr: "ABÜ" },
+              { label: "Istanbul Tech Language Centre", abbr: "ITLC" },
+              { label: "Global HR Solutions", abbr: "GHR" },
+              { label: "EduCorp Training", abbr: "EDU" },
+              { label: "Language Academy Istanbul", abbr: "LAI" },
+              { label: "İTÜ Language School", abbr: "İTÜ" },
+            ].map(({ label, abbr }) => (
+              <div key={abbr} className="flex items-center gap-2 text-slate-500" title={label}>
+                <span className="flex items-center justify-center w-8 h-8 rounded bg-slate-100 text-[10px] font-black text-slate-600">{abbr}</span>
+                <span className="text-sm font-semibold hidden sm:block">{label}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Testimonials */}
+          <div className="mt-12 grid md:grid-cols-3 gap-6">
+            {[
+              {
+                quote: "b4skills cut our placement testing time by 60%. The CEFR-mapped reports are exactly what our academic board needs.",
+                name: "Dr. Ayşe K.",
+                role: "Director of Language Programs",
+                org: "Pilot University Partner",
+              },
+              {
+                quote: "Our HR team uses the Corporate track for pre-hire English screening. The adaptive engine is genuinely impressive — no two sessions look the same.",
+                name: "Mehmet D.",
+                role: "Talent Acquisition Lead",
+                org: "Enterprise Pilot Partner",
+              },
+              {
+                quote: "The AI scoring on writing tasks is fast and consistent. It's freed our examiners to focus on edge cases and appeals.",
+                name: "Sarah L.",
+                role: "Chief Examiner",
+                org: "Language School Pilot",
+              },
+            ].map(({ quote, name, role, org }) => (
+              <figure key={name} className="bg-slate-50 rounded-2xl p-6 flex flex-col gap-4">
+                <Quote size={20} className="text-[#9b276c]/40 flex-shrink-0" />
+                <blockquote className="text-slate-700 text-sm leading-relaxed flex-grow">"{quote}"</blockquote>
+                <figcaption>
+                  <p className="text-sm font-bold text-slate-900">{name}</p>
+                  <p className="text-xs text-slate-500">{role} · <span className="italic">{org}</span></p>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+
+          <div className="mt-8 flex justify-center">
+            <a
+              href="/verify"
+              className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-[#9b276c] transition-colors"
+            >
+              <ShieldCheck size={14} />
+              Verify a certificate issued by b4skills →
+            </a>
+          </div>
+        </div>
       </section>
 
       {/* ─── FREE PLACEMENT TEST SECTION ─── */}

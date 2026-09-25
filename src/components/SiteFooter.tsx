@@ -36,6 +36,7 @@ export const SiteFooter: React.FC = () => (
           <li><a href="mailto:hello@b4skills.com" className="hover:text-[#9b276c] transition-colors">Contact Us</a></li>
           <li><a href="mailto:privacy@b4skills.com" className="hover:text-[#9b276c] transition-colors">Privacy Policy</a></li>
           <li><a href="mailto:hello@b4skills.com" className="hover:text-[#9b276c] transition-colors">Terms of Service</a></li>
+          <li><a href="/accessibility-statement" className="hover:text-[#9b276c] transition-colors">Accessibility</a></li>
         </ul>
       </div>
     </div>

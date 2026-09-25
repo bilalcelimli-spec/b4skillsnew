@@ -7720,6 +7720,7 @@ ${codeSection}
       { loc: "/academia", priority: "0.7", changefreq: "monthly" },
       { loc: "/language-schools", priority: "0.7", changefreq: "monthly" },
       { loc: "/methodology", priority: "0.6", changefreq: "monthly" },
+      { loc: "/accessibility-statement", priority: "0.4", changefreq: "yearly" },
     ];
     const urlTags = urls
       .map(
@@ -7785,7 +7786,7 @@ ${entries}
     "/", "/pricing", "/methodology", "/schools", "/corporate", "/academia",
     "/language-schools", "/english-level-test", "/ingilizce-seviye-testi",
     "/cefr-english-test", "/english-assessment-for-universities",
-    "/english-assessment-for-companies",
+    "/english-assessment-for-companies", "/accessibility-statement",
   ]);
 
   // Vite middleware for development
@@ -7937,6 +7938,11 @@ ${entries}
         title: "English Assessment for Companies — B4Skills",
         description: "Fast, reliable English proficiency testing for HR teams. CEFR-aligned, bulk testing, workforce skill analytics.",
         keywords: "english assessment companies, corporate english proficiency, hr english test, workforce english",
+      },
+      "/accessibility-statement": {
+        title: "Accessibility Statement — B4Skills",
+        description: "B4Skills WCAG 2.1 AA accessibility commitment, known limitations, accommodation requests, and contact information.",
+        keywords: "accessibility, wcag, b4skills accessibility, screen reader, disability accommodation",
       },
     };
 
