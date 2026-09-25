@@ -95,6 +95,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [assignLoading, setAssignLoading] = useState(false);
   const [newAssign, setNewAssign] = useState({ classId: "", productLine: "General English", dueAt: "" });
   const [creatingAssign, setCreatingAssign] = useState(false);
+  const [sendingReport, setSendingReport] = useState<string | null>(null);
+  const [reportSent, setReportSent] = useState<string | null>(null);
+  const [classTrends, setClassTrends] = useState<Record<string, { period: string; avgTheta: number | null; avgCefr: string | null; count: number }[]>>({});
+  const [loadingTrends, setLoadingTrends] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -243,6 +247,37 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     }
   };
 
+  const handleSendReport = async (studentId: string) => {
+    setSendingReport(studentId);
+    setReportSent(null);
+    try {
+      const r = await fetch(`/api/teacher/students/${studentId}/send-report`, { method: "POST", credentials: "include" });
+      if (r.ok) {
+        setReportSent(studentId);
+        setTimeout(() => setReportSent(null), 4000);
+      } else {
+        const d = await r.json();
+        alert(d.error ?? "Failed to send report");
+      }
+    } finally {
+      setSendingReport(null);
+    }
+  };
+
+  const handleLoadTrends = async (classId: string) => {
+    if (classTrends[classId]) return;
+    setLoadingTrends(classId);
+    try {
+      const r = await fetch(`/api/teacher/classes/${classId}/trends?periods=6`, { credentials: "include" });
+      if (r.ok) {
+        const d = await r.json();
+        setClassTrends(prev => ({ ...prev, [classId]: d.trend ?? [] }));
+      }
+    } finally {
+      setLoadingTrends(null);
+    }
+  };
+
   if (loading) return (
     <div role="status" aria-live="polite" style={{ display: "flex", justifyContent: "center", padding: "48px" }}>
       <div style={{ color: "#64748b" }}>Loading dashboard…</div>
@@ -325,12 +360,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       onClick={async () => {
                         const next = expandedClassId === cls.id ? null : cls.id;
                         setExpandedClassId(next);
-                        if (next && !classSkills[next]) {
-                          const r = await fetch(`/api/teacher/classes/${next}/skills`, { credentials: "include" });
-                          if (r.ok) {
-                            const d = await r.json();
-                            setClassSkills(prev => ({ ...prev, [next]: d }));
+                        if (next) {
+                          if (!classSkills[next]) {
+                            const r = await fetch(`/api/teacher/classes/${next}/skills`, { credentials: "include" });
+                            if (r.ok) {
+                              const d = await r.json();
+                              setClassSkills(prev => ({ ...prev, [next]: d }));
+                            }
                           }
+                          handleLoadTrends(next);
                         }
                       }}
                     >
@@ -365,6 +403,32 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                                   <div style={{ fontSize: "10px", color: "#64748b" }}>{n > 0 ? n : ""}</div>
                                   <div style={{ width: "100%", height: `${Math.round((n / maxCount) * 44) + 4}px`, background: CEFR_COLOR[lvl] ?? "#e2e8f0", borderRadius: "3px 3px 0 0", minHeight: "4px" }} />
                                   <div style={{ fontSize: "10px", color: "#64748b" }}>{lvl}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {expandedClassId === cls.id && (() => {
+                      const trend = classTrends[cls.id];
+                      if (loadingTrends === cls.id) return (
+                        <div style={{ marginTop: "12px", borderTop: "1px solid #f1f5f9", paddingTop: "10px", fontSize: "12px", color: "#94a3b8" }}>Loading trends…</div>
+                      );
+                      if (!trend || trend.length === 0) return null;
+                      const maxCount = Math.max(...trend.map(t => t.count), 1);
+                      return (
+                        <div style={{ marginTop: "12px", borderTop: "1px solid #f1f5f9", paddingTop: "12px" }}>
+                          <div style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Progress Over Time</div>
+                          <div style={{ display: "flex", gap: "4px", alignItems: "flex-end", height: "56px" }}>
+                            {trend.map((t, i) => {
+                              const h = Math.round((t.count / maxCount) * 44) + 4;
+                              const cefrColor = CEFR_COLOR[t.avgCefr ?? "B1"] ?? "#e2e8f0";
+                              return (
+                                <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }} title={`${t.period}: ${t.count} sessions, avg ${t.avgCefr ?? "—"}`}>
+                                  <div style={{ fontSize: "9px", color: "#64748b" }}>{t.avgCefr ?? "—"}</div>
+                                  <div style={{ width: "100%", height: `${h}px`, background: cefrColor, borderRadius: "2px 2px 0 0", opacity: 0.8 }} />
+                                  <div style={{ fontSize: "9px", color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%", textOverflow: "ellipsis" }}>{t.period.split(" ")[0]}</div>
                                 </div>
                               );
                             })}
@@ -533,15 +597,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   { key: "trend", label: "Trend" },
                   { key: "sessionsCompleted", label: "Sessions" },
                   { key: "lastActivity", label: "Last Active" },
+                  { key: "actions", label: "" },
                 ].map(({ key, label }) => (
                   <th
                     key={key}
                     scope="col"
-                    onClick={() => handleSort(key as keyof StudentRow)}
-                    style={{ textAlign: "left", padding: "10px 12px", cursor: "pointer", userSelect: "none", color: "#64748b", fontWeight: 600, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}
+                    onClick={() => key !== "actions" && handleSort(key as keyof StudentRow)}
+                    style={{ textAlign: "left", padding: "10px 12px", cursor: key !== "actions" ? "pointer" : "default", userSelect: "none", color: "#64748b", fontWeight: 600, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}
                     aria-sort={sortBy === key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
                   >
-                    {label} {sortBy === key ? (sortDir === "asc" ? "↑" : "↓") : ""}
+                    {label} {key !== "actions" && sortBy === key ? (sortDir === "asc" ? "↑" : "↓") : ""}
                   </th>
                 ))}
               </tr>
@@ -549,7 +614,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>
+                  <td colSpan={7} style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>
                     No students match your filters.
                   </td>
                 </tr>
@@ -582,6 +647,26 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   </td>
                   <td style={{ padding: "10px 12px", color: "#334155" }}>{s.sessionsCompleted}</td>
                   <td style={{ padding: "10px 12px", color: "#64748b" }}>{s.lastActivity}</td>
+                  <td style={{ padding: "10px 12px" }}>
+                    {s.sessionsCompleted > 0 && (
+                      <button
+                        onClick={() => handleSendReport(s.id)}
+                        disabled={sendingReport === s.id}
+                        title="Email this student their latest report link"
+                        style={{
+                          fontSize: "12px", padding: "4px 10px", border: "1px solid",
+                          borderColor: reportSent === s.id ? "#bbf7d0" : "#e0e7ff",
+                          background: reportSent === s.id ? "#f0fdf4" : "#fff",
+                          color: reportSent === s.id ? "#16a34a" : "#4f46e5",
+                          borderRadius: "6px", cursor: "pointer", fontWeight: 600,
+                          opacity: sendingReport === s.id ? 0.6 : 1,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {reportSent === s.id ? "✓ Sent" : sendingReport === s.id ? "Sending…" : "✉ Send Report"}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

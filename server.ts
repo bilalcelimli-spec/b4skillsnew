@@ -7227,6 +7227,137 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // POST /api/teacher/students/:studentId/send-report — email latest report link
+  app.post("/api/teacher/students/:studentId/send-report", checkRole(teacherRoles), async (req: any, res) => {
+    const { studentId } = req.params;
+    try {
+      // Find latest completed session for this student
+      const session = await (prisma.session.findFirst as any)({
+        where: { candidateId: studentId, status: "COMPLETED" },
+        orderBy: { completedAt: "desc" },
+        include: {
+          user: { select: { email: true, name: true } },
+          scoreReport: { select: { overallCefr: true, overallScore: true, diagnosticReport: true, certificateId: true } },
+        },
+      }) as {
+        id: string;
+        user?: { email: string; name?: string };
+        scoreReport?: { overallCefr?: string; overallScore?: number; diagnosticReport?: any; certificateId?: string | null };
+      } | null;
+
+      if (!session?.user?.email) {
+        return res.status(404).json({ error: "No completed session found for this student" });
+      }
+
+      // Ensure shareToken exists in diagnosticReport JSON
+      let shareToken: string;
+      const diag = (session.scoreReport?.diagnosticReport as any) ?? {};
+      if (diag.shareToken) {
+        shareToken = diag.shareToken;
+      } else {
+        shareToken = crypto.randomBytes(16).toString("hex");
+        await (prisma.scoreReport.updateMany as any)({
+          where: { sessionId: session.id },
+          data: { diagnosticReport: { ...diag, shareToken } },
+        });
+      }
+
+      const cefr = session.scoreReport?.overallCefr ?? "—";
+      const score = session.scoreReport?.overallScore != null ? Math.round(session.scoreReport.overallScore * 100) : null;
+      const name = session.user.name ?? "Student";
+      const reportUrl = `${APP_BASE_URL}/share/${shareToken}`;
+      const certId = session.scoreReport?.certificateId;
+      const certUrl = certId ? `${APP_BASE_URL}/verify/${certId}` : null;
+
+      await sendEmail(
+        session.user.email,
+        `Your B4Skills Results — ${cefr}`,
+        emailTemplate({
+          heading: `Your results are ready, ${name}!`,
+          body: `<p style="font-size:16px;color:#334155;line-height:1.6">Your teacher has shared your <strong>B4Skills</strong> adaptive English assessment results.</p>
+                 <div style="text-align:center;margin:28px 0">
+                   <div style="display:inline-block;background:#f0f4ff;border:2px solid #c7d2fe;border-radius:16px;padding:20px 40px">
+                     <div style="font-size:40px;font-weight:900;color:#4f46e5;letter-spacing:-1px">${cefr}</div>
+                     ${score != null ? `<div style="font-size:14px;color:#6366f1;font-weight:700;margin-top:4px">Score: ${score}/100</div>` : ""}
+                   </div>
+                 </div>
+                 <p style="font-size:14px;color:#64748b;line-height:1.6">Your report includes skill-by-skill CEFR levels, confidence intervals, and personalised learning recommendations.</p>
+                 ${certUrl ? `<p style="font-size:13px;color:#64748b;margin-top:8px">🎓 Your certificate is ready — <a href="${certUrl}" style="color:#4f46e5;font-weight:700">view & verify here</a>.</p>` : ""}`,
+          ctaLabel: "View Your Full Report",
+          ctaUrl: reportUrl,
+          footer: "This report link is shareable — you can send it to universities, employers, or language programmes.",
+        }),
+      );
+
+      return res.json({ ok: true, email: session.user.email });
+    } catch (err) {
+      console.error("[teacher] send-report failed:", err);
+      return res.status(500).json({ error: "Failed to send report email" });
+    }
+  });
+
+  // GET /api/teacher/classes/:id/trends — per-class period-over-period CEFR trend
+  app.get("/api/teacher/classes/:id/trends", checkRole(teacherRoles), async (req: any, res) => {
+    const user = req.user as { userId: string; role: string };
+    const classId = req.params.id;
+    const periods = Math.min(12, Math.max(2, parseInt(req.query.periods as string) || 6));
+    const unit: "month" | "quarter" = req.query.unit === "quarter" ? "quarter" : "month";
+    try {
+      const cls = await prisma.class.findUnique({
+        where: { id: classId },
+        include: { members: { select: { userId: true } } },
+      });
+      if (!cls) return res.status(404).json({ error: "Class not found" });
+      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
+      if (!isAdmin && cls.teacherId !== user.userId) return res.status(403).json({ error: "Access denied" });
+
+      const memberIds = cls.members.map((m) => m.userId);
+      if (memberIds.length === 0) return res.json({ trend: [], unit, periods: 0 });
+
+      const CEFR_LEVELS = ["A1","A2","B1","B2","C1","C2"];
+      const sessions = await prisma.session.findMany({
+        where: { candidateId: { in: memberIds }, status: "COMPLETED", completedAt: { not: null } },
+        select: { completedAt: true, theta: true, cefrLevel: true },
+        orderBy: { completedAt: "asc" },
+      });
+
+      const bucket = (d: Date) => {
+        if (unit === "quarter") {
+          const q = Math.floor(d.getMonth() / 3) + 1;
+          return `${d.getFullYear()} Q${q}`;
+        }
+        return `${d.toLocaleString("en-GB", { month: "short" })} ${d.getFullYear()}`;
+      };
+
+      const map: Map<string, { thetas: number[]; cefrs: number[] }> = new Map();
+      for (const s of sessions) {
+        if (!s.completedAt) continue;
+        const key = bucket(new Date(s.completedAt));
+        if (!map.has(key)) map.set(key, { thetas: [], cefrs: [] });
+        const entry = map.get(key)!;
+        if (s.theta != null) entry.thetas.push(s.theta);
+        const cIdx = CEFR_LEVELS.indexOf(s.cefrLevel ?? "");
+        if (cIdx >= 0) entry.cefrs.push(cIdx);
+      }
+
+      const sorted = [...map.entries()].slice(-periods);
+      const trend = sorted.map(([period, { thetas, cefrs }]) => {
+        const avgTheta = thetas.length ? thetas.reduce((a,b)=>a+b,0)/thetas.length : null;
+        const avgCefrIdx = cefrs.length ? cefrs.reduce((a,b)=>a+b,0)/cefrs.length : null;
+        return {
+          period,
+          avgTheta: avgTheta != null ? parseFloat(avgTheta.toFixed(3)) : null,
+          avgCefr: avgCefrIdx != null ? (CEFR_LEVELS[Math.round(avgCefrIdx)] ?? "B1") : null,
+          count: thetas.length,
+        };
+      });
+
+      return res.json({ trend, unit, periods: trend.length });
+    } catch (err) {
+      return res.status(500).json({ error: "Class trends failed" });
+    }
+  });
+
   // ── SEO: robots.txt + sitemap.xml ───────────────────────────────────────
   app.get("/robots.txt", (_req, res) => {
     res.set("Content-Type", "text/plain; charset=utf-8").send(
