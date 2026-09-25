@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ReferenceLine, ResponsiveContainer, Legend,
+  ReferenceLine, ResponsiveContainer,
 } from "recharts";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Trophy } from "lucide-react";
 import { thetaToCefr } from "../lib/cefr/cefr-framework";
 
 interface ProgressPoint {
@@ -92,10 +92,20 @@ export const ProgressTrendChart: React.FC<Props> = ({ candidateId }) => {
   const first = history[0].theta;
   const last = history[history.length - 1].theta;
   const delta = last - first;
-  const cefrGain = thetaToCefr(last) !== thetaToCefr(first);
+  const firstCefr = thetaToCefr(first);
+  const lastCefr = thetaToCefr(last);
+  const cefrGain = lastCefr !== firstCefr;
 
   const TrendIcon = delta > 0.2 ? TrendingUp : delta < -0.2 ? TrendingDown : Minus;
   const trendColor = delta > 0.2 ? "text-emerald-500" : delta < -0.2 ? "text-rose-500" : "text-slate-400";
+
+  const spanMs = new Date(history[history.length - 1].date).getTime() - new Date(history[0].date).getTime();
+  const spanMonths = Math.round(spanMs / (1000 * 60 * 60 * 24 * 30));
+  const milestoneMsg = cefrGain && spanMonths > 0
+    ? `In ${spanMonths} month${spanMonths !== 1 ? "s" : ""} you moved from ${firstCefr.replace("_", "")} to ${lastCefr.replace("_", "")} — keep it up!`
+    : cefrGain
+    ? `You advanced from ${firstCefr.replace("_", "")} to ${lastCefr.replace("_", "")}!`
+    : null;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
@@ -110,6 +120,13 @@ export const ProgressTrendChart: React.FC<Props> = ({ candidateId }) => {
           {cefrGain && <span className="text-xs font-bold ml-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Level Up!</span>}
         </div>
       </div>
+
+      {milestoneMsg && (
+        <div className="flex items-center gap-2.5 mb-5 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-100">
+          <Trophy size={15} className="text-emerald-500 shrink-0" />
+          <p className="text-xs font-bold text-emerald-700">{milestoneMsg}</p>
+        </div>
+      )}
 
       <ResponsiveContainer width="100%" height={240}>
         <LineChart data={chartData} margin={{ top: 8, right: 16, left: -20, bottom: 0 }}>

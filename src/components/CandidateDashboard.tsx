@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense, lazy } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/Card";
+const ProgressTrendChart = lazy(() => import("./ProgressTrendChart").then(m => ({ default: m.ProgressTrendChart })));
 import { Button } from "./ui/Button";
 import { 
   History, 
@@ -174,6 +175,12 @@ export const CandidateDashboard: React.FC<{ candidateId: string }> = ({ candidat
           </div>
         </CardContent>
       </Card>
+
+      {sessions.filter(s => s.status === "COMPLETED").length > 1 && (
+        <Suspense fallback={null}>
+          <ProgressTrendChart candidateId={candidateId} />
+        </Suspense>
+      )}
     </div>
   );
 };
