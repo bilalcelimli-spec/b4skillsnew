@@ -24,6 +24,9 @@ model Organization {
   settings      Json?     // { allowedDomains, sessionTimeout, securityLevel, apiKey, webhookUrl }
   ssoConfig     Json?     // { provider: 'SAML' | 'OIDC', entryPoint, issuer, cert, clientId, clientSecret, enabled }
   apiKeyDigest  String?   // SHA-256 digest of the org's Score Reporting API key
+  // White-label: verified custom domain (e.g. "test.acmeuniversity.edu").
+  // Null = platform domain only. Must be unique across orgs.
+  customDomain  String?   @unique
   
   // Relations
   users         User[]

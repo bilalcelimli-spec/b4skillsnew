@@ -15,7 +15,11 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Zap,
-  ShieldCheck
+  ShieldCheck,
+  ExternalLink,
+  CheckCircle2,
+  XCircle,
+  Loader2
 } from "lucide-react";
 import { 
   BarChart, 
@@ -70,6 +74,37 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
   const [inviteProductLine, setInviteProductLine] = useState("General English");
   const [inviteSending, setInviteSending] = useState(false);
   const [lastInviteCode, setLastInviteCode] = useState<string | null>(null);
+  // Custom domain
+  const [customDomain, setCustomDomain] = useState("");
+  const [domainSaving, setDomainSaving] = useState(false);
+  const [domainVerifying, setDomainVerifying] = useState(false);
+  const [domainSaved, setDomainSaved] = useState<string | null>(null);
+  const [domainVerified, setDomainVerified] = useState<null | { verified: boolean; expectedTxt: string; dnsRecords: string[] }>(null);
+
+  const handleSaveCustomDomain = async () => {
+    if (domainSaving) return;
+    setDomainSaving(true);
+    setDomainVerified(null);
+    try {
+      const res = await fetch(`/api/organizations/${organizationId}/custom-domain`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ domain: customDomain.trim() || null }),
+      });
+      const data = await res.json();
+      if (res.ok) setDomainSaved(data.customDomain);
+    } finally { setDomainSaving(false); }
+  };
+
+  const handleVerifyDomain = async () => {
+    if (domainVerifying) return;
+    setDomainVerifying(true);
+    try {
+      const res = await fetch(`/api/organizations/${organizationId}/custom-domain/verify`, { credentials: "include" });
+      if (res.ok) setDomainVerified(await res.json());
+    } finally { setDomainVerifying(false); }
+  };
 
   const handleSendInvite = async () => {
     if (!inviteEmail.trim() || inviteSending) return;
@@ -150,6 +185,11 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
 
   useEffect(() => {
     fetchAnalytics();
+    // Load existing custom domain
+    fetch(`/api/organizations/${organizationId}/branding`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(b => { if (b?.customDomain) { setCustomDomain(b.customDomain); setDomainSaved(b.customDomain); } })
+      .catch(() => {});
   }, [organizationId]);
 
   useEffect(() => {
@@ -712,6 +752,101 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
                     <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">Retrieve Reports</h4>
                     <p className="text-xs text-slate-500 mt-1">Download PDF certificates and detailed skill breakdowns via the <code className="bg-slate-50 px-1 rounded">/api/v1/reports</code> endpoint.</p>
                   </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* White-label / Custom Domain */}
+          <Card className="lg:col-span-2 rounded-[32px] border-slate-100 shadow-sm overflow-hidden">
+            <CardHeader className="p-6 font-black uppercase tracking-widest text-xs text-slate-400 border-b border-slate-50 flex items-center gap-2">
+              <Globe size={14} className="text-indigo-500" />
+              White-Label — Custom Domain
+            </CardHeader>
+            <CardContent className="p-8">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                {/* Domain input */}
+                <div className="space-y-4">
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Serve b4skills assessments from your own subdomain (e.g.{" "}
+                    <code className="bg-slate-50 px-1 rounded font-mono">test.youruni.edu</code>). Candidates see your branding throughout.
+                  </p>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Your Domain</label>
+                  <div className="flex gap-3">
+                    <input
+                      className="flex-1 h-12 px-5 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm"
+                      placeholder="test.youruni.edu"
+                      value={customDomain}
+                      onChange={(e) => { setCustomDomain(e.target.value); setDomainVerified(null); }}
+                    />
+                    <Button
+                      className="bg-indigo-600 hover:bg-indigo-700 px-6 rounded-xl font-bold min-w-[90px]"
+                      onClick={handleSaveCustomDomain}
+                      disabled={domainSaving}
+                    >
+                      {domainSaving ? <Loader2 size={16} className="animate-spin" /> : "Save"}
+                    </Button>
+                  </div>
+                  {domainSaved && (
+                    <p className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+                      <CheckCircle2 size={12} /> Saved: <span className="font-mono">{domainSaved}</span>
+                    </p>
+                  )}
+                  {customDomain && (
+                    <Button
+                      variant="outline"
+                      className="mt-2 rounded-xl font-bold border-slate-200 flex items-center gap-2"
+                      onClick={handleVerifyDomain}
+                      disabled={domainVerifying}
+                    >
+                      {domainVerifying ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                      Verify DNS
+                    </Button>
+                  )}
+                  {domainVerified && (
+                    <div className={`mt-3 p-4 rounded-xl text-sm border ${domainVerified.verified ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-amber-50 border-amber-200 text-amber-800"}`}>
+                      <div className="flex items-center gap-2 font-bold mb-1">
+                        {domainVerified.verified
+                          ? <><CheckCircle2 size={14} /> Domain verified</>
+                          : <><XCircle size={14} /> TXT record not found yet</>}
+                      </div>
+                      {!domainVerified.verified && (
+                        <p className="text-xs mt-1">
+                          Add the TXT record below, then click Verify again. DNS changes can take up to 24 hours.
+                        </p>
+                      )}
+                      {domainVerified.dnsRecords.length > 0 && (
+                        <p className="text-xs mt-2 font-mono">Found: {domainVerified.dnsRecords.join(", ")}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* DNS setup instructions */}
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">DNS Setup</label>
+                  <div className="rounded-xl bg-slate-900 p-5 text-xs font-mono text-slate-300 space-y-3">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-sans font-bold mb-3">Step 1 — CNAME record</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-slate-300">
+                      <span className="text-slate-500">Type</span><span>CNAME</span>
+                      <span className="text-slate-500">Host</span><span>{customDomain || "test.youruni.edu"}</span>
+                      <span className="text-slate-500">Value</span><span>b4skills.com</span>
+                      <span className="text-slate-500">TTL</span><span>3600</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-sans font-bold mt-4 mb-3">Step 2 — TXT ownership record</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-slate-300">
+                      <span className="text-slate-500">Type</span><span>TXT</span>
+                      <span className="text-slate-500">Host</span><span>{customDomain || "test.youruni.edu"}</span>
+                      <span className="text-slate-500">Value</span>
+                      <span className="text-amber-400 break-all">
+                        {domainVerified?.expectedTxt ?? "b4skills-verify=…"}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 flex items-center gap-1">
+                    <ExternalLink size={10} />
+                    Contact <a href="mailto:support@b4skills.com" className="text-indigo-600 hover:underline">support@b4skills.com</a> once DNS is verified to enable SSL.
+                  </p>
                 </div>
               </div>
             </CardContent>

@@ -1,4 +1,7 @@
 import "dotenv/config";
+// Observability bootstrap — Sentry + OpenTelemetry. Must run before any other import that might throw.
+import "./src/lib/observability/instrument.js";
+import * as Sentry from "@sentry/node";
 import PDFDocument from "pdfkit";
 import express from "express";
 import { createServer as createViteServer } from "vite";
@@ -91,6 +94,25 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.use(cookieParser());
+
+  // ── White-label: resolve org by custom domain and attach to request ──────────
+  // Runs before auth so every route can read req.whitelabelOrg.
+  const platformHostname = (process.env.APP_URL ?? "http://localhost:3001")
+    .replace(/https?:\/\//, "").split(":")[0].toLowerCase();
+  app.use(async (req: any, _res, next) => {
+    const host = ((req.headers["x-forwarded-host"] as string | undefined) ?? req.hostname ?? "")
+      .split(":")[0].toLowerCase();
+    if (host && host !== platformHostname && host !== "localhost") {
+      try {
+        const org = await prisma.organization.findUnique({
+          where: { customDomain: host },
+          select: { id: true, name: true, slug: true, branding: true },
+        });
+        if (org) req.whitelabelOrg = org;
+      } catch { /* non-fatal — fall through to platform domain */ }
+    }
+    next();
+  });
 
   // --- SECURITY: Block known scanner / probe paths (WordPress, PHP, xmlrpc, etc.) ---
   const BLOCKED_PROBE_PATTERN = /\.(php|asp|aspx|jsp|cgi|env|git|svn|htaccess|htpasswd|DS_Store|config|bak|old|sql|xml)$/i;
@@ -392,7 +414,11 @@ async function startServer() {
         select: { id: true, email: true, name: true, role: true, organizationId: true },
       });
       if (!user) return res.status(404).json({ error: 'User not found' });
-      return res.json({ user: { uid: user.id, email: user.email, displayName: user.name, role: user.role, organizationId: user.organizationId || null } });
+      const wl = (req as any).whitelabelOrg ?? null;
+      return res.json({
+        user: { uid: user.id, email: user.email, displayName: user.name, role: user.role, organizationId: user.organizationId || null },
+        whitelabelOrg: wl ? { id: wl.id, name: wl.name, slug: wl.slug } : null,
+      });
     } catch (err: any) {
       return res.status(401).json({ error: 'Invalid token' });
     }
@@ -3117,6 +3143,79 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.json(branding);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch branding" });
+    }
+  });
+
+  // GET /api/branding-by-domain — resolves the org whose customDomain matches
+  // the request's Host header. Used by the SPA on white-label domains to load
+  // the right branding without knowing the orgId upfront.
+  app.get("/api/branding-by-domain", async (req, res) => {
+    const host = (req.headers["x-forwarded-host"] as string | undefined) ?? req.hostname;
+    const cleanHost = host?.split(":")[0]?.toLowerCase() ?? "";
+    // Never resolve to platform's own domain
+    const platformHost = (process.env.APP_URL ?? "").replace(/https?:\/\//, "").split(":")[0].toLowerCase();
+    if (!cleanHost || cleanHost === platformHost || cleanHost === "localhost") {
+      return res.status(404).json({ error: "No custom domain" });
+    }
+    try {
+      const org = await prisma.organization.findUnique({
+        where: { customDomain: cleanHost },
+        select: { id: true, name: true, slug: true, branding: true },
+      });
+      if (!org) return res.status(404).json({ error: "Domain not configured" });
+      const branding = await BrandingService.getBranding(org.id);
+      res.json({ orgId: org.id, orgName: org.name, orgSlug: org.slug, ...branding });
+    } catch (err) {
+      res.status(500).json({ error: "Domain lookup failed" });
+    }
+  });
+
+  // PUT /api/organizations/:id/custom-domain — set or clear custom domain
+  app.put("/api/organizations/:id/custom-domain", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
+    const { id } = req.params;
+    const { domain } = req.body as { domain: string | null };
+    // Inst admins can only manage their own org
+    if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const cleanDomain = domain ? domain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "") : null;
+    if (cleanDomain && !/^[a-z0-9.-]+$/.test(cleanDomain)) {
+      return res.status(400).json({ error: "Invalid domain format" });
+    }
+    try {
+      const updated = await prisma.organization.update({
+        where: { id },
+        data: { customDomain: cleanDomain },
+        select: { id: true, customDomain: true },
+      });
+      res.json({ success: true, customDomain: updated.customDomain });
+    } catch (err: any) {
+      if (err?.code === "P2002") return res.status(409).json({ error: "Domain already assigned to another organisation" });
+      res.status(500).json({ error: "Failed to update domain" });
+    }
+  });
+
+  // GET /api/organizations/:id/custom-domain/verify — DNS TXT record check
+  // Verifies that the org has placed a TXT record on their domain confirming ownership.
+  app.get("/api/organizations/:id/custom-domain/verify", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
+    const { id } = req.params;
+    if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    try {
+      const org = await prisma.organization.findUnique({ where: { id }, select: { id: true, slug: true, customDomain: true } });
+      if (!org?.customDomain) return res.status(400).json({ error: "No custom domain configured" });
+      const expectedTxt = `b4skills-verify=${org.slug}`;
+      let txtRecords: string[][] = [];
+      try {
+        const { promises: dns } = await import("dns");
+        txtRecords = await dns.resolveTxt(org.customDomain);
+      } catch { /* domain doesn't resolve yet */ }
+      const flat = txtRecords.flat();
+      const verified = flat.includes(expectedTxt);
+      res.json({ domain: org.customDomain, expectedTxt, verified, dnsRecords: flat.slice(0, 10) });
+    } catch (err) {
+      res.status(500).json({ error: "DNS verification failed" });
     }
   });
 
@@ -7827,6 +7926,11 @@ ${entries}
   // Import http module to get underlying server for WS attachment
   const http = await import("http");
   const { realtimeManager } = await import("./src/lib/realtime/websocket-manager.js");
+
+  // Sentry error handler must be registered AFTER all routes and BEFORE any other error middleware
+  if (process.env.SENTRY_DSN) {
+    Sentry.setupExpressErrorHandler(app);
+  }
 
   // Create http.Server from Express app and attach WS
   const httpServer = http.createServer(app);
