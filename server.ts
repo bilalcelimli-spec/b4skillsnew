@@ -4190,6 +4190,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         canDo: getCanDo(level),
         integrityRisk: session.integrityRisk ?? "LOW",
         productLine:   session.productLine   ?? undefined,
+        certificateId: sr?.certificateId ?? null,
+        hasPendingAI:  responses.some((r: any) => ["WRITING","SPEAKING"].includes(r.skill) && r.score == null),
       });
     } catch (err) {
       console.error("adaptive-report error:", err);

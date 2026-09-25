@@ -69,6 +69,8 @@ interface AdaptiveReport {
   responses: ResponseEntry[];
   totalItems: number;
   stopReason: string;
+  certificateId?: string | null;
+  hasPendingAI?: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -93,6 +95,28 @@ const CEFR_LINES = [
   { theta:  1.5, label: "C1", color: "#7c3aed" },
   { theta:  2.5, label: "C2", color: "#db2777" },
 ];
+
+// CEFR ↔ exam concordance (based on ALTE/Cambridge published tables)
+const CONCORDANCE: Record<string, { ielts: string; toefl: string; cambridge: string; toeic: string }> = {
+  PRE_A1: { ielts: "—",        toefl: "—",       cambridge: "Pre-A1 Starters",   toeic: "< 120"   },
+  A1:     { ielts: "—",        toefl: "—",       cambridge: "A1 Movers",          toeic: "120–225" },
+  A2:     { ielts: "1.0–3.0",  toefl: "—",       cambridge: "A2 Key (KET)",       toeic: "225–549" },
+  B1:     { ielts: "3.5–4.5",  toefl: "42–71",   cambridge: "B1 Preliminary (PET)", toeic: "550–784" },
+  B2:     { ielts: "5.0–6.0",  toefl: "72–94",   cambridge: "B2 First (FCE)",     toeic: "785–944" },
+  C1:     { ielts: "6.5–7.5",  toefl: "95–114",  cambridge: "C1 Advanced (CAE)",  toeic: "945–990" },
+  C2:     { ielts: "8.0–9.0",  toefl: "115–120", cambridge: "C2 Proficiency (CPE)", toeic: "990"   },
+};
+
+// What a learner should focus on to reach the next CEFR level
+const NEXT_LEVEL_ROADMAP: Record<string, { nextLevel: string; focus: string[] }> = {
+  PRE_A1: { nextLevel: "A1", focus: ["Learn basic greetings and introductions", "Memorise 100–200 high-frequency words", "Practise numbers, colours and everyday objects"] },
+  A1: { nextLevel: "A2", focus: ["Expand vocabulary to 500+ common words", "Practise simple past and future tenses", "Follow short conversations on familiar topics"] },
+  A2: { nextLevel: "B1", focus: ["Understand main points in slow, clear speech", "Write simple connected texts on familiar topics", "Engage in basic conversations without preparation"] },
+  B1: { nextLevel: "B2", focus: ["Follow arguments in complex discourse", "Produce clear, detailed text on a range of subjects", "Interact with fluency without strain for either party"] },
+  B2: { nextLevel: "C1", focus: ["Understand long and complex texts including implicit meaning", "Express ideas fluently and spontaneously", "Use language flexibly and effectively for academic/professional purposes"] },
+  C1: { nextLevel: "C2", focus: ["Understand virtually everything heard or read", "Reconstruct information coherently from multiple spoken/written sources", "Express with precision, using finer shades of meaning"] },
+  C2: { nextLevel: "—", focus: ["You have reached the highest CEFR level — congratulations!", "Consider taking the C2 Proficiency (CPE) exam for formal recognition"] },
+};
 
 function ThetaBar({ theta, sem, color }: { theta: number; sem: number; color: string }) {
   const pct = Math.max(0, Math.min(100, ((theta + 3) / 6) * 100));
@@ -228,7 +252,18 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 no-print">
+        <div className="flex items-center gap-2 no-print flex-wrap">
+          {report.certificateId && (
+            <a
+              href={`/verify/${report.certificateId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="View & share your certificate"
+              className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 hover:text-amber-800 border border-amber-200 hover:border-amber-400 bg-amber-50 rounded-lg px-3 py-1.5 transition-colors"
+            >
+              🎓 Certificate
+            </a>
+          )}
           <button
             onClick={handleShare}
             disabled={shareLoading}
@@ -307,6 +342,16 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
           </div>
         </div>
       </div>
+
+      {/* SLA notice for pending AI scoring */}
+      {report.hasPendingAI && (
+        <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800">
+          <span className="text-amber-500 text-base leading-none mt-0.5">⏱</span>
+          <span>
+            <strong>Speaking / Writing results within 48 hours.</strong> Your AI-assessed responses are being processed. Scores will update automatically — no action needed.
+          </span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200">
@@ -580,6 +625,8 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
           { id: "writing",   label: "Writing",    color: "text-emerald-600 bg-emerald-50 border-emerald-100" },
           { id: "speaking",  label: "Speaking",   color: "text-amber-600  bg-amber-50  border-amber-100" },
         ];
+        const concordance = CONCORDANCE[report.cefrLevel];
+        const roadmap = NEXT_LEVEL_ROADMAP[report.cefrLevel];
         return (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
             <div className="flex items-center gap-2 px-1">
@@ -589,6 +636,50 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
               </span>
               <span className="ml-auto text-xs text-slate-400">Showing achieved level + one below</span>
             </div>
+
+            {/* Concordance table */}
+            {concordance && (
+              <div className="border border-slate-200 rounded-xl p-4 bg-white">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Equivalent Exam Scores</p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                  {[
+                    { label: "IELTS Academic",    value: concordance.ielts },
+                    { label: "TOEFL iBT",          value: concordance.toefl },
+                    { label: "Cambridge Exam",     value: concordance.cambridge },
+                    { label: "TOEIC (L+R)",        value: concordance.toeic },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex justify-between items-center py-1.5 border-b border-slate-100 last:border-0 col-span-1">
+                      <span className="text-xs text-slate-500">{label}</span>
+                      <span className="text-xs font-bold text-slate-700">{value}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-2">Approximate concordance based on ALTE / Cambridge published tables.</p>
+              </div>
+            )}
+
+            {/* Next step roadmap */}
+            {roadmap && roadmap.nextLevel !== "—" && (
+              <div className="border border-indigo-100 rounded-xl p-4 bg-indigo-50">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-bold text-indigo-700 uppercase tracking-wide">Path to {roadmap.nextLevel}</span>
+                  <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.5 rounded font-bold">{report.cefrLevel.replace("_"," ")} → {roadmap.nextLevel}</span>
+                </div>
+                <ul className="space-y-1.5">
+                  {roadmap.focus.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs text-indigo-800">
+                      <span className="text-indigo-400 font-bold mt-0.5">→</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {roadmap?.nextLevel === "—" && (
+              <div className="border border-emerald-200 rounded-xl p-4 bg-emerald-50 text-xs text-emerald-800">
+                {roadmap.focus.map((f, i) => <p key={i} className="mb-1 last:mb-0">{f}</p>)}
+              </div>
+            )}
             {DOMAINS.map((domain) => (
               <div key={domain.id} className={`border rounded-xl p-4 space-y-3 ${domain.color.split(" ").slice(1).join(" ")}`}>
                 <h3 className={`text-xs font-black uppercase tracking-widest ${domain.color.split(" ")[0]}`}>

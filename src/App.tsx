@@ -38,6 +38,7 @@ const CertificateView        = lazy(() => import("./components/CertificateView")
 const CandidateAdaptiveReport = lazy(() => import("./components/CandidateAdaptiveReport").then(m => ({ default: m.CandidateAdaptiveReport })));
 const AssessmentModeSelector  = lazy(() => import("./components/AssessmentModeSelector").then(m => ({ default: m.AssessmentModeSelector })));
 const TestPlayer             = lazy(() => import("./components/TestPlayer").then(m => ({ default: m.TestPlayer })));
+const PreTestBriefing        = lazy(() => import("./components/PreTestBriefing").then(m => ({ default: m.PreTestBriefing })));
 const LandingPage            = lazy(() => import("./components/LandingPage").then(m => ({ default: m.LandingPage })));
 const SeoLandingPage         = lazy(() => import("./components/SeoLandingPage").then(m => ({ default: m.SeoLandingPage })));
 const ProgressTrendChart     = lazy(() => import("./components/ProgressTrendChart").then(m => ({ default: m.ProgressTrendChart })));
@@ -106,6 +107,7 @@ export default function App() {
   const [showLanding, setShowLanding] = useState(true);
   const [showCodeEntry, setShowCodeEntry] = useState(false);
   const [activeSession, setActiveSession] = useState<{ orgId: string; sessionId: string; productLine?: string; startingSkill?: string } | null>(null);
+  const [preTestReady, setPreTestReady] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"dashboard" | "admin" | "rating" | "institutional" | "teacher" | "content" | "results" | "profile" | "settings">("dashboard");
   const [testCompleted, setTestCompleted] = useState<{ theta: number; cefr: string; sessionId: string } | null>(null);
@@ -231,6 +233,7 @@ export default function App() {
     if (!user || !userProfile) return;
     setTestCompleted(null);
     setCertificate(null);
+    setPreTestReady(false);
     setActiveSession({ orgId: userProfile.organizationId ?? "", sessionId: "new", productLine });
   };
 
@@ -239,6 +242,7 @@ export default function App() {
     const cefr = thetaToCefr(theta);
     setTestCompleted({ theta, cefr, sessionId });
     setActiveSession(null);
+    setPreTestReady(false);
     setActiveTab("results");
 
     // Auto-generate certificate
@@ -359,6 +363,17 @@ export default function App() {
   }
 
   if (activeSession) {
+    if (!preTestReady) {
+      return (
+        <Suspense fallback={<PageLoader />}>
+          <PreTestBriefing
+            productLine={activeSession.productLine}
+            onStart={() => setPreTestReady(true)}
+            onCancel={() => { setActiveSession(null); setPreTestReady(false); }}
+          />
+        </Suspense>
+      );
+    }
     return (
       <Suspense fallback={<PageLoader />}>
         <TestPlayer
@@ -588,6 +603,7 @@ export default function App() {
               onRetakeSkill={(skill, orgId) => {
                 setTestCompleted(null);
                 setSelectedHistorySessionId(null);
+                setPreTestReady(false);
                 setActiveSession({ orgId: orgId || userProfile?.organizationId || "", sessionId: "new", productLine: "15-Min Diagnostic", startingSkill: skill });
               }}
             />
