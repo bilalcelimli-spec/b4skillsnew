@@ -65,6 +65,7 @@ import { SessionReview } from "./SessionReview";
 import { CalibrationStudy } from "./CalibrationStudy";
 import { ExamCodeManager } from "./ExamCodeManager";
 import { ItemBankPanel } from "./ItemBankPanel";
+import { ItemBankHealthDashboard } from "./ItemBankHealthDashboard";
 import { ContentFactoryDashboard } from "./ContentFactoryDashboard";
 import { ContentFactoryBatchPanel } from "./ContentFactoryBatchPanel";
 import { ContentFactoryReviewQueue } from "./ContentFactoryReviewQueue";
@@ -85,6 +86,7 @@ type Section =
   | "content-factory"
   | "content-review"
   | "calibration"
+  | "item-bank-health"
   | "engine-config"
   | "branding"
   | "exam-codes"
@@ -155,8 +157,9 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "content-factory", label: "Content Factory", icon: <BarChart3 size={15} /> },
       { id: "ai-generator",    label: "Generate",        icon: <Wand2 size={15} /> },
       { id: "content-review",  label: "Review Queue",    icon: <CheckCircle2 size={15} /> },
-      { id: "item-bank",       label: "Item Bank",       icon: <Layers size={15} /> },
-      { id: "calibration",     label: "Calibration",     icon: <Calculator size={15} /> },
+      { id: "item-bank",         label: "Item Bank",       icon: <Layers size={15} /> },
+      { id: "item-bank-health",  label: "Bank Health",     icon: <Activity size={15} /> },
+      { id: "calibration",       label: "Calibration",     icon: <Calculator size={15} /> },
     ],
   },
   {
@@ -334,6 +337,7 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string; onLogout?: () => vo
               )}
               {activeSection === "ai-generator" && <ContentFactoryBatchPanel />}
               {activeSection === "item-bank" && <ItemBankPanel />}
+              {activeSection === "item-bank-health" && <ItemBankHealthDashboard />}
               {activeSection === "content-factory" && <ContentFactoryDashboard />}
               {activeSection === "content-review" && <ContentFactoryReviewQueue />}
               {activeSection === "calibration" && <CalibrationStudy />}
@@ -401,7 +405,8 @@ const SECTION_META: Record<Section, { label: string; desc: string; group: string
   "item-bank":       { label: "Item Bank",      desc: "Exposure control & inventory",          group: "Content Pipeline" },
   "content-factory": { label: "Content Factory",desc: "Blueprint, coverage gaps & pipeline",   group: "Content Pipeline" },
   "content-review":  { label: "Review Queue",   desc: "QA workflow & item approvals",          group: "Content Pipeline" },
-  calibration:       { label: "Calibration",    desc: "IRT calibration study",                 group: "Content Pipeline" },
+  calibration:         { label: "Calibration",    desc: "IRT calibration study",                 group: "Content Pipeline" },
+  "item-bank-health":  { label: "Bank Health",    desc: "Coverage heatmap & calibration pipeline", group: "Content Pipeline" },
   "engine-config":   { label: "Engine Config",  desc: "CAT parameters & CEFR thresholds",      group: "Analytics & Science" },
   branding:          { label: "Branding",       desc: "Logo, colors & messaging",              group: "Platform" },
   "exam-codes":      { label: "Exam Codes",     desc: "Generate & manage access codes",        group: "People" },
