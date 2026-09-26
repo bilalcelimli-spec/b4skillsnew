@@ -284,9 +284,9 @@ export const ContentReviewDashboard = () => {
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Candidate Preview</div>
                 <div className="flex-1 h-px bg-slate-100"></div>
               </div>
-              <ItemRenderer 
-                item={currentItem} 
-                onResponse={() => console.log("Tested Response selection!")} 
+              <ItemRenderer
+                item={currentItem}
+                onResponse={() => {/* preview only — responses not recorded */}}
               />
             </CardContent>
           </Card>

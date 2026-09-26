@@ -221,7 +221,7 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
           runDetection();
         } else {
           // Proctoring-light: only alert based on tab-switch / visibility events
-          console.log("[proctoring] Running in proctoring-light mode (no ML face detection).");
+          // proctoring-light: no ML face detection, only visibility/tab events
         }
       } catch (err) {
         console.error("Camera access denied");

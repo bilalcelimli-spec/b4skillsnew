@@ -3132,9 +3132,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  // --- BRANDING & ANALYTICS API ---
+  // --- BRANDING API ---
   const { BrandingService } = await import("./src/lib/tenant/branding-service.js");
-  const { AnalyticsService } = await import("./src/lib/analytics/analytics-service.js");
 
   app.get("/api/branding/:orgId", async (req, res) => {
     try {

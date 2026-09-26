@@ -1,5 +1,5 @@
 import { StrictMode } from 'react';
-import { createRoot, hydrateRoot } from 'react-dom/client';
+import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import * as Sentry from '@sentry/react';
 import App from './App';
@@ -69,12 +69,7 @@ const app = (
   </StrictMode>
 );
 
-// Hydrate when the server injected SSR HTML; otherwise mount fresh.
-if (rootEl.innerHTML.trim()) {
-  hydrateRoot(rootEl, app);
-} else {
-  createRoot(rootEl).render(app);
-}
+createRoot(rootEl).render(app);
 
 // PWA Service Worker registration
 if ('serviceWorker' in navigator && (import.meta as any).env?.PROD) {
