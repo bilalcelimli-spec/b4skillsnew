@@ -412,6 +412,7 @@ export default function App() {
           productLine={activeSession.productLine}
           startingSkill={activeSession.startingSkill}
           onComplete={handleTestComplete}
+          onCancel={() => { setActiveSession(null); setPreTestReady(false); }}
         />
       </Suspense>
     );

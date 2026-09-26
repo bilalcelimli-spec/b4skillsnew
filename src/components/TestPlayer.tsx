@@ -36,9 +36,10 @@ interface TestPlayerProps {
   productLine?: string;
   startingSkill?: string;
   onComplete: (finalTheta: number | null, sessionId: string) => void;
+  onCancel?: () => void;
 }
 
-export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidateId, productLine, startingSkill, onComplete }) => {
+export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidateId, productLine, startingSkill, onComplete, onCancel }) => {
   const { t } = useTranslation();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentItem, setCurrentItem] = useState<Item | null>(null);
@@ -145,8 +146,11 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         sessionStartRef.current = Date.now();
         fetchNextItem(data.sessionId);
       } catch (err: any) {
-        const msg = err?.message || "Unknown error";
-        setError(`Assessment could not start: ${msg}`);
+        const raw = err?.message || "Unknown error";
+        const msg = raw === "exam_code_required"
+          ? "A valid exam code is required to start this assessment."
+          : `Assessment could not start: ${raw}`;
+        setError(msg);
         setLoading(false);
       }
     };
@@ -436,16 +440,25 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   };
 
   if (error) {
+    const isCodeRequired = error.includes("exam code");
     return (
       <div className="flex flex-col items-center justify-center h-screen p-8 text-center">
         <div className="p-4 bg-red-50 text-red-600 rounded-2xl mb-6">
           <AlertCircle size={48} />
         </div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Assessment Error</h2>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">
+          {isCodeRequired ? "Exam Code Required" : "Assessment Error"}
+        </h2>
         <p className="text-slate-500 mb-8 max-w-md">{error}</p>
-        <Button size="lg" onClick={() => window.location.reload()}>
-          Try Reconnecting
-        </Button>
+        {isCodeRequired && onCancel ? (
+          <Button size="lg" onClick={onCancel}>
+            Back to Dashboard
+          </Button>
+        ) : (
+          <Button size="lg" onClick={() => window.location.reload()}>
+            Try Reconnecting
+          </Button>
+        )}
       </div>
     );
   }
