@@ -16,6 +16,8 @@ import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Responsi
 import { motion as m, useCountUp, AnimatePresence } from "../design-system/motion.js";
 import { Card, Badge, Progress, Separator } from "../design-system/components.js";
 import { useCelebration, CelebrationBanner } from "../design-system/MicroCelebration.js";
+import { getCanDo, type CefrLevel, type SkillDomain } from "../lib/cefr/cefr-framework.js";
+import { lookupConcordance } from "../lib/psychometrics/concordance.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -220,11 +222,18 @@ function SkillRadar({ skills }: { skills: SkillResult[] }) {
 // ── External equivalents ──────────────────────────────────────────────────────
 
 function ExternalEquivalents({ data }: { data: ScoreReportData }) {
+  // Auto-derive equivalents from theta when not pre-populated in data
+  const concordance = lookupConcordance(data.overallTheta);
+  const ielts = data.ielts ?? concordance.ielts ?? undefined;
+  const toeflIBT = data.toeflIBT ?? concordance.toeflIBT ?? undefined;
+  const toeic = data.toeic ?? concordance.toeic ?? undefined;
+  const cambridgeMark = data.cambridgeMark ?? concordance.cambridgeMark ?? undefined;
+
   const tests = [
-    { name: "IELTS", value: data.ielts,         fmt: (v: number) => v.toFixed(1) + " / 9.0" },
-    { name: "TOEFL iBT", value: data.toeflIBT,  fmt: (v: number) => v + " / 120" },
-    { name: "TOEIC L&R", value: data.toeic,     fmt: (v: number) => v + " / 990" },
-    { name: "Cambridge", value: data.cambridgeMark, fmt: (v: number) => v + " / 210" },
+    { name: "IELTS", value: ielts,         fmt: (v: number) => v.toFixed(1) + " / 9.0" },
+    { name: "TOEFL iBT", value: toeflIBT,  fmt: (v: number) => v + " / 120" },
+    { name: "TOEIC L&R", value: toeic,     fmt: (v: number) => v + " / 990" },
+    { name: "Cambridge", value: cambridgeMark, fmt: (v: number) => v + " / 210" },
   ].filter((t) => t.value !== undefined);
 
   if (tests.length === 0) return null;
@@ -255,66 +264,25 @@ function ExternalEquivalents({ data }: { data: ScoreReportData }) {
         ))}
       </div>
       <p style={{ fontSize: "0.6875rem", color: "var(--text-muted)", marginTop: 10 }}>
-        * Equivalents estimated via concordance tables. See docs/concordance for methodology.
+        * Equivalents estimated via concordance tables (confidence: {concordance.confidence}). See /methodology for details.
       </p>
     </Card>
   );
 }
 
-// ── CEFR Can-Do descriptors (CEFR 2001 / Council of Europe) ──────────────────
+// ── CEFR Can-Do descriptors ───────────────────────────────────────────────────
 
-const CEFR_CAN_DO: Record<string, { overall: string; reading: string; listening: string; writing: string; speaking: string }> = {
-  A1: {
-    overall: "Can understand and use familiar everyday expressions and very basic phrases.",
-    reading: "Can understand very short, simple texts: a single phrase at a time, picking up familiar names and basic words.",
-    listening: "Can recognise familiar words and very basic phrases concerning oneself and immediate environment when people speak slowly and clearly.",
-    writing: "Can write a short, simple postcard. Can fill in forms with personal details.",
-    speaking: "Can interact in a simple way if the other person talks slowly and clearly and is prepared to help.",
-  },
-  A2: {
-    overall: "Can understand sentences and frequently used expressions related to areas of most immediate relevance.",
-    reading: "Can read very short, simple texts. Can find specific, predictable information in simple everyday material.",
-    listening: "Can understand phrases and the highest frequency vocabulary related to areas of most immediate personal relevance.",
-    writing: "Can write short, simple notes and messages. Can write a very simple personal letter.",
-    speaking: "Can communicate in simple and routine tasks requiring a simple and direct exchange of information on familiar topics.",
-  },
-  B1: {
-    overall: "Can understand the main points of clear standard input on familiar matters regularly encountered in work, school and leisure.",
-    reading: "Can read straightforward factual texts on subjects related to my field and interest with a satisfactory level of comprehension.",
-    listening: "Can understand the main points of clear standard speech on familiar matters regularly encountered in work, school, leisure.",
-    writing: "Can write simple connected text on topics which are familiar or of personal interest. Can write personal letters describing experiences.",
-    speaking: "Can deal with most situations likely to arise whilst travelling in an area where the language is spoken. Can enter unprepared into conversation on familiar topics.",
-  },
-  B2: {
-    overall: "Can understand the main ideas of complex text on both concrete and abstract topics, including technical discussions in the field of specialisation.",
-    reading: "Can read articles and reports concerned with contemporary problems in which the writers adopt particular stances or viewpoints.",
-    listening: "Can understand extended speech and lectures and follow even complex lines of argument provided the topic is reasonably familiar.",
-    writing: "Can write clear, detailed text on a wide range of subjects related to interests. Can write essays or reports, passing on information or giving reasons for or against a particular point of view.",
-    speaking: "Can interact with a degree of fluency and spontaneity that makes regular interaction with native speakers quite possible without strain for either party.",
-  },
-  C1: {
-    overall: "Can understand a wide range of demanding, longer texts and recognise implicit meaning.",
-    reading: "Can understand in detail lengthy, complex texts, whether or not they relate to area of speciality, provided difficult sections can be reread.",
-    listening: "Can understand extended speech even when it is not clearly structured and when relationships are only implied and not signalled explicitly.",
-    writing: "Can express ideas fluently and spontaneously without much obvious searching for expressions. Can use language flexibly and effectively for social, academic and professional purposes.",
-    speaking: "Can express ideas fluently and spontaneously without much obvious searching for expressions. Can use language flexibly and effectively for social, academic and professional purposes.",
-  },
-  C2: {
-    overall: "Can understand with ease virtually everything heard or read. Can express themselves spontaneously, very fluently and precisely.",
-    reading: "Can read with ease virtually all forms of the written language, including abstract, structurally or linguistically complex texts.",
-    listening: "Has no difficulty in understanding any kind of spoken language, whether live or broadcast, even when delivered at fast native speed.",
-    writing: "Can write clear, smoothly-flowing text in an appropriate style. Can write complex letters, reports or articles which present a case with an effective logical structure.",
-    speaking: "Can take part effortlessly in any conversation or discussion and have a good familiarity with idiomatic expressions and colloquialisms.",
-  },
+const SKILL_TO_DOMAIN: Record<string, SkillDomain> = {
+  READING: "reading", LISTENING: "listening", WRITING: "writing", SPEAKING: "speaking",
 };
 
 function CanDoDescriptors({ overallBand, skills }: { overallBand: string; skills: SkillResult[] }) {
-  const desc = CEFR_CAN_DO[overallBand];
-  if (!desc) return null;
+  const level = overallBand as CefrLevel;
+  const overallDescriptors = getCanDo(level);
+  if (overallDescriptors.length === 0) return null;
 
-  const skillDescMap: Record<string, keyof typeof desc> = {
-    READING: "reading", LISTENING: "listening", WRITING: "writing", SPEAKING: "speaking",
-  };
+  // Aggregate a brief overall summary from the first descriptor of each domain
+  const overallSummary = overallDescriptors[0]?.descriptors[0] ?? "";
 
   return (
     <Card padding="md" shadow="sm" style={{ marginTop: 16 }}>
@@ -322,14 +290,16 @@ function CanDoDescriptors({ overallBand, skills }: { overallBand: string; skills
         What you can do at {overallBand}
       </h3>
       <p style={{ fontSize: "0.8125rem", color: "var(--text-secondary)", lineHeight: 1.6, margin: "0 0 12px", fontStyle: "italic" }}>
-        {desc.overall}
+        {overallSummary}
       </p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
         {skills
-          .filter((s) => skillDescMap[s.skill])
+          .filter((s) => SKILL_TO_DOMAIN[s.skill])
           .map((s) => {
-            const key = skillDescMap[s.skill];
-            const skillDesc = CEFR_CAN_DO[s.cefrBand]?.[key] ?? desc[key];
+            const domain = SKILL_TO_DOMAIN[s.skill];
+            const skillLevel = s.cefrBand as CefrLevel;
+            const descriptors = getCanDo(skillLevel, domain);
+            const bullets = descriptors[0]?.descriptors ?? [];
             return (
               <div
                 key={s.skill}
@@ -338,12 +308,16 @@ function CanDoDescriptors({ overallBand, skills }: { overallBand: string; skills
                   background: "var(--bg-subtle)", border: "1px solid var(--border)",
                 }}
               >
-                <p style={{ fontSize: "0.6875rem", fontWeight: 700, color: "var(--text-muted)", margin: "0 0 4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                <p style={{ fontSize: "0.6875rem", fontWeight: 700, color: "var(--text-muted)", margin: "0 0 6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                   {SKILL_LABELS[s.skill]} · {s.cefrBand}
                 </p>
-                <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>
-                  {skillDesc}
-                </p>
+                <ul style={{ margin: 0, padding: "0 0 0 14px", listStyle: "disc" }}>
+                  {bullets.map((bullet, i) => (
+                    <li key={i} style={{ fontSize: "0.75rem", color: "var(--text-secondary)", lineHeight: 1.55, marginBottom: i < bullets.length - 1 ? 4 : 0 }}>
+                      {bullet}
+                    </li>
+                  ))}
+                </ul>
               </div>
             );
           })}
