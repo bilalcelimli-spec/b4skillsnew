@@ -236,10 +236,11 @@ async function startServer() {
         try {
           const profile = await prisma.user.findUnique({
             where: { id: decoded.userId },
-            select: { role: true, organizationId: true },
+            select: { role: true, organizationId: true, email: true },
           });
           if (profile) {
             baseUser.role = profile.role;
+            if (profile.email) baseUser.email = profile.email;
             if (profile.organizationId) baseUser.organizationId = profile.organizationId;
           }
         } catch { /* non-fatal: role may be undefined */ }
@@ -1318,27 +1319,37 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       // with remaining credits, or (c) a completed individual payment.
       // Admins and staff roles bypass this check.
       if (dbAvailable && req.user?.role === "CANDIDATE") {
-        const userEmail = req.user.email as string;
+        const userEmail = req.user.email as string | undefined;
         const userOrgId = req.user.organizationId as string | undefined;
 
-        const [claimedCode, orgLicense, payment] = await Promise.all([
-          // (a) exam code redeemed by this email
-          prisma.examCode.findFirst({ where: { usedByEmail: userEmail, isUsed: true } }),
-          // (b) org has a non-expired license with credits
-          userOrgId ? prisma.license.findFirst({
-            where: {
-              organizationId: userOrgId,
-              credits: { gt: 0 },
-              OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
-            },
-          }) : Promise.resolve(null),
-          // (c) individual Stripe purchase completed
-          prisma.paymentTransaction.findFirst({
-            where: { userId: req.user.id, status: "COMPLETED" },
-          }),
-        ]);
+        // Gate failure (e.g. DB issue) is fail-closed: deny with 403 rather than
+        // letting a bad state through to AssessmentService.
+        let gateAllowed = false;
+        try {
+          if (!userEmail) throw new Error("email missing from user context");
+          const [claimedCode, orgLicense, payment] = await Promise.all([
+            // (a) exam code redeemed by this email
+            prisma.examCode.findFirst({ where: { usedByEmail: userEmail, isUsed: true } }),
+            // (b) org has a non-expired license with credits
+            userOrgId ? prisma.license.findFirst({
+              where: {
+                organizationId: userOrgId,
+                credits: { gt: 0 },
+                OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+              },
+            }) : Promise.resolve(null),
+            // (c) individual Stripe purchase completed
+            prisma.paymentTransaction.findFirst({
+              where: { userId: req.user.id, status: "COMPLETED" },
+            }),
+          ]);
+          gateAllowed = !!(claimedCode || orgLicense || payment);
+        } catch (gateErr) {
+          console.error("[sessions/launch] access gate error:", gateErr);
+          gateAllowed = false;
+        }
 
-        if (!claimedCode && !orgLicense && !payment) {
+        if (!gateAllowed) {
           return res.status(403).json({
             error: "exam_code_required",
             message: "A valid exam code is required to start an assessment.",
