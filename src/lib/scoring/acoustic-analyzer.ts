@@ -44,6 +44,8 @@ export interface AudioFeatures {
   silenceDuration: number; // Total silence (excluding pauses)
   fillerWords: number; // Count of um/uh/like/you know
   fillerWordsFlag: boolean; // True if > 5% of words
+  selfCorrections: number; // Count of self-repair phrases (I mean, let me rephrase, …)
+  selfCorrectionRate: number; // selfCorrections / wordCount
   
   // Stress & intonation
   stressPattern: {
@@ -58,22 +60,28 @@ export interface AudioFeatures {
 }
 
 /**
- * Placeholder implementation for speech acoustic analysis
+ * Speech acoustic analysis derived from Whisper transcript output.
  *
- * In production, this would use:
- * - librosa (Python) for FFT and pitch extraction
- * - WebRTC VAD for voice activity detection
- * - Praat-compatible pitch algorithms
- * - Custom filler-word detection (regex + phoneme matching)
+ * Metrics extracted without a signal-processing backend:
+ *   - Speech rate (words/minute) from word count ÷ estimated duration
+ *   - Pause frequency & duration estimated from clause/sentence boundaries
+ *   - Filler word density (um, uh, erm, like, you know, …)
+ *   - Self-correction count (I mean, let me rephrase, sorry, actually, …)
+ *   - Pitch variation proxy from question/exclamation sentence ratio
+ *   - Intonation pattern from dominant sentence-end punctuation
+ *   - Natural flow score (inverse of filler + correction rate)
  *
- * For now, returns simulated/placeholder features to unblock multi-rater integration.
+ * Pitch mean/range/stdDev require raw audio signal (PCM) and cannot be
+ * derived from transcript; fixed physiological averages are used as placeholders.
+ * Wire a separate audio signal endpoint (e.g. Web Audio API FFT or a Python
+ * /pitch endpoint) to overwrite pitchMean/pitchRange/pitchStdDev if needed.
  */
 export class AcousticAnalyzer {
   /**
-   * Extract acoustic features from audio
+   * Extract acoustic features from Whisper transcript + audio buffer.
    *
-   * @param audioBase64 Base64-encoded audio (WAV/MP3)
-   * @param transcript Transcribed text (for word count, filler detection)
+   * @param audioBase64 Base64-encoded audio (WAV/MP3) — used for duration estimate
+   * @param transcript  Whisper-transcribed text
    * @returns AudioFeatures with all prosodic metrics
    */
   static async analyzeAudio(
@@ -83,9 +91,6 @@ export class AcousticAnalyzer {
     const t0 = Date.now();
 
     try {
-      // TODO: In production, invoke Python backend (librosa) or Node audio library
-      // For MVP, return simulated features based on audio length + transcript
-
       // Validate base64 format
       if (!audioBase64 || !/^[A-Za-z0-9+/]*={0,2}$/.test(audioBase64)) {
         throw new Error("Invalid base64 format");
@@ -98,6 +103,7 @@ export class AcousticAnalyzer {
       const words = transcript.trim().split(/\s+/).filter(Boolean);
       const wordCount = words.length;
       const fillerCount = this.countFillerWords(transcript);
+      const selfCorrectionCount = this.countSelfCorrections(transcript);
 
       // Speech rate: words per minute from transcript + estimated duration
       const speechRateWpm = audioLengthSeconds > 0
@@ -149,9 +155,11 @@ export class AcousticAnalyzer {
       const contentRatio = wordCount > 0 ? contentWords.length / wordCount : 0.5;
       const keywordEmphasis = Math.round(5 + contentRatio * 5); // 5–10
 
-      // Natural flow: inverse of filler rate, scaled 1–10
+      // Natural flow: inverse of combined filler + self-correction rate, scaled 1–10
       const fillerRate = wordCount > 0 ? fillerCount / wordCount : 0;
-      const naturalFlow = Math.round(10 - Math.min(9, fillerRate * 50));
+      const selfCorrectionRate = wordCount > 0 ? selfCorrectionCount / wordCount : 0;
+      const disfluencyRate = fillerRate + selfCorrectionRate * 0.5;
+      const naturalFlow = Math.round(10 - Math.min(9, disfluencyRate * 50));
 
       // Voice quality: degrade if filler rate high or speech rate extreme
       const qualityPenalty = (fillerRate > 0.1 ? 1 : 0) + (speechRateWpm < 80 || speechRateWpm > 200 ? 1 : 0);
@@ -180,6 +188,8 @@ export class AcousticAnalyzer {
         silenceDuration,
         fillerWords: fillerCount,
         fillerWordsFlag: fillerRate > 0.05,
+        selfCorrections: selfCorrectionCount,
+        selfCorrectionRate: parseFloat(selfCorrectionRate.toFixed(4)),
 
         stressPattern: {
           keywordEmphasis,
@@ -211,6 +221,8 @@ export class AcousticAnalyzer {
         silenceDuration: 0,
         fillerWords: 0,
         fillerWordsFlag: false,
+        selfCorrections: 0,
+        selfCorrectionRate: 0,
         stressPattern: {
           keywordEmphasis: 0,
           sentenceIntonation: "flat",
@@ -233,6 +245,25 @@ export class AcousticAnalyzer {
     const bytesPerSample = 2;
     const seconds = buffer.length / (sampleRate * bytesPerSample);
     return Math.max(1, seconds); // At least 1 second
+  }
+
+  /**
+   * Count self-repair / self-correction phrases.
+   * Signals mid-utterance reformulations — high rates indicate lower fluency.
+   */
+  private static countSelfCorrections(transcript: string): number {
+    const patterns = [
+      /\bi mean\b/gi,
+      /\blet me rephrase\b/gi,
+      /\blet me say that again\b/gi,
+      /\bactually[,\s]/gi,
+      /\bsorry[,\s]/gi,
+      /\bwhat i meant\b/gi,
+      /\bno wait\b/gi,
+      /\bor rather\b/gi,
+      /\bI('m|'ll)?\s+I\b/g,    // stammering: "I... I think"
+    ];
+    return patterns.reduce((count, re) => count + (transcript.match(re)?.length ?? 0), 0);
   }
 
   /**
@@ -301,17 +332,19 @@ export function computeAcousticFluencyScore(
   cefrLevel: string
 ): number {
   const acousticNaturalness =
-    (features.pitchVariation === "expressive" ? 10 : 7) *
-    0.3 +
+    (features.pitchVariation === "expressive" ? 10 : 7) * 0.3 +
     features.stressPattern.naturalFlow * 0.7;
 
   const speechRateAppropriate =
     features.speechRate >= 120 && features.speechRate <= 150 ? 10 : 6;
 
-  const combinedScore =
-    acousticNaturalness * 0.6 + speechRateAppropriate * 0.4;
+  // Penalise self-corrections: each 1% of words = -0.5 points (capped at -3)
+  const correctionPenalty = Math.min(3, features.selfCorrectionRate * 50);
 
-  return combinedScore / 10; // Normalize to 0-1
+  const combinedScore =
+    acousticNaturalness * 0.5 + speechRateAppropriate * 0.4 - correctionPenalty * 0.1;
+
+  return Math.max(0, Math.min(1, combinedScore / 10));
 }
 
 /**

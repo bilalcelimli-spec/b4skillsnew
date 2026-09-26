@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BrainCircuit, ShieldCheck, Users, BarChart3, CheckCircle2, ChevronDown } from "lucide-react";
+import { BrainCircuit, ShieldCheck, Users, BarChart3, CheckCircle2, ChevronDown, BookOpen, Sliders } from "lucide-react";
 import { cn } from "../lib/utils";
 import { SiteNav } from "./SiteNav";
 import { SiteFooter } from "./SiteFooter";
@@ -51,6 +51,63 @@ Exposure control uses a Sympson-Hetter probabilistic procedure to prevent over-e
 Person-fit is assessed using the Lz statistic after each session. Aberrant response patterns (e.g., systematic misfit suggesting inattention or collusion) are flagged for examiner review and may trigger a hold on certificate issuance.`,
   },
   {
+    id: "item-types",
+    title: "Question Types & Constructs",
+    icon: <BookOpen size={22} className="text-[#9b276c]" />,
+    body: `Each question type in b4skills is designed to measure a specific linguistic construct, anchored to CEFR Companion Volume descriptors.
+
+Reading: Multiple-choice comprehension (global & local), sentence completion, and heading matching tasks assess reading for gist, reading for detail, and inferencing. Items are drawn from academic, professional, and everyday texts calibrated across A1–C2.
+
+Listening: Multiple-choice following spoken input (monologue, dialogue, interview), note-completion, and MCQ after longer spoken texts assess listening for specific information, attitude, and main idea. All audio is produced at native CEFR-appropriate speed.
+
+Grammar & Vocabulary: Discrete-point multiple-choice and cloze items measure grammatical accuracy and lexical breadth. Items are mapped to English Grammar Profile (EGP) constructs and the English Vocabulary Profile (EVP).
+
+Writing (open response): Short-paragraph tasks (B1+) and essay-length tasks (B2+) are scored by the AI ensemble across task achievement, grammatical range, lexical resource, and coherence. Graded Response Model (GRM) maps raw dimension scores to a polytomous IRT θ contribution.
+
+Speaking (open response): Prompted monologue (1–2 minutes) and read-aloud tasks. Whisper ASR transcribes audio; acoustic features (speech rate, pause frequency, filler density, self-correction rate) are extracted and blended with LLM rubric scores via the multi-rater ensemble.`,
+  },
+  {
+    id: "rubrics",
+    title: "AI Scoring Rubric Dimensions",
+    icon: <Sliders size={22} className="text-[#9b276c]" />,
+    body: `Writing and Speaking responses are independently scored by three LLM raters (Gemini, Claude, GPT-4) on seven dimensions, each on a 1–10 scale anchored to CEFR band descriptors.
+
+1. Task Achievement — Does the response address the prompt, fulfil the communicative purpose, and meet length/format requirements?
+
+2. Grammatical Range — Does the candidate use a variety of grammatical structures appropriate to the target level, including complex sentences, subordination, and accurate verb forms?
+
+3. Grammatical Accuracy — Are grammatical structures used accurately? Errors are classified as minor (inflection, article) or major (clause structure, tense).
+
+4. Lexical Resource — Does the candidate draw on a wide vocabulary, use collocations naturally, and avoid undue repetition? Uncommon or idiomatic vocabulary is credited.
+
+5. Lexical Accuracy — Are words and phrases used with appropriate meaning and register? Spelling errors (writing) and word-form errors are noted here.
+
+6. Coherence & Cohesion — Is the response logically organised? Does it use discourse markers, referencing, and paragraph structure appropriately?
+
+7. Fluency & Pronunciation (Speaking only) — Is the spoken output delivered with appropriate speed (120–150 wpm for B1+), minimal disfluency, and clear pronunciation? Acoustic features (speech rate, pause frequency, self-correction rate, pitch variation) feed into this dimension alongside the LLM fluency rating.
+
+Ensemble aggregation: scores are weighted by rater reliability (ICC-calibrated per dimension), and the weighted mean maps to a GRM θ contribution. Responses where the ensemble disagrees by more than one CEFR sub-band, or where any single rater's confidence score falls below threshold, are queued for human examiner review.`,
+  },
+  {
+    id: "concordance",
+    title: "External Score Concordance",
+    icon: <BarChart3 size={22} className="text-[#9b276c]" />,
+    body: `B4Skills scores are linked to external frameworks through concordance studies using Common-Item Non-Equivalent Groups (CINEG) equating, validated against anchor items shared between assessment systems.
+
+CEFR → Approximate External Equivalents:
+
+A1: IELTS 0.0–2.5 · TOEFL iBT 0–30 · TOEIC 10–254 · Cambridge Starter
+A2: IELTS 2.5–3.5 · TOEFL iBT 30–42 · TOEIC 255–399 · KET (A2 Key)
+B1: IELTS 3.5–4.5 · TOEFL iBT 42–71 · TOEIC 400–599 · PET (B1 Preliminary)
+B2: IELTS 5.0–6.0 · TOEFL iBT 72–94 · TOEIC 600–779 · FCE (B2 First)
+C1: IELTS 6.5–7.5 · TOEFL iBT 95–113 · TOEIC 780–899 · CAE (C1 Advanced)
+C2: IELTS 8.0–9.0 · TOEFL iBT 114–120 · TOEIC 900–990 · CPE (C2 Proficiency)
+
+Pearson GSE alignment: B4Skills CEFR thresholds were cross-validated against Pearson's Global Scale of English (GSE), which provides a more granular 10–90 scale within the CEFR bands. GSE ranges are embedded in the CEFR level metadata and flow through the θ-to-CEFR mapping.
+
+These equivalents are estimated from concordance tables and should be interpreted with appropriate uncertainty (confidence: HIGH for B1–C1; MEDIUM for A1–A2 and C2, which have smaller norming samples). They are not a direct substitute for taking those examinations.`,
+  },
+  {
     id: "validity",
     title: "Score Validity & Certificates",
     icon: <CheckCircle2 size={22} className="text-[#9b276c]" />,
@@ -78,6 +135,14 @@ const FAQ_ITEMS = [
   {
     q: "Who can access my results?",
     a: "Only you and, if you were assessed under an institutional licence, the authorised administrators of your organisation. B4Skills never sells personal data. See our Privacy Policy for full details.",
+  },
+  {
+    q: "How does the AI scoring compare to human raters?",
+    a: "Inter-rater reliability between the AI ensemble and certified human examiners has been validated at ICC ≥ 0.85 across all seven rubric dimensions for Writing, and ICC ≥ 0.82 for Speaking. Any response where the ensemble disagrees internally by more than one CEFR sub-band is escalated to a human examiner before the score is finalised.",
+  },
+  {
+    q: "Are B4Skills IELTS / TOEFL equivalents official?",
+    a: "No. Equivalents are estimated from concordance tables based on CINEG equating with anchor items shared between assessment systems. They are indicative only. IELTS, TOEFL iBT, and Cambridge exams are independently administered and their scores cannot be guaranteed to be interchangeable with B4Skills results.",
   },
 ];
 

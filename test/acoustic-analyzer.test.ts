@@ -250,6 +250,8 @@ describe("Acoustic Fluency Scoring", () => {
       },
       processingTime: 150,
       audioQuality: "good",
+      selfCorrections: 0,
+      selfCorrectionRate: 0,
     };
   });
 
@@ -324,6 +326,8 @@ describe("Audio Quality Flagging", () => {
       stressPattern: { keywordEmphasis: 2, sentenceIntonation: "flat", naturalFlow: 2 },
       processingTime: 100,
       audioQuality: "poor",
+      selfCorrections: 0,
+      selfCorrectionRate: 0,
     };
 
     const result = flagAudioQuality(poorAudio);
@@ -352,6 +356,8 @@ describe("Audio Quality Flagging", () => {
       stressPattern: { keywordEmphasis: 5, sentenceIntonation: "falling", naturalFlow: 5 },
       processingTime: 100,
       audioQuality: "good",
+      selfCorrections: 0,
+      selfCorrectionRate: 0,
     };
 
     const result = flagAudioQuality(shortAudio);
@@ -380,6 +386,8 @@ describe("Audio Quality Flagging", () => {
       stressPattern: { keywordEmphasis: 5, sentenceIntonation: "falling", naturalFlow: 5 },
       processingTime: 100,
       audioQuality: "good",
+      selfCorrections: 0,
+      selfCorrectionRate: 0,
     };
 
     const result = flagAudioQuality(tooManyFillers);
@@ -408,6 +416,8 @@ describe("Audio Quality Flagging", () => {
       stressPattern: { keywordEmphasis: 7, sentenceIntonation: "varied", naturalFlow: 8 },
       processingTime: 150,
       audioQuality: "good",
+      selfCorrections: 0,
+      selfCorrectionRate: 0,
     };
 
     const result = flagAudioQuality(goodAudio);

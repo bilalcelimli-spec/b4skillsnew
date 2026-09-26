@@ -49,6 +49,8 @@ describe("AudioQualityAnalyzer", () => {
       },
       processingTime: 150,
       audioQuality: "good",
+      selfCorrections: 0,
+      selfCorrectionRate: 0,
     };
   });
 
@@ -300,6 +302,8 @@ describe("Quality Recommendations", () => {
       },
       processingTime: 150,
       audioQuality: "good",
+      selfCorrections: 0,
+      selfCorrectionRate: 0,
     };
   });
 

@@ -113,6 +113,8 @@ describe("Acoustic Analyzer Integration with Multi-Rater Ensemble", () => {
         },
         processingTime: 200,
         audioQuality: "poor",
+        selfCorrections: 0,
+        selfCorrectionRate: 0,
       };
 
       // Verify quality flagging would work
@@ -150,6 +152,8 @@ describe("Acoustic Analyzer Integration with Multi-Rater Ensemble", () => {
         },
         processingTime: 150,
         audioQuality: "good",
+        selfCorrections: 0,
+        selfCorrectionRate: 0,
       };
 
       const { flagAudioQuality } = await import("../src/lib/scoring/acoustic-analyzer.js");
@@ -201,6 +205,8 @@ describe("Acoustic Analyzer Integration with Multi-Rater Ensemble", () => {
         },
         processingTime: 150,
         audioQuality: "good",
+        selfCorrections: 0,
+        selfCorrectionRate: 0,
       };
 
       const flatFeatures: AudioFeatures = {
@@ -246,6 +252,8 @@ describe("Acoustic Analyzer Integration with Multi-Rater Ensemble", () => {
         },
         processingTime: 150,
         audioQuality: "good",
+        selfCorrections: 0,
+        selfCorrectionRate: 0,
       };
 
       const fastFeatures: AudioFeatures = { ...baseFeatures, speechRate: 180 };
@@ -319,6 +327,8 @@ describe("Acoustic Analyzer Integration with Multi-Rater Ensemble", () => {
         },
         processingTime: 200,
         audioQuality: "poor",
+        selfCorrections: 0,
+        selfCorrectionRate: 0,
       };
 
       const { flagAudioQuality } = await import("../src/lib/scoring/acoustic-analyzer.js");
@@ -425,6 +435,8 @@ describe("Acoustic Features in Response Database", () => {
       },
       processingTime: 150,
       audioQuality: "good",
+      selfCorrections: 0,
+      selfCorrectionRate: 0,
     };
 
     // Verify the structure can be serialized/stored
