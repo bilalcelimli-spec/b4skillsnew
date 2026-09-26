@@ -415,8 +415,25 @@ async function startServer() {
       });
       if (!user) return res.status(404).json({ error: 'User not found' });
       const wl = (req as any).whitelabelOrg ?? null;
+
+      // For CANDIDATE role, resolve allowedProductLine from their most recently
+      // redeemed exam code so the AssessmentModeSelector shows only the right mode.
+      let allowedProductLine: string | null = null;
+      if (user.role === "CANDIDATE" && dbAvailable) {
+        const claimed = await prisma.examCode.findFirst({
+          where: { usedByEmail: user.email, isUsed: true },
+          orderBy: { usedAt: "desc" },
+          select: { productLine: true },
+        });
+        allowedProductLine = claimed?.productLine ?? null;
+      }
+
       return res.json({
-        user: { uid: user.id, email: user.email, displayName: user.name, role: user.role, organizationId: user.organizationId || null },
+        user: {
+          uid: user.id, email: user.email, displayName: user.name,
+          role: user.role, organizationId: user.organizationId || null,
+          ...(allowedProductLine ? { allowedProductLine } : {}),
+        },
         whitelabelOrg: wl ? { id: wl.id, name: wl.name, slug: wl.slug } : null,
       });
     } catch (err: any) {
