@@ -209,7 +209,7 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
       const analytics = await res.json();
       setData(analytics);
     } catch (err) {
-      console.error("Failed to fetch analytics");
+      toast({ title: "Analytics unavailable", description: "Could not load cohort analytics. Please try again.", variant: "error" });
     } finally {
       setLoading(false);
     }

@@ -5,6 +5,7 @@ import { Label } from "./ui/Label";
 import { Star, Send, CheckCircle2, MessageSquare } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
+import { useToast } from "../hooks/useToast.js";
 
 interface FeedbackProps {
   sessionId: string;
@@ -13,6 +14,7 @@ interface FeedbackProps {
 }
 
 export const CandidateFeedback: React.FC<FeedbackProps> = ({ sessionId, orgId, onComplete }) => {
+  const { toast } = useToast();
   const [rating, setRating] = useState(0);
   const [hoveredRating, setHoveredRating] = useState(0);
   const [comment, setComment] = useState("");
@@ -24,16 +26,17 @@ export const CandidateFeedback: React.FC<FeedbackProps> = ({ sessionId, orgId, o
     if (rating === 0) return;
     setLoading(true);
     try {
-      await fetch(`/api/sessions/${sessionId}/feedback`, {
+      const res = await fetch(`/api/sessions/${sessionId}/feedback`, {
         credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rating, comment, category, organizationId: orgId })
       });
+      if (!res.ok) throw new Error("Server error");
       setSubmitted(true);
       setTimeout(() => onComplete?.(), 2000);
     } catch (err) {
-      console.error("Failed to submit feedback");
+      toast({ title: "Couldn't submit feedback", description: "Please check your connection and try again.", variant: "error" });
     } finally {
       setLoading(false);
     }

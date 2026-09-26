@@ -145,8 +145,9 @@ export const ItemBankManager: React.FC = () => {
         credentials: "include",
       });
       if (res.ok) fetchItems();
+      else toast({ title: "Delete failed", description: "Could not delete item. Please try again.", variant: "error" });
     } catch (err) {
-      console.error("Failed to delete item");
+      toast({ title: "Delete failed", description: "Network error. Please try again.", variant: "error" });
     }
   };
 
@@ -244,9 +245,11 @@ export const ItemBankManager: React.FC = () => {
         });
         setNewAsset({ type: "IMAGE", url: "" });
         fetchItems();
+      } else {
+        toast({ title: "Asset upload failed", description: "Could not add asset. Please try again.", variant: "error" });
       }
     } catch (err) {
-      console.error("Failed to add asset");
+      toast({ title: "Asset upload failed", description: "Network error. Please try again.", variant: "error" });
     }
   };
 
@@ -261,9 +264,11 @@ export const ItemBankManager: React.FC = () => {
           assets: editingItem.assets?.filter(a => a.id !== assetId)
         });
         fetchItems();
+      } else {
+        toast({ title: "Delete failed", description: "Could not delete asset.", variant: "error" });
       }
     } catch (err) {
-      console.error("Failed to delete asset");
+      toast({ title: "Delete failed", description: "Network error. Please try again.", variant: "error" });
     }
   };
 

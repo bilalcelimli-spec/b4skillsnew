@@ -1,4 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy } from "react";
+import { useToast } from "../hooks/useToast.js";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/Card";
 const ProgressTrendChart = lazy(() => import("./ProgressTrendChart").then(m => ({ default: m.ProgressTrendChart })));
 import { Button } from "./ui/Button";
@@ -19,6 +20,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 
 export const CandidateDashboard: React.FC<{ candidateId: string }> = ({ candidateId }) => {
+  const { toast } = useToast();
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -32,7 +34,7 @@ export const CandidateDashboard: React.FC<{ candidateId: string }> = ({ candidat
       const res = await fetch(`/api/candidates/${candidateId}/history`, { credentials: "include" });
       setSessions(await res.json());
     } catch (err) {
-      console.error("Failed to fetch candidate history");
+      toast({ title: "History unavailable", description: "Could not load assessment history. Please try again.", variant: "error" });
     } finally {
       setLoading(false);
     }
