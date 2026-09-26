@@ -568,6 +568,100 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
         </div>
       </section>
 
+      {/* ─── SAMPLE QUESTION / INTERACTIVE DEMO ─── */}
+      <section className="py-24 bg-white" id="try-sample">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-xs font-black uppercase tracking-widest text-[#9b276c] mb-3">Interactive Preview</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4 tracking-tight">
+              See an Adaptive Question in Action
+            </h2>
+            <p className="text-slate-600 max-w-xl mx-auto text-[17px] leading-relaxed">
+              The engine selects a new question based on your last answer — getting harder or easier in real time.
+            </p>
+          </div>
+
+          <div className="max-w-3xl mx-auto">
+            {/* Mock CAT question card */}
+            <div className="bg-slate-50 rounded-3xl border border-slate-200 overflow-hidden shadow-xl shadow-slate-200/50">
+              {/* Header bar */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#9b276c] text-white flex items-center justify-center text-sm font-black">Q</div>
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">Reading · Level B1</p>
+                    <p className="text-xs text-slate-600 font-semibold">Question 4 of 20–35</p>
+                  </div>
+                </div>
+                {/* CAT progress bar */}
+                <div className="flex flex-col items-end gap-1">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Estimated Level</p>
+                  <div className="flex items-center gap-2">
+                    {["A1","A2","B1","B2","C1","C2"].map((l) => (
+                      <span key={l} className={`text-[10px] font-black px-2 py-0.5 rounded-full ${l === "B1" ? "bg-[#9b276c] text-white" : "text-slate-400"}`}>{l}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Passage */}
+              <div className="px-6 pt-6">
+                <div className="bg-white rounded-xl border border-slate-100 p-5 text-sm text-slate-700 leading-relaxed shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Reading Passage</p>
+                  <p>
+                    The rapid growth of remote work has transformed how companies think about office space.
+                    Many organisations that once required employees to commute five days a week now operate
+                    with a flexible hybrid model, blending in-office collaboration with home-based productivity.
+                  </p>
+                </div>
+              </div>
+
+              {/* Question */}
+              <div className="px-6 pt-5 pb-6">
+                <p className="font-bold text-slate-900 mb-4 text-[15px]">
+                  According to the passage, what change have many organisations adopted?
+                </p>
+                <div className="space-y-3">
+                  {[
+                    { letter: "A", text: "Employees must work entirely from home permanently." },
+                    { letter: "B", text: "Companies have removed all office space to cut costs." },
+                    { letter: "C", text: "A hybrid model combining office and remote work is now common.", correct: true },
+                    { letter: "D", text: "Remote work productivity has declined significantly." },
+                  ].map(({ letter, text, correct }) => (
+                    <div
+                      key={letter}
+                      className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-default transition-all ${correct ? "border-[#9b276c] bg-[#9b276c]/5" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                    >
+                      <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${correct ? "bg-[#9b276c] text-white" : "bg-slate-100 text-slate-500"}`}>
+                        {letter}
+                      </span>
+                      <span className={`text-sm leading-snug ${correct ? "text-[#9b276c] font-semibold" : "text-slate-700"}`}>{text}</span>
+                      {correct && <Check size={16} className="text-[#9b276c] ml-auto shrink-0 mt-0.5" strokeWidth={3} />}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-4 font-medium text-center">
+                  ✓ Correct — the engine now targets B2 for your next question.
+                </p>
+              </div>
+            </div>
+
+            {/* CTA */}
+            <div className="text-center mt-8">
+              <button
+                onClick={() => setShowFreemiumTest(true)}
+                className="inline-flex items-center gap-3 bg-[#9b276c] hover:bg-[#7d1f57] text-white px-8 py-4 rounded-full text-base font-bold shadow-lg shadow-[#9b276c]/30 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#9b276c]/40"
+              >
+                <Zap size={18} />
+                Take the Full Adaptive Test — Free
+                <ArrowRight size={16} />
+              </button>
+              <p className="text-xs text-slate-400 font-medium mt-3">~25 min · No account needed · Full CEFR report</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ─── NEWS / CASE STUDIES SECTION ─── */}
       <section className="py-24 bg-[#FAFAFA]">
         <div className="max-w-7xl mx-auto px-6">
