@@ -288,11 +288,23 @@ export default function App() {
   }
 
   if (showCodeEntry) {
-    return <CodeEntryPage onBack={() => { setShowCodeEntry(false); setShowLanding(true); }} onSuccess={(productLine, orgId, email, candidateId, name) => {
-      setUser({ uid: candidateId, email, displayName: `${name}` } as any);
-      setUserProfile({ uid: candidateId, email, role: "CANDIDATE", organizationId: orgId, allowedProductLine: productLine });
-      setShowCodeEntry(false);
-    }} />;
+    return <CodeEntryPage
+      onBack={() => {
+        setShowCodeEntry(false);
+        // If already logged in, return to dashboard; otherwise go to landing
+        if (user) { /* stay in dashboard */ } else { setShowLanding(true); }
+      }}
+      onSuccess={(productLine, orgId, email, candidateId, name) => {
+        if (user) {
+          // Already logged in: just unlock access without overwriting the session
+          setUserProfile((prev: any) => ({ ...prev, allowedProductLine: productLine, organizationId: orgId }));
+        } else {
+          setUser({ uid: candidateId, email, displayName: `${name}` } as any);
+          setUserProfile({ uid: candidateId, email, role: "CANDIDATE", organizationId: orgId, allowedProductLine: productLine });
+        }
+        setShowCodeEntry(false);
+      }}
+    />;
   }
 
   if (!user && location.pathname === "/methodology") {
@@ -719,12 +731,33 @@ export default function App() {
                   </>
                 )}
 
-                <Suspense fallback={<div className="h-32 bg-slate-100 rounded-3xl animate-pulse" />}>
-                  <AssessmentModeSelector
-                    onSelect={(productLine) => startNewTest(productLine)}
-                    allowedProductLine={userProfile?.allowedProductLine}
-                  />
-                </Suspense>
+                {/* CANDIDATE without a code/org/payment → prompt for exam code */}
+                {profRole === "CANDIDATE" && !userProfile?.allowedProductLine && !userProfile?.organizationId ? (
+                  <div className="rounded-[32px] border-2 border-dashed border-indigo-200 bg-indigo-50/40 p-10 flex flex-col items-center gap-6 text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-indigo-100 flex items-center justify-center">
+                      <ShieldCheck size={32} className="text-indigo-500" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-slate-800 tracking-tight mb-2">Exam Code Required</h3>
+                      <p className="text-sm text-slate-500 font-medium max-w-xs">
+                        You need a valid exam code to access the assessment. Please enter the code you received.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => { setShowCodeEntry(true); }}
+                      className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg transition-all"
+                    >
+                      Enter Exam Code
+                    </button>
+                  </div>
+                ) : (
+                  <Suspense fallback={<div className="h-32 bg-slate-100 rounded-3xl animate-pulse" />}>
+                    <AssessmentModeSelector
+                      onSelect={(productLine) => startNewTest(productLine)}
+                      allowedProductLine={userProfile?.allowedProductLine}
+                    />
+                  </Suspense>
+                )}
 
                 <section>
                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Recent Activity</h3>

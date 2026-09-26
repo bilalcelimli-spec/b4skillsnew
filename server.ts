@@ -1295,6 +1295,39 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const { organizationId, productLine } = body;
       // Always derive candidateId from the JWT — ignore body.candidateId to prevent IDOR
       const candidateId = req.user?.id || "demo-user";
+
+      // ── Access gate for CANDIDATE role ─────────────────────────────────────
+      // A CANDIDATE must have one of: (a) redeemed exam code, (b) org License
+      // with remaining credits, or (c) a completed individual payment.
+      // Admins and staff roles bypass this check.
+      if (dbAvailable && req.user?.role === "CANDIDATE") {
+        const userEmail = req.user.email as string;
+        const userOrgId = req.user.organizationId as string | undefined;
+
+        const [claimedCode, orgLicense, payment] = await Promise.all([
+          // (a) exam code redeemed by this email
+          prisma.examCode.findFirst({ where: { usedByEmail: userEmail, isUsed: true } }),
+          // (b) org has a non-expired license with credits
+          userOrgId ? prisma.license.findFirst({
+            where: {
+              organizationId: userOrgId,
+              credits: { gt: 0 },
+              OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+            },
+          }) : Promise.resolve(null),
+          // (c) individual Stripe purchase completed
+          prisma.paymentTransaction.findFirst({
+            where: { userId: req.user.id, status: "COMPLETED" },
+          }),
+        ]);
+
+        if (!claimedCode && !orgLicense && !payment) {
+          return res.status(403).json({
+            error: "exam_code_required",
+            message: "A valid exam code is required to start an assessment.",
+          });
+        }
+      }
       let session;
       try {
         session = await AssessmentService.launchSession(
