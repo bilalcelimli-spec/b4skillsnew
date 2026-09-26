@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useToast } from "../../hooks/useToast.js";
 import { Card, CardHeader, CardContent } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Label } from "../ui/Label";
@@ -7,6 +8,7 @@ import { Activity, Copy, Check, Info } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 export const ExamCodeManager: React.FC<{ orgId?: string }> = ({ orgId }) => {
+  const { toast } = useToast();
   const [productLine, setProductLine] = useState("General English");
   const [count, setCount] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -15,7 +17,7 @@ export const ExamCodeManager: React.FC<{ orgId?: string }> = ({ orgId }) => {
 
   const handleGenerateCodes = async () => {
     if (!orgId) {
-      alert("No organization selected.");
+      toast({ title: "No organization", description: "No organization selected.", variant: "warning" });
       return;
     }
     try {
@@ -44,7 +46,7 @@ export const ExamCodeManager: React.FC<{ orgId?: string }> = ({ orgId }) => {
       setGeneratedCodes(formattedCodes);
     } catch (err: any) {
       console.error(err);
-      alert(`Failed to generate codes: ${err.message}`);
+      toast({ title: "Code generation failed", description: err.message, variant: "error" });
     } finally {
       setLoading(false);
     }

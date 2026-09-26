@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useToast } from "../hooks/useToast.js";
 import { Card, CardContent, CardHeader } from "./ui/Card";
 import { Button } from "./ui/Button";
 import {
@@ -60,6 +61,7 @@ const SKILL_FORMATS: Record<string, string[]> = {
 };
 
 export const ItemBankManager: React.FC = () => {
+  const { toast } = useToast();
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -195,7 +197,7 @@ export const ItemBankManager: React.FC = () => {
       setAudioReady(prev => ({ ...prev, [itemId]: data.audioUrl }));
       fetchItems();
     } catch (err: any) {
-      alert(`Audio generation failed: ${err.message}`);
+      toast({ title: "Audio generation failed", description: err.message, variant: "error" });
     } finally {
       setAudioGenerating(prev => ({ ...prev, [itemId]: false }));
     }
@@ -217,7 +219,7 @@ export const ItemBankManager: React.FC = () => {
       setVideoLinkInput(prev => ({ ...prev, [itemId]: "" }));
       fetchItems();
     } catch (err: any) {
-      alert(`Video link failed: ${err.message}`);
+      toast({ title: "Video link failed", description: err.message, variant: "error" });
     } finally {
       setVideoLinking(prev => ({ ...prev, [itemId]: false }));
     }

@@ -3,6 +3,7 @@
  * §98 Factory Command Center + §199 Content Inventory + Gap Matrix
  */
 import { useState, useEffect, useCallback } from "react";
+import { useToast } from "../../hooks/useToast.js";
 import {
   BarChart3, CheckCircle2, Clock, AlertTriangle, Layers,
   TrendingUp, FileText, ChevronDown, ChevronUp, RefreshCw,
@@ -166,6 +167,7 @@ function PipelineBar({ byPipeline, total }: { byPipeline: Record<string, number>
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function ContentFactoryDashboard() {
+  const { toast } = useToast();
   const [coverage, setCoverage] = useState<CoverageData | null>(null);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -640,11 +642,11 @@ export function ContentFactoryDashboard() {
         credentials: "include",
       });
                   const d = await r.json();
-                  alert(`Promoted ${d.promoted ?? 0} items to PILOT (PRETEST) status.`);
+                  toast({ title: "Pilot promotion complete", description: `Promoted ${d.promoted ?? 0} items to PILOT (PRETEST) status.`, variant: "success" });
                   setMonitorData(null);
                   setMonitorLoading(true);
                   fetch("/api/content/monitor", { credentials: "include" }).then((r) => r.json()).then(setMonitorData).finally(() => setMonitorLoading(false));
-                } catch { alert("Promotion failed"); }
+                } catch { toast({ title: "Promotion failed", variant: "error" }); }
                 finally { setPilotPromoting(false); }
               }}
               disabled={pilotPromoting}
@@ -661,11 +663,11 @@ export function ContentFactoryDashboard() {
         credentials: "include",
       });
                   const d = await r.json();
-                  alert(`Promoted ${d.promoted ?? 0} items to CALIBRATION stage.`);
+                  toast({ title: "Calibration promotion complete", description: `Promoted ${d.promoted ?? 0} items to CALIBRATION stage.`, variant: "success" });
                   setMonitorData(null);
                   setMonitorLoading(true);
                   fetch("/api/content/monitor", { credentials: "include" }).then((r) => r.json()).then(setMonitorData).finally(() => setMonitorLoading(false));
-                } catch { alert("Calibration promotion failed"); }
+                } catch { toast({ title: "Calibration promotion failed", variant: "error" }); }
                 finally { setCalPromoting(false); }
               }}
               disabled={calPromoting}

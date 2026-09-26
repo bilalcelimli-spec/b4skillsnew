@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useToast } from "../hooks/useToast.js";
 import { Card, CardContent, CardHeader } from "./ui/Card";
 import { Button } from "./ui/Button";
 import { 
@@ -38,6 +39,7 @@ interface PastTest {
 }
 
 export const CandidateProfile: React.FC<{ user: any; onLogout: () => void }> = ({ user, onLogout }) => {
+  const { toast } = useToast();
   const [pastTests, setPastTests] = useState<PastTest[]>([
     { id: "sess_1", date: "2026-03-15", cefr: "B1", score: 65, status: "COMPLETED" },
     { id: "sess_2", date: "2026-02-10", cefr: "A2+", score: 58, status: "COMPLETED" }
@@ -74,7 +76,7 @@ export const CandidateProfile: React.FC<{ user: any; onLogout: () => void }> = (
                 const data = await res.json();
                 if (data.url) window.location.href = data.url;
               } catch {
-                alert("Unable to start checkout. Please try again.");
+                toast({ title: "Checkout failed", description: "Unable to start checkout. Please try again.", variant: "error" });
               }
             }}
           >

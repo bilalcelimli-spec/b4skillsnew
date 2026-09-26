@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useToast } from "../hooks/useToast.js";
 import QRCode from "qrcode";
 import { Certificate } from "../lib/certification/certificate-service";
 import { Card, CardContent } from "./ui/Card";
@@ -20,6 +21,7 @@ interface CertificateViewProps {
 }
 
 export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, branding }) => {
+  const { toast } = useToast();
   const primaryColor = branding?.primaryColor || "#9b276c";
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
 
@@ -45,7 +47,7 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
       await navigator.share({ title: "My b4skills Certificate", url: verifyUrl }).catch(() => {});
     } else {
       await navigator.clipboard.writeText(verifyUrl).catch(() => {});
-      alert("Verification link copied to clipboard!");
+      toast({ title: "Link copied", description: "Verification link copied to clipboard!", variant: "success" });
     }
   };
 

@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useToast } from "../../hooks/useToast.js";
 
-async function downloadClassCsv(classId: string, className: string) {
+async function downloadClassCsv(classId: string, className: string, onError: (msg: string) => void) {
   const res = await fetch(`/api/teacher/classes/${classId}/export.csv`, { credentials: "include" });
-  if (!res.ok) { alert("Export failed. Please try again."); return; }
+  if (!res.ok) { onError("Export failed. Please try again."); return; }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -87,6 +88,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   organizationId,
   instructorId,
 }) => {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"students" | "classes" | "assignments">("students");
   const [summary, setSummary] = useState<CohortSummary | null>(null);
   const [students, setStudents] = useState<StudentRow[]>([]);
@@ -278,7 +280,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         setTimeout(() => setReportSent(null), 4000);
       } else {
         const d = await r.json();
-        alert(d.error ?? "Failed to send report");
+        toast({ title: "Report send failed", description: d.error ?? "Failed to send report", variant: "error" });
       }
     } finally {
       setSendingReport(null);
@@ -514,7 +516,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           {loadingReport === cls.id ? "Loading…" : "📊 Class Report"}
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); downloadClassCsv(cls.id, cls.name); }}
+                          onClick={(e) => { e.stopPropagation(); downloadClassCsv(cls.id, cls.name, (msg) => toast({ title: "Export failed", description: msg, variant: "error" })); }}
                           style={{ fontSize: "12px", color: "#4f46e5", border: "1px solid #e0e7ff", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}
                         >
                           ↓ Export CSV

@@ -4,6 +4,8 @@ import { BrowserRouter } from 'react-router-dom';
 import * as Sentry from '@sentry/react';
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ToastProvider } from './design-system/components';
+import { AppToastProvider } from './hooks/useToast';
 import './index.css';
 
 // Initialize Sentry for frontend error tracking.
@@ -57,7 +59,11 @@ const app = (
   <StrictMode>
     <BrowserRouter>
       <ErrorBoundary>
-        <App />
+        <ToastProvider>
+          <AppToastProvider>
+            <App />
+          </AppToastProvider>
+        </ToastProvider>
       </ErrorBoundary>
     </BrowserRouter>
   </StrictMode>

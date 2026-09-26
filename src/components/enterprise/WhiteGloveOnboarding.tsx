@@ -17,6 +17,7 @@
  */
 
 import React, { useCallback, useRef, useState } from "react";
+import { useToast } from "../../hooks/useToast.js";
 import { useTranslation } from "react-i18next";
 import { motion as m, AnimatePresence } from "../../design-system/motion.js";
 import { Button, Progress, Card, Badge, Separator } from "../../design-system/components.js";
@@ -176,12 +177,13 @@ function StepOrganisation({ data, onChange }: { data: OrgProfile; onChange: (d: 
 }
 
 function StepBranding({ data, onChange }: { data: BrandingConfig; onChange: (d: BrandingConfig) => void }) {
+  const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { alert("Logo must be < 2 MB"); return; }
+    if (file.size > 2 * 1024 * 1024) { toast({ title: "File too large", description: "Logo must be less than 2 MB.", variant: "error" }); return; }
     const url = URL.createObjectURL(file);
     onChange({ ...data, logoUrl: url });
   };
@@ -253,6 +255,7 @@ function StepBranding({ data, onChange }: { data: BrandingConfig; onChange: (d: 
 }
 
 function StepCandidates({ rows, onChange }: { rows: CandidateRow[]; onChange: (r: CandidateRow[]) => void }) {
+  const { toast } = useToast();
   const [dragOver, setDragOver] = useState(false);
 
   const parseCSV = (text: string) => {
@@ -266,7 +269,7 @@ function StepCandidates({ rows, onChange }: { rows: CandidateRow[]; onChange: (r
   };
 
   const handleFile = (file: File) => {
-    if (!file.name.endsWith(".csv")) { alert("Please upload a CSV file"); return; }
+    if (!file.name.endsWith(".csv")) { toast({ title: "Wrong file type", description: "Please upload a CSV file.", variant: "error" }); return; }
     const reader = new FileReader();
     reader.onload = (e) => parseCSV(e.target?.result as string);
     reader.readAsText(file);

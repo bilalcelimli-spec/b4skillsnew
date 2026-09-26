@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
+import { useToast } from "../hooks/useToast.js";
 import { Card, CardContent, CardHeader } from "./ui/Card";
 import { Button } from "./ui/Button";
 import {
@@ -57,6 +58,7 @@ interface AnalyticsData {
 }
 
 export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ organizationId }) => {
+  const { toast } = useToast();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<"analytics" | "benchmark" | "onboarding" | "ecosystem">("analytics");
@@ -121,7 +123,7 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
       setLastInviteCode(result.code);
       setInviteEmail(""); setInviteName("");
     } catch (err: any) {
-      alert(`Invite failed: ${err.message}`);
+      toast({ title: "Invite failed", description: err.message, variant: "error" });
     } finally {
       setInviteSending(false);
     }
@@ -137,14 +139,14 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
       const nameIdx = header.split(",").findIndex(h => h.trim() === "name");
       const emailIdx = header.split(",").findIndex(h => h.trim() === "email");
       if (nameIdx === -1 || emailIdx === -1) {
-        alert("CSV must have 'name' and 'email' columns in the first row.");
+        toast({ title: "Invalid CSV", description: "CSV must have 'name' and 'email' columns in the first row.", variant: "error" });
         return;
       }
       const candidates = lines.slice(1).map(line => {
         const cols = line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
         return { name: cols[nameIdx] ?? "", email: cols[emailIdx] ?? "" };
       }).filter(c => c.email.includes("@"));
-      if (!candidates.length) { alert("No valid rows found."); return; }
+      if (!candidates.length) { toast({ title: "No valid rows", description: "No valid rows found in CSV.", variant: "warning" }); return; }
       const res = await fetch(`/api/organizations/${organizationId}/candidates/bulk-import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -155,7 +157,7 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
       setOnboardingStatus(result);
       fetchAnalytics();
     } catch {
-      alert("CSV import failed. Please check the file format.");
+      toast({ title: "CSV import failed", description: "Please check the file format.", variant: "error" });
     } finally {
       setCsvImporting(false);
       if (csvInputRef.current) csvInputRef.current.value = "";
@@ -177,7 +179,7 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
       a.click();
       setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
     } catch {
-      alert("Export failed. Please try again.");
+      toast({ title: "Export failed", description: "Please try again.", variant: "error" });
     } finally {
       setExporting(false);
     }
@@ -236,10 +238,10 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
       if (result.settings) {
         setApiKey(result.settings.apiKey || "");
         setWebhookUrl(result.settings.webhookUrl || "");
-        alert("Ecosystem configuration updated successfully.");
+        toast({ title: "Configuration saved", description: "Ecosystem configuration updated successfully.", variant: "success" });
       }
     } catch (err) {
-      alert("Failed to update ecosystem configuration.");
+      toast({ title: "Update failed", description: "Failed to update ecosystem configuration.", variant: "error" });
     }
   };
 
@@ -256,7 +258,7 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
       setOnboardingStatus(results);
       fetchAnalytics();
     } catch (err) {
-      alert("Invalid JSON format for bulk onboarding.");
+      toast({ title: "Invalid JSON", description: "Please check the JSON format for bulk onboarding.", variant: "error" });
     }
   };
 

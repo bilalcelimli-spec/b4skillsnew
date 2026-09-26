@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useToast } from "../hooks/useToast.js";
 import { Button } from "./ui/Button";
 import { Mic, Square, Play, RotateCcw, Loader2, Volume2, CheckCircle2, AlertCircle, BrainCircuit } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -12,13 +13,14 @@ interface SpeakingRecorderProps {
   uploadStatus?: 'idle' | 'uploading' | 'analyzing' | 'success' | 'error';
 }
 
-export const SpeakingRecorder: React.FC<SpeakingRecorderProps> = ({ 
-  maxTime, 
-  onRecordingComplete, 
+export const SpeakingRecorder: React.FC<SpeakingRecorderProps> = ({
+  maxTime,
+  onRecordingComplete,
   isUploading,
   uploadProgress = 0,
   uploadStatus = 'idle'
 }) => {
+  const { toast } = useToast();
   const [isRecording, setIsRecording] = useState(false);
   const [timeLeft, setTimeLeft] = useState(maxTime);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -93,7 +95,7 @@ export const SpeakingRecorder: React.FC<SpeakingRecorderProps> = ({
       }, 1000);
     } catch (err) {
       console.error("Error accessing microphone:", err);
-      alert("Please allow microphone access to record your response.");
+      toast({ title: "Microphone access required", description: "Please allow microphone access to record your response.", variant: "error" });
     }
   };
 

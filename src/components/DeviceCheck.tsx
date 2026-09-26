@@ -9,10 +9,13 @@ interface DeviceCheckProps {
 
 export const DeviceCheck: React.FC<DeviceCheckProps> = ({ onComplete }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const rafRef = useRef<number | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string>("");
   const [micTested, setMicTested] = useState(false);
   const [cameraTested, setCameraTested] = useState(false);
+  const [micLevel, setMicLevel] = useState(0);
 
   useEffect(() => {
     const initDevices = async () => {
@@ -23,19 +26,39 @@ export const DeviceCheck: React.FC<DeviceCheckProps> = ({ onComplete }) => {
           videoRef.current.srcObject = str;
         }
         setCameraTested(true);
-        // Simple mic check mock
-        setTimeout(() => setMicTested(true), 1500); 
-      } catch (err: any) {
+
+        // Real mic level detection via Web Audio AnalyserNode
+        const ctx = new AudioContext();
+        audioCtxRef.current = ctx;
+        const source = ctx.createMediaStreamSource(str);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        const THRESHOLD = 10; // RMS level to consider "mic active"
+
+        const tick = () => {
+          analyser.getByteFrequencyData(buf);
+          const rms = Math.sqrt(buf.reduce((sum, v) => sum + v * v, 0) / buf.length);
+          setMicLevel(Math.min(100, Math.round(rms * 2)));
+          if (rms > THRESHOLD) {
+            setMicTested(true);
+            if (rafRef.current) cancelAnimationFrame(rafRef.current);
+            ctx.close();
+          } else {
+            rafRef.current = requestAnimationFrame(tick);
+          }
+        };
+        rafRef.current = requestAnimationFrame(tick);
+      } catch {
         setError("Camera and Microphone access is required. Please check your system permissions.");
       }
     };
     initDevices();
 
     return () => {
-      // Stream cleanup will happen when unmounting
-      if (stream) {
-        // Leave the stream running so CandidatePlayer can reuse permissions implicitly
-      }
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      audioCtxRef.current?.close();
     };
   }, []);
 
@@ -89,13 +112,21 @@ export const DeviceCheck: React.FC<DeviceCheckProps> = ({ onComplete }) => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
-                <div className={`p-3 rounded-full ${micTested ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'}`}>
+              <div className="flex items-start gap-4">
+                <div className={`p-3 rounded-full flex-shrink-0 ${micTested ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'}`}>
                   <Mic size={24} />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <h4 className="font-semibold text-slate-800">Microphone Check</h4>
-                  <p className="text-sm text-slate-500">{micTested ? "Audio input detected correctly" : "Testing audio levels..."}</p>
+                  <p className="text-sm text-slate-500">{micTested ? "Audio input detected correctly" : "Speak or make a sound…"}</p>
+                  {!micTested && (
+                    <div className="mt-2 h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-400 rounded-full transition-all duration-100"
+                        style={{ width: `${micLevel}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 

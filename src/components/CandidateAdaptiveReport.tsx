@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useToast } from "../hooks/useToast.js";
 import { motion } from "motion/react";
 import { RefreshCw, CheckCircle2, XCircle, ChevronRight, TrendingUp, BarChart2, ListChecks, Lightbulb, Printer, Share2, Check } from "lucide-react";
 import { getCanDo, thetaToBeps, type CanDoDescriptor } from "../lib/cefr/cefr-framework";
@@ -154,6 +155,7 @@ interface Props {
 }
 
 export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: Props) {
+  const { toast } = useToast();
   const [report, setReport] = useState<AdaptiveReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"overview" | "insights" | "items" | "trajectory" | "cando" | "growth">("overview");
@@ -196,7 +198,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
       setShareCopied(true);
       setTimeout(() => setShareCopied(false), 3000);
     } catch {
-      alert("Could not generate share link. Please try again.");
+      toast({ title: "Share failed", description: "Could not generate share link. Please try again.", variant: "error" });
     } finally {
       setShareLoading(false);
     }

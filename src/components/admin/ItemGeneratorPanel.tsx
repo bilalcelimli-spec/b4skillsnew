@@ -16,6 +16,7 @@
  */
 
 import React, { useState, useRef } from "react";
+import { useToast } from "../../hooks/useToast.js";
 import {
   Wand2, ChevronDown, CheckCircle2, AlertCircle, XCircle,
   BookOpen, Mic, PenTool, Headphones, MessageSquare, Eye,
@@ -480,6 +481,7 @@ const ItemCard: React.FC<{
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ItemGeneratorPanel: React.FC = () => {
+  const { toast } = useToast();
   const [spec, setSpec] = useState<ItemSpec>({
     skill: "READING",
     level: "B1",
@@ -558,7 +560,7 @@ export const ItemGeneratorPanel: React.FC = () => {
         return { ...prev, items };
       });
     } catch (err) {
-      alert(`Failed to save item: ${String(err)}`);
+      toast({ title: "Save failed", description: String(err), variant: "error" });
     } finally {
       setSavingIndex(null);
     }

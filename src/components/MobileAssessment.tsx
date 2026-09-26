@@ -13,6 +13,7 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useMobileDetect } from "../hooks/useMobileDetect";
+import { useToast } from "../hooks/useToast.js";
 import { motion, AnimatePresence } from "motion/react";
 import { Mic, ChevronRight, CheckCircle, WifiOff, Volume2, RotateCcw } from "lucide-react";
 
@@ -123,6 +124,7 @@ const SKILL_COLORS: Record<string, string> = {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function MobileAssessment({ sessionId, onComplete, organizationId, enableSpeaking = true }: MobileAssessmentProps) {
+  const { toast } = useToast();
   const mobile = useMobileDetect();
   const { isOnline, submitResponse } = useOfflineQueue();
 
@@ -228,7 +230,7 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
       const msg = err?.name === "NotAllowedError"
         ? "Microphone access was denied. Please allow microphone access to record your response."
         : "Could not access microphone. Please check your device settings.";
-      alert(msg);
+      toast({ title: "Microphone unavailable", description: msg, variant: "error" });
       return;
     }
     const mimeType = getBestMimeType();

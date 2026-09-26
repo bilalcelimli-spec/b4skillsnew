@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useToast } from "../../hooks/useToast.js";
 import { Item } from "../../lib/assessment-engine/types";
 import { Card, CardContent, CardHeader } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -6,6 +7,7 @@ import { ItemRenderer } from "../ItemRenderer";
 import { CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, Filter, Sparkles, Send } from "lucide-react";
 
 export const ContentReviewDashboard = () => {
+  const { toast } = useToast();
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -121,7 +123,7 @@ export const ContentReviewDashboard = () => {
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to edit item via AI.");
+      toast({ title: "AI edit failed", description: "Failed to edit item via AI.", variant: "error" });
     } finally {
       setIsAiEditing(false);
     }
