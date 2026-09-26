@@ -105,8 +105,7 @@ export default defineConfig(({ isSsrBuild }) => {
         output: {
           // Manual chunk splitting — keeps vendor code separate for long-term caching
           manualChunks(id: string) {
-            if (id.includes("node_modules/react") || id.includes("node_modules/react-dom") || id.includes("node_modules/recharts")) return "react";
-            if (id.includes("node_modules/@radix-ui"))      return "radix";
+            if (id.includes("node_modules/react") || id.includes("node_modules/react-dom") || id.includes("node_modules/@radix-ui") || id.includes("node_modules/recharts")) return "react";
             if (id.includes("node_modules/motion"))          return "motion";
             if (id.includes("node_modules/i18next"))         return "i18n";
             if (id.includes("node_modules/prisma") || id.includes("node_modules/@prisma")) return "prisma";
