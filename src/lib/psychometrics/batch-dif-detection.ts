@@ -207,6 +207,7 @@ export class BatchDifDetectionService {
                   select: {
                     gender: true,
                     nativeLanguage: true,
+                    ageGroup: true,
                   },
                 },
               },
@@ -236,8 +237,14 @@ export class BatchDifDetectionService {
     );
     allResults.push(...l1Results);
 
-    // Note: ageGroup would require additional data in CandidateProfile
-    // TODO: Implement after CandidateProfile migration
+    // Analyze by Age Group
+    const ageResults = await this.analyzeByVariable(
+      itemId,
+      responses,
+      "ageGroup",
+      (r) => r.session.candidate.candidateProfile?.ageGroup || "Unknown"
+    );
+    allResults.push(...ageResults);
 
     return allResults;
   }
@@ -256,7 +263,7 @@ export class BatchDifDetectionService {
     responses: Array<{
       isCorrect: boolean | null;
       score: number | null;
-      session: { candidate: { candidateProfile: { gender: string | null; nativeLanguage: string | null } | null } };
+      session: { candidate: { candidateProfile: { gender: string | null; nativeLanguage: string | null; ageGroup: string | null } | null } };
     }>,
     variable: "gender" | "nativeLanguage" | "ageGroup",
     groupExtractor: (r: (typeof responses)[0]) => string

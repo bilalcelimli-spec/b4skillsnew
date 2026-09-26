@@ -3,8 +3,74 @@ import { motion, AnimatePresence } from "motion/react";
 import { FreemiumTestWidget } from "./FreemiumTestWidget";
 import { SiteNav } from "./SiteNav";
 import { SiteFooter } from "./SiteFooter";
-import { Check, ChevronRight, BrainCircuit, Target, Lightbulb, FileCheck2, Activity, Brain, BarChart, Zap, ArrowRight, Quote, ShieldCheck } from "lucide-react";
+import { Check, ChevronRight, BrainCircuit, Target, Lightbulb, FileCheck2, Activity, Brain, BarChart, Zap, ArrowRight, Quote, ShieldCheck, BookOpen, Headphones, AlignLeft } from "lucide-react";
 import { cn } from "../lib/utils";
+
+// ── Sample question data per skill ───────────────────────────────────────────
+
+type DemoSkill = "reading" | "listening" | "grammar";
+
+interface DemoOption { letter: string; text: string; correct?: true }
+interface DemoQuestion {
+  skill: DemoSkill;
+  cefrBand: string;
+  questionNum: number;
+  context?: string;        // passage or audio transcript
+  contextLabel?: string;
+  question: string;
+  options: DemoOption[];
+  explanation: string;     // shown after answering
+  nextBand: string;        // CEFR level shown after correct
+}
+
+const DEMO_QUESTIONS: Record<DemoSkill, DemoQuestion> = {
+  reading: {
+    skill: "reading", cefrBand: "B1", questionNum: 4,
+    contextLabel: "Reading Passage",
+    context: "The rapid growth of remote work has transformed how companies think about office space. Many organisations that once required employees to commute five days a week now operate with a flexible hybrid model, blending in-office collaboration with home-based productivity.",
+    question: "According to the passage, what change have many organisations adopted?",
+    options: [
+      { letter: "A", text: "Employees must work entirely from home permanently." },
+      { letter: "B", text: "Companies have removed all office space to cut costs." },
+      { letter: "C", text: "A hybrid model combining office and remote work is now common.", correct: true },
+      { letter: "D", text: "Remote work productivity has declined significantly." },
+    ],
+    explanation: "Correct! The passage explicitly states a 'flexible hybrid model, blending in-office collaboration with home-based productivity'.",
+    nextBand: "B2",
+  },
+  listening: {
+    skill: "listening", cefrBand: "B2", questionNum: 7,
+    contextLabel: "Audio Transcript (simulated)",
+    context: "…and so the committee concluded that while the initial projections were optimistic, the long-term viability of the project depended entirely on securing a second round of investment before the end of Q3.",
+    question: "What is the committee's main concern about the project?",
+    options: [
+      { letter: "A", text: "The project has already failed and cannot be rescued." },
+      { letter: "B", text: "The initial cost estimates were too conservative." },
+      { letter: "C", text: "Future funding must be secured for the project to continue.", correct: true },
+      { letter: "D", text: "The Q3 deadline has already passed without action." },
+    ],
+    explanation: "Correct! The transcript says viability 'depended entirely on securing a second round of investment' — future funding is the key concern.",
+    nextBand: "C1",
+  },
+  grammar: {
+    skill: "grammar", cefrBand: "B1", questionNum: 3,
+    question: "Choose the sentence that uses the present perfect correctly.",
+    options: [
+      { letter: "A", text: "She has gone to Paris last summer." },
+      { letter: "B", text: "She has been to Paris three times.", correct: true },
+      { letter: "C", text: "She have been to Paris three times." },
+      { letter: "D", text: "She did gone to Paris three times." },
+    ],
+    explanation: "Correct! The present perfect with a frequency adverb ('three times') and no past time reference is the standard B1 pattern.",
+    nextBand: "B2",
+  },
+};
+
+const SKILL_META: Record<DemoSkill, { label: string; icon: React.ReactNode; color: string }> = {
+  reading:   { label: "Try Reading",   icon: <BookOpen size={15} />,   color: "bg-blue-600" },
+  listening: { label: "Try Listening", icon: <Headphones size={15} />, color: "bg-violet-600" },
+  grammar:   { label: "Try Grammar",   icon: <AlignLeft size={15} />,  color: "bg-emerald-600" },
+};
 
 // Marker highlight component
 const Highlight = ({ children, className }: { children: React.ReactNode, className?: string }) => (
@@ -13,6 +79,197 @@ const Highlight = ({ children, className }: { children: React.ReactNode, classNa
     <span className="relative z-10 text-white">{children}</span>
   </span>
 );
+
+// ── Interactive Sample Question Demo ─────────────────────────────────────────
+
+const SampleQuestionDemo: React.FC<{ onStartFullTest: () => void }> = ({ onStartFullTest }) => {
+  const [activeSkill, setActiveSkill] = useState<DemoSkill>("reading");
+  const [selected, setSelected] = useState<string | null>(null);
+  const [answered, setAnswered] = useState(false);
+
+  const q = DEMO_QUESTIONS[activeSkill];
+  const meta = SKILL_META[activeSkill];
+
+  const handleSkillChange = (skill: DemoSkill) => {
+    setActiveSkill(skill);
+    setSelected(null);
+    setAnswered(false);
+  };
+
+  const handleSelect = (letter: string) => {
+    if (answered) return;
+    setSelected(letter);
+    setAnswered(true);
+  };
+
+  const correctLetter = q.options.find(o => o.correct)?.letter ?? "";
+  const isCorrect = selected === correctLetter;
+
+  return (
+    <section className="py-24 bg-white" id="try-sample">
+      <div className="max-w-7xl mx-auto px-6">
+        {/* Section header */}
+        <div className="text-center mb-10">
+          <p className="text-xs font-black uppercase tracking-widest text-[#9b276c] mb-3">Interactive Preview</p>
+          <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4 tracking-tight">
+            Try a Real Adaptive Question
+          </h2>
+          <p className="text-slate-600 max-w-xl mx-auto text-[17px] leading-relaxed">
+            Select a skill below, answer the question, and see how the engine responds.
+          </p>
+        </div>
+
+        {/* Skill tab pills */}
+        <div className="flex justify-center gap-3 mb-8 flex-wrap">
+          {(Object.keys(SKILL_META) as DemoSkill[]).map((skill) => {
+            const m = SKILL_META[skill];
+            const active = skill === activeSkill;
+            return (
+              <button
+                key={skill}
+                onClick={() => handleSkillChange(skill)}
+                className={cn(
+                  "inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all border-2",
+                  active
+                    ? `${m.color} text-white border-transparent shadow-md`
+                    : "border-slate-200 text-slate-600 bg-white hover:border-slate-300 hover:bg-slate-50"
+                )}
+              >
+                {m.icon}
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Question card */}
+        <div className="max-w-3xl mx-auto">
+          <div className="bg-slate-50 rounded-3xl border border-slate-200 overflow-hidden shadow-xl shadow-slate-200/50">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[#9b276c] text-white flex items-center justify-center text-sm font-black">Q</div>
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+                    {activeSkill.charAt(0).toUpperCase() + activeSkill.slice(1)} · Level {q.cefrBand}
+                  </p>
+                  <p className="text-xs text-slate-600 font-semibold">Question {q.questionNum} of 20–35</p>
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Estimated Level</p>
+                <div className="flex items-center gap-1.5">
+                  {["A1","A2","B1","B2","C1","C2"].map((l) => (
+                    <span
+                      key={l}
+                      className={cn(
+                        "text-[10px] font-black px-2 py-0.5 rounded-full transition-all",
+                        answered && l === q.nextBand
+                          ? "bg-emerald-500 text-white scale-110"
+                          : l === q.cefrBand && !answered
+                          ? "bg-[#9b276c] text-white"
+                          : "text-slate-400"
+                      )}
+                    >
+                      {l}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Context / passage (if present) */}
+            {q.context && (
+              <div className="px-6 pt-6">
+                <div className="bg-white rounded-xl border border-slate-100 p-5 text-sm text-slate-700 leading-relaxed shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">{q.contextLabel}</p>
+                  <p>{q.context}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Question and options */}
+            <div className="px-6 pt-5 pb-6">
+              <p className="font-bold text-slate-900 mb-4 text-[15px]">{q.question}</p>
+              <div className="space-y-3">
+                {q.options.map((opt) => {
+                  const isSelected = selected === opt.letter;
+                  const isRight = opt.correct === true;
+                  let style = "border-slate-200 bg-white hover:border-slate-300 cursor-pointer";
+                  if (answered) {
+                    if (isRight) style = "border-emerald-500 bg-emerald-50 cursor-default";
+                    else if (isSelected && !isRight) style = "border-red-400 bg-red-50 cursor-default";
+                    else style = "border-slate-200 bg-white opacity-60 cursor-default";
+                  } else if (isSelected) {
+                    style = "border-[#9b276c] bg-[#9b276c]/5 cursor-pointer";
+                  }
+                  return (
+                    <div
+                      key={opt.letter}
+                      onClick={() => handleSelect(opt.letter)}
+                      className={cn("flex items-start gap-3 p-4 rounded-xl border-2 transition-all", style)}
+                    >
+                      <span className={cn(
+                        "w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shrink-0",
+                        answered && isRight ? "bg-emerald-500 text-white" :
+                        answered && isSelected && !isRight ? "bg-red-400 text-white" :
+                        isSelected ? "bg-[#9b276c] text-white" :
+                        "bg-slate-100 text-slate-500"
+                      )}>
+                        {opt.letter}
+                      </span>
+                      <span className={cn(
+                        "text-sm leading-snug",
+                        answered && isRight ? "text-emerald-700 font-semibold" :
+                        answered && isSelected && !isRight ? "text-red-600" :
+                        "text-slate-700"
+                      )}>
+                        {opt.text}
+                      </span>
+                      {answered && isRight && <Check size={16} className="text-emerald-500 ml-auto shrink-0 mt-0.5" strokeWidth={3} />}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Post-answer feedback */}
+              {answered && (
+                <div className={cn(
+                  "mt-4 rounded-xl p-4 border",
+                  isCorrect ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"
+                )}>
+                  <p className={cn("text-sm font-bold mb-1", isCorrect ? "text-emerald-700" : "text-amber-700")}>
+                    {isCorrect ? `✓ Correct! — the engine now targets ${q.nextBand} for your next question.` : `✗ Not quite. The correct answer is ${correctLetter}.`}
+                  </p>
+                  <p className="text-xs text-slate-600 leading-relaxed">{q.explanation}</p>
+                </div>
+              )}
+
+              {!answered && (
+                <p className="text-[11px] text-slate-400 mt-4 font-medium text-center">
+                  Select an answer above to see how the adaptive engine responds.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* CTA */}
+          <div className="text-center mt-8">
+            <button
+              onClick={onStartFullTest}
+              className="inline-flex items-center gap-3 bg-[#9b276c] hover:bg-[#7d1f57] text-white px-8 py-4 rounded-full text-base font-bold shadow-lg shadow-[#9b276c]/30 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#9b276c]/40"
+            >
+              <Zap size={18} />
+              Take the Full Adaptive Test — Free
+              <ArrowRight size={16} />
+            </button>
+            <p className="text-xs text-slate-400 font-medium mt-3">~25 min · No account needed · Full CEFR report</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
 
 export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => void }> = ({ onStart, onCodeEntry }) => {
   const [showFreemiumTest, setShowFreemiumTest] = useState(false);
@@ -569,98 +826,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
       </section>
 
       {/* ─── SAMPLE QUESTION / INTERACTIVE DEMO ─── */}
-      <section className="py-24 bg-white" id="try-sample">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-xs font-black uppercase tracking-widest text-[#9b276c] mb-3">Interactive Preview</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4 tracking-tight">
-              See an Adaptive Question in Action
-            </h2>
-            <p className="text-slate-600 max-w-xl mx-auto text-[17px] leading-relaxed">
-              The engine selects a new question based on your last answer — getting harder or easier in real time.
-            </p>
-          </div>
-
-          <div className="max-w-3xl mx-auto">
-            {/* Mock CAT question card */}
-            <div className="bg-slate-50 rounded-3xl border border-slate-200 overflow-hidden shadow-xl shadow-slate-200/50">
-              {/* Header bar */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-[#9b276c] text-white flex items-center justify-center text-sm font-black">Q</div>
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">Reading · Level B1</p>
-                    <p className="text-xs text-slate-600 font-semibold">Question 4 of 20–35</p>
-                  </div>
-                </div>
-                {/* CAT progress bar */}
-                <div className="flex flex-col items-end gap-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Estimated Level</p>
-                  <div className="flex items-center gap-2">
-                    {["A1","A2","B1","B2","C1","C2"].map((l) => (
-                      <span key={l} className={`text-[10px] font-black px-2 py-0.5 rounded-full ${l === "B1" ? "bg-[#9b276c] text-white" : "text-slate-400"}`}>{l}</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Passage */}
-              <div className="px-6 pt-6">
-                <div className="bg-white rounded-xl border border-slate-100 p-5 text-sm text-slate-700 leading-relaxed shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Reading Passage</p>
-                  <p>
-                    The rapid growth of remote work has transformed how companies think about office space.
-                    Many organisations that once required employees to commute five days a week now operate
-                    with a flexible hybrid model, blending in-office collaboration with home-based productivity.
-                  </p>
-                </div>
-              </div>
-
-              {/* Question */}
-              <div className="px-6 pt-5 pb-6">
-                <p className="font-bold text-slate-900 mb-4 text-[15px]">
-                  According to the passage, what change have many organisations adopted?
-                </p>
-                <div className="space-y-3">
-                  {[
-                    { letter: "A", text: "Employees must work entirely from home permanently." },
-                    { letter: "B", text: "Companies have removed all office space to cut costs." },
-                    { letter: "C", text: "A hybrid model combining office and remote work is now common.", correct: true },
-                    { letter: "D", text: "Remote work productivity has declined significantly." },
-                  ].map(({ letter, text, correct }) => (
-                    <div
-                      key={letter}
-                      className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-default transition-all ${correct ? "border-[#9b276c] bg-[#9b276c]/5" : "border-slate-200 bg-white hover:border-slate-300"}`}
-                    >
-                      <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${correct ? "bg-[#9b276c] text-white" : "bg-slate-100 text-slate-500"}`}>
-                        {letter}
-                      </span>
-                      <span className={`text-sm leading-snug ${correct ? "text-[#9b276c] font-semibold" : "text-slate-700"}`}>{text}</span>
-                      {correct && <Check size={16} className="text-[#9b276c] ml-auto shrink-0 mt-0.5" strokeWidth={3} />}
-                    </div>
-                  ))}
-                </div>
-                <p className="text-[11px] text-slate-400 mt-4 font-medium text-center">
-                  ✓ Correct — the engine now targets B2 for your next question.
-                </p>
-              </div>
-            </div>
-
-            {/* CTA */}
-            <div className="text-center mt-8">
-              <button
-                onClick={() => setShowFreemiumTest(true)}
-                className="inline-flex items-center gap-3 bg-[#9b276c] hover:bg-[#7d1f57] text-white px-8 py-4 rounded-full text-base font-bold shadow-lg shadow-[#9b276c]/30 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#9b276c]/40"
-              >
-                <Zap size={18} />
-                Take the Full Adaptive Test — Free
-                <ArrowRight size={16} />
-              </button>
-              <p className="text-xs text-slate-400 font-medium mt-3">~25 min · No account needed · Full CEFR report</p>
-            </div>
-          </div>
-        </div>
-      </section>
+      <SampleQuestionDemo onStartFullTest={() => setShowFreemiumTest(true)} />
 
       {/* ─── NEWS / CASE STUDIES SECTION ─── */}
       <section className="py-24 bg-[#FAFAFA]">

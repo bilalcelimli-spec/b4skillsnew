@@ -9,11 +9,23 @@
 import React, { useEffect, useState } from "react";
 import { SiteNav } from "./SiteNav";
 import { SiteFooter } from "./SiteFooter";
-import { FlaskConical, BookOpen, TrendingUp, Users, CheckCircle2, ExternalLink, BarChart3, AlertCircle } from "lucide-react";
+import { FlaskConical, BookOpen, TrendingUp, Users, CheckCircle2, ExternalLink, BarChart3, AlertCircle, Database } from "lucide-react";
 
 interface Props {
   onStart?: () => void;
   onCodeEntry?: () => void;
+}
+
+interface BankHealthData {
+  year: number;
+  totalActive: number;
+  cefr: Record<string, number>;
+  skills: Record<string, number>;
+  meanSEM: number | null;
+  sessionsLast12m: number;
+  cronbachAlpha: number | null;
+  meanDiscrimination: number | null;
+  mock?: boolean;
 }
 
 interface ValidityRow {
@@ -55,16 +67,31 @@ function rBar(r: number): React.ReactNode {
   );
 }
 
+const CEFR_ORDER_RES = ["A1","A2","B1","B2","C1","C2"];
+const CEFR_BAR_COLOR: Record<string, string> = {
+  A1: "bg-slate-400", A2: "bg-slate-500",
+  B1: "bg-blue-400",  B2: "bg-blue-600",
+  C1: "bg-violet-500",C2: "bg-emerald-500",
+};
+
 export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [bankHealth, setBankHealth] = useState<BankHealthData | null>(null);
+  const [bankLoading, setBankLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/research/concurrent-validity/summary")
       .then((r) => r.json())
       .then((d) => { setSummary(d); setLoading(false); })
       .catch(() => { setError("Data temporarily unavailable."); setLoading(false); });
+
+    fetch("/api/research/item-bank-health")
+      .then((r) => r.json())
+      .then((d) => { setBankHealth(d); setBankLoading(false); })
+      .catch(() => { setBankLoading(false); });
   }, []);
 
   const hasSufficientData = summary && summary.tests.some((t) => t.n >= 30);
@@ -167,6 +194,95 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
                 Only tests with n ≥ 30 are shown. Bland-Altman limits of agreement available on request.
               </p>
             </>
+          )}
+        </section>
+
+        {/* Annual Item Bank Health Report */}
+        <section className="py-12 px-6 max-w-5xl mx-auto">
+          <h2 className="text-2xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+            <Database size={22} className="text-indigo-500" />
+            Annual Item Bank Health Report
+          </h2>
+          <p className="text-slate-500 text-sm mb-6 max-w-2xl">
+            Aggregate item statistics for the {bankHealth?.year ?? new Date().getFullYear()} assessment year.
+            Only <strong>ACTIVE</strong> items (≥ 200 calibration responses, IQS ≥ 65) are included.
+          </p>
+
+          {bankLoading && (
+            <div className="flex items-center gap-3 text-slate-400 py-6">
+              <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-indigo-500 animate-spin" />
+              Loading item bank statistics…
+            </div>
+          )}
+
+          {bankHealth && (
+            <div className="space-y-6">
+              {/* KPI row */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { label: "Active Items",       value: bankHealth.totalActive.toLocaleString(),     sub: "in scored bank" },
+                  { label: "Sessions (12 m)",    value: bankHealth.sessionsLast12m?.toLocaleString() ?? "—", sub: "completed assessments" },
+                  { label: "Mean SEM",           value: bankHealth.meanSEM != null ? bankHealth.meanSEM.toFixed(3) : "—", sub: "θ standard error" },
+                  { label: "Approx. Reliability",value: bankHealth.cronbachAlpha != null ? `α = ${bankHealth.cronbachAlpha.toFixed(3)}` : "—", sub: "KR-proxy (Cronbach)" },
+                ].map(({ label, value, sub }) => (
+                  <div key={label} className="bg-slate-50 border border-slate-200 rounded-2xl p-5 text-center">
+                    <p className="text-3xl font-black text-slate-900 tabular-nums">{value}</p>
+                    <p className="text-xs font-bold text-slate-500 mt-1">{label}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{sub}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* CEFR distribution */}
+              {Object.keys(bankHealth.cefr).length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">CEFR Level Distribution — Active Items</p>
+                  <div className="space-y-2">
+                    {CEFR_ORDER_RES.filter(l => bankHealth.cefr[l] != null).map((lvl) => {
+                      const count = bankHealth.cefr[lvl] ?? 0;
+                      const pct = bankHealth.totalActive > 0 ? (count / bankHealth.totalActive) * 100 : 0;
+                      return (
+                        <div key={lvl} className="flex items-center gap-3">
+                          <span className="text-xs font-black w-6 text-slate-500">{lvl}</span>
+                          <div className="flex-grow bg-slate-200 rounded-full h-3 overflow-hidden">
+                            <div className={`h-3 rounded-full ${CEFR_BAR_COLOR[lvl] ?? "bg-slate-400"}`} style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-xs font-semibold tabular-nums text-slate-600 w-12 text-right">{count}</span>
+                          <span className="text-[10px] text-slate-400 w-10 text-right">{pct.toFixed(1)}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Skill distribution */}
+              {Object.keys(bankHealth.skills).length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">Skill Distribution — Active Items</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {Object.entries(bankHealth.skills).sort(([,a],[,b]) => b - a).map(([skill, count]) => (
+                      <div key={skill} className="bg-white rounded-xl border border-slate-200 px-4 py-3 flex items-center justify-between">
+                        <span className="text-sm font-semibold text-slate-700 capitalize">{skill.toLowerCase()}</span>
+                        <span className="text-sm font-black text-slate-900 tabular-nums">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {bankHealth.mock && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2">
+                  Live database not connected — statistics shown are indicative only.
+                </p>
+              )}
+              <p className="text-xs text-slate-400">
+                Statistics computed from the live item bank at time of page load.
+                Mean discrimination: {bankHealth.meanDiscrimination?.toFixed(3) ?? "n/a"}.
+                Items in PILOT or CALIBRATION status are excluded.
+                Full technical manual available to institutional partners on request.
+              </p>
+            </div>
           )}
         </section>
 

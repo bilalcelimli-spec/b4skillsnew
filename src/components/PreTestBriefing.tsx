@@ -1,5 +1,6 @@
-import React from "react";
-import { Clock, Mic, Camera, BookOpen, Headphones, PenLine, MessageSquare, ShieldCheck, XCircle, Wifi } from "lucide-react";
+import React, { useState } from "react";
+import { Clock, Mic, Camera, BookOpen, Headphones, PenLine, MessageSquare, ShieldCheck, XCircle, Wifi, ChevronDown } from "lucide-react";
+import { RubricPreview } from "./RubricPanel.js";
 
 interface PreTestBriefingProps {
   productLine?: string;
@@ -94,13 +95,13 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
               {skills.includes("Writing") && (
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 text-indigo-400 font-bold">→</span>
-                  Short writing tasks scored by AI within 48 hours
+                  Short writing tasks scored by AI across 6 dimensions within 48 hours
                 </li>
               )}
               {skills.includes("Speaking") && (
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 text-indigo-400 font-bold">→</span>
-                  Spoken responses recorded and scored by AI within 48 hours
+                  Spoken responses recorded and scored by AI across 7 dimensions within 48 hours
                 </li>
               )}
               <li className="flex items-start gap-2">
@@ -109,6 +110,16 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
               </li>
             </ul>
           </div>
+
+          {/* Rubric transparency — Writing */}
+          {skills.includes("Writing") && (
+            <RubricPreview skill="writing" />
+          )}
+
+          {/* Rubric transparency — Speaking */}
+          {skills.includes("Speaking") && (
+            <RubricPreview skill="speaking" />
+          )}
 
           {/* Technical requirements */}
           {(needsMic || needsCamera) && (

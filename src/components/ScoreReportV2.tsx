@@ -18,6 +18,7 @@ import { Card, Badge, Progress, Separator } from "../design-system/components.js
 import { useCelebration, CelebrationBanner } from "../design-system/MicroCelebration.js";
 import { getCanDo, type CefrLevel, type SkillDomain } from "../lib/cefr/cefr-framework.js";
 import { lookupConcordance } from "../lib/psychometrics/concordance.js";
+import { RubricScoreBreakdown, type RubricScores } from "./RubricPanel.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,7 @@ export interface SkillResult {
   sem: number;
   percentile: number;  // 0–100
   itemsAnswered: number;
+  rubricScores?: RubricScores;  // present for WRITING and SPEAKING when AI scoring complete
 }
 
 export interface ScoreReportData {
@@ -184,6 +186,13 @@ function SkillCard({ skill, index }: { skill: SkillResult; index: number }) {
           <span style={{ fontSize: "0.6875rem", color: "var(--text-muted)" }}>θ = {skill.theta.toFixed(2)}</span>
           <span style={{ fontSize: "0.6875rem", color: "var(--text-muted)" }}>{skill.itemsAnswered} items</span>
         </div>
+        {skill.rubricScores && (skill.skill === "WRITING" || skill.skill === "SPEAKING") && (
+          <RubricScoreBreakdown
+            skill={skill.skill === "WRITING" ? "writing" : "speaking"}
+            scores={skill.rubricScores}
+            cefrBand={skill.cefrBand}
+          />
+        )}
       </Card>
     </m.div>
   );
