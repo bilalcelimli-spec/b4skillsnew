@@ -307,6 +307,15 @@ export default function App() {
     />;
   }
 
+  // Stable, directly addressable auth routes are required for password
+  // managers, support links and browser-level end-to-end testing.
+  if (!user && location.pathname === "/login") {
+    return <AuthPage initialMode="signin" onBack={() => navigate("/")} />;
+  }
+  if (!user && location.pathname === "/register") {
+    return <AuthPage initialMode="signup" onBack={() => navigate("/")} />;
+  }
+
   if (!user && location.pathname === "/methodology") {
     return (
       <Suspense fallback={<PageLoader />}>
@@ -378,6 +387,14 @@ export default function App() {
         />
       </Suspense>
     );
+  }
+
+  const protectedPath = [
+    "/dashboard", "/admin", "/rating", "/institutional", "/teacher",
+    "/content", "/results", "/profile", "/settings", "/exam", "/report",
+  ].some((prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`));
+  if (!user && protectedPath) {
+    return <AuthPage initialMode="signin" onBack={() => navigate("/")} />;
   }
 
   if (!user && showLanding) {

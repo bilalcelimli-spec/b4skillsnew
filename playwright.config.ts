@@ -11,7 +11,10 @@ import { defineConfig, devices } from "@playwright/test";
  * before running. Tests are excluded from the standard Vitest suite.
  */
 
-const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:5173";
+// The Express server also mounts Vite in development, so UI and API share one
+// origin. Keeping a single E2E origin avoids testing a proxy topology that is
+// different from production.
+const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3001";
 
 export default defineConfig({
   testDir: "./test/e2e",

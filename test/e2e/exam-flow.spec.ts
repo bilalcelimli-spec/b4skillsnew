@@ -5,7 +5,7 @@
  * Run: npx playwright test test/e2e/exam-flow.spec.ts
  *
  * Prerequisites:
- *   - Server running at BASE_URL (default: http://localhost:3001)
+ *   - Integrated Express + Vite server running at BASE_URL (default: http://localhost:3001)
  *   - Seed user seeded via: npm run db:bootstrap-admin
  *   - E2E_EMAIL / E2E_PASSWORD env vars set (or use defaults below)
  *   - E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD for admin-level tests
@@ -27,8 +27,8 @@ const ADMIN_PASS  = process.env.E2E_ADMIN_PASSWORD ?? "Admin@b4skills2025";
 async function login(page: Page, email = E2E_EMAIL, password = E2E_PASS): Promise<void> {
   await page.goto(`${BASE_URL}/login`);
   await page.getByLabel(/e-posta|email/i).fill(email);
-  await page.getByLabel(/şifre|password/i).fill(password);
-  await page.getByRole("button", { name: /giriş|login|sign in/i }).click();
+  await page.locator("#password").fill(password);
+  await page.locator('form button[type="submit"]').click();
   await expect(page).not.toHaveURL(/\/login/, { timeout: 12_000 });
 }
 
@@ -78,8 +78,8 @@ test.describe("Auth flow", () => {
   test("invalid credentials show error message", async ({ page }) => {
     await page.goto(`${BASE_URL}/login`);
     await page.getByLabel(/e-posta|email/i).fill("nonexistent@example.com");
-    await page.getByLabel(/şifre|password/i).fill("wrongpassword123");
-    await page.getByRole("button", { name: /giriş|login|sign in/i }).click();
+    await page.locator("#password").fill("wrongpassword123");
+    await page.locator('form button[type="submit"]').click();
     await expect(
       page.locator("[data-testid='login-error'], [role='alert']")
         .or(page.getByText(/geçersiz|invalid|hatalı|incorrect|wrong/i))
@@ -93,7 +93,10 @@ test.describe("Auth flow", () => {
 
   test("accessing protected route while logged out redirects to login", async ({ page }) => {
     await page.goto(`${BASE_URL}/dashboard`);
-    await expect(page).toHaveURL(/login/, { timeout: 6_000 });
+    // The app may preserve the intended URL for post-login return, but it must
+    // never render protected dashboard content to an anonymous visitor.
+    await expect(page.locator("form")).toBeVisible({ timeout: 6_000 });
+    await expect(page.getByRole("heading", { name: /welcome back/i })).toBeVisible();
   });
 });
 
@@ -114,8 +117,9 @@ test.describe("Registration flow", () => {
       await nameField.fill("Test User");
     }
     await page.getByLabel(/e-posta|email/i).fill(E2E_EMAIL);
-    await page.getByLabel(/şifre|password/i).fill(E2E_PASS);
-    await page.getByRole("button", { name: /kayıt|register|sign up|create/i }).click();
+    await page.locator("#password").fill(E2E_PASS);
+    await page.locator("#confirmPassword").fill(E2E_PASS);
+    await page.locator('form button[type="submit"]').click();
     await expect(
       page.locator("[role='alert'], [data-testid='register-error']")
         .or(page.getByText(/already|mevcut|kullanımda|exists/i))
@@ -334,8 +338,8 @@ test.describe("Admin panel access control", () => {
 // ─── API smoke tests ──────────────────────────────────────────────────────────
 
 test.describe("API smoke tests", () => {
-  test("GET /health returns 200", async ({ page }) => {
-    const res = await page.request.get(`${BASE_URL}/health`);
+  test("GET /api/health returns 200", async ({ page }) => {
+    const res = await page.request.get(`${BASE_URL}/api/health`);
     expect([200, 204]).toContain(res.status());
   });
 

@@ -275,6 +275,8 @@ async function main() {
           metadata: {
             ...(await prisma.item.findUnique({ where: { id: item.id }, select: { metadata: true } }))
               ?.metadata as Record<string, unknown> ?? {},
+            paramSource: "calibrated",
+            calibratedAt: new Date().toISOString(),
             irtCalibration: {
               calibratedAt: new Date().toISOString(),
               method: "CML-gradient-ascent-3PL-fixed-c",

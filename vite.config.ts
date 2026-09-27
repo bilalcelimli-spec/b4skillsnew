@@ -12,7 +12,9 @@ export default defineConfig(({ isSsrBuild }) => {
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'robots.txt'],
-        devOptions: { enabled: true },
+        // Development service workers make local/E2E runs stateful and can
+        // serve stale exam assets. Enable only for an explicit PWA test run.
+        devOptions: { enabled: process.env.ENABLE_PWA_DEV === 'true' },
         manifest: {
           name: 'LinguAdapt — Adaptive English Assessment',
           short_name: 'LinguAdapt',

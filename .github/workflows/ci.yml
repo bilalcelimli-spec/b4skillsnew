@@ -91,6 +91,12 @@ jobs:
         # degrading adaptivity. Fails the build if any such item exists.
         run: npm run verify:irt
         continue-on-error: false
+      - name: Report empirical calibration readiness
+        # This is intentionally informational while the bank is in cold start.
+        # Release approval must run `npm run verify:irt:production`, which
+        # requires at least 80% of ACTIVE items to be calibrated on responses.
+        run: npm run verify:irt:production
+        continue-on-error: true
 
   # ─────────────────────────────────────────────────────────────────────────────
   build:

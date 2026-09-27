@@ -12,9 +12,6 @@
  * Imported in src/index.css AFTER @import "tailwindcss".
  */
 
-/* ── Font loading ─────────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Lora:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans:ital,wght@0,400;0,600;1,400&display=swap');
-
 /* ── Root (light mode) ────────────────────────────────────────────────────── */
 :root {
   /* Brand */

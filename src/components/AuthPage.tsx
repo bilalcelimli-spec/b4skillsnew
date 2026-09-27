@@ -398,6 +398,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
                 <AnimatePresence>
                   {error && (
                     <motion.div
+                      role="alert"
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}

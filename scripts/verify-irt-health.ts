@@ -10,16 +10,24 @@
  *      so we can track cold-start → calibrated migration over time.
  *   3. Reports IQS coverage (how many ACTIVE items have an iqScore).
  *
- * Exit code 1 (CI fail) if any ACTIVE item has a ≤ 0.
+ * Exit code 1 (CI fail) if any ACTIVE item has a ≤ 0 or if the optional
+ * calibrated-coverage threshold is not met.
  *
  * Usage:
  *   npm run verify:irt
  *   STRICT_PRIOR=1 npm run verify:irt   # also fail if any ACTIVE item is still synthetic (no paramSource)
+ *   MIN_CALIBRATED_PERCENT=80 npm run verify:irt
  */
 
 import { prisma } from "../src/lib/prisma.js";
 
 const STRICT_PRIOR = process.env.STRICT_PRIOR === "1";
+const MIN_CALIBRATED_PERCENT = Number(process.env.MIN_CALIBRATED_PERCENT ?? "0");
+
+if (!Number.isFinite(MIN_CALIBRATED_PERCENT) || MIN_CALIBRATED_PERCENT < 0 || MIN_CALIBRATED_PERCENT > 100) {
+  console.error("MIN_CALIBRATED_PERCENT must be a number between 0 and 100.");
+  process.exit(2);
+}
 
 interface Row {
   id: string;
@@ -85,6 +93,7 @@ async function main() {
   console.log(`    synthetic (untagged): ${srcCounts.synthetic} (${pct(srcCounts.synthetic, total)})`);
   console.log(`    prior (norm-based):   ${srcCounts.prior} (${pct(srcCounts.prior, total)})`);
   console.log(`    calibrated (real):    ${srcCounts.calibrated} (${pct(srcCounts.calibrated, total)})`);
+  const calibratedPercent = total === 0 ? 0 : (srcCounts.calibrated / total) * 100;
 
   // ── 3. IQS coverage ──────────────────────────────────────────────────────────
   const withIqs = items.filter((it) => it.iqScore != null);
@@ -105,7 +114,19 @@ async function main() {
     console.error(`❌ FAIL (STRICT_PRIOR): ${srcCounts.synthetic} ACTIVE items still untagged — run backfill.`);
     failed = true;
   }
-  if (!failed) console.log("✅ PASS — item bank is healthy for adaptive delivery.");
+  if (calibratedPercent < MIN_CALIBRATED_PERCENT) {
+    console.error(
+      `❌ FAIL: calibrated coverage is ${calibratedPercent.toFixed(1)}%; ` +
+      `required minimum is ${MIN_CALIBRATED_PERCENT.toFixed(1)}%.`
+    );
+    failed = true;
+  }
+  if (!failed && calibratedPercent === 0) {
+    console.log("⚠️  PASS (DELIVERY ONLY) — parameters are numerically usable, but none are calibrated from real responses.");
+    console.log("   Do not treat this result as evidence of psychometric validity or production readiness.");
+  } else if (!failed) {
+    console.log(`✅ PASS — item bank is delivery-safe; ${calibratedPercent.toFixed(1)}% of ACTIVE items are empirically calibrated.`);
+  }
 
   await prisma.$disconnect();
   if (failed) process.exit(1);

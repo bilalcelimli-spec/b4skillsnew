@@ -8245,15 +8245,6 @@ ${entries}
       jsonLd?: object;
     }
 
-    const ORG_LD = {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      name: "B4Skills",
-      url: APP_BASE_URL,
-      logo: `${APP_BASE_URL}/icons/pwa-192.png`,
-      sameAs: [],
-    };
-
     const WEBSITE_LD = {
       "@context": "https://schema.org",
       "@type": "WebSite",
@@ -8271,7 +8262,9 @@ ${entries}
         title: "B4Skills — Adaptive English Assessment Platform",
         description: "AI-powered adaptive CEFR English assessment for individuals, schools, universities, and corporates. Get your certified English level in 15–60 minutes.",
         keywords: "english assessment, cefr test, adaptive english test, english proficiency, b4skills",
-        jsonLd: [ORG_LD, WEBSITE_LD],
+        // Organization JSON-LD is present in index.html for both development
+        // and production; inject only the route-specific WebSite entity here.
+        jsonLd: WEBSITE_LD,
       },
       "/pricing": {
         title: "Pricing — B4Skills English Assessment",
