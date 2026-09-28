@@ -57,6 +57,9 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Only handle http/https — chrome-extension://, data:, blob: etc. cannot be cached
+  if (url.protocol !== "http:" && url.protocol !== "https:") return;
+
   // Don't intercept non-GET or cross-origin except our own API
   if (request.method !== "GET" && !isApiPost(request)) return;
 
