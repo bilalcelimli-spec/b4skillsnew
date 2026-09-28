@@ -45,7 +45,6 @@ export const ExamCodeManager: React.FC<{ orgId?: string }> = ({ orgId }) => {
       const formattedCodes = data.codes.map((code: string) => ({ code }));
       setGeneratedCodes(formattedCodes);
     } catch (err: any) {
-      console.error(err);
       toast({ title: "Code generation failed", description: err.message, variant: "error" });
     } finally {
       setLoading(false);

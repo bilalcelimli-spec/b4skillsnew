@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useToast } from "../../hooks/useToast.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -23,6 +24,7 @@ export const CandidateManagement: React.FC<{
   onGenerateCodes?: () => void;
   onViewAnalysis?: (sessionId: string) => void;
 }> = ({ orgId, onGenerateCodes, onViewAnalysis }) => {
+  const { toast } = useToast();
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -58,7 +60,7 @@ export const CandidateManagement: React.FC<{
       }));
       setCandidates(normalized);
     } catch (err) {
-      console.error("Failed to fetch candidates");
+      toast({ title: "Couldn't load candidates", description: "Failed to fetch candidate list.", variant: "error" });
     } finally {
       setLoading(false);
     }

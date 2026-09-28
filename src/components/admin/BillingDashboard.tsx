@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useToast } from "../../hooks/useToast.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { 
@@ -16,6 +17,7 @@ import { motion } from "motion/react";
 import { cn } from "@/src/lib/utils";
 
 export const BillingDashboard: React.FC<{ orgId: string }> = ({ orgId }) => {
+  const { toast } = useToast();
   const [billing, setBilling] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -32,7 +34,7 @@ export const BillingDashboard: React.FC<{ orgId: string }> = ({ orgId }) => {
       if (!res.ok) throw new Error("Failed to fetch billing data");
       setBilling(await res.json());
     } catch (err) {
-      console.error("Failed to fetch billing data");
+      toast({ title: "Couldn't load billing", description: "Failed to fetch billing data.", variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -52,7 +54,7 @@ export const BillingDashboard: React.FC<{ orgId: string }> = ({ orgId }) => {
         fetchBilling();
       }
     } catch (err) {
-      console.error("Purchase failed");
+      toast({ title: "Purchase failed", description: "Could not complete credit top-up.", variant: "error" });
     }
   };
 

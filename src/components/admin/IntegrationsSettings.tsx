@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useToast } from "../../hooks/useToast.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -19,6 +20,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
 
 export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => {
+  const { toast } = useToast();
   const [webhooks, setWebhooks] = useState<any[]>([]);
   const [apiKeys, setApiKeys] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,7 +44,7 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
       setWebhooks(Array.isArray(whData) ? whData : []);
       setApiKeys(Array.isArray(akData) ? akData : []);
     } catch (err) {
-      console.error("Failed to fetch integrations");
+      toast({ title: "Couldn't load integrations", description: "Failed to fetch webhooks and API keys.", variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -61,7 +63,7 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
       setWebhooks([...webhooks, newWh]);
       setNewWebhookUrl("");
     } catch (err) {
-      console.error("Failed to add webhook");
+      toast({ title: "Webhook add failed", description: "Could not add webhook endpoint.", variant: "error" });
     }
   };
 
@@ -79,7 +81,7 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
       setNewKeyName("");
       fetchData();
     } catch (err) {
-      console.error("Failed to generate API key");
+      toast({ title: "Key generation failed", description: "Could not generate API key.", variant: "error" });
     }
   };
 
@@ -91,7 +93,7 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
       });
       setWebhooks(prev => prev.filter(w => w.id !== webhookId));
     } catch (err) {
-      console.error("Failed to delete webhook");
+      toast({ title: "Delete failed", description: "Could not remove webhook.", variant: "error" });
     }
   };
 
@@ -103,7 +105,7 @@ export const IntegrationsSettings: React.FC<{ orgId: string }> = ({ orgId }) => 
       });
       setApiKeys(prev => prev.map(k => k.id === keyId ? { ...k, isActive: false } : k));
     } catch (err) {
-      console.error("Failed to revoke API key");
+      toast({ title: "Revoke failed", description: "Could not revoke API key.", variant: "error" });
     }
   };
 

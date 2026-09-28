@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useToast } from "../../hooks/useToast.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { 
@@ -17,6 +18,7 @@ import { motion } from "motion/react";
 import { cn } from "@/src/lib/utils";
 
 export const AuditLogView: React.FC<{ orgId: string }> = ({ orgId }) => {
+  const { toast } = useToast();
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -33,7 +35,7 @@ export const AuditLogView: React.FC<{ orgId: string }> = ({ orgId }) => {
       const data = await res.json();
       setLogs(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Failed to fetch audit logs");
+      toast({ title: "Couldn't load logs", description: "Failed to fetch audit log.", variant: "error" });
     } finally {
       setLoading(false);
     }

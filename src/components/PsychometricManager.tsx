@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
+import { useToast } from "../hooks/useToast.js";
 import { Card, CardContent, CardHeader } from "./ui/Card";
 import { Button } from "./ui/Button";
 import { Save, RefreshCw, Settings, Sliders, Activity } from "lucide-react";
 import { motion } from "motion/react";
 
 export const PsychometricManager: React.FC = () => {
+  const { toast } = useToast();
   const [config, setConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -24,7 +26,7 @@ export const PsychometricManager: React.FC = () => {
       const data = await res.json();
       setConfig(data);
     } catch (err) {
-      console.error("Failed to fetch config");
+      toast({ title: "Couldn't load config", description: "Failed to fetch psychometric configuration.", variant: "error" });
     } finally {
       setLoading(false);
     }

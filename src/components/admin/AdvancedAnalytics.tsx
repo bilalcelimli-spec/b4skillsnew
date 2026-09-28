@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useToast } from "../../hooks/useToast.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { 
@@ -41,6 +42,7 @@ import {
 } from "recharts";
 
 export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
+  const { toast } = useToast();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [compareMode, setCompareMode] = useState(false);
@@ -58,7 +60,7 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
       if (!res.ok) throw new Error("Failed to fetch analytics");
       setData(await res.json());
     } catch (err) {
-      console.error("Failed to fetch analytics");
+      toast({ title: "Couldn't load analytics", description: "Failed to fetch organization analytics.", variant: "error" });
     } finally {
       setLoading(false);
     }

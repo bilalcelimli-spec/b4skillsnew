@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useToast } from "../../hooks/useToast.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { 
@@ -20,6 +21,7 @@ interface SessionReviewProps {
 }
 
 export const SessionReview: React.FC<SessionReviewProps> = ({ sessionId, onBack }) => {
+  const { toast } = useToast();
   const [responses, setResponses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedResponse, setSelectedResponse] = useState<any>(null);
@@ -38,7 +40,7 @@ export const SessionReview: React.FC<SessionReviewProps> = ({ sessionId, onBack 
       setResponses(arr);
       if (arr.length > 0) setSelectedResponse(arr[0]);
     } catch (err) {
-      console.error("Failed to fetch responses");
+      toast({ title: "Couldn't load responses", description: "Failed to fetch session responses.", variant: "error" });
     } finally {
       setLoading(false);
     }

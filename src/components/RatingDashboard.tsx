@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useToast } from "../hooks/useToast.js";
 import { Card, CardContent, CardHeader } from "./ui/Card";
 import { Button } from "./ui/Button";
 import {
@@ -81,6 +82,7 @@ const DIM_LABELS: Record<RubricDim, string> = {
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => {
+  const { toast } = useToast();
   const [tasks, setTasks]             = useState<RatingTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<RatingTask | null>(null);
   const [stats, setStats]             = useState<QueueStats | null>(null);
@@ -136,7 +138,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
       setTasks(normalised);
       if (statsData) setStats(statsData);
     } catch (err) {
-      console.error("Failed to fetch rating tasks");
+      toast({ title: "Couldn't load tasks", description: "Failed to fetch rating queue.", variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -180,7 +182,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
         setIsSecondRater(task.needsSecondRater ?? false);
       }
     } catch (err) {
-      console.error("Failed to claim task");
+      toast({ title: "Claim failed", description: "Could not claim rating task.", variant: "error" });
     }
   };
 

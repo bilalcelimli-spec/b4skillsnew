@@ -100,7 +100,7 @@ export const ItemBankManager: React.FC = () => {
       const data = await res.json();
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Failed to fetch items", err);
+      toast({ title: "Failed to load items", description: "Could not fetch item bank. Please refresh.", variant: "error" });
     } finally {
       setLoading(false);
     }

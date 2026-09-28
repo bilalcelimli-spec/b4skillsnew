@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useToast } from "../../hooks/useToast.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { 
@@ -19,6 +20,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
 
 export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
+  const { toast } = useToast();
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAlert, setSelectedAlert] = useState<any>(null);
@@ -37,7 +39,7 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
       const data = await res.json();
       setAlerts(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Failed to fetch proctoring alerts");
+      toast({ title: "Couldn't load alerts", description: "Failed to fetch proctoring alerts.", variant: "error" });
     } finally {
       setLoading(false);
     }

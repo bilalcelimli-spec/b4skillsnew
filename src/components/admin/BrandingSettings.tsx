@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useToast } from "../../hooks/useToast.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -15,6 +16,7 @@ interface BrandingConfig {
 }
 
 export const BrandingSettings: React.FC<{ orgId: string; initialBranding?: BrandingConfig }> = ({ orgId, initialBranding }) => {
+  const { toast } = useToast();
   const [branding, setBranding] = useState<BrandingConfig>(initialBranding || {
     logoUrl: "",
     primaryColor: "#4f46e5",
@@ -49,10 +51,12 @@ export const BrandingSettings: React.FC<{ orgId: string; initialBranding?: Brand
         body: JSON.stringify(branding)
       });
       if (res.ok) {
-        // Success
+        toast({ title: "Branding saved", description: "Portal appearance updated successfully.", variant: "success" });
+      } else {
+        toast({ title: "Save failed", description: "Could not update branding settings.", variant: "error" });
       }
     } catch (err) {
-      console.error("Failed to save branding");
+      toast({ title: "Save failed", description: "Network error. Please try again.", variant: "error" });
     } finally {
       setSaving(false);
     }
