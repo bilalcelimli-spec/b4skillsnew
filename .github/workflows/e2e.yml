@@ -65,6 +65,7 @@ jobs:
           BOOTSTRAP_CREATE_ORG=1 \
           BOOTSTRAP_ORG_NAME="E2E Organization" \
           BOOTSTRAP_ORG_SLUG="e2e-organization" \
+          BOOTSTRAP_CREDITS=100 \
           npx tsx scripts/bootstrap-admin.ts
           BOOTSTRAP_ADMIN_EMAIL="$E2E_ADMIN_EMAIL" \
           BOOTSTRAP_ADMIN_PASSWORD="$E2E_ADMIN_PASSWORD" \

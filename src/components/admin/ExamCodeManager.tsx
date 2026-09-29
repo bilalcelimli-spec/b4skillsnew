@@ -87,7 +87,7 @@ export const ExamCodeManager: React.FC<{ orgId?: string }> = ({ orgId }) => {
                 <option value="General English">General English</option>
                 <option value="Primary (7-10)">Primary (7-10)</option>
                 <option value="Junior Suite (11-14)">Junior Suite (11-14)</option>
-                <option value="15-Min Diagnostic">15-Min Diagnostic</option>
+                <option value="15-Min Diagnostic">Rapid Diagnostic (30–40 min)</option>
                 <option value="Express Assessment (30-Min)">Express Assessment (30-Min)</option>
                 <option value="Academia">Academia</option>
                 <option value="Corporate">Corporate</option>

@@ -34,7 +34,6 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
     try {
       const res = await fetch(`/api/organizations/${orgId}/proctoring-alerts`, {
         credentials: "include",
-        headers: { "x-user-email": "bilalcelimli@gmail.com" } // Mock admin auth
       });
       const data = await res.json();
       setAlerts(Array.isArray(data) ? data : []);
@@ -42,6 +41,28 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
       toast({ title: "Couldn't load alerts", description: "Failed to fetch proctoring alerts.", variant: "error" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const reviewAlert = async (decision: "APPROVE" | "REJECT") => {
+    if (!selectedAlert?.sessionId) return;
+    try {
+      const res = await fetch("/api/proctoring/review", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: selectedAlert.sessionId, eventId: selectedAlert.id, decision }),
+      });
+      if (!res.ok) throw new Error("review failed");
+      toast({
+        title: decision === "APPROVE" ? "Alert dismissed" : "Session invalidated",
+        description: "The review decision was recorded in the proctoring audit trail.",
+        variant: "success",
+      });
+      setSelectedAlert(null);
+      await fetchAlerts();
+    } catch {
+      toast({ title: "Review failed", description: "The proctoring decision could not be saved.", variant: "error" });
     }
   };
 
@@ -170,16 +191,19 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
                   animate={{ opacity: 1, y: 0 }}
                   className="space-y-6"
                 >
-                  <div className="aspect-video bg-slate-900 rounded-2xl flex items-center justify-center text-slate-500 relative overflow-hidden group">
-                    <Camera size={32} className="opacity-20" />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button variant="outline" size="sm" className="bg-white/10 text-white border-white/20 rounded-xl">
-                        View Screenshot
-                      </Button>
-                    </div>
-                    <div className="absolute top-2 right-2 px-2 py-1 bg-black/60 backdrop-blur-md rounded text-[8px] text-white font-black uppercase tracking-widest">
-                      Simulated Capture
-                    </div>
+                  <div className="aspect-video bg-slate-900 rounded-2xl flex items-center justify-center text-slate-500 relative overflow-hidden">
+                    {selectedAlert.metadata?.evidenceKey ? (
+                      <img
+                        src={`/api/proctoring/evidence/${selectedAlert.id}`}
+                        alt="Proctoring evidence"
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 text-slate-400">
+                        <Camera size={32} className="opacity-40" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest">No image evidence</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-4">
@@ -193,20 +217,20 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                         <div className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Trust Score</div>
-                        <div className="text-lg font-black text-red-600">0.42</div>
+                        <div className="text-lg font-black text-red-600">{selectedAlert.severity}/5</div>
                       </div>
                       <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                         <div className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Status</div>
-                        <div className="text-lg font-black text-amber-600">Flagged</div>
+                        <div className="text-lg font-black text-amber-600">Pending review</div>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1 rounded-xl h-12 text-[10px] font-black uppercase tracking-widest border-emerald-200 text-emerald-600 hover:bg-emerald-50">
+                    <Button onClick={() => reviewAlert("APPROVE")} variant="outline" className="flex-1 rounded-xl h-12 text-[10px] font-black uppercase tracking-widest border-emerald-200 text-emerald-600 hover:bg-emerald-50">
                       <CheckCircle2 size={16} className="mr-2" /> Dismiss
                     </Button>
-                    <Button variant="outline" className="flex-1 rounded-xl h-12 text-[10px] font-black uppercase tracking-widest border-red-200 text-red-600 hover:bg-red-50">
+                    <Button onClick={() => reviewAlert("REJECT")} variant="outline" className="flex-1 rounded-xl h-12 text-[10px] font-black uppercase tracking-widest border-red-200 text-red-600 hover:bg-red-50">
                       <XCircle size={16} className="mr-2" /> Invalidate
                     </Button>
                   </div>
@@ -226,4 +250,3 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
     </div>
   );
 };
-

@@ -8,6 +8,7 @@
  *   BOOTSTRAP_ORG_NAME=...     — varsayılan: "Default organization"
  *   BOOTSTRAP_ORG_SLUG=...     — benzersiz slug (yoksa otomatik)
  *   BOOTSTRAP_ORGANIZATION_ID=... — mevcut org id (CREATE_ORG yokken öncelik)
+ *   BOOTSTRAP_CREDITS=100       — org için test/değerlendirme kredisi oluşturur
  *
  * Oluşan org yoksa, veritabanındaki ilk organizasyona kullanıcıyı bağlamayı dener.
  */
@@ -37,6 +38,7 @@ async function main() {
   const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
   const name = process.env.BOOTSTRAP_ADMIN_NAME?.trim() || "System Admin";
   const role = (process.env.BOOTSTRAP_ADMIN_ROLE as UserRole) || "SUPER_ADMIN";
+  const bootstrapCredits = Math.max(0, Number.parseInt(process.env.BOOTSTRAP_CREDITS ?? "0", 10) || 0);
 
   if (!email || !password) {
     console.error("BOOTSTRAP_ADMIN_EMAIL ve BOOTSTRAP_ADMIN_PASSWORD ayarlayın.");
@@ -106,6 +108,16 @@ async function main() {
       },
     });
     console.log("Yönetici oluşturuldu:", email, role, orgId ? `org=${orgId}` : "(org yok)");
+  }
+
+  if (orgId && bootstrapCredits > 0) {
+    const license = await prisma.license.findFirst({ where: { organizationId: orgId }, orderBy: { createdAt: "desc" } });
+    if (license) {
+      await prisma.license.update({ where: { id: license.id }, data: { credits: bootstrapCredits } });
+    } else {
+      await prisma.license.create({ data: { organizationId: orgId, type: "TEST", credits: bootstrapCredits } });
+    }
+    console.log("Organizasyon kredisi ayarlandı:", bootstrapCredits);
   }
 
   console.log("Giriş: bu e-posta ve parola ile / üzerinden oturum açın. Parolayı repoda bırakmayın.");

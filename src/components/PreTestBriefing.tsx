@@ -1,31 +1,13 @@
 import React, { useState } from "react";
 import { Clock, Mic, Camera, BookOpen, Headphones, PenLine, MessageSquare, ShieldCheck, XCircle, Wifi, ChevronDown } from "lucide-react";
 import { RubricPreview } from "./RubricPanel.js";
+import { getProfile } from "../lib/product-lines/profiles.js";
 
 interface PreTestBriefingProps {
   productLine?: string;
   onStart: () => void;
   onCancel: () => void;
 }
-
-const PRODUCT_DURATIONS: Record<string, string> = {
-  "General English":    "25–35 min",
-  "15-Min Diagnostic":  "15 min",
-  "Academia":           "30–40 min",
-  "Corporate":          "25–35 min",
-  "Primary":            "20–25 min",
-  "Junior":             "20–25 min",
-  "Language School":    "25–35 min",
-  "Specialized":        "30–40 min",
-};
-
-const PRODUCT_SKILLS: Record<string, string[]> = {
-  "15-Min Diagnostic": ["Reading", "Listening", "Grammar"],
-  "Primary":           ["Reading", "Listening", "Grammar", "Vocabulary"],
-  "Junior":            ["Reading", "Listening", "Grammar", "Vocabulary"],
-};
-
-const DEFAULT_SKILLS = ["Reading", "Listening", "Writing", "Speaking", "Grammar", "Vocabulary"];
 
 const SKILL_ICONS: Record<string, React.ReactNode> = {
   Reading:    <BookOpen size={14} />,
@@ -36,14 +18,12 @@ const SKILL_ICONS: Record<string, React.ReactNode> = {
   Vocabulary: <BookOpen size={14} />,
 };
 
-const NEEDS_MIC     = (pl?: string) => !["15-Min Diagnostic","Primary","Junior"].includes(pl ?? "");
-const NEEDS_CAMERA  = (pl?: string) => !["15-Min Diagnostic","Primary","Junior"].includes(pl ?? "");
-
 export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, onStart, onCancel }) => {
-  const duration = PRODUCT_DURATIONS[productLine ?? "General English"] ?? "25–35 min";
-  const skills   = PRODUCT_SKILLS[productLine ?? "General English"] ?? DEFAULT_SKILLS;
-  const needsMic    = NEEDS_MIC(productLine);
-  const needsCamera = NEEDS_CAMERA(productLine);
+  const profile = getProfile(productLine);
+  const duration = `${profile.estimatedDurationMin[0]}–${profile.estimatedDurationMin[1]} min`;
+  const skills = profile.sectionOrder.map((skill) => skill.charAt(0) + skill.slice(1).toLowerCase());
+  const needsMic = profile.sectionOrder.includes("SPEAKING" as any);
+  const needsCamera = true;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -53,7 +33,7 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-widest text-indigo-200 mb-1">B4Skills Adaptive Assessment</p>
-              <h1 className="text-xl font-black">{productLine ?? "General English"}</h1>
+              <h1 className="text-xl font-black">{profile.displayName ?? profile.name}</h1>
             </div>
             <button onClick={onCancel} className="text-indigo-200 hover:text-white transition-colors" aria-label="Cancel">
               <XCircle size={22} />

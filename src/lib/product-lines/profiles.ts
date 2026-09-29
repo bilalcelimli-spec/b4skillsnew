@@ -89,6 +89,8 @@ export interface WritingTaskSpec {
 
 export interface ProductLineProfile {
   name: ProductLineName;
+  /** Customer-facing name; allows legacy API keys to remain backward compatible. */
+  displayName?: string;
   /** CEFR range [min, max] */
   cefrRange: [string, string];
   /** Target age group */
@@ -267,7 +269,7 @@ const JUNIOR_SUITE: ProductLineProfile = {
 };
 
 /**
- * 15-Min Diagnostic — Full 6-skill CEFR placement
+ * Rapid Diagnostic (legacy key: "15-Min Diagnostic") — Full 6-skill CEFR placement
  *
  * Q3 2026 UPDATE: WRITING + SPEAKING re-enabled (1 task each) for full
  *                 6-skill coverage. Estimated time grew from 15 → ~22 min.
@@ -288,11 +290,12 @@ const JUNIOR_SUITE: ProductLineProfile = {
  *
  * Note (history): pre-Q3-2026 this profile only ran the 4 receptive skills
  *   under the rationale that 1 writing task takes 15 minutes alone.  We now
- *   ship a *trimmed* productive task spec (≤100 words / ≤45 seconds) so the
- *   full 6-skill flow fits in ~22-25 min, keeping the rapid-placement promise.
+ *   ship a trimmed productive task spec (≤100 words). Observed/planned total
+ *   duration is represented honestly as 30–40 minutes in customer-facing UI.
  */
 const DIAGNOSTIC_15: ProductLineProfile = {
   name: "15-Min Diagnostic",
+  displayName: "Rapid Diagnostic (30–40 Min)",
   cefrRange: ["A1", "C1"],
   ageRange: [14, 99],
   sectionOrder: [
@@ -309,7 +312,7 @@ const DIAGNOSTIC_15: ProductLineProfile = {
     GRAMMAR:    { minItems: 7, maxItems: 12, semThreshold: 0.38 },
     READING:    { minItems: 4, maxItems: 7,  semThreshold: 0.48 },
     LISTENING:  { minItems: 3, maxItems: 6,  semThreshold: 0.50 },
-    WRITING:    { minItems: 1, maxItems: 2,  semThreshold: 0.50 },
+    WRITING:    { minItems: 1, maxItems: 1,  semThreshold: 0.50 },
     SPEAKING:   { minItems: 1, maxItems: 2,  semThreshold: 0.50 },
   },
   blueprint: [
@@ -317,10 +320,10 @@ const DIAGNOSTIC_15: ProductLineProfile = {
     { skill: SkillType.GRAMMAR,    minCount: 7, maxCount: 12 },
     { skill: SkillType.READING,    minCount: 4, maxCount: 7  },
     { skill: SkillType.LISTENING,  minCount: 3, maxCount: 6  },
-    { skill: SkillType.WRITING,    minCount: 1, maxCount: 2  },
+    { skill: SkillType.WRITING,    minCount: 1, maxCount: 1  },
     { skill: SkillType.SPEAKING,   minCount: 1, maxCount: 2  },
   ],
-  globalMaxItems: 36,
+  globalMaxItems: 35,
   writingTaskSpecs: [
     // Single short productive task — trimmed budget keeps total session ≤ 25 min.
     { position: 1, minWords: 30, maxWords: 100, taskType: "short_response" },
@@ -329,7 +332,7 @@ const DIAGNOSTIC_15: ProductLineProfile = {
   maxExposureRate: 0.35,
   examSources: ["general"],
   /**
-   * MST 2-stage configuration for 15-Min Diagnostic.
+   * MST 2-stage configuration for the Rapid Diagnostic legacy profile.
    *
    * Rationale:
    *   Pure-CAT on 20 items gives SEM ≈ 0.46 at best.  Adding a routing
@@ -753,7 +756,7 @@ export const PRODUCT_LINE_PROFILES: Record<ProductLineName, ProductLineProfile> 
 
 /**
  * Resolve the profile for a session.
- * Falls back to "15-Min Diagnostic" when productLine is unknown or missing.
+ * Falls back to General English when productLine is unknown or missing.
  */
 export function getProfile(productLine?: string | null): ProductLineProfile {
   if (productLine && productLine in PRODUCT_LINE_PROFILES) {

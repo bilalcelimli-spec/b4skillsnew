@@ -24,9 +24,9 @@ import { SessionLaunchBody, SessionRespondBody, SessionCompleteBody, SessionFeed
 import { CreateItemBody, UpdateItemBody, ItemPipelineBody, ItemReviewBody, ItemContentPatchBody, RatingClaimBody, RatingSubmitBody } from "./src/lib/security/schemas/items.js";
 import { SystemConfigBody } from "./src/lib/security/schemas/calibration.js";
 import { CreateWebhookBody, BrandingPatchBody, UpdateSettingsBody, SsoConfigBody } from "./src/lib/security/schemas/organizations.js";
-import { ProctoringEventBody } from "./src/lib/security/schemas/proctoring.js";
+import { ProctoringAuditBody, ProctoringEventBody } from "./src/lib/security/schemas/proctoring.js";
 import { AITutorBody, SpeakingMultimodalBody } from "./src/lib/security/schemas/ai.js";
-import { GenerateCodesBody } from "./src/lib/security/schemas/codes.js";
+import { GenerateCodesBody, RedeemCodeBody } from "./src/lib/security/schemas/codes.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -229,6 +229,9 @@ async function startServer() {
       }
       if (!token) return res.status(401).json({ error: 'Missing token' });
       const decoded: any = jwt.verify(token, JWT_SECRET);
+      if (!decoded?.userId || typeof decoded.userId !== "string") {
+        return res.status(401).json({ error: 'Invalid access token' });
+      }
       const baseUser: Record<string, string> = { id: decoded.userId, userId: decoded.userId };
       // Fetch role + organizationId from DB so ownership checks and admin gates work
       // without requiring a separate checkRole middleware on every authMiddleware route.
@@ -1211,24 +1214,31 @@ async function startServer() {
   // --- RBAC MIDDLEWARE ---
   const checkRole = (roles: string[]) => {
     return async (req: any, res: any, next: any) => {
-      // 1. Try JWT cookie (preferred - works for logged-in users)
-      const accessToken = req.cookies?.accessToken;
+      // Accept the same cookie/Bearer transports as authMiddleware.
+      const accessToken = req.cookies?.accessToken ??
+        (req.headers.authorization?.startsWith("Bearer ")
+          ? req.headers.authorization.slice("Bearer ".length)
+          : undefined);
       if (accessToken) {
         try {
           const decoded: any = jwt.verify(accessToken, JWT_SECRET);
           if (decoded.userId) {
             if (!dbAvailable) {
-              req.user = { role: "SUPER_ADMIN", organizationId: "default-org" };
-              return next();
+              // Authorization must fail closed. A database outage must never
+              // promote an otherwise ordinary authenticated user to SUPER_ADMIN.
+              return res.status(503).json({ error: "Authorization service unavailable" });
             }
             const jwtUser = await prisma.user.findUnique({
               where: { id: decoded.userId },
               select: { id: true, role: true, organizationId: true }
             });
-            if (jwtUser && (roles.includes(jwtUser.role) || jwtUser.role === "SUPER_ADMIN")) {
-              // Expose both `id` and `userId` so route handlers can use either spelling.
-              req.user = { ...jwtUser, userId: jwtUser.id };
-              return next();
+            if (jwtUser) {
+              if (roles.includes(jwtUser.role) || jwtUser.role === "SUPER_ADMIN") {
+                // Expose both `id` and `userId` so route handlers can use either spelling.
+                req.user = { ...jwtUser, userId: jwtUser.id };
+                return next();
+              }
+              return res.status(403).json({ error: "Forbidden" });
             }
           }
         } catch {
@@ -1313,6 +1323,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const { organizationId, productLine } = body;
       // Always derive candidateId from the JWT — ignore body.candidateId to prevent IDOR
       const candidateId = req.user?.id || "demo-user";
+      let resolvedOrganizationId = organizationId;
 
       // ── Access gate for CANDIDATE role ─────────────────────────────────────
       // A CANDIDATE must have one of: (a) redeemed exam code, (b) org License
@@ -1329,7 +1340,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           if (!userEmail) throw new Error("email missing from user context");
           const [claimedCode, orgLicense, payment] = await Promise.all([
             // (a) exam code redeemed by this email
-            prisma.examCode.findFirst({ where: { usedByEmail: userEmail, isUsed: true } }),
+            prisma.examCode.findFirst({
+              where: { usedByEmail: userEmail, isUsed: true },
+              select: { organizationId: true },
+              orderBy: { usedAt: "desc" },
+            }),
             // (b) org has a non-expired license with credits
             userOrgId ? prisma.license.findFirst({
               where: {
@@ -1344,6 +1359,17 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
             }),
           ]);
           gateAllowed = !!(claimedCode || orgLicense || payment);
+          const authoritativeOrgId = userOrgId ?? claimedCode?.organizationId;
+          if (!authoritativeOrgId) {
+            return res.status(403).json({
+              error: "organization_required",
+              message: "Your account or redeemed exam code is not linked to an organization.",
+            });
+          }
+          if (organizationId && organizationId !== authoritativeOrgId) {
+            return res.status(403).json({ error: "organization_mismatch" });
+          }
+          resolvedOrganizationId = authoritativeOrgId;
         } catch (gateErr) {
           console.error("[sessions/launch] access gate error:", gateErr);
           gateAllowed = false;
@@ -1356,11 +1382,22 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           });
         }
       }
+      // Institution-scoped staff can only launch sessions inside their own tenant.
+      if (["INST_ADMIN", "PROCTOR", "TEACHER", "RATER"].includes(req.user?.role)) {
+        if (!req.user?.organizationId) return res.status(403).json({ error: "organization_required" });
+        if (organizationId && organizationId !== req.user.organizationId) {
+          return res.status(403).json({ error: "organization_mismatch" });
+        }
+        resolvedOrganizationId = req.user.organizationId;
+      }
+      if (dbAvailable && !resolvedOrganizationId) {
+        return res.status(400).json({ error: "organizationId is required" });
+      }
       let session;
       try {
         session = await AssessmentService.launchSession(
           candidateId,
-          organizationId || "demo-org",
+          resolvedOrganizationId || "demo-org",
           productLine
         );
       } catch (err: any) {
@@ -1388,7 +1425,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           return res.json({
             sessionId: sId,
             candidateId,
-            organizationId,
+            organizationId: resolvedOrganizationId,
             productLine,
             status: "STARTED",
             theta: 0,
@@ -3747,14 +3784,45 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   app.post("/api/codes/redeem", loginLimiter, async (req, res) => {
     try {
-      const { code, candidateId, email, name, surname, school, className } = req.body;
-      // 1. Atomically claim the code — updateMany with isUsed:false prevents TOCTOU race
+      const body = validate(RedeemCodeBody, req.body, res);
+      if (!body) return;
+      const { code, email, name, surname, school, className } = body;
+      if (!email) {
+        return res.status(400).json({ error: "Valid code and email are required" });
+      }
+      const normalizedEmail = email.trim().toLowerCase();
+
+      // A code is not proof of ownership of an existing account. Existing
+      // users must already be signed in, and privileged accounts can never be
+      // converted or accessed through the candidate code flow.
+      const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+      if (existingUser) {
+        if (existingUser.role !== "CANDIDATE") {
+          return res.status(403).json({ error: "This account cannot redeem candidate exam codes" });
+        }
+        let authenticatedUserId: string | null = null;
+        const existingToken = req.cookies?.accessToken;
+        if (existingToken) {
+          try {
+            const decoded = jwt.verify(existingToken, JWT_SECRET) as any;
+            authenticatedUserId = typeof decoded?.userId === "string" ? decoded.userId : null;
+          } catch { /* login required below */ }
+        }
+        if (authenticatedUserId !== existingUser.id) {
+          return res.status(409).json({
+            error: "account_login_required",
+            message: "Sign in to the existing account before redeeming this code.",
+          });
+        }
+      }
+
+      // Atomically claim the code — updateMany with isUsed:false prevents a TOCTOU race.
       const examCodeLookup = await prisma.examCode.findUnique({ where: { code } });
       if(!examCodeLookup) return res.status(404).json({ error: "Code not found" });
       if(examCodeLookup.expiresAt && examCodeLookup.expiresAt < new Date()) return res.status(400).json({ error: "Code has expired" });
       const claimed = await prisma.examCode.updateMany({
         where: { code, isUsed: false },
-        data: { isUsed: true, usedByEmail: email, usedAt: new Date() }
+        data: { isUsed: true, usedByEmail: normalizedEmail, usedAt: new Date() }
       });
       if (claimed.count === 0) return res.status(400).json({ error: "Code already used" });
       const examCode = examCodeLookup;
@@ -3767,9 +3835,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       });
       
       const upsertedUser = await prisma.user.upsert({
-        where: { email: email },
+        where: { email: normalizedEmail },
         update: { name: `${name} ${surname}`, organizationId: examCode.organizationId },
-        create: { email: email, name: `${name} ${surname}`, organizationId: examCode.organizationId, role: "CANDIDATE" }
+        create: { email: normalizedEmail, name: `${name} ${surname}`, organizationId: examCode.organizationId, role: "CANDIDATE" }
       });
 
       await prisma.candidateProfile.upsert({
@@ -3865,17 +3933,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   app.post("/api/proctoring/event", authMiddleware, async (req: any, res) => {
     try {
+      if (dbAvailable && !["CANDIDATE", "PROCTOR", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"].includes(req.user?.role)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const body = validate(ProctoringEventBody, req.body, res);
       if (!body) return;
-      const caller = req.user;
-      // Verify session ownership: candidates may only log events for their own sessions;
-      // PROCTORs and admins may log for any session in their org.
-      const privileged = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"].includes(caller?.role);
-      if (!privileged && dbAvailable) {
-        const session = await prisma.session.findUnique({ where: { id: body.sessionId }, select: { candidateId: true } });
-        if (!session) return res.status(404).json({ error: "Session not found" });
-        if (session.candidateId !== caller?.userId) return res.status(403).json({ error: "Forbidden" });
-      }
+      // Candidates are limited to their own session; tenant-scoped staff are
+      // limited to their organization; platform roles retain global access.
+      if (!(await assertSessionOwnership(req, res, body.sessionId))) return;
       const severityMap: Record<string, number> = { INFO: 1, WARNING: 3, CRITICAL: 5 };
       const severityInt = severityMap[body.severity ?? "INFO"] ?? 1;
       const event = await (prisma as any).proctoringEvent.create({
@@ -3890,21 +3955,66 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // POST /api/proctoring/screenshot — store a proctoring frame (base64 JPEG) for review
   app.post("/api/proctoring/screenshot", authMiddleware, async (req: any, res) => {
     try {
+      if (dbAvailable && !["CANDIDATE", "PROCTOR", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"].includes(req.user?.role)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const { sessionId, reason, frame } = req.body;
       if (!sessionId || !frame) return res.status(400).json({ error: "sessionId and frame required" });
-      // Store as a SCREENSHOT proctoring event with the frame in metadata
-      const severityMap: Record<string, number> = { LOW: 1, MEDIUM: 3, HIGH: 5 };
-      await (prisma as any).proctoringEvent.create({
+      if (!(await assertSessionOwnership(req, res, sessionId))) return;
+      if (typeof frame !== "string" || frame.length > 5_000_000) {
+        return res.status(400).json({ error: "frame must be a base64 string ≤ 5 MB" });
+      }
+      const bucket = process.env.PROCTORING_EVIDENCE_BUCKET;
+      if (!bucket) return res.status(503).json({ error: "Proctoring evidence storage is not configured" });
+      const base64Data = frame.replace(/^data:image\/\w+;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+      if (buffer.length === 0 || buffer.length > 3_750_000) {
+        return res.status(400).json({ error: "Invalid or oversized screenshot" });
+      }
+      const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3") as any;
+      const s3 = new S3Client({ region: process.env.AWS_REGION ?? "eu-west-1" });
+      const evidenceKey = `proctoring/${sessionId}/${Date.now()}-${crypto.randomBytes(8).toString("hex")}.jpg`;
+      await s3.send(new PutObjectCommand({
+        Bucket: bucket,
+        Key: evidenceKey,
+        Body: buffer,
+        ContentType: "image/jpeg",
+        ServerSideEncryption: "AES256",
+      }));
+      const event = await (prisma as any).proctoringEvent.create({
         data: {
           sessionId,
           type: "SCREENSHOT",
-          severity: severityMap["LOW"],
-          metadata: { reason: reason ?? "periodic", frameLength: String(frame).length, capturedAt: new Date().toISOString() },
+          severity: 2,
+          metadata: { reason: reason ?? "periodic", evidenceKey, capturedAt: new Date().toISOString() },
         },
       });
-      res.json({ stored: true });
+      res.json({ stored: true, eventId: event.id });
     } catch (err) {
       res.status(500).json({ error: "Failed to store screenshot event" });
+    }
+  });
+
+  app.get("/api/proctoring/evidence/:eventId", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req: any, res) => {
+    try {
+      const event = await (prisma as any).proctoringEvent.findUnique({
+        where: { id: req.params.eventId },
+        select: { sessionId: true, metadata: true },
+      });
+      if (!event) return res.status(404).json({ error: "Evidence not found" });
+      if (!(await assertSessionOwnership(req, res, event.sessionId))) return;
+      const evidenceKey = event.metadata?.evidenceKey;
+      const bucket = process.env.PROCTORING_EVIDENCE_BUCKET;
+      if (!bucket || typeof evidenceKey !== "string") return res.status(404).json({ error: "Evidence not found" });
+      const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3") as any;
+      const s3 = new S3Client({ region: process.env.AWS_REGION ?? "eu-west-1" });
+      const object = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: evidenceKey }));
+      const bytes = await object.Body.transformToByteArray();
+      res.setHeader("Content-Type", object.ContentType ?? "image/jpeg");
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.send(Buffer.from(bytes));
+    } catch {
+      return res.status(500).json({ error: "Failed to load proctoring evidence" });
     }
   });
 
@@ -3927,11 +4037,43 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // --- PHASE 6: COMMERCIALIZATION & ECOSYSTEM ---
-  app.post("/api/payments/checkout", authMiddleware, async (req, res) => {
-    const { userId, organizationId, credits } = req.body;
+  app.post("/api/payments/checkout", authMiddleware, async (req: any, res) => {
+    const credits = Number(req.body?.credits);
+    if (!Number.isInteger(credits) || credits < 1 || credits > 10_000) {
+      return res.status(400).json({ error: "credits must be an integer between 1 and 10000" });
+    }
+    const requestedOrgId = req.body?.organizationId as string | undefined;
+    const callerOrgId = req.user?.organizationId as string | undefined;
+    const canBuyForAnyOrg = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"].includes(req.user?.role);
+    if (requestedOrgId && requestedOrgId !== callerOrgId && !canBuyForAnyOrg) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    let organizationId = requestedOrgId ?? callerOrgId;
     try {
+      // Self-service candidates may have registered without an institution.
+      // Give them a private tenant so purchased credits cannot spill into a
+      // shared/default organization and the resulting assessment is billable.
+      if (!organizationId && req.user?.role === "CANDIDATE") {
+        const personalOrgId = `personal-${req.user.id}`;
+        const personalSlug = personalOrgId.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 64);
+        const personalOrg = await prisma.organization.upsert({
+          where: { id: personalOrgId },
+          update: {},
+          create: {
+            id: personalOrgId,
+            name: `${req.user.email ?? "Candidate"} — Personal`,
+            slug: personalSlug,
+          },
+          select: { id: true },
+        });
+        await prisma.user.update({ where: { id: req.user.id }, data: { organizationId: personalOrg.id } });
+        organizationId = personalOrg.id;
+      }
+      if (!organizationId) return res.status(400).json({ error: "organizationId required" });
+      const orgExists = await prisma.organization.findUnique({ where: { id: organizationId }, select: { id: true } });
+      if (!orgExists) return res.status(404).json({ error: "Organization not found" });
       const { PaymentService } = await import("./src/lib/payments/payment-service.js");
-      const url = await PaymentService.createCheckoutSession(userId, organizationId, credits);
+      const url = await PaymentService.createCheckoutSession(req.user.id, organizationId, credits);
       res.json({ url });
     } catch (err) {
       res.status(500).json({ error: "Failed to create checkout session" });
@@ -4012,6 +4154,68 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.json({ trustScore });
     } catch (err) {
       res.status(500).json({ error: "Failed to audit session" });
+    }
+  });
+
+  app.post("/api/proctoring/review", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req: any, res) => {
+    try {
+      const parsed = ProctoringAuditBody.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid review", issues: parsed.error.issues });
+      const { sessionId, eventId, decision, notes, evidence } = parsed.data;
+      if (!(await assertSessionOwnership(req, res, sessionId))) return;
+
+      const session = await prisma.session.findUnique({
+        where: { id: sessionId },
+        select: { status: true, completedAt: true },
+      });
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      let sourceEvent: any = null;
+      if (eventId) {
+        sourceEvent = await (prisma as any).proctoringEvent.findUnique({ where: { id: eventId } });
+        if (!sourceEvent || sourceEvent.sessionId !== sessionId) {
+          return res.status(400).json({ error: "Review event does not belong to the session" });
+        }
+      }
+
+      const nextStatus = decision === "REJECT" || decision === "FLAG" || decision === "ESCALATE"
+        ? "FLAGGED"
+        : session.completedAt ? "COMPLETED" : "IN_PROGRESS";
+      const reviewedAt = new Date().toISOString();
+      const operations: any[] = [
+        (prisma as any).proctoringEvent.create({
+          data: {
+            sessionId,
+            type: `PROCTOR_REVIEW_${decision}`,
+            severity: 1,
+            metadata: {
+              notes: notes ?? null,
+              evidence: evidence ?? [],
+              sourceEventId: eventId ?? null,
+              reviewerId: req.user?.userId ?? req.user?.id,
+              reviewedAt,
+            },
+          },
+        }),
+        prisma.session.update({ where: { id: sessionId }, data: { status: nextStatus as any } }),
+      ];
+      if (sourceEvent) {
+        operations.push((prisma as any).proctoringEvent.update({
+          where: { id: sourceEvent.id },
+          data: {
+            severity: 1,
+            metadata: {
+              ...((sourceEvent.metadata as Record<string, unknown> | null) ?? {}),
+              reviewedAt,
+              reviewDecision: decision,
+              reviewedBy: req.user?.userId ?? req.user?.id,
+            },
+          },
+        }));
+      }
+      await prisma.$transaction(operations);
+      return res.json({ ok: true, sessionId, decision, status: nextStatus });
+    } catch (err) {
+      return res.status(500).json({ error: "Failed to review proctoring alert" });
     }
   });
 
@@ -4918,6 +5122,22 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const { candidates, sendInvite = false, examCode, classId } = req.body;
     const adminId: string = caller?.id ?? caller?.userId ?? "";
 
+    if (!Array.isArray(candidates) || candidates.length === 0 || candidates.length > 5_000) {
+      return res.status(400).json({ error: "candidates must contain between 1 and 5000 records" });
+    }
+    if (classId) {
+      const targetClass = await prisma.class.findUnique({ where: { id: classId }, select: { organizationId: true } });
+      if (!targetClass || targetClass.organizationId !== id) {
+        return res.status(400).json({ error: "Class does not belong to this organization" });
+      }
+    }
+    if (examCode) {
+      const targetCode = await prisma.examCode.findUnique({ where: { code: examCode }, select: { organizationId: true } });
+      if (!targetCode || targetCode.organizationId !== id) {
+        return res.status(400).json({ error: "Exam code does not belong to this organization" });
+      }
+    }
+
     // Fetch org branding for invite email
     let orgName = "b4skills";
     try {
@@ -5357,7 +5577,7 @@ ${codeSection}
 
   app.post("/api/certificates/generate", authMiddleware, async (req: any, res) => {
     try {
-      const { sessionId, candidateProfile, branding } = req.body;
+      const { sessionId } = req.body;
       if (!sessionId) return res.status(400).json({ error: "sessionId required" });
 
       // Verify session belongs to the authenticated user before generating a certificate
@@ -5365,16 +5585,37 @@ ${codeSection}
 
       // Re-read authoritative score data from DB — never trust client-supplied scores
       let sessionData = req.body.sessionData; // demo/mock fallback only
+      let authoritativeCandidate = req.user;
+      let authoritativeBranding: any = { organizationId: req.user?.organizationId, name: "b4skills" };
       if (dbAvailable) {
         const [scoreReport, session] = await Promise.all([
           prisma.scoreReport.findUnique({ where: { sessionId } }),
-          prisma.session.findUnique({ where: { id: sessionId }, select: { completedAt: true } }),
+          prisma.session.findUnique({
+            where: { id: sessionId },
+            select: {
+              status: true,
+              completedAt: true,
+              candidate: { select: { id: true, name: true, email: true } },
+              organization: { select: { id: true, name: true, branding: true } },
+            },
+          }),
         ]);
         if (!scoreReport) return res.status(404).json({ error: "Score report not found — session may not be complete" });
+        if (!session || session.status !== "COMPLETED") {
+          return res.status(409).json({ error: "Certificate can only be issued for a completed session" });
+        }
         sessionData = { sessionId, overallCefr: scoreReport.overallCefr, overallScore: scoreReport.overallScore, completedAt: session?.completedAt };
+        authoritativeCandidate = session.candidate;
+        authoritativeBranding = {
+          ...(typeof session.organization.branding === "object" && session.organization.branding !== null
+            ? session.organization.branding as Record<string, unknown>
+            : {}),
+          organizationId: session.organization.id,
+          name: session.organization.name,
+        };
       }
 
-      const cert = await CertificateService.generateCertificate(sessionData, candidateProfile, branding);
+      const cert = await CertificateService.generateCertificate(sessionData, authoritativeCandidate, authoritativeBranding);
       res.json(cert);
     } catch (error) {
       res.status(500).json({ error: "Failed to generate certificate" });
@@ -6512,8 +6753,12 @@ ${codeSection}
 
   app.post("/api/proctoring/anticheat", authMiddleware, async (req, res) => {
     try {
+      if (dbAvailable && !["CANDIDATE", "PROCTOR", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"].includes((req as any).user?.role)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const telemetry = req.body;
       if (!telemetry?.sessionId) return res.status(400).json({ error: "sessionId required" });
+      if (!(await assertSessionOwnership(req, res, telemetry.sessionId))) return;
       const report = computeAnticheatReport(telemetry);
       // Persist risk score to DB if available
       if (dbAvailable && report.riskScore >= 25) {
@@ -7003,7 +7248,7 @@ ${codeSection}
         await prisma.ltiSession.update({ where: { id: launch.ltiSessionId }, data: { userId: user.id } });
 
         const accessToken = jwt.sign(
-          { uid: user.id, email: user.email, role: user.role, organizationId: user.organizationId },
+          { userId: user.id },
           JWT_SECRET,
           { expiresIn: "15m" }
         );
@@ -7070,7 +7315,13 @@ ${codeSection}
     // ── LMS platform registration (admin CRUD) — now delegated to /api/lti/registrations
     // GET /api/lms/platforms — thin shim for backwards compatibility
     app.get("/api/lms/platforms", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
-      const regs = await prisma.ltiRegistration.findMany({ where: { active: true }, orderBy: { createdAt: "desc" } });
+      const regs = await prisma.ltiRegistration.findMany({
+        where: {
+          active: true,
+          ...(req.user?.role === "INST_ADMIN" ? { organizationId: req.user.organizationId } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+      });
       return res.json({ platforms: regs.map(r => ({ platformId: r.platformIss, clientId: r.clientId, deploymentId: r.deploymentIds })) });
     });
 
@@ -7101,9 +7352,17 @@ ${codeSection}
       if (accessToken) {
         try {
           const decoded = jwt.verify(accessToken, JWT_SECRET) as any;
-          req.user    = decoded;
-          req.apiOrg  = null;
-          return next();
+          if (decoded?.userId && dbAvailable) {
+            const user = await prisma.user.findUnique({
+              where: { id: decoded.userId },
+              select: { id: true, role: true, organizationId: true },
+            });
+            if (user) {
+              req.user = { ...user, userId: user.id };
+              req.apiOrg = null;
+              return next();
+            }
+          }
         } catch { /* fall through to API key */ }
       }
       // 2. Try API key
@@ -7120,6 +7379,18 @@ ${codeSection}
       return res.status(401).json({ error: "Unauthorized" });
     }
 
+    const globalReportRoles = new Set(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]);
+    const tenantReportRoles = new Set(["INST_ADMIN", "TEACHER", "PROCTOR", "RATER"]);
+
+    async function canReadReportSubject(req: any, candidateId: string, organizationId: string | null) {
+      if (req.apiOrg) return Boolean(organizationId && req.apiOrg.id === organizationId);
+      const caller = req.user;
+      if (!caller) return false;
+      if (globalReportRoles.has(caller.role)) return true;
+      if (caller.role === "CANDIDATE") return caller.id === candidateId;
+      return tenantReportRoles.has(caller.role) && Boolean(organizationId) && caller.organizationId === organizationId;
+    }
+
     function baseUrl(req: any) {
       return `${req.protocol}://${req.get("host")}`;
     }
@@ -7127,9 +7398,15 @@ ${codeSection}
     // GET /api/reports/scores/:sessionId
     app.get("/api/reports/scores/:sessionId", reportAuth, async (req, res) => {
       try {
-        const orgId = req.apiOrg?.id ?? (await prisma.session.findUnique({ where: { id: req.params.sessionId }, select: { organizationId: true } }))?.organizationId;
-        if (!orgId) return res.status(404).json({ error: "Session not found" });
-        const report = await ScoreReportService.getSessionReport(req.params.sessionId, orgId, baseUrl(req));
+        const session = await prisma.session.findUnique({
+          where: { id: req.params.sessionId },
+          select: { candidateId: true, organizationId: true },
+        });
+        if (!session) return res.status(404).json({ error: "Session not found" });
+        if (!(await canReadReportSubject(req, session.candidateId, session.organizationId))) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+        const report = await ScoreReportService.getSessionReport(req.params.sessionId, session.organizationId, baseUrl(req));
         if (!report) return res.status(404).json({ error: "Session not found" });
         return res.json(report);
       } catch (err: any) {
@@ -7142,9 +7419,15 @@ ${codeSection}
       try {
         const limit  = Math.min(parseInt(req.query.limit  as string ?? "20") || 20, 100);
         const offset = parseInt(req.query.offset as string ?? "0") || 0;
-        const orgId  = req.apiOrg?.id;
-        if (!orgId && !req.user) return res.status(401).json({ error: "Cannot determine organisation" });
-        const resolvedOrgId = orgId ?? (await prisma.user.findUnique({ where: { id: req.user?.userId }, select: { organizationId: true } }))?.organizationId ?? "";
+        const candidate = await prisma.user.findUnique({
+          where: { id: req.params.candidateId },
+          select: { id: true, organizationId: true },
+        });
+        if (!candidate) return res.status(404).json({ error: "Candidate not found" });
+        if (!(await canReadReportSubject(req, candidate.id, candidate.organizationId))) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+        const resolvedOrgId = candidate.organizationId;
         const result = await ScoreReportService.getCandidateHistory(req.params.candidateId, resolvedOrgId, baseUrl(req), limit, offset);
         return res.json(result);
       } catch (err: any) {
@@ -7155,9 +7438,14 @@ ${codeSection}
     // GET /api/reports/organisations/:orgId/aggregate
     app.get("/api/reports/organisations/:orgId/aggregate", reportAuth, async (req, res) => {
       try {
-        // Only the org itself (via API key) or admins can view aggregate
-        const callerOrgId = req.apiOrg?.id ?? null;
-        if (callerOrgId && callerOrgId !== req.params.orgId) return res.status(403).json({ error: "Forbidden" });
+        const callerOrgId = req.apiOrg?.id ?? req.user?.organizationId ?? null;
+        const role = req.user?.role;
+        const isGlobalAdmin = role && globalReportRoles.has(role);
+        const isTenantAdmin = role === "INST_ADMIN" && callerOrgId === req.params.orgId;
+        const isOwnApiKey = Boolean(req.apiOrg && callerOrgId === req.params.orgId);
+        if (!isGlobalAdmin && !isTenantAdmin && !isOwnApiKey) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
         const result = await ScoreReportService.getOrgAggregate(req.params.orgId, baseUrl(req));
         return res.json(result);
       } catch (err: any) {
@@ -7312,15 +7600,18 @@ ${codeSection}
 
   // ── Admin — Scoring Queue / 48-hour SLA Tracker ─────────────────────────
 
-  app.get("/api/admin/scoring-queue", checkRole(["SUPER_ADMIN", "INST_ADMIN", "ASSESSMENT_DIRECTOR"]), async (_req, res) => {
+  app.get("/api/admin/scoring-queue", checkRole(["SUPER_ADMIN", "INST_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req: any, res) => {
     try {
       if (!prisma) return res.json({ items: [], stats: { totalPending: 0, overdueCount: 0, soonCount: 0 } });
 
+      const tenantFilter = req.user?.role === "INST_ADMIN"
+        ? { organizationId: req.user.organizationId }
+        : {};
       const pending = await prisma.response.findMany({
         where: {
           score: null,
           item: { skill: { in: ["SPEAKING", "WRITING"] } },
-          session: { status: { in: ["COMPLETED", "IN_PROGRESS"] } },
+          session: { ...tenantFilter, status: { in: ["COMPLETED", "IN_PROGRESS"] } },
         },
         include: {
           item: { select: { skill: true } },
@@ -7389,6 +7680,7 @@ ${codeSection}
     try {
       if (!prisma) return res.json({ ok: true, queued: 0 });
       const { sessionId } = req.params;
+      if (!(await assertSessionOwnership(req, res, sessionId))) return;
 
       // Fetch pending speaking/writing responses for this session and trigger scoring
       const pending = await prisma.response.findMany({
@@ -7432,13 +7724,32 @@ ${codeSection}
 
   const teacherRoles = ["TEACHER", "INST_ADMIN", "SUPER_ADMIN", "ASSESSMENT_DIRECTOR"];
 
+  const assertClassAccess = async (req: any, res: any, classId: string) => {
+    const cls = await prisma.class.findUnique({
+      where: { id: classId },
+      select: { id: true, organizationId: true, teacherId: true },
+    });
+    if (!cls) { res.status(404).json({ error: "Class not found" }); return null; }
+    const role = req.user?.role;
+    if (["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"].includes(role)) return cls;
+    if (role === "INST_ADMIN" && cls.organizationId === req.user?.organizationId) return cls;
+    if (role === "TEACHER" && cls.teacherId === req.user?.userId) return cls;
+    res.status(403).json({ error: "Access denied" });
+    return null;
+  };
+
   // GET /api/teacher/classes — list classes the authenticated user teaches (or all for admin)
   app.get("/api/teacher/classes", checkRole(teacherRoles), async (req: any, res) => {
     try {
-      const user = req.user as { userId: string; role: string };
-      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
+      const user = req.user as { userId: string; role: string; organizationId?: string };
+      const globalAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"].includes(user.role);
+      const where = globalAdmin
+        ? undefined
+        : user.role === "INST_ADMIN"
+          ? { organizationId: user.organizationId }
+          : { teacherId: user.userId };
       const classes = await prisma.class.findMany({
-        where: isAdmin ? undefined : { teacherId: user.userId },
+        where,
         include: {
           _count: { select: { members: true, assignments: true } },
           teacher: { select: { id: true, name: true, email: true } },
@@ -7478,9 +7789,7 @@ ${codeSection}
         },
       });
       if (!cls) return res.status(404).json({ error: "Class not found" });
-      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
-      if (!isAdmin && cls.teacherId !== user.userId)
-        return res.status(403).json({ error: "Access denied" });
+      if (!(await assertClassAccess(req, res, cls.id))) return;
       return res.json(cls);
     } catch (err: any) {
       return res.status(500).json({ error: "Internal server error" });
@@ -7496,12 +7805,17 @@ ${codeSection}
       const orgUser = await prisma.user.findUnique({ where: { id: user.userId }, select: { organizationId: true } });
       const orgId = orgUser?.organizationId;
       if (!orgId) return res.status(400).json({ error: "User has no organization" });
+      const resolvedTeacherId = teacherId ?? user.userId;
+      const teacher = await prisma.user.findUnique({ where: { id: resolvedTeacherId }, select: { organizationId: true, role: true } });
+      if (!teacher || teacher.organizationId !== orgId || !["TEACHER", "INST_ADMIN"].includes(teacher.role)) {
+        return res.status(400).json({ error: "teacherId must identify a teacher in your organization" });
+      }
       const cls = await prisma.class.create({
         data: {
           name: name.trim(),
           description: description ?? null,
           organizationId: orgId,
-          teacherId: teacherId ?? user.userId,
+          teacherId: resolvedTeacherId,
         },
       });
       return res.status(201).json(cls);
@@ -7516,12 +7830,16 @@ ${codeSection}
       const user = req.user as { userId: string; role: string };
       const cls = await prisma.class.findUnique({ where: { id: req.params.id } });
       if (!cls) return res.status(404).json({ error: "Class not found" });
-      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
-      if (!isAdmin && cls.teacherId !== user.userId)
-        return res.status(403).json({ error: "Access denied" });
+      if (!(await assertClassAccess(req, res, cls.id))) return;
       const { userIds } = req.body;
       if (!Array.isArray(userIds) || userIds.length === 0)
         return res.status(400).json({ error: "userIds array required" });
+      const sameOrgCount = await prisma.user.count({
+        where: { id: { in: userIds }, organizationId: cls.organizationId },
+      });
+      if (sameOrgCount !== new Set(userIds).size) {
+        return res.status(400).json({ error: "All class members must belong to the class organization" });
+      }
       await prisma.classMember.createMany({
         data: userIds.map((uid: string) => ({ classId: cls.id, userId: uid })),
         skipDuplicates: true,
@@ -7535,6 +7853,7 @@ ${codeSection}
   // DELETE /api/teacher/classes/:id/members/:userId — remove member
   app.delete("/api/teacher/classes/:id/members/:userId", checkRole(teacherRoles), async (req: any, res) => {
     try {
+      if (!(await assertClassAccess(req, res, req.params.id))) return;
       await prisma.classMember.deleteMany({
         where: { classId: req.params.id, userId: req.params.userId },
       });
@@ -7547,6 +7866,7 @@ ${codeSection}
   // PUT /api/teacher/classes/:id/target — set target CEFR level for the class
   app.put("/api/teacher/classes/:id/target", checkRole(teacherRoles), async (req: any, res) => {
     try {
+      if (!(await assertClassAccess(req, res, req.params.id))) return;
       const { targetCefr } = req.body;
       const validLevels = ["A1", "A2", "B1", "B2", "C1", "C2", null, ""];
       if (!validLevels.includes(targetCefr ?? null)) return res.status(400).json({ error: "Invalid CEFR level" });
@@ -7578,6 +7898,7 @@ ${codeSection}
         },
       });
       if (!cls) return res.status(404).json({ error: "Class not found" });
+      if (!(await assertClassAccess(req, res, cls.id))) return;
 
       // Fetch latest completed session + score report per member
       const memberIds = cls.members.map((m: any) => m.userId);
@@ -7670,9 +7991,7 @@ ${codeSection}
         include: { members: { select: { userId: true } } },
       });
       if (!cls) return res.status(404).json({ error: "Class not found" });
-      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
-      if (!isAdmin && cls.teacherId !== user.userId)
-        return res.status(403).json({ error: "Access denied" });
+      if (!(await assertClassAccess(req, res, cls.id))) return;
       const memberIds = cls.members.map((m) => m.userId);
       // Get latest completed session per member
       const sessions = await prisma.session.findMany({
@@ -7731,8 +8050,7 @@ ${codeSection}
         },
       });
       if (!cls) return res.status(404).json({ error: "Class not found" });
-      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
-      if (!isAdmin && cls.teacherId !== user.userId) return res.status(403).json({ error: "Access denied" });
+      if (!(await assertClassAccess(req, res, cls.id))) return;
 
       const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
       const rows = [
@@ -7761,10 +8079,15 @@ ${codeSection}
   // GET /api/teacher/assignments — list assignments for the teacher's classes
   app.get("/api/teacher/assignments", checkRole(teacherRoles), async (req: any, res) => {
     try {
-      const user = req.user as { userId: string; role: string };
-      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
+      const user = req.user as { userId: string; role: string; organizationId?: string };
+      const globalAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"].includes(user.role);
+      const where = globalAdmin
+        ? undefined
+        : user.role === "INST_ADMIN"
+          ? { organizationId: user.organizationId }
+          : { class: { teacherId: user.userId } };
       const assignments = await prisma.assignment.findMany({
-        where: isAdmin ? undefined : { class: { teacherId: user.userId } },
+        where,
         include: {
           class: { select: { id: true, name: true, _count: { select: { members: true } } } },
           _count: { select: { sessions: true } },
@@ -7798,9 +8121,7 @@ ${codeSection}
       if (classId) {
         const cls = await prisma.class.findUnique({ where: { id: classId } });
         if (!cls) return res.status(404).json({ error: "Class not found" });
-        const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
-        if (!isAdmin && cls.teacherId !== user.userId)
-          return res.status(403).json({ error: "Access denied" });
+        if (!(await assertClassAccess(req, res, cls.id))) return;
         orgId = cls.organizationId;
       } else {
         const u = await prisma.user.findUnique({ where: { id: user.userId }, select: { organizationId: true } });
@@ -7829,6 +8150,19 @@ ${codeSection}
   app.post("/api/teacher/students/:studentId/send-report", checkRole(teacherRoles), async (req: any, res) => {
     const { studentId } = req.params;
     try {
+      const caller = req.user as { userId: string; role: string; organizationId?: string };
+      const student = await prisma.user.findUnique({ where: { id: studentId }, select: { organizationId: true } });
+      if (!student) return res.status(404).json({ error: "Student not found" });
+      if (caller.role === "INST_ADMIN" && student.organizationId !== caller.organizationId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      if (caller.role === "TEACHER") {
+        const membership = await prisma.classMember.findFirst({
+          where: { userId: studentId, class: { teacherId: caller.userId } },
+          select: { id: true },
+        });
+        if (!membership) return res.status(403).json({ error: "Access denied" });
+      }
       // Find latest completed session for this student
       const session = await (prisma.session.findFirst as any)({
         where: { candidateId: studentId, status: "COMPLETED" },
@@ -7906,8 +8240,7 @@ ${codeSection}
         include: { members: { select: { userId: true } } },
       });
       if (!cls) return res.status(404).json({ error: "Class not found" });
-      const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"].includes(user.role);
-      if (!isAdmin && cls.teacherId !== user.userId) return res.status(403).json({ error: "Access denied" });
+      if (!(await assertClassAccess(req, res, cls.id))) return;
 
       const memberIds = cls.members.map((m) => m.userId);
       if (memberIds.length === 0) return res.json({ trend: [], unit, periods: 0 });
@@ -8093,7 +8426,7 @@ ${entries}
         // Issue a short-lived auth cookie so the SPA recognises the user
         const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret";
         const accessToken = (await import("jsonwebtoken")).default.sign(
-          { uid: user.id, email: user.email, role: user.role, organizationId: user.organizationId },
+          { userId: user.id },
           JWT_SECRET,
           { expiresIn: "15m" }
         );
@@ -8112,7 +8445,12 @@ ${entries}
 
     // Admin: list LTI registrations for an org
     app.get("/api/lti/registrations", authMiddleware, checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
-      const orgId = req.query.organizationId ?? req.user?.organizationId;
+      const requestedOrgId = req.query.organizationId as string | undefined;
+      if (req.user?.role === "INST_ADMIN" && requestedOrgId && requestedOrgId !== req.user.organizationId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const orgId = req.user?.role === "INST_ADMIN" ? req.user.organizationId : requestedOrgId;
+      if (!orgId) return res.status(400).json({ error: "organizationId required" });
       const regs = await prisma.ltiRegistration.findMany({ where: { organizationId: orgId }, orderBy: { createdAt: "desc" } });
       return res.json(regs);
     });
@@ -8124,8 +8462,13 @@ ${entries}
         return res.status(400).json({ error: "Missing required fields" });
       }
       try {
+        if (req.user?.role === "INST_ADMIN" && organizationId && organizationId !== req.user.organizationId) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+        const resolvedOrgId = req.user?.role === "INST_ADMIN" ? req.user.organizationId : organizationId;
+        if (!resolvedOrgId) return res.status(400).json({ error: "organizationId required" });
         const reg = await prisma.ltiRegistration.create({
-          data: { organizationId: organizationId ?? req.user.organizationId, platformIss, clientId, authEndpoint, tokenEndpoint, jwksUrl, deploymentIds: deploymentIds ?? "" },
+          data: { organizationId: resolvedOrgId, platformIss, clientId, authEndpoint, tokenEndpoint, jwksUrl, deploymentIds: deploymentIds ?? "" },
         });
         return res.status(201).json(reg);
       } catch (err: any) {
@@ -8138,21 +8481,40 @@ ${entries}
     app.put("/api/lti/registrations/:id", authMiddleware, checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
       const reg = await prisma.ltiRegistration.findUnique({ where: { id: req.params.id } });
       if (!reg) return res.status(404).json({ error: "Registration not found" });
-      const updated = await prisma.ltiRegistration.update({ where: { id: req.params.id }, data: req.body });
+      if (req.user?.role === "INST_ADMIN" && reg.organizationId !== req.user.organizationId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const { organizationId: _ignoredOrganizationId, ...safePatch } = req.body;
+      const updated = await prisma.ltiRegistration.update({ where: { id: req.params.id }, data: safePatch });
       return res.json(updated);
     });
 
     // Admin: delete
     app.delete("/api/lti/registrations/:id", authMiddleware, checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
+      const reg = await prisma.ltiRegistration.findUnique({ where: { id: req.params.id }, select: { organizationId: true } });
+      if (!reg) return res.status(404).json({ error: "Registration not found" });
+      if (req.user?.role === "INST_ADMIN" && reg.organizationId !== req.user.organizationId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       await prisma.ltiRegistration.delete({ where: { id: req.params.id } });
       return res.status(204).end();
     });
 
     // Internal: trigger grade passback after a session finalises
     // Called from assessment finalize pipeline with ltiSessionId from session metadata
-    app.post("/api/lti/grade-passback", authMiddleware, async (req: any, res) => {
+    app.post("/api/lti/grade-passback", authMiddleware, checkRole(["SUPER_ADMIN", "INST_ADMIN"]), async (req: any, res) => {
       const { ltiSessionId, scoreGiven, comment } = req.body;
       if (!ltiSessionId) return res.status(400).json({ error: "ltiSessionId required" });
+      if (req.user?.role === "INST_ADMIN") {
+        const ltiSession = await prisma.ltiSession.findUnique({
+          where: { id: ltiSessionId },
+          select: { registration: { select: { organizationId: true } } },
+        });
+        if (!ltiSession) return res.status(404).json({ error: "LTI session not found" });
+        if (ltiSession.registration.organizationId !== req.user.organizationId) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+      }
       await sendGradePassback({ ltiSessionId, scoreGiven: scoreGiven ?? 0, comment });
       return res.json({ ok: true });
     });

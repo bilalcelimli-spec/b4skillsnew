@@ -487,7 +487,7 @@ export const AssessmentService = {
       // lockstep with whatever product-line profile is active (and frees us
       // from hard-coding the 4/6-skill order in the frontend).
       sectionOrder: profile.sectionOrder.map((s) => String(s)),
-      profileName: profile.name,
+      profileName: profile.displayName ?? profile.name,
     };
   },
 

@@ -27,11 +27,11 @@ export interface AssessmentMode {
 const MODES: AssessmentMode[] = [
   {
     id: "quick-check",
-    label: "Quick Check",
-    tagline: "Fast approximate level",
-    time: "10 – 15 min",
-    skills: ["Vocabulary", "Grammar", "Reading"],
-    purpose: "Get an estimated CEFR range quickly. Good for a first indication before a full assessment.",
+    label: "Rapid Diagnostic",
+    tagline: "Fast six-skill profile",
+    time: "30 – 40 min",
+    skills: ["Vocabulary", "Grammar", "Reading", "Listening", "Writing", "Speaking"],
+    purpose: "Get an adaptive CEFR profile across all six skills with short productive tasks.",
     icon: <Zap size={22} />,
     accent: "bg-amber-500",
     productLine: "15-Min Diagnostic",

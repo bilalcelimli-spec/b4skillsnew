@@ -32,6 +32,7 @@ export const ProctoringEventBody = z.object({
 
 export const ProctoringAuditBody = z.object({
   sessionId: CuidLike,
+  eventId: CuidLike.optional(),
   notes: LongText.optional(),
   decision: z.enum(["APPROVE", "FLAG", "REJECT", "ESCALATE"]),
   reviewer: ShortText.optional(),

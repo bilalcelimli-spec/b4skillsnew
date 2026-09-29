@@ -38,7 +38,26 @@ export const CertificateService = {
     });
 
     if (existing) {
-      return this.mapToCertificate(existing, candidateProfile, orgBranding);
+      // Certificate issuance is explicit. A score report is not publicly
+      // verifiable until this operation records the issuance marker.
+      const diagnosticReport = (existing.diagnosticReport as Record<string, unknown> | null) ?? {};
+      const certificateIssuedAt = typeof diagnosticReport.certificateIssuedAt === "string"
+        ? diagnosticReport.certificateIssuedAt
+        : new Date().toISOString();
+      const issued = existing.isVerified && existing.certificateUrl && diagnosticReport.certificateIssuedAt
+        ? existing
+        : await prisma.scoreReport.update({
+            where: { id: existing.id },
+            data: {
+              isVerified: true,
+              certificateUrl: `/verify/${existing.id}`,
+              diagnosticReport: {
+                ...diagnosticReport,
+                certificateIssuedAt,
+              },
+            },
+          });
+      return this.mapToCertificate(issued, candidateProfile, orgBranding);
     }
 
     // Create new score report (certificate)
@@ -55,15 +74,24 @@ export const CertificateService = {
         isVerified: true
       }
     });
+    const issued = await prisma.scoreReport.update({
+      where: { id: report.id },
+      data: {
+        certificateUrl: `/verify/${report.id}`,
+        diagnosticReport: { certificateIssuedAt: new Date().toISOString() },
+      },
+    });
 
-    return this.mapToCertificate(report, candidateProfile, orgBranding);
+    return this.mapToCertificate(issued, candidateProfile, orgBranding);
   },
 
   /**
    * Map Prisma ScoreReport to Certificate interface
    */
   mapToCertificate(report: any, candidateProfile: any, orgBranding: any): Certificate {
-    const issuedAt = report.createdAt;
+    const diagnosticReport = (report.diagnosticReport as Record<string, unknown> | null) ?? {};
+    const issuedAtValue = diagnosticReport.certificateIssuedAt;
+    const issuedAt = typeof issuedAtValue === "string" ? new Date(issuedAtValue) : report.createdAt;
     const expiresAt = new Date(issuedAt);
     expiresAt.setFullYear(issuedAt.getFullYear() + 2);
 
@@ -125,12 +153,9 @@ export const CertificateService = {
       }
     });
 
-    if (!report) return null;
-
-    // Mark as verified on first lookup
-    if (!report.isVerified) {
-      await prisma.scoreReport.update({ where: { id }, data: { isVerified: true } }).catch(() => {});
-    }
+    // Public lookup must never issue a certificate as a side effect. Only
+    // reports explicitly marked by generateCertificate are valid certificates.
+    if (!report || !report.isVerified || !report.certificateUrl) return null;
 
     return this.mapToCertificate(report, report.session.candidate, {
       organizationId: report.session.organizationId,

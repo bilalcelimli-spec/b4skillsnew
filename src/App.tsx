@@ -185,7 +185,7 @@ export default function App() {
           
           const role = data.user.role?.toUpperCase();
           if (role === "RATER") setActiveTab("rating");
-          else if (["ADMIN", "SUPER_ADMIN", "CONTENT_ADMIN", "ASSESSMENT_DIRECTOR"].includes(role)) setActiveTab("admin");
+          else if (["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"].includes(role)) setActiveTab("admin");
           else if (["ORG_ADMIN", "INST_ADMIN"].includes(role)) setActiveTab("institutional");
           else if (role === "TEACHER") setActiveTab("teacher");
           else if (["ITEM_WRITER", "LANGUAGE_REVIEWER", "CEFR_REVIEWER", "FAIRNESS_REVIEWER", "MODERATOR", "PSYCHOMETRICIAN"].includes(role)) setActiveTab("content");
@@ -436,7 +436,7 @@ export default function App() {
   }
 
   const profRole = userProfile?.role?.toUpperCase();
-  const isAdmin = ["ADMIN", "SUPER_ADMIN", "CONTENT_ADMIN", "ASSESSMENT_DIRECTOR"].includes(profRole);
+  const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"].includes(profRole);
   const isRater = profRole === "RATER" || isAdmin;
   const isOrgAdmin = ["ORG_ADMIN", "INST_ADMIN"].includes(profRole) || isAdmin;
   const isTeacher = profRole === "TEACHER" || isOrgAdmin;

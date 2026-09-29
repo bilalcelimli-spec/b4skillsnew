@@ -194,14 +194,14 @@ async function buildReport(
 
 export class ScoreReportService {
 
-  static async getSessionReport(sessionId: string, orgId: string, baseUrl: string): Promise<ScoreReportEnvelope | null> {
+  static async getSessionReport(sessionId: string, orgId: string | null, baseUrl: string): Promise<ScoreReportEnvelope | null> {
     const session = await prisma.session.findFirst({ where: { id: sessionId, organizationId: orgId } });
     return buildReport(session, baseUrl);
   }
 
   static async getCandidateHistory(
     candidateId: string,
-    orgId: string,
+    orgId: string | null,
     baseUrl: string,
     limit = 20,
     offset = 0,

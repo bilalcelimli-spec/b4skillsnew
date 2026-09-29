@@ -21,6 +21,17 @@ const E2E_EMAIL   = process.env.E2E_EMAIL       ?? "e2e-student@b4skills.test";
 const E2E_PASS    = process.env.E2E_PASSWORD    ?? "E2eTest!2026";
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? "admin@b4skills.com";
 const ADMIN_PASS  = process.env.E2E_ADMIN_PASSWORD ?? "Admin@b4skills2025";
+const PRODUCT_LINES = [
+  "Primary (7-10)",
+  "Junior Suite (11-14)",
+  "15-Min Diagnostic",
+  "Express Assessment (30-Min)",
+  "General English",
+  "Academia",
+  "Corporate",
+  "Language Schools",
+  "Specialized / Integrated Skills",
+] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -159,11 +170,11 @@ test.describe("Candidate dashboard", () => {
 test.describe("Full exam session — happy path", () => {
   test.beforeEach(async ({ page }) => { await login(page); });
 
-  test("can start a 15-minute diagnostic exam", async ({ page }) => {
+  test("can start the rapid diagnostic exam", async ({ page }) => {
     await page.goto(`${BASE_URL}/`);
-    // Look for the 15-min diagnostic shortcut or any start button
+    // Look for the rapid diagnostic shortcut or any start button
     const quickStart = page
-      .getByRole("button", { name: /15.min|15 min|diagnostic|hızlı|quick/i })
+      .getByRole("button", { name: /rapid|diagnostic|hızlı|quick/i })
       .or(page.getByRole("button", { name: /başlat|start exam|sınava gir/i }))
       .first();
     const visible = await quickStart.isVisible({ timeout: 6_000 }).catch(() => false);
@@ -202,13 +213,13 @@ test.describe("Full exam session — happy path", () => {
     }
   });
 
-  test("can drive 15-min exam to completion", async ({ page }) => {
-    // Try to launch a short (15-min) diagnostic session via API first
-    const launchRes = await page.request.post(`${BASE_URL}/api/sessions`, {
-      data: { productLine: "15_min_diagnostic" },
+  test("can drive the rapid diagnostic to completion", async ({ page }) => {
+    // Launch the rapid diagnostic session via the production API.
+    const launchRes = await page.request.post(`${BASE_URL}/api/sessions/launch`, {
+      data: { productLine: "15-Min Diagnostic" },
       headers: { "Content-Type": "application/json" },
     });
-    if (launchRes.status() !== 200 && launchRes.status() !== 201) { test.skip(); return; }
+    expect(launchRes.ok(), await launchRes.text()).toBe(true);
     const { sessionId } = await launchRes.json().catch(() => ({}));
     if (!sessionId) { test.skip(); return; }
     await page.goto(`${BASE_URL}/exam/${sessionId}`);
@@ -266,11 +277,42 @@ test.describe("Score report", () => {
     const { sessions } = await sessionsRes.json().catch(() => ({ sessions: [] }));
     if (!sessions?.length) { test.skip(); return; }
     const sessionId = sessions[0].id;
-    const pdfRes = await page.request.get(`${BASE_URL}/api/sessions/${sessionId}/report/pdf`);
+    const pdfRes = await page.request.get(`${BASE_URL}/api/sessions/${sessionId}/report.pdf`);
     if (pdfRes.status() === 404) { test.skip(); return; }
     expect(pdfRes.status()).toBe(200);
     expect(pdfRes.headers()["content-type"]).toContain("pdf");
   });
+});
+
+test.describe("All product-line launch contracts", () => {
+  test.beforeEach(async ({ page }) => { await login(page); });
+
+  for (const productLine of PRODUCT_LINES) {
+    test(`${productLine} launches and accepts its first response`, async ({ page }) => {
+      const response = await page.request.post(`${BASE_URL}/api/sessions/launch`, {
+        data: { productLine },
+        headers: { "Content-Type": "application/json" },
+      });
+      expect(response.ok(), await response.text()).toBe(true);
+      const payload = await response.json();
+      expect(payload.sessionId).toBeTruthy();
+      expect(payload.sectionOrder.length).toBeGreaterThan(0);
+      expect(payload.profileName).toBeTruthy();
+      expect(payload.maxDurationMs).toBeGreaterThan(0);
+
+      const nextResponse = await page.request.get(`${BASE_URL}/api/sessions/${payload.sessionId}/next`);
+      expect(nextResponse.ok(), await nextResponse.text()).toBe(true);
+      const nextPayload = await nextResponse.json();
+      expect(nextPayload.stop).toBe(false);
+      expect(nextPayload.item?.id).toBeTruthy();
+
+      const answerResponse = await page.request.post(`${BASE_URL}/api/sessions/${payload.sessionId}/respond`, {
+        data: { itemId: nextPayload.item.id, value: "A", latencyMs: 5_000 },
+        headers: { "Content-Type": "application/json" },
+      });
+      expect(answerResponse.ok(), await answerResponse.text()).toBe(true);
+    });
+  }
 });
 
 // ─── Certificate validation ───────────────────────────────────────────────────
@@ -384,6 +426,82 @@ test.describe("API smoke tests", () => {
   test("GET /api/auth/me without cookie returns 401", async ({ page }) => {
     const res = await page.request.get(`${BASE_URL}/api/auth/me`);
     expect(res.status()).toBe(401);
+  });
+
+  test("candidate cannot override the organization used for a session", async ({ page }) => {
+    await login(page);
+    const response = await page.request.post(`${BASE_URL}/api/sessions/launch`, {
+      data: { productLine: "General English", organizationId: "foreign-organization" },
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(response.status()).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "organization_mismatch" });
+  });
+
+  test("candidate cannot read the administrative scoring queue", async ({ page }) => {
+    await login(page);
+    const response = await page.request.get(`${BASE_URL}/api/admin/scoring-queue`);
+    expect(response.status()).toBe(403);
+  });
+
+  test("candidate cannot read another user's history or organization aggregate", async ({ page }) => {
+    const adminLogin = await page.request.post(`${BASE_URL}/api/auth/login`, {
+      data: { email: ADMIN_EMAIL, password: ADMIN_PASS },
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(adminLogin.status()).toBe(200);
+    const admin = (await adminLogin.json()).user;
+
+    const candidateLogin = await page.request.post(`${BASE_URL}/api/auth/login`, {
+      data: { email: E2E_EMAIL, password: E2E_PASS },
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(candidateLogin.status()).toBe(200);
+    const candidate = (await candidateLogin.json()).user;
+
+    const history = await page.request.get(`${BASE_URL}/api/reports/candidates/${admin.uid}/history`);
+    expect(history.status()).toBe(403);
+
+    if (candidate.organizationId) {
+      const aggregate = await page.request.get(
+        `${BASE_URL}/api/reports/organisations/${candidate.organizationId}/aggregate`,
+      );
+      expect(aggregate.status()).toBe(403);
+    }
+  });
+
+  test("exam code redemption cannot sign in as an existing admin account", async ({ page }) => {
+    const loginResponse = await page.request.post(`${BASE_URL}/api/auth/login`, {
+      data: { email: ADMIN_EMAIL, password: ADMIN_PASS },
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(loginResponse.status()).toBe(200);
+    const admin = (await loginResponse.json()).user;
+    expect(admin.organizationId).toBeTruthy();
+
+    const generated = await page.request.post(`${BASE_URL}/api/codes/generate`, {
+      data: {
+        organizationId: admin.organizationId,
+        productLine: "General English",
+        quantity: 1,
+        prefix: "E2E",
+      },
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(generated.status()).toBe(200);
+    const code = (await generated.json()).codes[0];
+
+    const redemption = await page.request.post(`${BASE_URL}/api/codes/redeem`, {
+      data: { code, email: ADMIN_EMAIL, name: "Not", surname: "Admin" },
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(redemption.status()).toBe(403);
+
+    const stillValid = await page.request.post(`${BASE_URL}/api/codes/validate`, {
+      data: { code },
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(stillValid.status()).toBe(200);
   });
 });
 

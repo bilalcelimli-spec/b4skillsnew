@@ -668,7 +668,7 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
                   onChange={e => setInviteProductLine(e.target.value)}
                 >
                   {["General English","15-Min Diagnostic","Academia","Corporate","Primary","Junior"].map(pl => (
-                    <option key={pl} value={pl}>{pl}</option>
+                    <option key={pl} value={pl}>{pl === "15-Min Diagnostic" ? "Rapid Diagnostic (30–40 min)" : pl}</option>
                   ))}
                 </select>
                 <Button

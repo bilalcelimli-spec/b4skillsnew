@@ -552,7 +552,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 style={{ flex: "1 1 180px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
               >
                 {["General English","15-Min Diagnostic","Academia","Corporate","Primary","Junior"].map(pl => (
-                  <option key={pl} value={pl}>{pl}</option>
+                  <option key={pl} value={pl}>{pl === "15-Min Diagnostic" ? "Rapid Diagnostic (30–40 min)" : pl}</option>
                 ))}
               </select>
               <input
