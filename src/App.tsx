@@ -616,7 +616,16 @@ export default function App() {
             <LogOut size={18} />
           </button>
         </div>
-        {activeTab === "admin" && isAdmin ? (
+        {activeTab === "admin" && !isAdmin ? (
+          <div data-testid="access-denied" role="alert" className="max-w-xl mx-auto mt-20 rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+            <ShieldAlert className="mx-auto mb-4 text-red-600" size={36} />
+            <h1 className="text-2xl font-black text-red-900">Access denied</h1>
+            <p className="mt-2 text-sm text-red-700">Your account is not authorized to open the admin console.</p>
+            <button onClick={() => goToTab("dashboard")} className="mt-6 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white">
+              Return to dashboard
+            </button>
+          </div>
+        ) : activeTab === "admin" && isAdmin ? (
           <Suspense fallback={<PageLoader />}>
             <UnifiedAdminConsole orgId={userProfile?.organizationId} onLogout={() => signOut()} />
           </Suspense>
@@ -890,7 +899,7 @@ function ResultsHistory({ sessions, onSelectSession }: { sessions: any[]; onSele
         <p className="text-slate-500 mt-1 font-medium">Review your past assessments and reports.</p>
       </header>
       {completed.length === 0 ? (
-        <div className="text-center py-20 text-slate-400">
+        <div data-testid="results-empty-state" className="text-center py-20 text-slate-400">
           <div className="text-5xl mb-4">📋</div>
           <p className="font-medium">No completed assessments yet. Take a test to see your results here.</p>
         </div>
@@ -903,6 +912,7 @@ function ResultsHistory({ sessions, onSelectSession }: { sessions: any[]; onSele
             const product = s.metadata?.productLine ?? "Assessment";
             return (
               <button
+                data-testid="session-row"
                 key={s.id}
                 onClick={() => onSelectSession(s.id)}
                 className="w-full flex items-center justify-between p-5 bg-white border border-slate-200 rounded-2xl hover:border-indigo-300 hover:shadow-md transition-all text-left group"
@@ -918,7 +928,7 @@ function ResultsHistory({ sessions, onSelectSession }: { sessions: any[]; onSele
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <div className="text-xl font-black text-indigo-600">{cefr}</div>
+                    <div data-testid="cefr-level" className="text-xl font-black text-indigo-600">{cefr}</div>
                     {beps != null && <div className="text-xs text-slate-400 font-bold">{beps} BEPS</div>}
                   </div>
                   <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />

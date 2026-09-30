@@ -24,12 +24,16 @@
  * paramSource = "calibrated".
  *
  * ── Scope & safety ───────────────────────────────────────────────────────────
- *  • Only touches items that look synthetic/unassigned:
- *      - a <= 0                              (explicit synthetic a=0), OR
- *      - a===1.0 && c===0 && difficulty===0 (pure Prisma defaults, never set)
+ *  • Tags every unclassified ACTIVE item as a cold-start prior. Untagged
+ *    parameters have no empirical provenance and must not be reported as
+ *    calibrated, even when their numeric values are usable.
+ *  • Replaces numeric parameters only when they look synthetic/unassigned:
+ *      - a <= 0, OR
+ *      - a===1.0 && c===0 && difficulty===0 (pure Prisma defaults)
  *  • NEVER touches items already tagged metadata.paramSource === "calibrated".
  *  • Preserves a meaningfully hand-assigned `b` (only fills b when it's a default 0).
- *  • Writes metadata.paramSource = "prior" + metadata.paramBackfilledAt.
+ *  • Writes metadata.paramSource = "prior" + metadata.paramClassifiedAt;
+ *    paramBackfilledAt is added only when numeric parameters are replaced.
  *
  * ── Usage ────────────────────────────────────────────────────────────────────
  *   DRY_RUN=1 npx tsx scripts/backfill-irt-priors.ts   # preview, no writes
@@ -80,9 +84,7 @@ interface ItemRow {
   metadata: any;
 }
 
-function needsBackfill(it: ItemRow): boolean {
-  const src = (it.metadata as any)?.paramSource;
-  if (src === "calibrated") return false; // never overwrite real calibration
+function needsParameterBackfill(it: ItemRow): boolean {
   if (it.discrimination <= 0) return true; // synthetic a=0
   // Pure Prisma defaults never explicitly set:
   if (it.discrimination === 1.0 && it.guessing === 0 && it.difficulty === 0) return true;
@@ -113,17 +115,57 @@ async function main() {
 
   console.log(`Total items in scope: ${items.length}`);
 
-  const targets = items.filter(needsBackfill);
-  console.log(`Items needing backfill: ${targets.length}\n`);
+  const unclassified = items.filter((it) => (it.metadata as any)?.paramSource == null);
+  const parameterTargets = items.filter((it) => {
+    const source = (it.metadata as any)?.paramSource;
+    return source !== "calibrated" && (source == null || source === "prior") && needsParameterBackfill(it);
+  });
+  const targetIds = new Set([...unclassified, ...parameterTargets].map((it) => it.id));
+  const targets = items.filter((it) => targetIds.has(it.id));
+  console.log(`Items needing prior classification/backfill: ${targets.length}\n`);
 
-  let updated = 0;
   const bySkill: Record<string, number> = {};
   const sample: string[] = [];
 
   for (const it of targets) {
+    bySkill[it.skill] = (bySkill[it.skill] ?? 0) + 1;
+    if (sample.length < 8) {
+      sample.push(
+        `  ${needsParameterBackfill(it) ? "backfill" : "classify"} ${it.id.slice(0, 8)} ` +
+        `${it.skill}/${it.cefrLevel} ${it.type}`
+      );
+    }
+  }
+
+  // Classification is metadata-only and can safely be done in one statement;
+  // this keeps a large bank from requiring thousands of network round-trips.
+  if (!DRY_RUN && unclassified.length > 0) {
+    const classifiedAt = new Date().toISOString();
+    if (ONLY_ACTIVE) {
+      await prisma.$executeRaw`
+        UPDATE "Item"
+        SET "metadata" = COALESCE("metadata", '{}'::jsonb) ||
+              jsonb_build_object('paramSource', 'prior', 'paramClassifiedAt', ${classifiedAt}),
+            "updatedAt" = NOW()
+        WHERE "status" = 'ACTIVE'::"ItemStatus"
+          AND COALESCE("metadata"->>'paramSource', '') = ''
+      `;
+    } else {
+      await prisma.$executeRaw`
+        UPDATE "Item"
+        SET "metadata" = COALESCE("metadata", '{}'::jsonb) ||
+              jsonb_build_object('paramSource', 'prior', 'paramClassifiedAt', ${classifiedAt}),
+            "updatedAt" = NOW()
+        WHERE COALESCE("metadata"->>'paramSource', '') = ''
+      `;
+    }
+  }
+
+  for (const it of parameterTargets) {
     const norm = getIrtNorm(it.cefrLevel as any) ?? (FALLBACK_NORM as any);
 
-    // ── a (discrimination) ── always replace when needsBackfill, jitter ±0.15
+    // Replace only obvious defaults; usable imported/norm parameters were
+    // classified in bulk above and remain numerically unchanged.
     const aTarget = norm.a.target as number;
     const newA = round(Math.max(0.3, aTarget + 0.15 * jitter(it.id, "a")));
 
@@ -146,15 +188,9 @@ async function main() {
     const newMeta = {
       ...((it.metadata as any) ?? {}),
       paramSource: "prior",
+      paramClassifiedAt: new Date().toISOString(),
       paramBackfilledAt: new Date().toISOString(),
     };
-
-    if (sample.length < 8) {
-      sample.push(
-        `  ${it.id.slice(0, 8)} ${it.skill}/${it.cefrLevel} ${it.type}: ` +
-          `a ${it.discrimination}→${newA}, b ${it.difficulty}→${newB}, c ${it.guessing}→${newC}`
-      );
-    }
 
     if (!DRY_RUN) {
       await prisma.item.update({
@@ -167,8 +203,6 @@ async function main() {
         },
       });
     }
-    updated++;
-    bySkill[it.skill] = (bySkill[it.skill] ?? 0) + 1;
   }
 
   console.log("Sample changes:");
@@ -177,7 +211,7 @@ async function main() {
   for (const [s, n] of Object.entries(bySkill).sort()) {
     console.log(`  ${s.padEnd(11)} ${n}`);
   }
-  console.log(`\n${DRY_RUN ? "[DRY RUN] Would update" : "✅ Updated"} ${updated} items.`);
+  console.log(`\n${DRY_RUN ? "[DRY RUN] Would update" : "✅ Updated"} ${targets.length} items.`);
   if (DRY_RUN) console.log(`Remove DRY_RUN=1 to apply.`);
 
   await prisma.$disconnect();

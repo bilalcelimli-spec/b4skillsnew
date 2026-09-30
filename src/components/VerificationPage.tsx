@@ -192,7 +192,7 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
                 </div>
               </div>
             ) : (
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-6 flex items-center gap-4">
+              <div data-testid="cert-error" className="rounded-2xl border border-red-200 bg-red-50 p-6 flex items-center gap-4">
                 <ShieldX size={28} className="text-red-500 shrink-0" />
                 <div>
                   <div className="font-black text-red-800 text-sm">Certificate Not Found</div>

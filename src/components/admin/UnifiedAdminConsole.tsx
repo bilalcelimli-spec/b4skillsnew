@@ -210,7 +210,7 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string; onLogout?: () => vo
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-slate-50 overflow-hidden">
+    <div data-testid="admin-console" className="flex min-h-screen w-full bg-slate-50 overflow-hidden">
       {/* ── Sidebar ─────────────────────────────────────────────────── */}
       <aside className="w-52 bg-slate-900 flex flex-col shrink-0 overflow-y-auto">
         {/* Logo / title */}

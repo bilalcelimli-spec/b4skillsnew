@@ -9,12 +9,12 @@ ALTER TYPE "UserRole" ADD VALUE IF NOT EXISTS 'TEACHER';
 
 DO $$ BEGIN
   CREATE TYPE "ClassStatus" AS ENUM ('ACTIVE', 'ARCHIVED');
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
 END $$;
 
 DO $$ BEGIN
   CREATE TYPE "AssignmentStatus" AS ENUM ('DRAFT', 'ACTIVE', 'CLOSED');
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
 END $$;
 
 -- ── 3. Class ──────────────────────────────────────────────────────────────
@@ -39,14 +39,14 @@ DO $$ BEGIN
   ALTER TABLE "Class" ADD CONSTRAINT "Class_organizationId_fkey"
     FOREIGN KEY ("organizationId") REFERENCES "Organization"("id")
     ON DELETE RESTRICT ON UPDATE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE "Class" ADD CONSTRAINT "Class_teacherId_fkey"
     FOREIGN KEY ("teacherId") REFERENCES "User"("id")
     ON DELETE SET NULL ON UPDATE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
 END $$;
 
 -- ── 4. ClassMember ────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS "ClassMember" (
 DO $$ BEGIN
   ALTER TABLE "ClassMember" ADD CONSTRAINT "ClassMember_classId_userId_key"
     UNIQUE ("classId", "userId");
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
 END $$;
 
 CREATE INDEX IF NOT EXISTS "ClassMember_userId_idx" ON "ClassMember"("userId");
@@ -72,14 +72,14 @@ DO $$ BEGIN
   ALTER TABLE "ClassMember" ADD CONSTRAINT "ClassMember_classId_fkey"
     FOREIGN KEY ("classId") REFERENCES "Class"("id")
     ON DELETE CASCADE ON UPDATE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE "ClassMember" ADD CONSTRAINT "ClassMember_userId_fkey"
     FOREIGN KEY ("userId") REFERENCES "User"("id")
     ON DELETE CASCADE ON UPDATE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
 END $$;
 
 -- ── 5. Assignment ─────────────────────────────────────────────────────────
@@ -108,21 +108,21 @@ DO $$ BEGIN
   ALTER TABLE "Assignment" ADD CONSTRAINT "Assignment_organizationId_fkey"
     FOREIGN KEY ("organizationId") REFERENCES "Organization"("id")
     ON DELETE RESTRICT ON UPDATE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE "Assignment" ADD CONSTRAINT "Assignment_classId_fkey"
     FOREIGN KEY ("classId") REFERENCES "Class"("id")
     ON DELETE SET NULL ON UPDATE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
 END $$;
 
 DO $$ BEGIN
   ALTER TABLE "Assignment" ADD CONSTRAINT "Assignment_assignedById_fkey"
     FOREIGN KEY ("assignedById") REFERENCES "User"("id")
     ON DELETE SET NULL ON UPDATE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
 END $$;
 
 -- ── 6. Session → Assignment FK ────────────────────────────────────────────
@@ -133,7 +133,7 @@ DO $$ BEGIN
   ALTER TABLE "Session" ADD CONSTRAINT "Session_assignmentId_fkey"
     FOREIGN KEY ("assignmentId") REFERENCES "Assignment"("id")
     ON DELETE SET NULL ON UPDATE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
 END $$;
 
 CREATE INDEX IF NOT EXISTS "Session_assignmentId_idx" ON "Session"("assignmentId");

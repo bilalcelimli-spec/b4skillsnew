@@ -32,6 +32,7 @@ const PRODUCT_LINES = [
   "Language Schools",
   "Specialized / Integrated Skills",
 ] as const;
+let ensuredCompletedSessionId: string | null = null;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -72,6 +73,45 @@ async function driveExamToCompletion(page: Page, maxItems = 50): Promise<void> {
     await answerCurrentItem(page);
     await page.waitForTimeout(400);
   }
+}
+
+async function completeRapidDiagnosticViaApi(page: Page): Promise<string> {
+  const launchRes = await page.request.post(`${BASE_URL}/api/sessions/launch`, {
+    data: { productLine: "15-Min Diagnostic" },
+    headers: { "Content-Type": "application/json" },
+  });
+  expect(launchRes.ok(), await launchRes.text()).toBe(true);
+  const { sessionId } = await launchRes.json().catch(() => ({}));
+  expect(sessionId).toBeTruthy();
+
+  for (let index = 0; index < 80; index += 1) {
+    const nextRes = await page.request.get(`${BASE_URL}/api/sessions/${sessionId}/next`);
+    expect(nextRes.ok(), await nextRes.text()).toBe(true);
+    const next = await nextRes.json();
+    if (next.stop) return sessionId;
+    if (next.sectionTransition) continue;
+
+    expect(next.item?.id).toBeTruthy();
+    const answerRes = await page.request.post(`${BASE_URL}/api/sessions/${sessionId}/respond`, {
+      data: {
+        itemId: next.item.id,
+        value: next.item.skill === "WRITING" || next.item.skill === "SPEAKING"
+          ? "Automated end-to-end response"
+          : "a",
+        latencyMs: 5_000,
+      },
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(answerRes.ok(), await answerRes.text()).toBe(true);
+  }
+
+  throw new Error("Rapid diagnostic did not complete within 80 item requests");
+}
+
+async function ensureCompletedSession(page: Page): Promise<string> {
+  if (ensuredCompletedSessionId) return ensuredCompletedSessionId;
+  ensuredCompletedSessionId = await completeRapidDiagnosticViaApi(page);
+  return ensuredCompletedSessionId;
 }
 
 // ─── Auth flow ────────────────────────────────────────────────────────────────
@@ -159,7 +199,7 @@ test.describe("Candidate dashboard", () => {
 
   test("past sessions list renders without error", async ({ page }) => {
     await page.goto(`${BASE_URL}/results`);
-    const noSessions = page.getByText(/henüz|no results|no sessions|tamamlanmış/i);
+    const noSessions = page.locator("[data-testid='results-empty-state']");
     const sessionRow = page.locator("[data-testid='session-row'], .session-card").first();
     await expect(noSessions.or(sessionRow)).toBeVisible({ timeout: 8_000 });
   });
@@ -172,16 +212,8 @@ test.describe("Full exam session — happy path", () => {
 
   test("can start the rapid diagnostic exam", async ({ page }) => {
     await page.goto(`${BASE_URL}/`);
-    // Look for the rapid diagnostic shortcut or any start button
-    const quickStart = page
-      .getByRole("button", { name: /rapid|diagnostic|hızlı|quick/i })
-      .or(page.getByRole("button", { name: /başlat|start exam|sınava gir/i }))
-      .first();
-    const visible = await quickStart.isVisible({ timeout: 6_000 }).catch(() => false);
-    if (!visible) {
-      test.skip();
-      return;
-    }
+    const quickStart = page.locator('[data-assessment-mode="quick-check"]');
+    await expect(quickStart).toBeVisible({ timeout: 8_000 });
     await quickStart.click();
     await expect(page.locator("[data-testid='exam-item'], .question-card, [data-testid='item']")
       .or(page.getByRole("button", { name: /başla|begin|start/i }))
@@ -214,25 +246,20 @@ test.describe("Full exam session — happy path", () => {
   });
 
   test("can drive the rapid diagnostic to completion", async ({ page }) => {
-    // Launch the rapid diagnostic session via the production API.
-    const launchRes = await page.request.post(`${BASE_URL}/api/sessions/launch`, {
-      data: { productLine: "15-Min Diagnostic" },
-      headers: { "Content-Type": "application/json" },
-    });
-    expect(launchRes.ok(), await launchRes.text()).toBe(true);
-    const { sessionId } = await launchRes.json().catch(() => ({}));
-    if (!sessionId) { test.skip(); return; }
-    await page.goto(`${BASE_URL}/exam/${sessionId}`);
-    await driveExamToCompletion(page, 60);
-    await expect(
-      page.locator('[data-testid="exam-complete"], [data-testid="score-report"], .score-card, .exam-complete')
-    ).toBeVisible({ timeout: 20_000 });
+    test.setTimeout(90_000);
+    const sessionId = await completeRapidDiagnosticViaApi(page);
+
+    const sessionRes = await page.request.get(`${BASE_URL}/api/sessions/${sessionId}/status`);
+    expect(sessionRes.ok(), await sessionRes.text()).toBe(true);
+    const session = await sessionRes.json();
+    expect(session.status).toBe("COMPLETED");
   });
 });
 
 // ─── Score report ─────────────────────────────────────────────────────────────
 
 test.describe("Score report", () => {
+  test.describe.configure({ mode: "serial" });
   test.beforeEach(async ({ page }) => { await login(page); });
 
   test("results page renders without error", async ({ page }) => {
@@ -241,28 +268,28 @@ test.describe("Score report", () => {
   });
 
   test("score report shows CEFR level for completed session", async ({ page }) => {
+    await ensureCompletedSession(page);
     await page.goto(`${BASE_URL}/results`);
-    const noSessions = page.getByText(/henüz|no results|no sessions/i);
+    const noSessions = page.locator("[data-testid='results-empty-state']");
     const cefrBadge = page.locator("[data-testid='cefr-level'], .cefr-badge, [data-testid='cefr-badge']").first();
     await expect(noSessions.or(cefrBadge)).toBeVisible({ timeout: 8_000 });
   });
 
   test("score report shows skill breakdown when session exists", async ({ page }) => {
+    await ensureCompletedSession(page);
     await page.goto(`${BASE_URL}/results`);
-    // If there are completed sessions, the most recent one should show skill scores
     const sessionRows = page.locator("[data-testid='session-row'], .session-card");
-    const count = await sessionRows.count();
-    if (count === 0) { test.skip(); return; }
+    await expect(sessionRows.first()).toBeVisible({ timeout: 8_000 });
     await sessionRows.first().click();
     const skillChart = page.locator("[data-testid='skill-scores'], .skill-chart, .sub-score-radar");
     await expect(skillChart).toBeVisible({ timeout: 8_000 });
   });
 
   test("PDF download button is present on score report", async ({ page }) => {
+    await ensureCompletedSession(page);
     await page.goto(`${BASE_URL}/results`);
     const sessionRows = page.locator("[data-testid='session-row'], .session-card");
-    const count = await sessionRows.count();
-    if (count === 0) { test.skip(); return; }
+    await expect(sessionRows.first()).toBeVisible({ timeout: 8_000 });
     await sessionRows.first().click();
     const pdfBtn = page.getByRole("button", { name: /pdf|indir|download|report/i })
       .or(page.locator("[data-testid='download-pdf'], [data-testid='pdf-download']"))
@@ -271,14 +298,8 @@ test.describe("Score report", () => {
   });
 
   test("PDF download endpoint returns a PDF", async ({ page }) => {
-    // Fetch the latest session ID for the test user
-    const sessionsRes = await page.request.get(`${BASE_URL}/api/sessions?limit=1&status=COMPLETED`);
-    if (!sessionsRes.ok()) { test.skip(); return; }
-    const { sessions } = await sessionsRes.json().catch(() => ({ sessions: [] }));
-    if (!sessions?.length) { test.skip(); return; }
-    const sessionId = sessions[0].id;
+    const sessionId = await ensureCompletedSession(page);
     const pdfRes = await page.request.get(`${BASE_URL}/api/sessions/${sessionId}/report.pdf`);
-    if (pdfRes.status() === 404) { test.skip(); return; }
     expect(pdfRes.status()).toBe(200);
     expect(pdfRes.headers()["content-type"]).toContain("pdf");
   });
@@ -328,10 +349,7 @@ test.describe("Certificate validation", () => {
 
   test("invalid certificate code shows error", async ({ page }) => {
     await page.goto(`${BASE_URL}/verify/INVALID-CERT-CODE-000`);
-    await expect(
-      page.getByText(/bulunamadı|not found|invalid|geçersiz/i)
-        .or(page.locator("[data-testid='cert-error']"))
-    ).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator("[data-testid='cert-error']")).toBeVisible({ timeout: 8_000 });
   });
 
   test("certificate QR endpoint returns 200 for valid cert", async ({ page }) => {
@@ -350,7 +368,7 @@ test.describe("Admin panel access control", () => {
   test("candidate user cannot access /admin", async ({ page }) => {
     await login(page);
     await page.goto(`${BASE_URL}/admin`);
-    const denied = page.getByText(/yetkisiz|unauthorized|forbidden|403|access denied/i);
+    const denied = page.locator("[data-testid='access-denied']");
     const redirected = !page.url().includes("/admin") || page.url().includes("/login");
     if (!redirected) await expect(denied).toBeVisible({ timeout: 5_000 });
   });

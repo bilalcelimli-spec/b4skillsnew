@@ -320,6 +320,7 @@ export class PretestCalibrationPipeline {
     });
     const countMap = new Map(counts.map((r) => [r.itemId, r._count._all]));
     const eligible = priorItems.filter((it) => (countMap.get(it.id) ?? 0) >= MIN_N);
+    result.itemsEligible += eligible.length;
 
     logger.info(
       { priorActive: priorItems.length, eligible: eligible.length, triggerSource },

@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import ReactQuill from "react-quill-new";
+import React, { useState, useEffect } from "react";
 import { Button } from "./ui/Button";
 import { Loader2, FileText, CheckCircle2, AlertCircle, Info, Clock, Save } from "lucide-react";
 import { motion } from "motion/react";
@@ -27,7 +26,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
   const [charCount, setCharCount] = useState(0);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [timeSpent, setTimeSpent] = useState(0);
-  const quillRef = useRef<any>(null);
 
   // Auto-save every 30 seconds
   useEffect(() => {
@@ -56,19 +54,9 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
     } catch {}
   }, [prompt]);
 
-  // Disable browser spellcheck on the editor
-  useEffect(() => {
-    const editor = document.querySelector('.ql-editor');
-    if (editor) {
-      editor.setAttribute('spellcheck', 'false');
-      editor.setAttribute('autocorrect', 'off');
-      editor.setAttribute('autocapitalize', 'off');
-    }
-  }, []);
-
-  const handleChange = (value: string, _delta: any, _source: any, editor: any) => {
+  const handleChange = (value: string) => {
     setText(value);
-    const plain = editor.getText().trim();
+    const plain = value.trim();
     const words = plain ? plain.split(/\s+/).filter((w: string) => w.length > 0) : [];
     setWordCount(words.length);
     setCharCount(plain.length);
@@ -86,21 +74,12 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
     }
   };
 
-  const modules = {
-    toolbar: [
-      [{ 'header': [1, 2, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-      ['clean']
-    ],
-  };
-
   return (
     <div className="space-y-6">
       <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 flex gap-3 mb-4">
         <Info className="text-indigo-600 shrink-0" size={20} />
         <p className="text-sm text-indigo-900">
-          <strong>Instructions:</strong> Use the formatting tools below to structure your essay. Ensure your response is original and addresses all parts of the prompt.
+          <strong>Instructions:</strong> Structure your response with clear paragraphs. Ensure your work is original and addresses all parts of the prompt.
         </p>
       </div>
 
@@ -109,14 +88,17 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
           "rounded-2xl border-2 transition-all overflow-hidden bg-white",
           wordCount >= minWords ? "border-green-200" : "border-slate-200 focus-within:border-indigo-500"
         )}>
-          <ReactQuill 
-            theme="snow"
+          <textarea
+            data-testid="writing-response"
             value={text}
-            onChange={handleChange}
-            modules={modules}
+            onChange={(event) => handleChange(event.target.value)}
             placeholder="Start writing your response here..."
-            className="h-80"
-            readOnly={isUploading}
+            className="block h-80 w-full resize-none bg-white p-6 text-lg leading-8 text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50"
+            disabled={isUploading}
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            aria-label="Writing response"
           />
         </div>
         
@@ -206,24 +188,6 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
           You need at least {minWords - wordCount} more words to submit your response.
         </motion.p>
       )}
-
-      <style>{`
-        .ql-container {
-          font-size: 1.125rem !important;
-          font-family: inherit !important;
-          height: 320px !important;
-        }
-        .ql-editor {
-          padding: 1.5rem !important;
-          line-height: 1.75 !important;
-        }
-        .ql-toolbar {
-          border: none !important;
-          border-bottom: 1px solid #e2e8f0 !important;
-          background: #f8fafc !important;
-          padding: 0.75rem !important;
-        }
-      `}</style>
     </div>
   );
 };

@@ -126,6 +126,8 @@ export function AssessmentModeSelector({ onSelect, allowedProductLine, className
 function ModeCard({ mode, delay, onSelect }: { mode: AssessmentMode; delay: number; onSelect: (pl: string) => void }) {
   return (
     <motion.button
+      data-testid="test-card"
+      data-assessment-mode={mode.id}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.22 }}

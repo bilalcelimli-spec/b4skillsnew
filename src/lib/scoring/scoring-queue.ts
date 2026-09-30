@@ -187,8 +187,8 @@ function drain(): void {
 /**
  * Enqueue a scoring job and return a Promise that resolves when scoring is done.
  *
- * **For fire-and-forget:** callers may ignore the returned promise. The result
- * will be persisted to the DB regardless.
+ * **For fire-and-forget:** callers must attach a rejection handler. The result
+ * or failure marker is persisted to the DB regardless.
  *
  * **For awaitable scoring (tests):** await the returned promise to get the result.
  */

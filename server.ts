@@ -27,6 +27,7 @@ import { CreateWebhookBody, BrandingPatchBody, UpdateSettingsBody, SsoConfigBody
 import { ProctoringAuditBody, ProctoringEventBody } from "./src/lib/security/schemas/proctoring.js";
 import { AITutorBody, SpeakingMultimodalBody } from "./src/lib/security/schemas/ai.js";
 import { GenerateCodesBody, RedeemCodeBody } from "./src/lib/security/schemas/codes.js";
+import { stripAnswerKeys } from "./src/lib/security/answer-sanitizer.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -54,9 +55,13 @@ async function startServer() {
       console.log("✅ Database connected");
       // Run pending migrations on startup (safe — idempotent)
       try {
-        const { execSync } = await import("child_process");
-        execSync("npx prisma migrate deploy", { stdio: "inherit" });
-        console.log("✅ Prisma migrations applied");
+        if (process.env.NODE_ENV === "test") {
+          console.log("✅ Database schema prepared by test harness");
+        } else {
+          const { execFileSync } = await import("child_process");
+          execFileSync(process.execPath, ["scripts/deploy-migrations.mjs"], { stdio: "inherit" });
+          console.log("✅ Prisma migrations applied");
+        }
       } catch (migErr) {
         console.warn("⚠️  Prisma migrate deploy failed:", migErr);
       }
@@ -115,7 +120,7 @@ async function startServer() {
   });
 
   // --- SECURITY: Block known scanner / probe paths (WordPress, PHP, xmlrpc, etc.) ---
-  const BLOCKED_PROBE_PATTERN = /\.(php|asp|aspx|jsp|cgi|env|git|svn|htaccess|htpasswd|DS_Store|config|bak|old|sql|xml)$/i;
+  const BLOCKED_PROBE_PATTERN = /\.(php|asp|aspx|jsp|cgi|env|git|svn|htaccess|htpasswd|DS_Store|config|bak|old|sql)$/i;
   // Note: 'admin' intentionally removed — our SPA has a legitimate /admin route.
   // WordPress-specific admin paths (wp-admin, phpmyadmin) are still blocked.
   const BLOCKED_PROBE_PATHS = /\/(wp-admin|wp-login|wp-content|wp-includes|xmlrpc|phpmyadmin|phpinfo|install\.php|setup\.php|\.well-known\/security)/i;
@@ -155,6 +160,9 @@ async function startServer() {
   // --- SECURITY: Block known headless/automated user-agents ---
   const BLOCKED_UA_PATTERN = /HeadlessChrome|python-requests|curl\/|wget\/|scrapy|zgrab|masscan|nikto|sqlmap|nmap/i;
   app.use((req, res, next) => {
+    // Browser automation is expected in the isolated Playwright environment.
+    // Production retains the scanner filter; tests exercise the real routes.
+    if (process.env.NODE_ENV === "test") return next();
     const ua = req.headers["user-agent"] || "";
     if (BLOCKED_UA_PATTERN.test(ua)) {
       return res.status(403).json({ error: "Forbidden" });
@@ -194,6 +202,7 @@ async function startServer() {
     standardHeaders: true,
     legacyHeaders: false,
     store: loginLimiterStore,
+    skip: () => process.env.NODE_ENV === "test",
   });
 
   const registerLimiter = rateLimit({
@@ -202,6 +211,7 @@ async function startServer() {
     message: { error: 'Too many registrations from this IP, please try again later' },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => process.env.NODE_ENV === "test",
   });
 
   const passwordResetLimiter = rateLimit({
@@ -210,6 +220,7 @@ async function startServer() {
     message: { error: 'Too many password reset requests, please try again after 15 minutes' },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => process.env.NODE_ENV === "test",
   });
 
   // Freemium placement: 10 starts per IP per hour prevents memory-exhaustion abuse
@@ -219,6 +230,7 @@ async function startServer() {
     message: { error: 'Too many test attempts. Please try again in an hour.' },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => process.env.NODE_ENV === "test",
   });
 
   const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -1454,8 +1466,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   // POST /api/sessions/:id/identity-snapshot
   // Stores a candidate's identity photo (base64 JPEG) taken at exam start.
-  // S3 upload is optional — set IDENTITY_SNAPSHOT_BUCKET env var to enable.
-  // If S3 is not configured the snapshot URL is omitted but the exam is never blocked.
+  // Evidence is stored privately in S3. The exam UI may continue after repeated
+  // failures, but every skipped capture is persisted as a proctoring alert.
   app.post("/api/sessions/:id/identity-snapshot", authMiddleware, async (req, res) => {
     const { id } = req.params;
     if (!(await assertSessionOwnership(req, res, id))) return;
@@ -1492,6 +1504,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
               },
             },
           });
+          await (prisma as any).proctoringEvent.create({
+            data: {
+              sessionId: id,
+              type: "IDENTITY_SNAPSHOT_FAILED",
+              severity: 4,
+              metadata: { failureReason, recordedAt: new Date().toISOString() },
+            },
+          });
         }
       } catch (_) { /* non-fatal */ }
       return res.json({ success: true, skipped: true });
@@ -1502,24 +1522,27 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
 
     try {
-      const base64Data = frame.replace(/^data:image\/\w+;base64,/, "");
+      if (!/^data:image\/jpeg;base64,/.test(frame)) {
+        return res.status(400).json({ error: "Identity snapshot must be a JPEG data URL" });
+      }
+      const base64Data = frame.replace(/^data:image\/jpeg;base64,/, "");
       const buffer = Buffer.from(base64Data, "base64");
-
-      let photoUrl: string | null = null;
+      if (buffer.length === 0 || buffer.length > 3_750_000 || buffer[0] !== 0xff || buffer[1] !== 0xd8 || buffer[2] !== 0xff) {
+        return res.status(400).json({ error: "Invalid or oversized identity snapshot" });
+      }
 
       const bucket = process.env.IDENTITY_SNAPSHOT_BUCKET;
-      if (bucket) {
-        const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3") as any;
-        const s3 = new S3Client({ region: process.env.AWS_REGION ?? "eu-west-1" });
-        const key = `identity/${id}/${Date.now()}.jpg`;
-        await s3.send(new PutObjectCommand({
-          Bucket: bucket,
-          Key: key,
-          Body: buffer,
-          ContentType: "image/jpeg",
-        }));
-        photoUrl = `https://${bucket}.s3.amazonaws.com/${key}`;
-      }
+      if (!bucket) return res.status(503).json({ error: "Identity evidence storage is not configured" });
+      const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3") as any;
+      const s3 = new S3Client({ region: process.env.AWS_REGION ?? "eu-west-1" });
+      const evidenceKey = `identity/${id}/${Date.now()}-${crypto.randomBytes(8).toString("hex")}.jpg`;
+      await s3.send(new PutObjectCommand({
+        Bucket: bucket,
+        Key: evidenceKey,
+        Body: buffer,
+        ContentType: "image/jpeg",
+        ServerSideEncryption: "AES256",
+      }));
 
       if (!id.startsWith("demo-session-")) {
         const existing = await prisma.session.findUnique({
@@ -1533,19 +1556,44 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
               ...(typeof existing?.metadata === "object" && existing.metadata !== null
                 ? (existing.metadata as Record<string, unknown>)
                 : {}),
-              identitySnapshotUrl: photoUrl ?? "stored-server-side",
+              identitySnapshotKey: evidenceKey,
+              identitySnapshotUrl: null,
               identitySnapshotAt: new Date().toISOString(),
             },
           },
         });
       }
 
-      return res.json({ success: true, url: photoUrl });
+      return res.json({ success: true, stored: true });
     } catch (error) {
       console.error("[identity-snapshot] failed:", error);
       return res.status(500).json({
         error: "Failed to store identity snapshot",
       });
+    }
+  });
+
+  app.get("/api/sessions/:id/identity-snapshot", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "PROCTOR"]), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      if (!(await assertSessionOwnership(req, res, id))) return;
+      const session = await prisma.session.findUnique({ where: { id }, select: { metadata: true } });
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      const metadata = (session.metadata as Record<string, unknown> | null) ?? {};
+      const evidenceKey = metadata.identitySnapshotKey;
+      const bucket = process.env.IDENTITY_SNAPSHOT_BUCKET;
+      if (!bucket || typeof evidenceKey !== "string") {
+        return res.status(404).json({ error: "Identity snapshot not found" });
+      }
+      const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3") as any;
+      const s3 = new S3Client({ region: process.env.AWS_REGION ?? "eu-west-1" });
+      const object = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: evidenceKey }));
+      const bytes = await object.Body.transformToByteArray();
+      res.setHeader("Content-Type", object.ContentType ?? "image/jpeg");
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.send(Buffer.from(bytes));
+    } catch {
+      return res.status(500).json({ error: "Failed to load identity snapshot" });
     }
   });
 
@@ -4254,14 +4302,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           const sess = await (prisma.session.findUnique as any)({
             where: { id },
             include: {
-              user: { select: { email: true, name: true } },
-              scoreReport: { select: { overallCefr: true, overallScore: true, diagnosticReport: true, certificateId: true } },
+              candidate: { select: { email: true, name: true } },
+              scoreReport: { select: { id: true, overallCefr: true, overallScore: true, diagnosticReport: true, isVerified: true } },
             },
-          }) as { cefrLevel?: string; user?: { email: string; name?: string }; scoreReport?: { overallCefr?: string; overallScore?: number; diagnosticReport?: any; certificateId?: string | null } } | null;
-          if (!sess?.user?.email) return;
+          }) as { cefrLevel?: string; candidate?: { email: string; name?: string }; scoreReport?: { id: string; overallCefr?: string; overallScore?: number; diagnosticReport?: any; isVerified?: boolean } } | null;
+          if (!sess?.candidate?.email) return;
           const cefr = sess.scoreReport?.overallCefr ?? sess.cefrLevel ?? "—";
-          const score = sess.scoreReport?.overallScore != null ? Math.round(sess.scoreReport.overallScore * 100) : null;
-          const name = sess.user.name ?? "Candidate";
+          const score = sess.scoreReport?.overallScore != null ? Math.round(sess.scoreReport.overallScore) : null;
+          const name = sess.candidate.name ?? "Candidate";
 
           // Auto-generate shareToken if not already present
           let shareToken: string | null = null;
@@ -4278,12 +4326,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
             }
           } catch { /* shareToken optional */ }
 
-          const certId = sess.scoreReport?.certificateId;
+          const certId = sess.scoreReport?.isVerified ? sess.scoreReport.id : null;
           const reportUrl = shareToken ? `${APP_BASE_URL}/share/${shareToken}` : `${APP_BASE_URL}/dashboard`;
           const certUrl = certId ? `${APP_BASE_URL}/verify/${certId}` : null;
 
           await sendEmail(
-            sess.user.email,
+            sess.candidate.email,
             `Your B4Skills Results — ${cefr}`,
             emailTemplate({
               heading: `Your results are ready, ${name}!`,
@@ -4329,8 +4377,6 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const { id } = req.params;
     try {
       if (!(await assertSessionOwnership(req, res, id))) return;
-      const session = await prisma.session.findUnique({ where: { id }, select: { status: true } });
-      const isCompleted = !session || session.status === "COMPLETED";
       // Allow admins/raters to see full item content at all times
       const privileged = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"].includes(req.user?.role);
       const responses = await prisma.response.findMany({
@@ -4339,12 +4385,21 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         orderBy: { order: "asc" },
         take: 500,
       });
-      // Strip answer keys from item content if the session is still active and caller is not privileged
-      const sanitized = (!isCompleted && !privileged)
+      // A completed exam must not become an answer-key download. Candidates
+      // receive only the presentation fields; psychometric and scoring secrets
+      // remain available to explicitly privileged reviewers.
+      const sanitized = !privileged
         ? responses.map((r: any) => {
             if (!r.item?.content) return r;
-            const { correctIndex: _ci, correctOption: _co, correctAnswer: _ca, isCorrect: _ic, ...safeContent } = r.item.content as any;
-            return { ...r, item: { ...r.item, content: safeContent } };
+            const safeItem = {
+              id: r.item.id,
+              itemCode: r.item.itemCode,
+              type: r.item.type,
+              skill: r.item.skill,
+              cefrLevel: r.item.cefrLevel,
+              content: stripAnswerKeys(r.item.content),
+            };
+            return { ...r, item: safeItem };
           })
         : responses;
       res.json(sanitized);
@@ -4472,29 +4527,36 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
             include: { item: { select: { skill: true, cefrLevel: true, type: true, content: true } } },
           },
           scoreReport: true,
+          candidate: { select: { name: true, email: true } },
         },
       }) as any;
 
       if (!session) return res.status(404).json({ error: "Session not found" });
 
-      const theta: number = session.finalTheta ?? session.currentTheta ?? 0;
-      const sem:   number = session.finalSem   ?? session.currentSem   ?? 0.5;
+      const sessionMeta = (session.metadata as Record<string, unknown> | null) ?? {};
+      const diagnostic = (session.scoreReport?.diagnosticReport as Record<string, any> | null) ?? {};
+      const theta: number = diagnostic.overallTheta ?? session.currentTheta ?? session.theta ?? 0;
+      const sem:   number = diagnostic.overallSem ?? session.sem ?? 0.5;
       const level = thetaToCefr(theta);
       const beps  = thetaToBeps(theta);
 
       // Build per-response entries
-      const responses = (session.responses ?? []).map((r: any) => ({
-        itemId:    r.itemId,
-        skill:     r.item?.skill    ?? "UNKNOWN",
-        cefrLevel: r.item?.cefrLevel ?? "B1",
-        isCorrect: r.isCorrect   ?? null,
-        score:     r.score       ?? null,
-        thetaAfter: r.thetaAfter ?? theta,
-        semAfter:   r.semAfter   ?? sem,
-        latencyMs:  r.responseTimeMs ?? 0,
-        rubricScores: r.rubricScores ?? undefined,
-        aiFeedback:   r.aiFeedback   ?? undefined,
-      }));
+      const responses = (session.responses ?? []).map((r: any) => {
+        const responseMeta = (r.metadata as Record<string, unknown> | null) ?? {};
+        return {
+          itemId:    r.itemId,
+          skill:     r.item?.skill    ?? "UNKNOWN",
+          cefrLevel: r.item?.cefrLevel ?? "B1",
+          isCorrect: r.isCorrect   ?? null,
+          score:     r.score       ?? null,
+          thetaAfter: typeof responseMeta.thetaAfter === "number" ? responseMeta.thetaAfter : theta,
+          semAfter:   typeof responseMeta.semAfter === "number" ? responseMeta.semAfter : sem,
+          latencyMs:  r.latencyMs ?? 0,
+          rubricScores: responseMeta.rubricScores ?? undefined,
+          aiFeedback:   responseMeta.aiFeedback ?? undefined,
+          pendingAsyncScore: responseMeta.pendingAsyncScore === true && responseMeta.asyncScored !== true,
+        };
+      });
 
       // Aggregate skill-level ability estimates from scoreReport or response data
       const skillMap: Record<string, { thetas: number[]; sems: number[]; cefrLevel: string }> = {};
@@ -4517,9 +4579,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       // Supplement from scoreReport if available
       const sr = session.scoreReport as any;
-      if (sr?.skillScores) {
+      if (diagnostic.skillProfiles) {
         try {
-          const parsed = typeof sr.skillScores === "string" ? JSON.parse(sr.skillScores) : sr.skillScores;
+          const parsed = diagnostic.skillProfiles;
           for (const [sk, val] of Object.entries(parsed as Record<string, any>)) {
             const existing = skillScores.find((s) => s.skill === sk.toUpperCase());
             if (existing) {
@@ -4538,23 +4600,23 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       res.json({
         sessionId: id,
-        candidateId:     session.userId,
-        candidateName:   session.user?.name ?? session.user?.email ?? undefined,
+        candidateId:     session.candidateId,
+        candidateName:   session.candidate?.name ?? session.candidate?.email ?? undefined,
         organizationId:  session.organizationId,
         completedAt:     (session.completedAt ?? session.updatedAt ?? new Date()).toISOString(),
         finalTheta: theta,
         finalSem:   sem,
         beps,
         cefrLevel:  level,
-        stopReason: session.stopReason ?? "COMPLETED",
+        stopReason: diagnostic.stopReason ?? sessionMeta.stopReason ?? "COMPLETED",
         totalItems: responses.length,
         skillScores,
         responses,
         canDo: getCanDo(level),
-        integrityRisk: session.integrityRisk ?? "LOW",
-        productLine:   session.productLine   ?? undefined,
-        certificateId: sr?.certificateId ?? null,
-        hasPendingAI:  responses.some((r: any) => ["WRITING","SPEAKING"].includes(r.skill) && r.score == null),
+        integrityRisk: sessionMeta.integrityRisk ?? "LOW",
+        productLine:   diagnostic.productLine ?? sessionMeta.productLine ?? undefined,
+        certificateId: sr?.isVerified ? sr.id : null,
+        hasPendingAI:  responses.some((r: any) => r.pendingAsyncScore),
       });
     } catch (err) {
       console.error("adaptive-report error:", err);
@@ -4572,7 +4634,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const session = await (prisma.session.findUnique as any)({
         where: { id },
         include: {
-          user: { select: { name: true, email: true } },
+          candidate: { select: { name: true, email: true } },
           scoreReport: true,
           responses: {
             orderBy: { order: "asc" },
@@ -4582,23 +4644,28 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       }) as any;
       if (!session) return res.status(404).json({ error: "Session not found" });
 
-      const theta: number = session.finalTheta ?? session.currentTheta ?? 0;
-      const sem:   number = session.finalSem   ?? session.currentSem   ?? 0.5;
+      const sessionMeta = (session.metadata as Record<string, unknown> | null) ?? {};
+      const sr = session.scoreReport as any;
+      const diagnostic = (sr?.diagnosticReport as Record<string, any> | null) ?? {};
+      const theta: number = diagnostic.overallTheta ?? session.currentTheta ?? session.theta ?? 0;
+      const sem:   number = diagnostic.overallSem ?? session.sem ?? 0.5;
       const cefr  = thetaToCefr(theta);
       const beps  = thetaToBeps(theta);
-      const sr    = session.scoreReport as any;
-      const candidateName = session.user?.name ?? session.user?.email ?? "Candidate";
+      const candidateName = session.candidate?.name ?? session.candidate?.email ?? "Candidate";
       const completedAt = session.completedAt ?? session.updatedAt ?? new Date();
       const dateStr = new Date(completedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
-      const productLine = session.productLine ?? "English Assessment";
+      const productLine = diagnostic.productLine ?? sessionMeta.productLine ?? "English Assessment";
       const safeFileName = `b4skills_report_${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}_${new Date(completedAt).toISOString().slice(0, 10)}.pdf`;
 
       // Build per-skill breakdown
       const skillMap: Record<string, number[]> = {};
+      for (const [skill, profile] of Object.entries(diagnostic.skillProfiles ?? {})) {
+        const skillTheta = (profile as { theta?: unknown }).theta;
+        if (typeof skillTheta === "number") skillMap[skill] = [skillTheta];
+      }
       for (const r of session.responses ?? []) {
         const sk = r.item?.skill ?? "UNKNOWN";
-        if (!skillMap[sk]) skillMap[sk] = [];
-        if (r.thetaAfter != null) skillMap[sk].push(r.thetaAfter);
+        if (!skillMap[sk]) skillMap[sk] = [theta];
       }
       const skills = Object.entries(skillMap).map(([skill, thetas]) => {
         const t = thetas.length ? thetas[thetas.length - 1] : theta;
@@ -4611,7 +4678,6 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         WRITING: sr?.writingScore ?? null, SPEAKING: sr?.speakingScore ?? null,
       };
 
-      const CEFR_ORDER = ["PRE_A1","A1","A2","B1","B2","C1","C2"];
       const CEFR_HEX: Record<string, string> = {
         PRE_A1: "#94a3b8", A1: "#64748b", A2: "#94a3b8",
         B1: "#3b82f6", B2: "#1a56db", C1: "#7c3aed", C2: "#059669",
@@ -4653,7 +4719,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       let y = 128;
       doc.fillColor("#1e293b").font("Helvetica-Bold").fontSize(18).text(candidateName, M, y);
       y += 24;
-      doc.fillColor("#64748b").font("Helvetica").fontSize(10).text(session.user?.email ?? "", M, y);
+      doc.fillColor("#64748b").font("Helvetica").fontSize(10).text(session.candidate?.email ?? "", M, y);
       y += 20;
       doc.moveTo(M, y).lineTo(W - M, y).strokeColor("#e2e8f0").lineWidth(1).stroke();
       y += 16;
@@ -4740,11 +4806,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       y += 36;
 
       // ── Certificate ID (if any) ──────────────────────────────────────────
-      if (sr?.certificateId) {
+      const certificateId = sr?.isVerified ? sr.id : null;
+      if (certificateId) {
         doc.fillColor("#64748b").font("Helvetica").fontSize(9)
-          .text(`Certificate ID: ${sr.certificateId}`, M, y);
+          .text(`Certificate ID: ${certificateId}`, M, y);
         doc.fillColor("#3b82f6").font("Helvetica").fontSize(9)
-          .text(`Verify at: ${APP_BASE_URL}/verify/${sr.certificateId}`, M + 200, y);
+          .text(`Verify at: ${APP_BASE_URL}/verify/${certificateId}`, M + 200, y);
         y += 16;
       }
 
@@ -5004,7 +5071,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (!session) return res.status(404).json({ error: "Session not found" });
 
       const { learningPathEngine } = await import("./src/lib/recommendations/learning-path-engine.js");
-      const path = await learningPathEngine.generatePersonalisedPath(session.userId);
+      const path = await learningPathEngine.generatePersonalisedPath(session.candidateId);
       return res.json({ sessionId: id, ...path });
     } catch (err) {
       console.error("learning-path error:", err);
@@ -5622,6 +5689,42 @@ ${codeSection}
     }
   });
 
+  app.get(
+    "/api/certificates",
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
+    async (req: any, res) => {
+      try {
+        const requestedLimit = Number.parseInt(String(req.query.limit ?? "20"), 10);
+        const take = Number.isFinite(requestedLimit)
+          ? Math.min(100, Math.max(1, requestedLimit))
+          : 20;
+        const isGlobalAdmin = req.user.role === "SUPER_ADMIN";
+        const certificates = await prisma.scoreReport.findMany({
+          where: {
+            isVerified: true,
+            certificateUrl: { not: null },
+            ...(!isGlobalAdmin
+              ? { session: { organizationId: req.user.organizationId } }
+              : {}),
+          },
+          select: {
+            id: true,
+            sessionId: true,
+            overallCefr: true,
+            overallScore: true,
+            certificateUrl: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+          take,
+        });
+        return res.json({ certificates });
+      } catch (error) {
+        return res.status(500).json({ error: "Failed to list certificates" });
+      }
+    }
+  );
+
   app.get("/api/certificates/:id", async (req, res) => {
     try {
       const { id } = req.params;
@@ -6045,8 +6148,7 @@ ${codeSection}
   // Strip answer-revealing fields before sending an item to the client
   const stripAnswers = (item: any) => {
     if (!item) return item;
-    const { correctIndex: _ci, correctOption: _co, correctAnswer: _ca, isCorrect: _ic, ...safeContent } = item.content ?? {};
-    return { ...item, content: safeContent };
+    return { ...item, content: stripAnswerKeys(item.content ?? {}) };
   };
 
   app.post("/api/assessment/placement/start", placementLimiter, express.json({ limit: "4kb" }), async (req, res) => {
@@ -8168,16 +8270,16 @@ ${codeSection}
         where: { candidateId: studentId, status: "COMPLETED" },
         orderBy: { completedAt: "desc" },
         include: {
-          user: { select: { email: true, name: true } },
-          scoreReport: { select: { overallCefr: true, overallScore: true, diagnosticReport: true, certificateId: true } },
+          candidate: { select: { email: true, name: true } },
+          scoreReport: { select: { id: true, overallCefr: true, overallScore: true, diagnosticReport: true, isVerified: true } },
         },
       }) as {
         id: string;
-        user?: { email: string; name?: string };
-        scoreReport?: { overallCefr?: string; overallScore?: number; diagnosticReport?: any; certificateId?: string | null };
+        candidate?: { email: string; name?: string };
+        scoreReport?: { id: string; overallCefr?: string; overallScore?: number; diagnosticReport?: any; isVerified?: boolean };
       } | null;
 
-      if (!session?.user?.email) {
+      if (!session?.candidate?.email) {
         return res.status(404).json({ error: "No completed session found for this student" });
       }
 
@@ -8195,14 +8297,14 @@ ${codeSection}
       }
 
       const cefr = session.scoreReport?.overallCefr ?? "—";
-      const score = session.scoreReport?.overallScore != null ? Math.round(session.scoreReport.overallScore * 100) : null;
-      const name = session.user.name ?? "Student";
+      const score = session.scoreReport?.overallScore != null ? Math.round(session.scoreReport.overallScore) : null;
+      const name = session.candidate.name ?? "Student";
       const reportUrl = `${APP_BASE_URL}/share/${shareToken}`;
-      const certId = session.scoreReport?.certificateId;
+      const certId = session.scoreReport?.isVerified ? session.scoreReport.id : null;
       const certUrl = certId ? `${APP_BASE_URL}/verify/${certId}` : null;
 
       await sendEmail(
-        session.user.email,
+        session.candidate.email,
         `Your B4Skills Results — ${cefr}`,
         emailTemplate({
           heading: `Your results are ready, ${name}!`,
@@ -8221,7 +8323,7 @@ ${codeSection}
         }),
       );
 
-      return res.json({ ok: true, email: session.user.email });
+      return res.json({ ok: true, email: session.candidate.email });
     } catch (err) {
       console.error("[teacher] send-report failed:", err);
       return res.status(500).json({ error: "Failed to send report email" });

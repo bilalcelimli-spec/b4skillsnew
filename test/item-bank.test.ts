@@ -31,7 +31,6 @@ describe("Item Bank Integrity", () => {
           skill: { in: ["GRAMMAR", "VOCABULARY", "READING"] },
           status: { in: ["ACTIVE", "PRETEST"] },
         },
-        take: 100,
         select: {
           id: true,
           skill: true,
@@ -51,9 +50,9 @@ describe("Item Bank Integrity", () => {
       );
 
       // Verify we have items from each skill represented
-      expect(bySkill["GRAMMAR"]).toBeGreaterThan(0);
-      expect(bySkill["VOCABULARY"] || 0).toBeGreaterThanOrEqual(0);
-      expect(bySkill["READING"] || 0).toBeGreaterThanOrEqual(0);
+      expect(bySkill["GRAMMAR"] || 0).toBeGreaterThan(0);
+      expect(bySkill["VOCABULARY"] || 0).toBeGreaterThan(0);
+      expect(bySkill["READING"] || 0).toBeGreaterThan(0);
     });
 
     it("should have prompt/stem/question in all MCQ items", () => {
@@ -316,7 +315,6 @@ describe("Item Bank Integrity", () => {
       const sample = await prisma.item.findMany({
         where: { status: { in: ["ACTIVE", "PRETEST"] } },
         select: { cefrLevel: true },
-        take: 100,
       });
 
       const cefrLevels = new Set(sample.map((i) => i.cefrLevel));
@@ -329,7 +327,6 @@ describe("Item Bank Integrity", () => {
       const sample = await prisma.item.findMany({
         where: { status: { in: ["ACTIVE", "PRETEST"] } },
         select: { skill: true, cefrLevel: true },
-        take: 100,
       });
 
       const skillCefrCounts = sample.reduce(

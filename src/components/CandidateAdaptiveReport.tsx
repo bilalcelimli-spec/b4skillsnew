@@ -237,7 +237,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
   }));
 
   return (
-    <div className="space-y-5">
+    <div data-testid="score-report" className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -276,6 +276,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
             {shareCopied ? <><Check size={14} className="text-emerald-500" /> Copied!</> : <><Share2 size={14} /> Share</>}
           </button>
           <a
+            data-testid="download-pdf"
             href={`/api/sessions/${sessionId}/report.pdf`}
             download
             title="Download PDF report"
@@ -303,7 +304,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
           <p className="text-[10px] text-slate-400 mt-1">θ {(report.finalTheta ?? 0) >= 0 ? "+" : ""}{(report.finalTheta ?? 0).toFixed(2)} · ±{(report.finalSem ?? 0).toFixed(2)} SEM</p>
           <ThetaBar theta={report.finalTheta} sem={report.finalSem} color={cefrColor} />
         </div>
-        <div className="rounded-xl border border-slate-200 p-4 bg-white col-span-2">
+        <div data-testid="skill-scores" className="rounded-xl border border-slate-200 p-4 bg-white col-span-2">
           <p className="text-xs font-medium text-slate-600 mb-3">Skill Profile — CEFR per Skill</p>
           <div className="space-y-2.5">
             {report.skillScores.map((s, i) => {

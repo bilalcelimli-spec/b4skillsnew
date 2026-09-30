@@ -6,6 +6,7 @@ import { getProfile } from "../product-lines/profiles.js";
 import { resolveMstPhase, buildMstTagFilter } from "../selection/mst-router.js";
 import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint, IrtParameters } from "./types";
 import { prisma } from "../prisma";
+import { stripAnswerKeys } from "../security/answer-sanitizer.js";
 import { validateItemBeforeSave } from "../validation/item-schema.js";
 import { AppError } from "../errors/app-error.js";
 import { ScoringOrchestrator } from "../scoring/scoring-orchestrator";
@@ -201,6 +202,7 @@ function toEngineState(session: {
     adjustedScore?: number | null;
     isPretest?: boolean | null;
     latencyMs: number | null;
+    metadata?: unknown;
   }>;
 }): SessionState {
   const m = (session.metadata as Record<string, unknown> | null) || {};
@@ -214,7 +216,9 @@ function toEngineState(session: {
       return {
         itemId: r.itemId,
         score: effective,
-        isPretest: (r as { isPretest?: boolean }).isPretest,
+        // Productive responses are operational items, but they must not affect
+        // ability estimation until asynchronous scoring has completed.
+        isPretest: shouldExcludeResponseFromAbility(r),
         latencyMs: r.latencyMs ?? undefined,
       };
     }),
@@ -224,6 +228,20 @@ function toEngineState(session: {
     mirtAbilityVector: m.mirtAbilityVector as SessionState["mirtAbilityVector"],
     mirt2B: m.mirt2B as SessionState["mirt2B"],
   };
+}
+
+function shouldExcludeResponseFromAbility(response: {
+  isPretest?: boolean | null;
+  metadata?: unknown;
+}): boolean {
+  const metadata =
+    response.metadata && typeof response.metadata === "object" && !Array.isArray(response.metadata)
+      ? (response.metadata as Record<string, unknown>)
+      : {};
+
+  return Boolean(
+    response.isPretest || metadata.pendingAsyncScore === true || metadata.scoreFailed === true
+  );
 }
 
 /**
@@ -940,9 +958,7 @@ export const AssessmentService = {
       // via the same shuffle function (no need to embed it in the payload).
     }
 
-    delete (safeContent as any).correctAnswer;
-    delete (safeContent as any).correctOptionIndex;
-    delete (safeContent as any).rubric;
+    const candidateSafeContent = stripAnswerKeys(safeContent);
 
     // Compute elapsed time to send alongside the item so the UI can render
     // an accurate progress indicator without a separate status round-trip.
@@ -951,7 +967,7 @@ export const AssessmentService = {
     return {
       stop: false,
       sectionTransition: false,
-      item: { ...nextItem, metadata: safeContent },
+      item: { ...nextItem, metadata: candidateSafeContent },
       currentSection: currentSkill as string,
       sectionIndex,
       totalSections: activeSectionOrder.length,
@@ -1013,8 +1029,9 @@ export const AssessmentService = {
       score = option && option.isCorrect ? 1 : 0;
     } else {
       // WRITING / SPEAKING — use async queue (fire-and-forget).
-      // The response row is saved immediately with score=0 / isPretest=true so
-      // theta estimation is unaffected; the queue updates the row when AI returns.
+      // The response row is saved immediately as an operational item. Its
+      // pendingAsyncScore marker keeps it out of theta estimation until the
+      // queue updates the row when AI returns.
       // This prevents 100 × 30 s open HTTP connections under concurrent load.
       aiResult = { requiresHumanReview: true, pendingAsyncScore: true };
       score = 0; // Conservative; overwritten by scoring-queue when AI completes
@@ -1058,7 +1075,8 @@ export const AssessmentService = {
     const response: Response = {
       itemId,
       score: irtInputScore,
-      // Treat AI-failed productive items as pretest to exclude from theta until reviewed
+      // Ephemeral engine flag: exclude pending productive scores from this update.
+      // The persisted isPretest field remains reserved for actual pretest items.
       isPretest: item.isPretest || requiresHumanReview,
       latencyMs:
         typeof clientLatencyMs === "number" && clientLatencyMs > 0
@@ -1095,7 +1113,7 @@ export const AssessmentService = {
               ? irtInputScore
               : null,
           isCorrect: score >= 0.5,
-          isPretest: item.isPretest || dbItem.status === "PRETEST" || requiresHumanReview || false,
+          isPretest: item.isPretest || dbItem.status === "PRETEST",
           aiScore: aiResult?.score,
           latencyMs: typeof clientLatencyMs === 'number' && clientLatencyMs > 0 ? clientLatencyMs : 0,
           rtZScore: rtZ,
@@ -1145,13 +1163,18 @@ export const AssessmentService = {
     const itemSkill = String(item.skill).toUpperCase();
     if ((itemSkill === "WRITING" || itemSkill === "SPEAKING") && (aiResult as any)?.pendingAsyncScore) {
       const prompt = item.metadata?.prompt || "Please respond to the task.";
-      enqueueScoringJob({
+      void enqueueScoringJob({
         sessionId,
         responseId: savedResponse.id,
         itemId,
         skill: itemSkill as "WRITING" | "SPEAKING",
         value: value as string | { audio: string; mimeType: string },
         prompt,
+      }).catch((err) => {
+        // processJob has already persisted the failure and routed the response
+        // to human review. Consume the fire-and-forget rejection so a scoring
+        // provider timeout can never terminate the application process.
+        logger.warn({ err, sessionId, itemId }, "async-scoring: background job rejected");
       });
       // Do NOT await — fire-and-forget so HTTP response returns immediately
     }
@@ -1234,9 +1257,13 @@ export const AssessmentService = {
     const stopReason = opts?.stopReason ?? (sessionMeta.stopReason as string | undefined) ?? null;
 
     // Flag sessions where Writing/Speaking responses are still awaiting AI scoring
-    const pendingAsyncResponses = (session?.responses ?? []).filter(
-      (r: any) => r.isPretest && r.score === 0 && !r.rubricScores
-    );
+    const pendingAsyncResponses = (session?.responses ?? []).filter((r) => {
+      const metadata =
+        r.metadata && typeof r.metadata === "object" && !Array.isArray(r.metadata)
+          ? (r.metadata as Record<string, unknown>)
+          : {};
+      return metadata.pendingAsyncScore === true && metadata.asyncScored !== true;
+    });
     const pendingAsyncScoring = pendingAsyncResponses.length > 0;
 
     // Initialize with safe defaults — overwritten by analysis block below if successful
@@ -1292,7 +1319,7 @@ export const AssessmentService = {
 
         for (const skill of Object.values(SkillType)) {
           const skillResponses = session.responses
-            .filter(r => !r.isPretest && r.item?.skill === skill && r.score !== null)
+            .filter(r => !shouldExcludeResponseFromAbility(r) && r.item?.skill === skill && r.score !== null)
             .map(r => ({
               itemId: r.itemId,
               score:
@@ -1403,7 +1430,7 @@ export const AssessmentService = {
               responses: session.responses.map(r => ({
                 itemId: r.itemId,
                 score: r.score ?? 0,
-                isPretest: r.isPretest ?? false,
+                isPretest: shouldExcludeResponseFromAbility(r),
                 latencyMs: r.latencyMs ?? undefined,
               })),
               items: allItems,
@@ -1418,7 +1445,9 @@ export const AssessmentService = {
       const mirt4DProfile = (() => {
         try {
           if (!session) return null;
-          const opResponses = session.responses.filter(r => !r.isPretest && r.score !== null);
+          const opResponses = session.responses.filter(
+            r => !shouldExcludeResponseFromAbility(r) && r.score !== null
+          );
           if (opResponses.length === 0) return null;
           const obs: Mirt4DObservation[] = opResponses
             .map(r => {
@@ -1484,7 +1513,9 @@ export const AssessmentService = {
       // ── G-DINA diagnostic feedback ────────────────────────────────────────────
       const gdinaDiagnostic = (() => {
         if (!session) return null;
-        const opResponses = session.responses.filter(r => !r.isPretest && r.score !== null);
+        const opResponses = session.responses.filter(
+          r => !shouldExcludeResponseFromAbility(r) && r.score !== null
+        );
         const J = LINGUADAPT_QMATRIX.length;
         if (opResponses.length < Math.ceil(J / 2)) return null;
 
@@ -1515,7 +1546,7 @@ export const AssessmentService = {
       const securityFlag = (() => {
         try {
           if (!session || allItems.length < 10) return null;
-          const opResponses = session.responses.filter(r => !r.isPretest);
+          const opResponses = session.responses.filter(r => !shouldExcludeResponseFromAbility(r));
           if (opResponses.length < 10) return null;
 
           const copyingItems: CopyingItemMeta[] = allItems
@@ -1552,7 +1583,7 @@ export const AssessmentService = {
 
       // ── Cross-session collusion graph detection ─────────────────────────────
       const collusionReport = await (async () => {
-        if (!session || (session.responses.filter(r => !r.isPretest).length) < 10) return null;
+        if (!session || session.responses.filter(r => !shouldExcludeResponseFromAbility(r)).length < 10) return null;
         try {
           const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
           const recentSessions = await prisma.session.findMany({
@@ -1570,7 +1601,7 @@ export const AssessmentService = {
           if (recentSessions.length < 2) return null;
 
           const currentResponses: CopyingResponse[] = session.responses
-            .filter(r => !r.isPretest)
+            .filter(r => !shouldExcludeResponseFromAbility(r))
             .map(r => ({ itemId: r.itemId, score: (r.score ?? 0) > 0.5 ? 1 : 0 }));
           const currentRTs: Record<string, number> = {};
           for (const r of session.responses) {

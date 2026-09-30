@@ -21,6 +21,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       DATABASE_URL: ${{ secrets.E2E_DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/b4skills_e2e' }}
       JWT_SECRET: "e2e-test-secret-not-for-production"
+      REFRESH_SECRET: "e2e-refresh-secret-not-for-production"
       E2E_EMAIL: "e2e-student@b4skills.test"
       E2E_PASSWORD: "E2eTest!2026"
       E2E_ADMIN_EMAIL: "e2e-admin@b4skills.test"
@@ -57,7 +58,8 @@ jobs:
 
       - name: Set up database
         run: |
-          npx prisma migrate deploy
+          npm run db:migrate
+          npm run db:seed:ci
           BOOTSTRAP_ADMIN_EMAIL="$E2E_EMAIL" \
           BOOTSTRAP_ADMIN_PASSWORD="$E2E_PASSWORD" \
           BOOTSTRAP_ADMIN_NAME="E2E Candidate" \
@@ -88,6 +90,7 @@ jobs:
           PORT: 3001
           DATABASE_URL: ${{ env.DATABASE_URL }}
           JWT_SECRET: ${{ env.JWT_SECRET }}
+          REFRESH_SECRET: ${{ env.REFRESH_SECRET }}
 
       - name: Run Playwright tests
         run: npx playwright test --project=chromium

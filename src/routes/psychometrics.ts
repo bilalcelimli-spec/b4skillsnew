@@ -16,6 +16,78 @@ export function createPsychometricsRouter(
   const router = express.Router();
   router.use(checkRole(ALLOWED));
 
+  // ── Operational calibration and exposure jobs ─────────────────────────────
+
+  router.post("/calibration/run", async (_req, res) => {
+    try {
+      const { PretestCalibrationPipeline } = await import(
+        "../lib/psychometrics/pretest-calibration-pipeline.js"
+      );
+      const result = await PretestCalibrationPipeline.runCalibrationSweep({
+        triggerSource: "MANUAL_API",
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: "Calibration sweep failed", detail: err?.message });
+    }
+  });
+
+  router.get("/calibration/status", async (_req, res) => {
+    try {
+      const minimumResponses = Number(process.env.CALIBRATION_MIN_N ?? 80);
+      const activeItems = await prisma.item.findMany({
+        where: { status: "ACTIVE" },
+        select: { id: true, metadata: true },
+      });
+      const priorIds = activeItems
+        .filter((item) => (item.metadata as any)?.paramSource === "prior")
+        .map((item) => item.id);
+      const calibratedCount = activeItems.filter(
+        (item) => (item.metadata as any)?.paramSource === "calibrated"
+      ).length;
+      const responseCounts = priorIds.length
+        ? await prisma.response.groupBy({
+            by: ["itemId"],
+            where: {
+              itemId: { in: priorIds },
+              isPretest: false,
+              isCorrect: { not: null },
+              session: { status: "COMPLETED", theta: { not: null } },
+            },
+            _count: { _all: true },
+          })
+        : [];
+      const eligiblePriorItems = responseCounts.filter(
+        (row) => row._count._all >= minimumResponses
+      ).length;
+
+      res.json({
+        activeItems: activeItems.length,
+        calibratedItems: calibratedCount,
+        priorItems: priorIds.length,
+        unclassifiedItems: activeItems.length - calibratedCount - priorIds.length,
+        eligiblePriorItems,
+        minimumResponses,
+        calibratedPercent: activeItems.length
+          ? Number(((calibratedCount / activeItems.length) * 100).toFixed(2))
+          : 0,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Calibration status failed", detail: err?.message });
+    }
+  });
+
+  router.post("/exposure/scan", async (_req, res) => {
+    try {
+      const { ExposureAutoRetireService } = await import(
+        "../lib/psychometrics/pretest-calibration-pipeline.js"
+      );
+      res.json(await ExposureAutoRetireService.runExposureScan());
+    } catch (err: any) {
+      res.status(500).json({ error: "Exposure scan failed", detail: err?.message });
+    }
+  });
+
   // ── Person Fit ──────────────────────────────────────────────────────────────
 
   router.get("/person-fit", async (_req, res) => {

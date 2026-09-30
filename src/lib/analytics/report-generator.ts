@@ -329,7 +329,7 @@ export async function generateCohortPDF(data: CohortReportData): Promise<Buffer>
 export async function generateCandidateExcel(data: CandidateReportData): Promise<Buffer> {
   try {
     // @ts-ignore — exceljs optional dependency; install with: npm i exceljs
-    const ExcelJS = await import("exceljs");
+    const { default: ExcelJS } = await import("exceljs");
     const wb = new ExcelJS.Workbook();
     wb.creator = "b4skills";
     wb.created = new Date();
@@ -367,7 +367,7 @@ export async function generateCandidateExcel(data: CandidateReportData): Promise
 export async function generateCohortExcel(data: CohortReportData): Promise<Buffer> {
   try {
     // @ts-ignore — exceljs optional dependency
-    const ExcelJS = await import("exceljs");
+    const { default: ExcelJS } = await import("exceljs");
     const wb = new ExcelJS.Workbook();
     wb.creator = "b4skills";
 

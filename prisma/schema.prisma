@@ -320,6 +320,8 @@ model Item {
   @@index([status, skill])
   @@index([organizationId, status])
   @@index([status, retirementScore])  // For retirement monitoring queries
+  @@index([difStatus, latestDifReviewAt]) // DIF monitoring batch queries
+  @@index([retirementScore])              // Legacy retirement batch query index
   @@index([isAnchor, skill, cefrLevel])  // Faz1: anchor item queries for equating
   @@index([iqScore])                     // Faz1: quality gate queries
   @@index([pipelineStage])              // Content factory workflow queries

@@ -28,6 +28,21 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/b4skills_test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: b4skills_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,6 +50,10 @@ jobs:
           node-version: "24"
           cache: "npm"
       - run: npm ci
+      - name: Prepare isolated test database
+        run: |
+          npm run db:migrate
+          npm run db:seed:ci
       - name: Run psychometric test suite
         run: npm test
       - name: Coverage report
@@ -69,6 +88,21 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/b4skills_items
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: b4skills_items
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -76,8 +110,12 @@ jobs:
           node-version: "24"
           cache: "npm"
       - run: npm ci
+      - name: Prepare isolated item-bank database
+        run: |
+          npm run db:migrate
+          npm run db:seed:ci
       - name: Validate item schemas and structure
-        run: npm run validate:items
+        run: npm run validate:items:strict
       - name: Verify skill-coverage per profile
         # Critical now that WRITING/SPEAKING are mandatory in every product
         # line — a gap in productive items would silently downgrade the
