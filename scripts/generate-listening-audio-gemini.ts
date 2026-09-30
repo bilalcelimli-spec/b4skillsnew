@@ -17,7 +17,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { PrismaClient } from "@prisma/client";
-import { generateListeningAudio } from "../src/lib/audio/tts-generator.js";
+import { generateListeningAudio, resolveListeningScript } from "../src/lib/audio/tts-generator.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const prisma = new PrismaClient();
@@ -43,10 +43,12 @@ async function main() {
   const moduleMap = new Map<string, { ttsScript: string; cefr: string; itemIds: string[] }>();
   for (const item of items) {
     const c = item.content as Record<string, any> | null;
-    if (!c?.moduleId || !c?.ttsScript) continue;
+    if (!c?.moduleId) continue;
+    const ttsScript = resolveListeningScript(c);
+    if (!ttsScript) continue;
     const mid = c.moduleId as string;
     if (!moduleMap.has(mid)) {
-      moduleMap.set(mid, { ttsScript: c.ttsScript, cefr: item.cefrLevel, itemIds: [] });
+      moduleMap.set(mid, { ttsScript, cefr: item.cefrLevel, itemIds: [] });
     }
     moduleMap.get(mid)!.itemIds.push(item.id);
   }

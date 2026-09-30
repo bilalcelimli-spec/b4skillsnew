@@ -8,6 +8,11 @@ test-results/
 .DS_Store
 *.log
 
+# Local item-repair rollback artifacts (may contain bank content and large audio files)
+reports/audio-backup-*/
+reports/*-backup-*.json
+reports/*-result-*.json
+
 # Env files — only allow example templates
 .env*
 !.env.example

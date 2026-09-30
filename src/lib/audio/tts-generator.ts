@@ -88,10 +88,36 @@ export function buildTtsPrompt(moduleId: string, ttsScript: string, cefr: string
 export function detectSpeakers(ttsScript: string): string[] {
   const labels = new Set<string>();
   for (const line of ttsScript.split("\n")) {
-    const m = line.match(/^(Speaker\s+[A-Z]|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?):\s/);
+    const m = line.trim().match(
+      /^((?:Speaker\s+[A-Z])|(?:[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3})):\s+\S/,
+    );
     if (m) labels.add(m[1]);
   }
   return [...labels];
+}
+
+/**
+ * Select the synthesis source without collapsing a dialogue into one voice.
+ * Older seeds intentionally stripped labels from ttsScript, while preserving
+ * them in passage/transcript. For declared multi-speaker material, prefer the
+ * first source that still contains the expected speaker turns.
+ */
+export function resolveListeningScript(content: Record<string, any>): string {
+  const declaredCount = Number(content.numberOfSpeakers) || 0;
+  const listedCount = Array.isArray(content.speakers) ? content.speakers.length : 0;
+  const candidates = [content.transcript, content.passage, content.script, content.ttsScript]
+    .filter((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0);
+  const detectedCount = Math.max(0, ...candidates.map((candidate) => detectSpeakers(candidate).length));
+  const expectedCount = Math.max(declaredCount, listedCount, detectedCount);
+
+  if (expectedCount >= 2) {
+    const labelledSource = candidates.find(
+      (candidate) => detectSpeakers(candidate).length >= Math.min(expectedCount, 2),
+    );
+    if (labelledSource) return labelledSource.trim();
+  }
+
+  return (content.ttsScript || content.transcript || content.passage || content.script || "").trim();
 }
 
 // ── Voice assignment for multi-speaker dialogues ─────────────────────────────
@@ -126,6 +152,9 @@ export async function generateListeningAudio(opts: {
 
   // Detect two-person dialogues and use multi-speaker config
   const speakers = detectSpeakers(opts.ttsScript);
+  if (speakers.length > 2) {
+    throw new Error(`Gemini multi-speaker TTS supports at most 2 speakers; found ${speakers.length}`);
+  }
   const isDialogue = speakers.length >= 2;
 
   let speechConfig: Record<string, unknown>;

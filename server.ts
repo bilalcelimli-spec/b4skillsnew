@@ -2222,12 +2222,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           return res.status(400).json({ error: "Audio generation is only available for LISTENING items" });
         }
         const content = (item.content as Record<string, any>) ?? {};
-        const ttsScript: string | undefined = content.ttsScript;
+        const { detectSpeakers, generateListeningAudio, resolveListeningScript } = await import("./src/lib/audio/tts-generator.js");
+        const ttsScript = resolveListeningScript(content);
         const moduleId: string = (content.moduleId as string | undefined) ?? id;
         if (!ttsScript) {
-          return res.status(400).json({ error: "Item has no ttsScript in content. Generate or add a ttsScript first." });
+          return res.status(400).json({ error: "Item has no usable listening script in content." });
         }
-        const { generateListeningAudio } = await import("./src/lib/audio/tts-generator.js");
         const result = await generateListeningAudio({
           moduleId,
           ttsScript,
@@ -2237,7 +2237,19 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         // Patch audioUrl back into item content
         await db.item.update({
           where: { id },
-          data: { content: { ...content, audioUrl: result.audioUrl, moduleId } },
+          data: {
+            content: {
+              ...content,
+              ttsScript,
+              audioUrl: result.audioUrl,
+              moduleId,
+              audioMetadata: {
+                speakerCount: Math.max(1, detectSpeakers(ttsScript).length),
+                voiceName: result.voiceName,
+                generatedAt: new Date().toISOString(),
+              },
+            },
+          },
         });
         res.json({
           audioUrl: result.audioUrl,
