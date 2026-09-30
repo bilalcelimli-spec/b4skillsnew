@@ -31,6 +31,7 @@
     "repair:speaking-quality": "tsx scripts/apply-speaking-corrections.ts",
     "repair:bracketed-listening": "tsx scripts/repair-bracketed-listening.ts",
     "repair:activate-listening": "tsx scripts/activate-listening-repairs.ts",
+    "repair:quarantine-listening": "tsx scripts/quarantine-unresolved-listening.ts",
     "repair:listening-audio": "tsx scripts/repair-multispeaker-listening.ts",
     "repair:editorial-items": "tsx scripts/repair-editorial-item-findings.ts",
     "repair:flagged-media": "tsx scripts/resolve-flagged-media-items.ts",

@@ -89,9 +89,18 @@ async function main() {
       }, { timeout: 30000 });
       results.push({ itemIds: group.map(i => i.id), outcome: 'STAGED', audioUrl });
       console.log(`Staged dialogue repair: ${group.length} item(s), ${audio.voiceName}`);
-    } catch {
-      results.push({ itemIds: group.map(i => i.id), outcome: 'FAILED', stage });
-      console.error(`Dialogue repair failed at ${stage}; original DB reference retained if transaction did not commit.`);
+    } catch (error: any) {
+      const message = String(error?.message || '');
+      const category = /quota|resource.exhausted|429/i.test(message) ? 'PROVIDER_QUOTA'
+        : /returned no audio/i.test(message) ? 'EMPTY_AUDIO_RESPONSE'
+        : /invalid dialogue output/i.test(message) ? 'INVALID_OUTPUT'
+        : /503|502|unavailable/i.test(message) ? 'PROVIDER_UNAVAILABLE' : 'OTHER';
+      results.push({ itemIds: group.map(i => i.id), outcome: 'FAILED', stage, category });
+      console.error(`Dialogue repair failed at ${stage} (${category}); original DB reference retained if transaction did not commit.`);
+      if (category === 'PROVIDER_QUOTA') {
+        writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ run, backupPath, results }, null, 2), { mode: 0o600 });
+        break; // Do not burn further attempts when the provider requires a quota reset/change.
+      }
     }
     writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ run, backupPath, results }, null, 2), { mode: 0o600 });
   }

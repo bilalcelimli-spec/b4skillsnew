@@ -28,8 +28,14 @@ async function deployedPlayer() {
 }
 async function main() {
   const rows = await prisma.item.findMany({ where: { skill: 'LISTENING', status: { in: ['ACTIVE', 'PRETEST'] } } });
-  const pending = rows.filter(r => record(record(r.metadata).pendingAudioReplacement).audioUrl);
-  console.log(JSON.stringify({ mode: process.argv.includes('--apply') ? 'apply' : 'dry-run', pendingItems: pending.length }));
+  const staged = rows.filter(r => record(record(r.metadata).pendingAudioReplacement).audioUrl);
+  const pending = staged.filter(row => {
+    const replacement = record(record(row.metadata).pendingAudioReplacement);
+    const source = normalizeSpeakerLabels(stripListeningWorksheet(resolveListeningScript(record(row.content))));
+    return replacement.sourceHash === createHash('sha256').update(source).digest('hex');
+  });
+  console.log(JSON.stringify({ mode: process.argv.includes('--apply') ? 'apply' : 'dry-run', pendingItems: pending.length,
+    skippedStaleSourceItems: staged.length - pending.length }));
   if (!process.argv.includes('--apply') || !pending.length) return;
   const playerUrl = await deployedPlayer();
   const storageOrigin = new URL(process.env.SUPABASE_URL!).origin;
