@@ -112,11 +112,12 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
+            <label htmlFor="certificate-id" className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
               Certificate ID
             </label>
             <div className="relative">
               <input
+                id="certificate-id"
                 type="text"
                 value={inputId}
                 onChange={(e) => setInputId(e.target.value)}

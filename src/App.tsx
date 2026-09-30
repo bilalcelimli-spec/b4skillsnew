@@ -105,6 +105,8 @@ import { getWorkspaceCapabilities, getWorkspaceNavigation, type WorkspaceTab } f
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  const verifyMatch = location.pathname.match(/^\/verify(?:\/([^/]+))?\/?$/);
+  const isCertificateVerification = verifyMatch !== null;
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showLanding, setShowLanding] = useState(true);
@@ -152,6 +154,8 @@ export default function App() {
 
   // Sync state → URL
   useEffect(() => {
+    // Public verification must stay accessible even after authentication resolves.
+    if (isCertificateVerification) return;
     if (activeSession?.sessionId) {
       navigate(`/exam/${activeSession.sessionId}`, { replace: true });
     } else if (testCompleted?.sessionId) {
@@ -164,7 +168,7 @@ export default function App() {
       };
       navigate(tabPath[activeTab] ?? "/dashboard", { replace: true });
     }
-  }, [activeTab, activeSession, testCompleted, user]);
+  }, [activeTab, activeSession, testCompleted, user, isCertificateVerification]);
 
   useEffect(() => {
     const fetchUser = async (retryRefresh = true) => {
@@ -269,7 +273,6 @@ export default function App() {
   };
 
   // Public certificate verification page — accessible without authentication
-  const verifyMatch = location.pathname.match(/^\/verify\/(.+)/);
   if (verifyMatch) {
     return <VerificationPage certId={verifyMatch[1]} />;
   }
