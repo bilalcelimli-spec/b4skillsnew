@@ -36,6 +36,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       const errorMessage =
         this.state.error?.message || "An unexpected error occurred.";
+      const isVersionError = /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk .* failed|ChunkLoadError/i.test(errorMessage);
 
       return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
@@ -43,14 +44,16 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6">
               <AlertTriangle className="text-red-600" size={40} />
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 mb-2">Something went wrong</h1>
+            <h1 className="text-2xl font-bold text-slate-900 mb-2">{isVersionError ? 'A newer version is available' : 'Something went wrong'}</h1>
             <p className="text-slate-500 mb-8 leading-relaxed">
-              {errorMessage}
+              {isVersionError
+                ? 'A required application file could not be loaded. When your connection is available, reload to get the current version. If you were taking an exam, resume your existing session; do not start a new exam.'
+                : errorMessage}
             </p>
 
             <div className="flex flex-col gap-3">
               <Button onClick={this.handleReset} className="w-full gap-2 bg-indigo-600">
-                <RefreshCcw size={18} /> Try Again
+                <RefreshCcw size={18} /> {isVersionError ? 'Reload current version' : 'Try Again'}
               </Button>
               <Button variant="outline" onClick={() => window.location.href = "/"} className="w-full gap-2">
                 <Home size={18} /> Back to Home

@@ -28,6 +28,7 @@ import { ProctoringAuditBody, ProctoringEventBody } from "./src/lib/security/sch
 import { AITutorBody, SpeakingMultimodalBody } from "./src/lib/security/schemas/ai.js";
 import { GenerateCodesBody, RedeemCodeBody } from "./src/lib/security/schemas/codes.js";
 import { stripAnswerKeys } from "./src/lib/security/answer-sanitizer.js";
+import { staticCacheControl, noStoreMissingAsset } from "./src/lib/security/static-cache.js";
 import { uploadPrivateObject, downloadPrivateObject, storageReference, StorageConfigurationError } from "./src/lib/storage/private-storage.js";
 
 
@@ -8699,7 +8700,14 @@ ${entries}
     });
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      setHeaders: (res, filePath) => {
+        res.setHeader("Cache-Control", staticCacheControl(filePath));
+      },
+    }));
+    // Static middleware only sets headers when the file exists. A deleted
+    // fingerprint must not become an immutable cached 404 at the CDN.
+    app.use(noStoreMissingAsset);
 
     // Load the pre-built SSR module at startup (non-fatal if missing)
     let ssrRender: ((url: string) => { html: string; didSSR: boolean }) | null = null;
@@ -8849,6 +8857,7 @@ ${entries}
     app.get("*", (req, res) => {
       const ext = path.extname(req.path);
       if (ext && ext !== ".html") return res.status(404).end();
+      res.setHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
 
       const meta = ROUTE_META[req.path] ?? null;
       let baseHtml = getIndexHtml();

@@ -10,7 +10,13 @@ export default defineConfig(({ isSsrBuild }) => {
       react(), 
       tailwindcss(),
       VitePWA({
-        registerType: 'autoUpdate',
+        // One worker owns the root scope. main.tsx registers it without reloading
+        // an open assessment; the legacy sync queue remains supported.
+        strategies: 'injectManifest',
+        srcDir: 'public',
+        filename: 'service-worker.js',
+        injectRegister: false,
+        injectManifest: { injectionPoint: undefined },
         includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'robots.txt'],
         // Development service workers make local/E2E runs stateful and can
         // serve stale exam assets. Enable only for an explicit PWA test run.
@@ -44,45 +50,6 @@ export default defineConfig(({ isSsrBuild }) => {
           screenshots: [
             { src: '/screenshots/mobile-assessment.png', sizes: '390x844', type: 'image/png', form_factor: 'narrow' },
             { src: '/screenshots/desktop-dashboard.png', sizes: '1280x800', type: 'image/png', form_factor: 'wide' },
-          ],
-        },
-        workbox: {
-          maximumFileSizeToCacheInBytes: 5_000_000,
-          navigateFallback: '/index.html',
-          navigateFallbackDenylist: [/^\/api\//],
-          runtimeCaching: [
-            // API reads: network-first, 30s stale-while-revalidate
-            {
-              urlPattern: ({ url }: { url: URL }) => url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/auth'),
-              handler: 'NetworkFirst' as const,
-              options: {
-                cacheName: 'api-reads',
-                networkTimeoutSeconds: 10,
-                expiration: { maxEntries: 100, maxAgeSeconds: 300 },
-                backgroundSync: {
-                  name: 'api-sync-queue',
-                  options: { maxRetentionTime: 24 * 60 },
-                },
-              },
-            },
-            // Static assets: cache-first (Vite hashes filenames)
-            {
-              urlPattern: /\/assets\/.+\.(js|css|woff2?|ttf)$/,
-              handler: 'CacheFirst' as const,
-              options: {
-                cacheName: 'static-assets',
-                expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              },
-            },
-            // Audio & images: stale-while-revalidate
-            {
-              urlPattern: /\.(mp3|ogg|webm|wav|png|jpg|webp|svg)$/,
-              handler: 'StaleWhileRevalidate' as const,
-              options: {
-                cacheName: 'media-assets',
-                expiration: { maxEntries: 300, maxAgeSeconds: 60 * 60 * 24 * 30 },
-              },
-            },
           ],
         },
       })

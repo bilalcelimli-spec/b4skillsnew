@@ -75,7 +75,7 @@ createRoot(rootEl).render(app);
 if ('serviceWorker' in navigator && (import.meta as any).env?.PROD) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/service-worker.js', { scope: '/' })
+      .register('/service-worker.js', { scope: '/', updateViaCache: 'none' })
       .then((reg) => {
         console.log('[PWA] Service worker registered, scope:', reg.scope);
         // Check for updates every 60 minutes
