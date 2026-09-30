@@ -17,7 +17,12 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { PrismaClient } from "@prisma/client";
-import { generateListeningAudio, resolveListeningScript } from "../src/lib/audio/tts-generator.js";
+import {
+  collapseDialogueToTwoVoices,
+  detectSpeakers,
+  generateListeningAudio,
+  resolveListeningScript,
+} from "../src/lib/audio/tts-generator.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const prisma = new PrismaClient();
@@ -40,15 +45,30 @@ async function main() {
   });
 
   // Deduplicate by moduleId, collecting item IDs per module
-  const moduleMap = new Map<string, { ttsScript: string; cefr: string; itemIds: string[] }>();
+  const moduleMap = new Map<string, {
+    ttsScript: string;
+    cefr: string;
+    itemIds: string[];
+    originalSpeakerCount: number;
+    voiceMapping?: Record<string, string>;
+  }>();
   for (const item of items) {
     const c = item.content as Record<string, any> | null;
     if (!c?.moduleId) continue;
-    const ttsScript = resolveListeningScript(c);
-    if (!ttsScript) continue;
+    const sourceScript = resolveListeningScript(c);
+    if (!sourceScript) continue;
+    const sourceSpeakers = detectSpeakers(sourceScript);
+    const dialogue = sourceSpeakers.length > 2 ? collapseDialogueToTwoVoices(sourceScript) : null;
+    const ttsScript = dialogue?.script ?? sourceScript;
     const mid = c.moduleId as string;
     if (!moduleMap.has(mid)) {
-      moduleMap.set(mid, { ttsScript, cefr: item.cefrLevel, itemIds: [] });
+      moduleMap.set(mid, {
+        ttsScript,
+        cefr: item.cefrLevel,
+        itemIds: [],
+        originalSpeakerCount: Math.max(1, sourceSpeakers.length),
+        voiceMapping: dialogue?.voiceMapping,
+      });
     }
     moduleMap.get(mid)!.itemIds.push(item.id);
   }
@@ -59,13 +79,13 @@ async function main() {
   let skipped = 0;
   let errors = 0;
 
-  for (const [moduleId, { ttsScript, cefr, itemIds }] of moduleMap.entries()) {
+  for (const [moduleId, { ttsScript, cefr, itemIds, originalSpeakerCount, voiceMapping }] of moduleMap.entries()) {
     const outputPath = path.join(PUBLIC_AUDIO_DIR, `${moduleId}.wav`);
     const audioUrl = `/audio/${moduleId}.wav`;
 
     if (!FORCE && fs.existsSync(outputPath)) {
       console.log(`[SKIP]  ${moduleId} — file exists`);
-      await patchAudioUrl(itemIds, audioUrl);
+      await patchAudioUrl(itemIds, audioUrl, ttsScript, originalSpeakerCount, voiceMapping);
       skipped++;
       continue;
     }
@@ -74,7 +94,7 @@ async function main() {
       console.log(`[GEN]   ${moduleId} (${cefr})`);
       const result = await generateListeningAudio({ moduleId, ttsScript, cefrLevel: cefr, outputDir: PUBLIC_AUDIO_DIR });
       console.log(`[OK]    ${result.fileSizeKb} KB, ${result.durationSeconds}s, voice: ${result.voiceName} → ${result.absolutePath}`);
-      await patchAudioUrl(itemIds, result.audioUrl);
+      await patchAudioUrl(itemIds, result.audioUrl, ttsScript, originalSpeakerCount, voiceMapping, result.voiceName);
       generated++;
       // Respect rate limits — Gemini TTS: ~10 RPM on free tier
       await new Promise((r) => setTimeout(r, 4000));
@@ -92,15 +112,34 @@ async function main() {
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 }
 
-async function patchAudioUrl(itemIds: string[], audioUrl: string) {
+async function patchAudioUrl(
+  itemIds: string[],
+  audioUrl: string,
+  ttsScript: string,
+  originalSpeakerCount: number,
+  voiceMapping?: Record<string, string>,
+  voiceName?: string,
+) {
   for (const id of itemIds) {
     const item = await prisma.item.findUnique({ where: { id }, select: { content: true } });
     if (!item) continue;
     const existing = (item.content as Record<string, any>) ?? {};
-    if (existing.audioUrl === audioUrl) continue;
     await prisma.item.update({
       where: { id },
-      data: { content: { ...existing, audioUrl } },
+      data: {
+        content: {
+          ...existing,
+          ttsScript,
+          audioUrl,
+          audioMetadata: {
+            ...((existing.audioMetadata as Record<string, unknown> | undefined) ?? {}),
+            originalSpeakerCount,
+            generatedVoiceCount: Math.max(1, detectSpeakers(ttsScript).length),
+            ...(voiceMapping ? { voiceMapping } : {}),
+            ...(voiceName ? { voiceName } : {}),
+          },
+        },
+      },
     });
   }
 }

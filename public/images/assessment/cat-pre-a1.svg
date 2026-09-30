@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" role="img" aria-labelledby="title description">
+  <title id="title">A friendly orange cat</title>
+  <desc id="description">A simple illustration of an orange cat sitting on a pale blue background.</desc>
+  <rect width="800" height="600" rx="40" fill="#e0f2fe"/>
+  <ellipse cx="400" cy="518" rx="190" ry="28" fill="#bae6fd"/>
+  <path d="M285 250 320 118l92 88M515 250 480 118l-92 88" fill="#fb923c" stroke="#9a3412" stroke-width="12" stroke-linejoin="round"/>
+  <ellipse cx="400" cy="318" rx="165" ry="150" fill="#fb923c" stroke="#9a3412" stroke-width="12"/>
+  <path d="M305 210 324 144l48 54M495 210l-19-66-48 54" fill="#fed7aa"/>
+  <ellipse cx="342" cy="290" rx="17" ry="24" fill="#0f172a"/>
+  <ellipse cx="458" cy="290" rx="17" ry="24" fill="#0f172a"/>
+  <circle cx="336" cy="282" r="5" fill="#fff"/>
+  <circle cx="452" cy="282" r="5" fill="#fff"/>
+  <path d="m400 326-20 17h40Z" fill="#fda4af" stroke="#9a3412" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M400 343c-4 20-23 29-42 23M400 343c4 20 23 29 42 23" fill="none" stroke="#9a3412" stroke-width="6" stroke-linecap="round"/>
+  <path d="M338 340 214 318M338 362l-130 18M462 340l124-22M462 362l130 18" fill="none" stroke="#9a3412" stroke-width="5" stroke-linecap="round"/>
+  <path d="M310 432c-7 58 4 104 28 104h124c24 0 35-46 28-104" fill="#fb923c" stroke="#9a3412" stroke-width="12"/>
+  <path d="M480 467c95-64 152 22 92 68-25 19-56 4-43-20" fill="none" stroke="#9a3412" stroke-width="24" stroke-linecap="round"/>
+</svg>

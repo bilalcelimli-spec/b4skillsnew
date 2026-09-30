@@ -2222,8 +2222,18 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           return res.status(400).json({ error: "Audio generation is only available for LISTENING items" });
         }
         const content = (item.content as Record<string, any>) ?? {};
-        const { detectSpeakers, generateListeningAudio, resolveListeningScript } = await import("./src/lib/audio/tts-generator.js");
-        const ttsScript = resolveListeningScript(content);
+        const {
+          collapseDialogueToTwoVoices,
+          detectSpeakers,
+          generateListeningAudio,
+          resolveListeningScript,
+        } = await import("./src/lib/audio/tts-generator.js");
+        const sourceScript = resolveListeningScript(content);
+        const sourceSpeakers = detectSpeakers(sourceScript);
+        const dialogue = sourceSpeakers.length > 2
+          ? collapseDialogueToTwoVoices(sourceScript)
+          : null;
+        const ttsScript = dialogue?.script ?? sourceScript;
         const moduleId: string = (content.moduleId as string | undefined) ?? id;
         if (!ttsScript) {
           return res.status(400).json({ error: "Item has no usable listening script in content." });
@@ -2244,7 +2254,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
               audioUrl: result.audioUrl,
               moduleId,
               audioMetadata: {
-                speakerCount: Math.max(1, detectSpeakers(ttsScript).length),
+                originalSpeakerCount: Math.max(1, sourceSpeakers.length),
+                generatedVoiceCount: Math.max(1, detectSpeakers(ttsScript).length),
+                ...(dialogue ? {
+                  originalSpeakers: dialogue.originalSpeakers,
+                  voiceMapping: dialogue.voiceMapping,
+                } : {}),
                 voiceName: result.voiceName,
                 generatedAt: new Date().toISOString(),
               },

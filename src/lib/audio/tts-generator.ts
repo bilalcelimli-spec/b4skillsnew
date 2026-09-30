@@ -96,6 +96,36 @@ export function detectSpeakers(ttsScript: string): string[] {
   return [...labels];
 }
 
+export interface TwoVoiceDialogue {
+  script: string;
+  originalSpeakers: string[];
+  voiceMapping: Record<string, "Speaker A" | "Speaker B">;
+}
+
+/**
+ * Gemini's native dialogue mode accepts two voice configurations. For source
+ * material with three or more named participants, preserve every turn while
+ * assigning participants consistently across two audible voice channels.
+ */
+export function collapseDialogueToTwoVoices(source: string): TwoVoiceDialogue {
+  const originalSpeakers = detectSpeakers(source);
+  if (originalSpeakers.length < 2) {
+    throw new Error(`A multi-speaker source is required; found ${originalSpeakers.length} speaker(s)`);
+  }
+
+  const voiceMapping = Object.fromEntries(
+    originalSpeakers.map((speaker, index) => [speaker, index % 2 === 0 ? "Speaker A" : "Speaker B"]),
+  ) as Record<string, "Speaker A" | "Speaker B">;
+  const labelPattern = /^((?:Speaker\s+[A-Z])|(?:[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3})):\s+(\S.*)$/;
+  const script = source.split("\n").map((line) => {
+    const match = line.trim().match(labelPattern);
+    if (!match || !voiceMapping[match[1]]) return line;
+    return `${voiceMapping[match[1]]}: ${match[2]}`;
+  }).join("\n").trim();
+
+  return { script, originalSpeakers, voiceMapping };
+}
+
 /**
  * Select the synthesis source without collapsing a dialogue into one voice.
  * Older seeds intentionally stripped labels from ttsScript, while preserving
