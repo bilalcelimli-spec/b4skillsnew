@@ -271,6 +271,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     >
       <audio
         ref={audioRef}
+        crossOrigin="anonymous"
         src={src}
         preload="metadata"
         onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}

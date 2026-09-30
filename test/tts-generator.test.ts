@@ -4,8 +4,26 @@ import {
   detectSpeakers,
   resolveListeningScript,
 } from "../src/lib/audio/tts-generator.js";
+import { normalizeSpeakerLabels, stripListeningWorksheet } from '../src/lib/audio/speaker-labels.js';
 
 describe("listening TTS source selection", () => {
+  it('recognizes bracketed labels and normalizes them for voice configuration', () => {
+    const script = '  [Speaker A]: Hello.\r\n[Speaker B]: Hi.\n[pause]\n[Speaker A]: Welcome.';
+    expect(detectSpeakers(script)).toEqual(['Speaker A', 'Speaker B']);
+    expect(normalizeSpeakerLabels(script)).toBe('Speaker A: Hello.\nSpeaker B: Hi.\n[pause]\nSpeaker A: Welcome.');
+  });
+  it('preserves bracketed speaker turns when mapping dialogue', () => {
+    expect(collapseDialogueToTwoVoices('[Alice]: Hello.\n[Bob]: Hi.').script).toBe('Speaker A: Hello.\nSpeaker B: Hi.');
+  });
+  it('does not treat candidate note-taking fields as speakers', () => {
+    const source = '[Speaker A]: Hi.\n[Speaker B]: Hello. [pause] Notes about Mum:\nWearing: green ____\nMaking: ____';
+    expect(detectSpeakers(source)).toEqual(['Speaker A', 'Speaker B']);
+    expect(stripListeningWorksheet(source)).toBe('[Speaker A]: Hi.\n[Speaker B]: Hello.');
+  });
+  it('keeps genuine spoken notes when no answer scaffold follows', () => {
+    const source = 'Speaker A: Notes about the meeting: everyone agreed.';
+    expect(stripListeningWorksheet(source)).toBe(source);
+  });
   it("recognizes titles and multi-word speaker names", () => {
     expect(detectSpeakers("Ms. Green: Hello.\nTom: Hi.\nMs. Green: Sit down.")).toEqual([
       "Ms. Green",

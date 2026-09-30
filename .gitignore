@@ -12,6 +12,7 @@ test-results/
 reports/audio-backup-*/
 reports/*-backup-*.json
 reports/*-result-*.json
+reports/item-evidence/
 
 # Env files — only allow example templates
 .env*

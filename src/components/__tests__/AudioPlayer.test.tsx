@@ -13,6 +13,11 @@ describe("AudioPlayer autoplay and recovery", () => {
   });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+  it('loads external audio in anonymous CORS mode before waveform routing', () => {
+    const { container } = render(<AudioPlayer src="https://example.supabase.co/storage/v1/object/public/question-audio/test.wav" showWaveform={false} />);
+    expect(container.querySelector('audio')?.getAttribute('crossorigin')).toBe('anonymous');
+  });
+
   it("keeps audio mounted during countdown and starts after it ends", async () => {
     const { container } = render(<AudioPlayer src="/audio.mp3" autoPlay countdownSeconds={3} showWaveform={false} />);
     expect(container.querySelector("audio")).toBeTruthy();

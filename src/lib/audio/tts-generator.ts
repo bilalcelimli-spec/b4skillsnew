@@ -12,6 +12,7 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 import fs from "fs";
 import path from "path";
+import { normalizeSpeakerLabels, parseSpeakerTurn, speakerLabels, stripListeningWorksheet } from './speaker-labels.js';
 
 // ── WAV constants ─────────────────────────────────────────────────────────────
 
@@ -86,14 +87,7 @@ export function buildTtsPrompt(moduleId: string, ttsScript: string, cefr: string
 // Returns the unique speaker names found in the script.
 
 export function detectSpeakers(ttsScript: string): string[] {
-  const labels = new Set<string>();
-  for (const line of ttsScript.split("\n")) {
-    const m = line.trim().match(
-      /^((?:Speaker\s+[A-Z])|(?:[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3})):\s+\S/,
-    );
-    if (m) labels.add(m[1]);
-  }
-  return [...labels];
+  return speakerLabels(ttsScript);
 }
 
 export interface TwoVoiceDialogue {
@@ -116,11 +110,10 @@ export function collapseDialogueToTwoVoices(source: string): TwoVoiceDialogue {
   const voiceMapping = Object.fromEntries(
     originalSpeakers.map((speaker, index) => [speaker, index % 2 === 0 ? "Speaker A" : "Speaker B"]),
   ) as Record<string, "Speaker A" | "Speaker B">;
-  const labelPattern = /^((?:Speaker\s+[A-Z])|(?:[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3})):\s+(\S.*)$/;
   const script = source.split("\n").map((line) => {
-    const match = line.trim().match(labelPattern);
-    if (!match || !voiceMapping[match[1]]) return line;
-    return `${voiceMapping[match[1]]}: ${match[2]}`;
+    const turn = parseSpeakerTurn(line);
+    if (!turn || !voiceMapping[turn.speaker]) return line;
+    return `${voiceMapping[turn.speaker]}: ${turn.utterance}`;
   }).join("\n").trim();
 
   return { script, originalSpeakers, voiceMapping };
@@ -181,7 +174,8 @@ export async function generateListeningAudio(opts: {
   const ai = new GoogleGenAI({ apiKey });
 
   // Detect two-person dialogues and use multi-speaker config
-  const speakers = detectSpeakers(opts.ttsScript);
+  const synthesisScript = stripListeningWorksheet(opts.ttsScript);
+  const speakers = detectSpeakers(synthesisScript);
   if (speakers.length > 2) {
     throw new Error(`Gemini multi-speaker TTS supports at most 2 speakers; found ${speakers.length}`);
   }
@@ -205,8 +199,8 @@ export async function generateListeningAudio(opts: {
   }
 
   const prompt = isDialogue
-    ? opts.ttsScript  // speaker-labelled text — Gemini routes each line to the right voice
-    : buildTtsPrompt(opts.moduleId, opts.ttsScript, opts.cefrLevel, opts.productLine);
+    ? normalizeSpeakerLabels(synthesisScript) // Match labels to configured speaker names, including legacy [Speaker A]: syntax.
+    : buildTtsPrompt(opts.moduleId, synthesisScript, opts.cefrLevel, opts.productLine);
 
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
