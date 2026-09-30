@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { Button } from "./ui/Button";
 import { ChevronRight, Menu, X, Zap } from "lucide-react";
 import { cn } from "../lib/utils";
 
@@ -15,6 +14,13 @@ const SOLUTION_HREFS: Record<string, string> = {
   "Language Schools": "/language-schools",
 };
 
+const MAIN_LINKS = [
+  { label: "Technology & Pedagogy", href: "/#technology" },
+  { label: "Methodology", href: "/methodology" },
+  { label: "Research", href: "/research" },
+  { label: "Pricing", href: "/pricing" },
+] as const;
+
 export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -24,6 +30,22 @@ export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
     window.addEventListener("scroll", handler, { passive: true });
     return () => window.removeEventListener("scroll", handler);
   }, []);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileMenuOpen(false);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [mobileMenuOpen]);
 
   return (
     <nav
@@ -44,19 +66,20 @@ export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
         </a>
 
         {/* Desktop Nav */}
-        <div className="hidden md:flex items-center gap-8 font-medium text-sm text-slate-700">
+        <div className="hidden xl:flex items-center gap-5 2xl:gap-8 font-medium text-sm text-slate-700">
           {/* Mega Menu - Solutions */}
           <div className="group h-16 flex items-center">
             <a
               href="/#solutions"
-              className="hover:text-[#9b276c] transition-colors flex items-center gap-1 group-hover:text-[#9b276c] py-4"
+              className="hover:text-[#9b276c] focus-visible:text-[#9b276c] focus-visible:outline-none transition-colors flex items-center gap-1 group-hover:text-[#9b276c] py-4"
+              aria-haspopup="menu"
             >
               Solutions
-              <ChevronRight size={14} className="group-hover:rotate-90 transition-transform duration-300" />
+              <ChevronRight aria-hidden="true" size={14} className="group-hover:rotate-90 group-focus-within:rotate-90 transition-transform duration-300" />
             </a>
 
             {/* Mega Menu Dropdown */}
-            <div className="absolute top-[70px] left-1/2 -translate-x-1/2 w-screen max-w-[1100px] px-6 lg:px-0 opacity-0 invisible translate-y-4 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto z-50">
+            <div className="absolute top-[70px] left-1/2 -translate-x-1/2 w-screen max-w-[1100px] px-6 lg:px-0 opacity-0 invisible translate-y-4 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 group-focus-within:visible group-focus-within:opacity-100 group-focus-within:translate-y-0 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto z-50">
               <div className="bg-white rounded-3xl overflow-hidden flex flex-col md:flex-row text-left shadow-[0_20px_50px_-12px_rgba(0,0,0,0.1),0_0_0_1px_rgba(148,163,184,0.1)]">
                 {/* Left */}
                 <div className="md:w-[70%] p-10 bg-white">
@@ -141,23 +164,17 @@ export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
             </div>
           </div>
 
-          <a href="/#technology" className="hover:text-slate-900 transition-colors h-16 flex items-center">
-            Technology & Pedagogy
-          </a>
-          <a href="/#research" className="hover:text-slate-900 transition-colors h-16 flex items-center">
-            Research
-          </a>
+          {MAIN_LINKS.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              className="hover:text-[#9b276c] transition-colors h-16 flex items-center"
+            >
+              {link.label}
+            </a>
+          ))}
 
-          <div className="flex items-center gap-6 h-16">
-            <a href="/methodology" className="text-slate-600 hover:text-[#9b276c] font-bold transition-colors">
-              Methodology
-            </a>
-            <a href="/research" className="text-slate-600 hover:text-[#9b276c] font-bold transition-colors">
-              Research
-            </a>
-            <a href="/pricing" className="text-slate-600 hover:text-[#9b276c] font-bold transition-colors">
-              Pricing
-            </a>
+          <div className="flex items-center gap-4 2xl:gap-6 h-16">
             {onCodeEntry && (
               <button
                 onClick={onCodeEntry}
@@ -174,15 +191,18 @@ export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
             >
               Test Taker Login
             </button>
-            <Button onClick={onStart} className="bg-slate-900 hover:bg-slate-800 text-white rounded-full px-6">
+            <a
+              href="/register"
+              className="inline-flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-white rounded-full px-6 py-2 font-medium transition-all active:scale-[0.98]"
+            >
               Get Started
-            </Button>
+            </a>
           </div>
         </div>
 
         {/* Mobile Menu Button */}
         <button
-          className="md:hidden p-2 text-slate-900"
+          className="xl:hidden p-2 text-slate-900 rounded-lg hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9b276c]"
           aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
           aria-expanded={mobileMenuOpen}
           aria-controls="site-mobile-menu"
@@ -196,17 +216,25 @@ export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
       {mobileMenuOpen && (
         <div
           id="site-mobile-menu"
-          className="md:hidden absolute top-full left-0 w-full bg-white shadow-xl border-t border-slate-100 flex flex-col p-6 gap-6 font-medium text-slate-700"
-          role="menu"
+          className="xl:hidden absolute top-full left-0 w-full max-h-[calc(100vh-4rem)] overflow-y-auto bg-white shadow-xl border-t border-slate-100 flex flex-col p-6 gap-6 font-medium text-slate-700"
         >
           <a href="/#solutions" onClick={() => setMobileMenuOpen(false)}>Solutions</a>
-          <a href="/#technology" onClick={() => setMobileMenuOpen(false)}>Technology & Pedagogy</a>
-          <a href="/research" onClick={() => setMobileMenuOpen(false)}>Research</a>
+          {MAIN_LINKS.map((link) => (
+            <a key={link.href} href={link.href} onClick={() => setMobileMenuOpen(false)}>
+              {link.label}
+            </a>
+          ))}
           {onCodeEntry && (
-            <button onClick={onCodeEntry} className="text-left font-bold text-slate-800">Enter Exam Code</button>
+            <button onClick={() => { setMobileMenuOpen(false); onCodeEntry(); }} className="text-left font-bold text-slate-800">Enter Exam Code</button>
           )}
-          <button onClick={onStart} className="text-left font-bold text-indigo-600">Test Taker Login</button>
-          <Button onClick={onStart} className="bg-slate-900 text-white w-full rounded-full">Get Started</Button>
+          <button onClick={() => { setMobileMenuOpen(false); onStart(); }} className="text-left font-bold text-[#9b276c]">Test Taker Login</button>
+          <a
+            href="/register"
+            onClick={() => setMobileMenuOpen(false)}
+            className="inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-2 font-medium text-white transition-all active:scale-[0.98]"
+          >
+            Get Started
+          </a>
         </div>
       )}
     </nav>

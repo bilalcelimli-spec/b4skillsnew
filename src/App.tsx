@@ -100,6 +100,7 @@ const EmailVerifyPage: React.FC<{ token: string | null; onDone: () => void }> = 
 import { LogIn, LogOut, GraduationCap, LayoutDashboard, FileText, Settings, ShieldCheck, User as UserIcon, ShieldAlert, CheckCircle2, ClipboardList, Building2, BarChart3, Award, Database, UserCircle, Sliders, BoxSelect, Menu, X, ChevronRight } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "./lib/utils";
+import { getWorkspaceCapabilities, getWorkspaceNavigation, type WorkspaceTab } from "./lib/navigation/workspace-navigation";
 
 export default function App() {
   const navigate = useNavigate();
@@ -436,13 +437,18 @@ export default function App() {
   }
 
   const profRole = userProfile?.role?.toUpperCase();
-  const isAdmin = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"].includes(profRole);
-  const isRater = profRole === "RATER" || isAdmin;
-  const isOrgAdmin = ["ORG_ADMIN", "INST_ADMIN"].includes(profRole) || isAdmin;
-  const isTeacher = profRole === "TEACHER" || isOrgAdmin;
-  // Content factory workers (non-admin reviewers / writers) get a dedicated review view
-  const isContentWorker = ["ITEM_WRITER", "LANGUAGE_REVIEWER", "CEFR_REVIEWER",
-    "FAIRNESS_REVIEWER", "MODERATOR", "PSYCHOMETRICIAN"].includes(profRole ?? "") && !isAdmin;
+  const { isAdmin, isRater, isOrgAdmin, isTeacher, isContentWorker } = getWorkspaceCapabilities(profRole);
+  const workspaceNavigation = getWorkspaceNavigation(profRole);
+  const workspaceNavigationIcons: Record<WorkspaceTab, React.ReactNode> = {
+    dashboard: <LayoutDashboard size={20} />,
+    admin: <ShieldAlert size={20} />,
+    rating: <ClipboardList size={20} />,
+    institutional: <BarChart3 size={20} />,
+    teacher: <ClipboardList size={20} />,
+    content: <FileText size={20} />,
+    results: <FileText size={20} />,
+    profile: <UserCircle size={20} />,
+  };
 
   // Clears stale session state when the user explicitly switches away from results.
   type Tab = typeof activeTab;
@@ -491,14 +497,15 @@ export default function App() {
               </button>
             </div>
             <nav className="space-y-2 flex-1">
-              <SidebarItem icon={<LayoutDashboard size={20} />} label="Dashboard" active={activeTab === "dashboard"} onClick={() => { goToTab("dashboard"); setMobileMenuOpen(false); }} />
-              {isAdmin && <SidebarItem icon={<ShieldAlert size={20} />} label="Admin Console" active={activeTab === "admin"} onClick={() => { goToTab("admin"); setMobileMenuOpen(false); }} />}
-              {isRater && <SidebarItem icon={<ClipboardList size={20} />} label="Rating Queue" active={activeTab === "rating"} onClick={() => { goToTab("rating"); setMobileMenuOpen(false); }} />}
-              {isOrgAdmin && <SidebarItem icon={<BarChart3 size={20} />} label="Institutional" active={activeTab === "institutional"} onClick={() => { goToTab("institutional"); setMobileMenuOpen(false); }} />}
-              {isTeacher && !isOrgAdmin && <SidebarItem icon={<ClipboardList size={20} />} label="My Classes" active={activeTab === "teacher"} onClick={() => { goToTab("teacher"); setMobileMenuOpen(false); }} />}
-              {isContentWorker && <SidebarItem icon={<FileText size={20} />} label="Review Queue" active={activeTab === "content"} onClick={() => { goToTab("content"); setMobileMenuOpen(false); }} />}
-              <SidebarItem icon={<FileText size={20} />} label="My Results" active={activeTab === "results"} onClick={() => { goToTab("results"); setMobileMenuOpen(false); }} />
-              <SidebarItem icon={<UserCircle size={20} />} label="Profile" active={activeTab === "profile"} onClick={() => { goToTab("profile"); setMobileMenuOpen(false); }} />
+              {workspaceNavigation.map((item) => (
+                <SidebarItem
+                  key={item.tab}
+                  icon={workspaceNavigationIcons[item.tab]}
+                  label={item.label}
+                  active={activeTab === item.tab}
+                  onClick={() => { goToTab(item.tab); setMobileMenuOpen(false); }}
+                />
+              ))}
             </nav>
             <div className="pt-6 border-t border-slate-800">
               <div className="flex items-center gap-3 mb-4">
@@ -531,48 +538,15 @@ export default function App() {
         </div>
         
         <nav className="space-y-2 flex-1">
-          <SidebarItem
-            icon={<LayoutDashboard size={20} />}
-            label="Dashboard"
-            active={activeTab === "dashboard"}
-            onClick={() => goToTab("dashboard")}
-          />
-          {isAdmin && (
+          {workspaceNavigation.map((item) => (
             <SidebarItem
-              icon={<ShieldAlert size={20} />}
-              label="Admin Console"
-              active={activeTab === "admin"}
-              onClick={() => goToTab("admin")}
+              key={item.tab}
+              icon={workspaceNavigationIcons[item.tab]}
+              label={item.label}
+              active={activeTab === item.tab}
+              onClick={() => goToTab(item.tab)}
             />
-          )}
-          {isRater && (
-            <SidebarItem
-              icon={<ClipboardList size={20} />}
-              label="Rating Queue"
-              active={activeTab === "rating"}
-              onClick={() => goToTab("rating")}
-            />
-          )}
-          {isOrgAdmin && (
-            <SidebarItem
-              icon={<BarChart3 size={20} />}
-              label="Institutional"
-              active={activeTab === "institutional"}
-              onClick={() => goToTab("institutional")}
-            />
-          )}
-          <SidebarItem
-            icon={<FileText size={20} />}
-            label="My Results"
-            active={activeTab === "results"}
-            onClick={() => goToTab("results")}
-          />
-          <SidebarItem
-            icon={<UserCircle size={20} />}
-            label="Profile"
-            active={activeTab === "profile"}
-            onClick={() => goToTab("profile")}
-          />
+          ))}
         </nav>
 
         <div className="pt-6 border-t border-slate-800">

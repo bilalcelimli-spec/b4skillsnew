@@ -24,6 +24,7 @@
     "type-check": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "vitest run",
+    "test:item-bank": "RUN_DB_TESTS=1 vitest run test/item-bank.test.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",

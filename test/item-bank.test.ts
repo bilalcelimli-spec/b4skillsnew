@@ -13,8 +13,12 @@ import { prisma } from "../src/lib/prisma.js";
 
 type Item = any;
 type Option = { text?: string; isCorrect?: boolean; rationale?: string; id?: string };
+const RUN_DB_TESTS = process.env.CI === "true" || process.env.RUN_DB_TESTS === "1";
 
-describe("Item Bank Integrity", () => {
+// CI provisions and seeds an isolated PostgreSQL database. Local unit-test
+// runs must opt in so an unreachable DATABASE_URL cannot make unrelated UI
+// work fail or hang; use `npm run test:item-bank` for the explicit DB check.
+describe.skipIf(!RUN_DB_TESTS)("Item Bank Integrity", () => {
   afterAll(async () => {
     await prisma.$disconnect();
   });
