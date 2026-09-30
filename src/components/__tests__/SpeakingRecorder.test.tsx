@@ -13,6 +13,7 @@ vi.mock("motion/react", () => ({
 
 let latestRecorder: FakeRecorder;
 let empty = false;
+let delayedStop = false;
 class FakeRecorder {
   state = "inactive";
   mimeType = "audio/webm";
@@ -23,8 +24,12 @@ class FakeRecorder {
   start = vi.fn(() => { this.state = "recording"; });
   stop = vi.fn(() => {
     this.state = "inactive";
-    this.ondataavailable?.({ data: new Blob(empty ? [] : ["recorded audio"], { type: this.mimeType }) });
-    this.onstop?.();
+    const finish = () => {
+      this.ondataavailable?.({ data: new Blob(empty ? [] : ["recorded audio"], { type: this.mimeType }) });
+      this.onstop?.();
+    };
+    if (delayedStop) setTimeout(finish, 100);
+    else finish();
   });
 }
 const stopTrack = vi.fn();
@@ -34,6 +39,7 @@ describe("SpeakingRecorder lifecycle", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     empty = false;
+    delayedStop = false;
     stopTrack.mockReset();
     getUserMedia.mockReset().mockResolvedValue({ getTracks: () => [{ stop: stopTrack }] });
     Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia } });
@@ -69,6 +75,38 @@ describe("SpeakingRecorder lifecycle", () => {
     expect(screen.getByRole("alert").textContent).toContain("No audio was captured");
     expect(stopTrack).toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Submit Response" })).toBeNull();
+  });
+
+  it("blocks a new recording and mode changes until the final audio event arrives", async () => {
+    delayedStop = true;
+    const onRecordingStateChange = vi.fn();
+    render(<SpeakingRecorder maxTime={60} onRecordingComplete={vi.fn()} onRecordingStateChange={onRecordingStateChange} isUploading={false} />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Start Recording" })); });
+    fireEvent.click(screen.getByRole("button", { name: "Stop Recording" }));
+    expect(onRecordingStateChange).toHaveBeenLastCalledWith(true);
+    const pending = screen.getByRole("button", { name: "Preparing Recording…" }) as HTMLButtonElement;
+    expect(pending.disabled).toBe(true);
+    fireEvent.click(pending);
+    expect(getUserMedia).toHaveBeenCalledOnce();
+    await act(async () => { vi.advanceTimersByTime(100); });
+    expect(onRecordingStateChange).toHaveBeenLastCalledWith(false);
+    expect(screen.getByRole("button", { name: "Submit Response" })).toBeTruthy();
+  });
+
+  it("pauses preview playback when the editor is inactive or submitting", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    const props = { maxTime: 60, onRecordingComplete: vi.fn(), isUploading: false };
+    const { rerender } = render(<SpeakingRecorder {...props} />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Start Recording" })); });
+    fireEvent.click(screen.getByRole("button", { name: "Stop Recording" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Play Back" })); });
+    expect(play).toHaveBeenCalledOnce();
+    rerender(<SpeakingRecorder {...props} isUploading />);
+    expect(pause).toHaveBeenCalledOnce();
+    expect((screen.getByRole("button", { name: "Play Back" }) as HTMLButtonElement).disabled).toBe(true);
+    play.mockRestore();
+    pause.mockRestore();
   });
 
   it("stops the active recorder and microphone when leaving the question", async () => {

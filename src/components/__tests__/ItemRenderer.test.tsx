@@ -5,6 +5,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ItemRenderer } from "../ItemRenderer.js";
 import { scoreStructuredResponse } from "../../lib/assessment-engine/structured-response";
+import { stripAnswerKeys } from "../../lib/security/answer-sanitizer";
+import { AppToastProvider } from "../../hooks/useToast";
 
 const baseItem = {
   id: "item-1",
@@ -14,6 +16,42 @@ const baseItem = {
 } as any;
 
 describe("ItemRenderer response recovery", () => {
+  it("does not select or submit answers for browser shortcuts or repeated keys", () => {
+    const onResponse = vi.fn();
+    render(<ItemRenderer item={{ ...baseItem, type: "MULTIPLE_CHOICE", content: { prompt: "Choose", options: ["One", "Two"] } }} onResponse={onResponse} />);
+    fireEvent.keyDown(document.body, { key: "1", ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: "Enter" });
+    expect(onResponse).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.body, { key: "1" });
+    fireEvent.keyDown(document.body, { key: "Enter", repeat: true });
+    fireEvent.keyDown(document.body, { key: "Enter", metaKey: true });
+    expect(onResponse).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.body, { key: "Enter" });
+    expect(onResponse).toHaveBeenCalledOnce();
+  });
+  it("supports a separate listening scaffold without substituting the instruction", () => {
+    render(<ItemRenderer item={{ ...baseItem, skill: "LISTENING", content: { prompt: "Listen and fill both blanks", scaffold: "Name ___1___, place ___2___." } }} onResponse={vi.fn()} />);
+    expect(screen.getAllByRole("textbox")).toHaveLength(2);
+  });
+  it("preserves a written draft when switching between listening response modes", () => {
+    render(<ItemRenderer item={{ ...baseItem, skill: "LISTENING", type: "INTEGRATED_TASK", content: { prompt: "Summarise what you heard", responseFormat: "spoken-or-written", taskType: "productive", wordCountTarget: "1–10 words" } }} onResponse={vi.fn()} />, { wrapper: AppToastProvider });
+    fireEvent.change(screen.getByRole("textbox", { name: "Writing response" }), { target: { value: "My saved summary" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Record your answer" }));
+    expect(screen.getByRole("button", { name: "Start Recording" })).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Writing response" })).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "Write your answer" }));
+    expect((screen.getByRole("textbox", { name: "Writing response" }) as HTMLTextAreaElement).value).toBe("My saved summary");
+  });
+  it("renders only the required word-placement slots, leaving distractors unused", () => {
+    const content = { prompt: "Choose the words", stimulus: "She [___] [___].", draggableItems: ["walks", "home", "decoy"], correctSequence: ["walks", "home"] };
+    const onResponse = vi.fn();
+    render(<ItemRenderer item={{ ...baseItem, type: "DRAG_DROP", content: stripAnswerKeys(content) }} onResponse={onResponse} />);
+    expect(screen.getAllByRole("combobox")).toHaveLength(2);
+    fireEvent.change(screen.getByRole("combobox", { name: "Blank 1" }), { target: { value: "0" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Blank 2" }), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Answer" }));
+    expect(scoreStructuredResponse(content, onResponse.mock.calls[0][0])).toBe(1);
+  });
   it("renders numbered blanks once and submits choices in gap order", () => {
     const onResponse = vi.fn();
     render(<ItemRenderer item={{ ...baseItem, content: { prompt: "Choose the words", scaffold: "She ___1___ ___[2]___.", wordBank: ["walks", "home", "away"] } }} onResponse={onResponse} />);

@@ -9,6 +9,7 @@ import { prisma } from "../prisma";
 import { stripAnswerKeys } from "../security/answer-sanitizer.js";
 import { scoreStructuredResponse } from "./structured-response.js";
 import { scoreBlankResponse } from "./blank-response.js";
+import { productiveScoringMode } from "./productive-response.js";
 import { validateItemBeforeSave } from "../validation/item-schema.js";
 import { AppError } from "../errors/app-error.js";
 import { ScoringOrchestrator } from "../scoring/scoring-orchestrator";
@@ -1005,10 +1006,9 @@ export const AssessmentService = {
     let score = 0;
     let aiResult = null;
     let scoringDecision = null;
-    const productiveListening = item.skill === SkillType.LISTENING &&
-      (item.metadata?.taskType === "productive" || item.metadata?.responseFormat === "written");
+    const scoringMode = productiveScoringMode(String(item.skill), item.type, item.metadata ?? {}, value);
 
-    if (productiveListening) {
+    if (scoringMode) {
       aiResult = { requiresHumanReview: true, pendingAsyncScore: true };
     } else if (item.type === "DRAG_DROP") {
       score = scoreStructuredResponse(item.metadata ?? {}, value);
@@ -1170,14 +1170,13 @@ export const AssessmentService = {
 
     // Async AI scoring: dispatch WRITING / SPEAKING jobs to the queue (fire-and-forget).
     // The queue updates the response row when Gemini returns; the client polls for the score.
-    const itemSkill = String(item.skill).toUpperCase();
-    if ((itemSkill === "WRITING" || itemSkill === "SPEAKING" || productiveListening) && (aiResult as any)?.pendingAsyncScore) {
+    if (scoringMode && (aiResult as any)?.pendingAsyncScore) {
       const prompt = item.metadata?.prompt || "Please respond to the task.";
       void enqueueScoringJob({
         sessionId,
         responseId: savedResponse.id,
         itemId,
-        skill: productiveListening ? "WRITING" : itemSkill as "WRITING" | "SPEAKING",
+        skill: scoringMode,
         value: value as string | { audio: string; mimeType: string },
         prompt,
       }).catch((err) => {

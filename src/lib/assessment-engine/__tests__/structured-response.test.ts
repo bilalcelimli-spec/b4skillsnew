@@ -4,6 +4,15 @@ import { stripAnswerKeys } from "../../security/answer-sanitizer";
 import { SessionRespondBody } from "../../security/schemas/sessions";
 
 describe("structured answer delivery and scoring", () => {
+  it("scores word placement with distractors and strips its sequence key", () => {
+    const content = { stimulus: "She [___] [___].", draggableItems: ["walks", "home", "decoy"], correctSequence: ["walks", "home"] };
+    const value = { kind: "placement", placements: [0, 1] };
+    expect(SessionRespondBody.safeParse({ itemId: "item-1", value }).success).toBe(true);
+    expect(scoreStructuredResponse(content, value)).toBe(1);
+    expect(scoreStructuredResponse(content, { kind: "placement", placements: [2, 1] })).toBe(0);
+    expect(() => scoreStructuredResponse(content, { kind: "placement", placements: [0, 0] })).toThrow();
+    expect(stripAnswerKeys(content)).toEqual({ stimulus: content.stimulus, draggableItems: content.draggableItems });
+  });
   const matching = { draggableItems: ["meows", "barks"], dropZones: ["cat", "dog"], correctMapping: { "0": 0, "1": 1 } };
   const ordering = { draggableItems: ["second", "first"], correctOrder: [1, 0] };
   it("accepts structured answers through the actual API schema", () => {

@@ -1,12 +1,20 @@
 /** Grade index-based matching and ordering without exposing keys to candidates. */
 export function scoreStructuredResponse(content: Record<string, any>, value: unknown): number {
-  const count = content.draggableItems?.length;
+  const items = content.draggableItems ?? content.wordBank;
+  const count = items?.length;
   if (!Number.isInteger(count) || count < 1 || !value || typeof value !== "object") {
     throw new Error("Invalid structured response");
   }
   const response = value as Record<string, any>;
   const validIndex = (index: unknown): index is number =>
     Number.isInteger(index) && (index as number) >= 0 && (index as number) < count;
+  if (Array.isArray(content.correctSequence)) {
+    const placements = response.placements;
+    const expected = content.correctSequence;
+    if (response.kind !== "placement" || !Array.isArray(placements) || placements.length !== expected.length ||
+        !placements.every(validIndex) || new Set(placements).size !== placements.length) throw new Error("Invalid placement response");
+    return placements.every((index, position) => items[index] === expected[position]) ? 1 : 0;
+  }
   if (content.correctMapping) {
     const targets = content.dropZones?.length;
     const mapping = response.mapping;

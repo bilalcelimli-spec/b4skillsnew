@@ -348,7 +348,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
 
     try {
       // Save the response first. The server queues productive scoring after persistence.
-      if (currentItem.skill === "SPEAKING" && value instanceof Blob) {
+      if (value instanceof Blob) {
         if (!value.size) throw new Error("Empty recording");
         const base64 = await blobToBase64(value);
         finalValue = { audio: base64, mimeType: value.type };

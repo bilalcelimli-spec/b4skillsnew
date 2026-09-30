@@ -42,10 +42,14 @@ export const SessionRespondBody = z.object({
       kind: z.literal("ordering"),
       order: z.array(z.number().int().min(0).max(99)).min(1).max(100),
     }).strict(),
+    z.object({
+      kind: z.literal("placement"),
+      placements: z.array(z.number().int().min(0).max(99)).min(1).max(100),
+    }).strict(),
     z.string().max(100_000),
     z.array(z.string().max(10_000)).max(100),
     z.record(z.string().max(100), z.union([z.string().max(10_000), z.number(), z.boolean(), z.null()])).superRefine((obj, ctx) => {
-      if ("audio" in obj || "mimeType" in obj || obj.kind === "matching" || obj.kind === "ordering") {
+      if ("audio" in obj || "mimeType" in obj || obj.kind === "matching" || obj.kind === "ordering" || obj.kind === "placement") {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Use a valid typed response" });
       }
       if (Object.keys(obj).length > 50) {

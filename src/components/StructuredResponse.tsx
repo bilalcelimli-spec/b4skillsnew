@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { normalizeBlankScaffold } from "../lib/assessment-engine/blank-response";
 
 interface Props {
   content: Record<string, any>;
@@ -8,8 +9,11 @@ interface Props {
 
 /** Stable original indexes are sent to the server regardless of display order. */
 export function StructuredResponse({ content, disabled, onResponse }: Props) {
-  const items: string[] = content.draggableItems ?? [];
-  const zones: string[] = content.dropZones ?? [];
+  const items: string[] = content.draggableItems ?? content.wordBank ?? [];
+  const scaffold = content.stimulus || content.scaffold || content.passage || "";
+  const slotCount = (normalizeBlankScaffold(scaffold).match(/___/g) ?? []).length;
+  const placement = !content.dropZones?.length && slotCount > 0;
+  const zones: string[] = content.dropZones?.length ? content.dropZones : (placement ? Array.from({ length: slotCount }, (_, i) => `Blank ${i + 1}`) : []);
   const matching = zones.length > 0;
   const [mapping, setMapping] = useState<Record<string, number>>({});
   const [order, setOrder] = useState(() => items.map((_, i) => i).reverse());
@@ -23,12 +27,12 @@ export function StructuredResponse({ content, disabled, onResponse }: Props) {
     });
   };
   return (
-    <section className="space-y-5" aria-label={matching ? "Matching task" : "Ordering task"}>
+    <section className="space-y-5" aria-label={placement ? "Word placement task" : matching ? "Matching task" : "Ordering task"}>
       <h3 className="text-xl font-bold whitespace-pre-line">{content.prompt}</h3>
       <p className="text-sm text-slate-600">
-        {matching ? "Choose one answer for each row. Each answer can be used once." : "Use Move up and Move down to arrange the sentences, then confirm your answer."}
+        {placement ? "Choose a word for each blank. Each word can be used once; some words may not be needed." : matching ? "Choose one answer for each row. Each answer can be used once." : "Use Move up and Move down to arrange the sentences, then confirm your answer."}
       </p>
-      {content.passage && <div className="p-4 rounded-xl bg-slate-50 whitespace-pre-line">{content.passage}</div>}
+      {scaffold && <div className="p-4 rounded-xl bg-slate-50 whitespace-pre-line break-words">{scaffold}</div>}
       {matching ? zones.map((zone, i) => (
         <label key={i} className="grid gap-2 sm:grid-cols-2 items-center p-4 border border-slate-200 rounded-xl">
           <span className="font-semibold">{zone}</span>
@@ -64,7 +68,7 @@ export function StructuredResponse({ content, disabled, onResponse }: Props) {
           ))}
         </ol>
       )}
-      <button type="button" disabled={disabled || !complete} className="w-full min-h-12 p-3 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-50" onClick={() => onResponse(matching ? { kind: "matching", mapping } : { kind: "ordering", order })}>
+      <button type="button" disabled={disabled || !complete} className="w-full min-h-12 p-3 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-50" onClick={() => onResponse(placement ? { kind: "placement", placements: zones.map((_, i) => mapping[String(i)]) } : matching ? { kind: "matching", mapping } : { kind: "ordering", order })}>
         Confirm Answer
       </button>
     </section>

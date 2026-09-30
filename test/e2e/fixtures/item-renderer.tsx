@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ItemRenderer } from "../../../src/components/ItemRenderer";
+import { AppToastProvider } from "../../../src/hooks/useToast";
 import "../../../src/index.css";
 
 const mode = new URLSearchParams(location.search).get("mode") ?? "reading";
@@ -13,12 +14,14 @@ const variants: Record<string, any> = {
   writing: { skill: "WRITING", type: "INTEGRATED_TASK", content: { prompt: "Summarise the community garden proposals.", input: passage, minWords: 1, maxWords: 50 } },
   matching: { skill: "VOCABULARY", type: "DRAG_DROP", content: { prompt: "Match the words", draggableItems: ["a place to grow plants", "people living nearby"], dropZones: ["garden", "neighbours"] } },
   ordering: { skill: "READING", type: "DRAG_DROP", content: { prompt: "Arrange the events", draggableItems: ["First plant the seeds.", "Then water them." ] } },
+  placement: { skill: "VOCABULARY", type: "DRAG_DROP", content: { prompt: "Choose words for each blank", stimulus: "She [___] [___].", draggableItems: ["walks", "home", "decoy"] } },
+  integrated: { skill: "READING", type: "INTEGRATED_TASK", content: { prompt: "Summarise the text", passage, responseFormat: "spoken-or-written", minWords: 1 } },
 };
 function Fixture() {
   const [answer, setAnswer] = useState<unknown>();
   return <main className="mx-auto w-full max-w-4xl p-3">
     <ItemRenderer sessionId="fixture-session" item={{ id: `fixture-${mode}`, ...variants[mode] } as any} onResponse={setAnswer} />
-    <output aria-label="Submitted answer">{answer === undefined ? "Not submitted" : JSON.stringify(answer)}</output>
+    <output aria-label="Submitted answer">{answer === undefined ? "Not submitted" : JSON.stringify(answer instanceof Blob ? { size: answer.size, type: answer.type } : answer)}</output>
   </main>;
 }
-createRoot(document.getElementById("root")!).render(<Fixture />);
+createRoot(document.getElementById("root")!).render(<AppToastProvider><Fixture /></AppToastProvider>);

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 
 interface SpeakingRecorderProps {
+  onRecordingStateChange?: (recording: boolean) => void;
   prepTime?: number;
   maxTime: number;
   onRecordingComplete: (blob: Blob) => void;
@@ -17,6 +18,7 @@ interface SpeakingRecorderProps {
 export const SpeakingRecorder: React.FC<SpeakingRecorderProps> = ({
   maxTime,
   prepTime = 0,
+  onRecordingStateChange,
   onRecordingComplete,
   isUploading,
   uploadProgress = 0,
@@ -31,6 +33,7 @@ export const SpeakingRecorder: React.FC<SpeakingRecorderProps> = ({
   const [preparationLeft, setPreparationLeft] = useState(prepTime);
   const [preparing, setPreparing] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
   const [recordingError, setRecordingError] = useState<string | null>(null);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -40,6 +43,19 @@ export const SpeakingRecorder: React.FC<SpeakingRecorderProps> = ({
   const streamRef = useRef<MediaStream | null>(null);
   const mountedRef = useRef(true);
   const startingRef = useRef(false);
+  const finalizingRef = useRef(false);
+
+  useEffect(() => {
+    onRecordingStateChange?.(isRecording || starting || finalizing);
+    return () => onRecordingStateChange?.(false);
+  }, [isRecording, starting, finalizing, onRecordingStateChange]);
+
+  useEffect(() => {
+    if (isUploading) {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+    }
+  }, [isUploading]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -69,7 +85,11 @@ export const SpeakingRecorder: React.FC<SpeakingRecorderProps> = ({
 
   const stopRecording = () => {
     const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state !== "inactive") recorder.stop();
+    if (recorder && recorder.state !== "inactive") {
+      finalizingRef.current = true;
+      setFinalizing(true);
+      recorder.stop();
+    }
     setIsRecording(false);
     if (timerRef.current) clearInterval(timerRef.current);
   };
@@ -87,7 +107,7 @@ export const SpeakingRecorder: React.FC<SpeakingRecorderProps> = ({
   // Spacebar = start/stop recording; R = re-record when playback available
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (isUploading || starting || preparing || preparationLeft > 0 ||
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || isUploading || starting || finalizing || preparing || preparationLeft > 0 ||
           (e.target as HTMLElement)?.closest("input, textarea, select, button, [contenteditable=true]")) return;
       if (e.code === "Space" && e.target === document.body) {
         e.preventDefault();
@@ -100,10 +120,10 @@ export const SpeakingRecorder: React.FC<SpeakingRecorderProps> = ({
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [isRecording, audioBlob, isUploading, starting, preparing, preparationLeft]);
+  }, [isRecording, audioBlob, isUploading, starting, finalizing, preparing, preparationLeft]);
 
   const startRecording = async () => {
-    if (startingRef.current || isUploading || preparing || preparationLeft > 0 || mediaRecorderRef.current?.state === "recording") return;
+    if (startingRef.current || finalizingRef.current || isUploading || preparing || preparationLeft > 0 || mediaRecorderRef.current?.state === "recording") return;
     startingRef.current = true;
     setStarting(true);
     setRecordingError(null);
@@ -125,6 +145,8 @@ export const SpeakingRecorder: React.FC<SpeakingRecorderProps> = ({
       mediaRecorder.onstop = () => {
         stream.getTracks().forEach(track => track.stop());
         if (!mountedRef.current) return;
+        finalizingRef.current = false;
+        setFinalizing(false);
         const mimeType = mediaRecorder.mimeType || chunksRef.current[0]?.type || "audio/webm";
         const blob = new Blob(chunksRef.current, { type: mimeType });
         if (!blob.size) {
@@ -216,9 +238,12 @@ export const SpeakingRecorder: React.FC<SpeakingRecorderProps> = ({
               </p>
 
               {!isRecording ? (
-                <Button size="lg" onClick={startRecording} disabled={starting || isUploading || preparationLeft > 0} className="rounded-full px-8">
-                  <Mic className="mr-2" size={20} /> {starting ? "Opening Microphone…" : "Start Recording"}
+                <>
+                <Button size="lg" onClick={startRecording} disabled={starting || finalizing || isUploading || preparationLeft > 0} className="rounded-full px-8">
+                  <Mic className="mr-2" size={20} /> {finalizing ? "Preparing Recording…" : starting ? "Opening Microphone…" : "Start Recording"}
                 </Button>
+                {finalizing && <p role="status" className="mt-3 text-sm text-slate-600">Preparing your audio for review…</p>}
+                </>
               ) : (
                 <Button size="lg" variant="danger" onClick={stopRecording} className="rounded-full px-8">
                   <Square className="mr-2" size={20} /> Stop Recording
@@ -239,7 +264,7 @@ export const SpeakingRecorder: React.FC<SpeakingRecorderProps> = ({
               <p className="text-slate-500 mb-8">Review your response before submitting.</p>
               
               <div className="flex flex-wrap items-center justify-center gap-4">
-                <Button variant="outline" onClick={togglePlayback}>
+                <Button variant="outline" onClick={togglePlayback} disabled={isUploading}>
                   {isPlaying ? <Square className="mr-2" size={18} /> : <Play className="mr-2" size={18} />}
                   {isPlaying ? "Pause" : "Play Back"}
                 </Button>

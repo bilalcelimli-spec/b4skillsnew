@@ -10,6 +10,7 @@ import { AudioPlayer } from "./AudioPlayer";
 import { StructuredResponse } from "./StructuredResponse";
 import { writingDraftKey } from "../lib/assessment-engine/writing-draft";
 import { normalizeBlankScaffold } from "../lib/assessment-engine/blank-response";
+import { productiveModes, type ProductiveMode } from "../lib/assessment-engine/productive-response";
 
 interface ItemRendererProps {
   sessionId?: string;
@@ -46,7 +47,12 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [textValue, setTextValue] = useState<string>("");
   const [fibAnswers, setFibAnswers] = useState<string[]>([]);
-  const itemSkill = String(item.skill).toUpperCase();
+  const sourceSkill = String(item.skill).toUpperCase();
+  const modes = productiveModes(sourceSkill, item.type, content);
+  const [responseMode, setResponseMode] = useState<ProductiveMode>("WRITING");
+  const [recordingActive, setRecordingActive] = useState(false);
+  const activeMode = modes.includes(responseMode) ? responseMode : modes[0];
+  const itemSkill = sourceSkill;
   const itemId = (item as any).id as string | undefined;
   const gapChoices: Array<{ value: string; text: string }> = Array.isArray(content.wordBank)
     ? content.wordBank.filter((word: unknown) => typeof word === "string").map((word: string) => ({ value: word, text: word }))
@@ -59,15 +65,16 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     setSelectedOption(null);
     setTextValue("");
     setFibAnswers([]);
+    setResponseMode("WRITING");
   }, [itemId]);
 
   const supportsOptionShortcuts = ["READING", "GRAMMAR", "VOCABULARY"].includes(itemSkill) &&
-    item.type !== "FILL_IN_BLANKS" && item.type !== "DRAG_DROP" && Array.isArray(content.options);
+    !modes.length && item.type !== "FILL_IN_BLANKS" && item.type !== "DRAG_DROP" && Array.isArray(content.options);
   useEffect(() => {
     if (!supportsOptionShortcuts) return;
     const handleKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (disabled || target?.closest("input, textarea, select, button, [contenteditable=true]")) return;
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || disabled || target?.closest("input, textarea, select, button, [contenteditable=true]")) return;
       const number = Number(event.key);
       if (number >= 1 && number <= content.options.length) {
         event.preventDefault();
@@ -236,7 +243,41 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     return <>{elements}</>;
   };
 
+  const renderProductiveEditors = (minWords: number, maxWords?: number | null) => (
+    <>
+      {modes.includes("WRITING") && <div hidden={activeMode !== "WRITING"}><WritingEditor
+        draftKey={writingDraftKey(sessionId, itemId ?? "unknown")}
+        prompt={content.prompt}
+        minWords={minWords}
+        maxWords={maxWords}
+        onWritingComplete={onResponse}
+        isUploading={isUploading || activeMode !== "WRITING"}
+        uploadProgress={uploadProgress}
+        uploadStatus={uploadStatus}
+      /></div>}
+      {modes.includes("SPEAKING") && <div hidden={activeMode !== "SPEAKING"}><SpeakingRecorder
+        key={itemId}
+        prepTime={content.prepTime ?? 0}
+        maxTime={content.responseTime ?? content.maxTime ?? 75}
+        isUploading={isUploading || activeMode !== "SPEAKING"}
+        onRecordingStateChange={setRecordingActive}
+        uploadProgress={uploadProgress}
+        uploadStatus={uploadStatus}
+        onRecordingComplete={onResponse}
+      /></div>}
+    </>
+  );
+
   const renderItem = (): React.ReactElement => {
+  if (item.type === "INTEGRATED_TASK" && sourceSkill !== "LISTENING" && modes.length) {
+    const source = content.passage || content.input || content.stimulus || "";
+    return <div className="space-y-5" role="form" aria-labelledby="integrated-prompt">
+      {renderPassage(source)}
+      {content.audioUrl && !source.startsWith("[Audio:") && <AudioPlayer key={itemId} src={content.audioUrl} maxPlays={2} showWaveform />}
+      <h3 id="integrated-prompt" className="text-lg font-bold whitespace-pre-line">{content.prompt.replace(/\[EXAMINER:[^\]]*\]/gi, "").trim()}</h3>
+      {renderProductiveEditors(content.wordRange?.min ?? content.minWords ?? 50, content.wordRange?.max ?? content.maxWords)}
+    </div>;
+  }
   if (item.type === "DRAG_DROP") {
     return <StructuredResponse key={itemId} content={content} disabled={disabled} onResponse={onResponse} />;
   }
@@ -497,9 +538,8 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
       const hasOptions = Array.isArray(content.options) && content.options.length > 0;
       // FIB scaffold can be in content.prompt (new seed format) or content.passage (legacy)
       const listeningScaffold: string | undefined = content.scaffold ||
-        (typeof content.prompt === "string" && content.prompt.includes("___")) ? content.prompt :
-        (typeof content.passage === "string" && content.passage.includes("___")) ? content.passage :
-        undefined;
+        ((typeof content.prompt === "string" && content.prompt.includes("___")) ? content.prompt :
+        (typeof content.passage === "string" && content.passage.includes("___")) ? content.passage : undefined);
       const fibScaffold = listeningScaffold ? normalizeBlankScaffold(listeningScaffold) : undefined;
       const isListeningFIB =
         item.type === "FILL_IN_BLANKS" ||
@@ -519,8 +559,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
 
       // Productive (listen-and-write) task: has scoring rubric options stored in DB
       // but the candidate should write a response, not select a rubric option.
-      const isProductiveTask =
-        content.taskType === 'productive' || content.responseFormat === 'written';
+      const isProductiveTask = modes.length > 0;
 
       // Parse word target from "60–80 words" or "60-80 words" format
       const productiveMinWords: number = (() => {
@@ -604,24 +643,16 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
               <div className="p-5 bg-indigo-50 border border-indigo-100 rounded-2xl">
                 <div className="flex items-center gap-2 mb-2 text-indigo-600 font-black uppercase tracking-widest text-[10px]">
                   <FileText size={14} />
-                  Writing Task
+                  {activeMode === "SPEAKING" ? "Speaking Task" : "Writing Task"}
                 </div>
-                <p className="text-lg font-bold text-slate-900 leading-relaxed">{content.prompt}</p>
+                <p id="listening-prompt" className="text-lg font-bold text-slate-900 leading-relaxed">{content.prompt}</p>
                 {content.wordCountTarget && (
                   <p className="mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                     Target: {content.wordCountTarget}
                   </p>
                 )}
               </div>
-              <WritingEditor
-                draftKey={writingDraftKey(sessionId, itemId ?? "unknown")}
-                prompt={content.prompt || ""}
-                minWords={productiveMinWords}
-                onWritingComplete={onResponse}
-                isUploading={isUploading}
-                uploadProgress={uploadProgress}
-                uploadStatus={uploadStatus}
-              />
+              {renderProductiveEditors(productiveMinWords)}
             </div>
           ) : (
             /* Multiple choice */
@@ -762,6 +793,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
             key={itemId}
             maxTime={maxTime}
             prepTime={prepTime}
+            onRecordingStateChange={setRecordingActive}
             onRecordingComplete={onResponse}
             isUploading={isUploading}
             uploadProgress={uploadProgress}
@@ -866,6 +898,17 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   return (
     <>
       {renderCodeBadge()}
+      {modes.length > 1 && (
+        <fieldset className="mb-5 p-4 rounded-xl border border-slate-200">
+          <legend className="px-2 text-sm font-semibold">Choose how to answer</legend>
+          <div className="flex flex-wrap gap-3">
+            {modes.map(mode => <label key={mode} className="inline-flex min-h-11 items-center gap-2 px-3 rounded-lg border border-slate-200">
+              <input type="radio" name={`response-mode-${itemId}`} checked={activeMode === mode} disabled={disabled || recordingActive} onChange={() => setResponseMode(mode)} />
+              {mode === "WRITING" ? "Write your answer" : "Record your answer"}
+            </label>)}
+          </div>
+        </fieldset>
+      )}
       {renderItem()}
     </>
   );
