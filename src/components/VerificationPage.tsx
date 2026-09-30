@@ -7,7 +7,7 @@
  * - Calls the public GET /api/verify/:id endpoint.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import {
   ShieldCheck,
@@ -54,6 +54,13 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
   const [inputId, setInputId] = useState(certId ?? "");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerificationResult | null>(null);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
+  const request = useRef<{ sequence: number; controller?: AbortController }>({ sequence: 0 });
+
+  useEffect(() => () => {
+    request.current.sequence++;
+    request.current.controller?.abort();
+  }, []);
 
   // Auto-verify from prop or URL ?id= param
   useEffect(() => {
@@ -68,16 +75,30 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
   const verify = async (id: string) => {
     const trimmed = id.trim();
     if (!trimmed) return;
+    request.current.controller?.abort();
+    const sequence = ++request.current.sequence;
+    const controller = new AbortController();
+    request.current.controller = controller;
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 20000);
     setLoading(true);
     setResult(null);
+    setVerificationError(null);
     try {
-      const res = await fetch(`/api/verify/${encodeURIComponent(trimmed)}`);
+      const res = await fetch(`/api/verify/${encodeURIComponent(trimmed)}`, { signal: controller.signal });
+      if (!res.ok && res.status !== 404) throw new Error('Service unavailable');
       const data = await res.json();
+      if (sequence !== request.current.sequence) return;
+      if (typeof data?.valid !== 'boolean' || (data.valid && (res.status === 404 || !data.certificateId)))
+        throw new Error('Invalid verification response');
       setResult(data);
     } catch {
-      setResult({ valid: false, error: "Network error. Please try again." });
+      if (sequence === request.current.sequence) {
+        setVerificationError(timedOut ? "Verification timed out. Please try again." : "Verification is temporarily unavailable. Please try again.");
+      }
     } finally {
-      setLoading(false);
+      clearTimeout(timeout);
+      if (sequence === request.current.sequence) setLoading(false);
     }
   };
 
@@ -141,6 +162,13 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
           </Button>
         </form>
 
+        {verificationError && !loading && (
+          <div role="alert" className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6">
+            <div className="font-black text-amber-800 text-sm">Verification Unavailable</div>
+            <p className="text-xs text-amber-700 mt-1">{verificationError}</p>
+          </div>
+        )}
+
         {/* Result */}
         {result && !loading && (
           <motion.div
@@ -148,7 +176,7 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
             animate={{ opacity: 1, scale: 1 }}
             className="mt-6"
           >
-            {result.valid ? (
+            {result.valid || (result.expired === true && !!result.certificateId) ? (
               <div className={cn(
                 "rounded-2xl border p-6 space-y-4",
                 result.expired
@@ -206,6 +234,8 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
           </motion.div>
         )}
       </motion.div>
+
+      <a href="/" className="mt-6 text-sm font-semibold text-slate-600 hover:text-[#9b276c]">Back to home</a>
 
       <p className="mt-8 text-xs text-slate-400 text-center max-w-sm">
         This page verifies the authenticity of proficiency certificates issued by b4skills.

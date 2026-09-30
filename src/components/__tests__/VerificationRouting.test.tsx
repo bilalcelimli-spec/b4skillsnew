@@ -28,12 +28,12 @@ it.each(['/verify', '/verify/'])('opens the manual verification form at %s witho
   fireEvent.change(screen.getByLabelText('Certificate ID'), { target: { value: 'test-certificate' } });
   fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
   expect(await screen.findByText('Certificate not found')).toBeTruthy();
-  expect(fetchMock).toHaveBeenCalledWith('/api/verify/test-certificate');
+  expect(fetchMock).toHaveBeenCalledWith('/api/verify/test-certificate', expect.objectContaining({ signal: expect.any(AbortSignal) }));
 });
 
 it.each(['/verify/test-certificate', '/verify?id=test-certificate'])('automatically verifies an ID at %s', async path => {
   open(path);
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/verify/test-certificate'));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/verify/test-certificate', expect.objectContaining({ signal: expect.any(AbortSignal) })));
   expect(screen.getByLabelText('Certificate ID')).toHaveProperty('value', 'test-certificate');
 });
 

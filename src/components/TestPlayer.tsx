@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Item, SessionState } from "../lib/assessment-engine/types";
 import { ItemRenderer } from "./ItemRenderer";
 import { writingDraftKey } from "../lib/assessment-engine/writing-draft";
+import { requestNextItem } from "../lib/assessment-engine/next-item-request";
 import { ProctoringMonitor } from "./ProctoringMonitor";
 import { ProctoringEventType } from "../lib/proctoring/proctoring-service";
 import { Card, CardContent, CardHeader } from "./ui/Card";
@@ -199,12 +200,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     setUploadStatus('idle');
     setUploadProgress(0);
     try {
-      const res = await fetch(`/api/sessions/${sid}/next`, { credentials: "include" });
-      const data = await res.json();
-      
-      if (!res.ok || data.error) {
-         throw new Error(data.error || "Fetch failed");
-      }
+      const data = await requestNextItem(sid);
 
       if (data.stop) {
         setFinished(true);
@@ -236,11 +232,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
           const MIN_DISPLAY_MS = depth === 0 ? 2500 : 1200;
           const t0 = Date.now();
           try {
-            const nextRes = await fetch(`/api/sessions/${sid}/next`, { credentials: "include" });
-            const nextData = await nextRes.json();
-            if (!nextRes.ok || nextData.error) {
-              throw new Error(nextData.error || "Fetch failed during section transition");
-            }
+            const nextData = await requestNextItem(sid);
             const elapsed = Date.now() - t0;
             if (elapsed < MIN_DISPLAY_MS) {
               await new Promise<void>(r => setTimeout(r, MIN_DISPLAY_MS - elapsed));
@@ -255,9 +247,9 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
 
             transitionData = nextData;
             depth++;
-          } catch {
+          } catch (err) {
             setSectionTransition(null);
-            setError("Failed to fetch next item after section transition.");
+            setError(err instanceof Error ? err.message : "Failed to fetch next item after section transition.");
             return;
           }
         }
@@ -273,7 +265,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
 
       applyNextData(data, sid);
     } catch (err) {
-      setError("Failed to fetch next item.");
+      setError(err instanceof Error ? err.message : "Failed to fetch next item.");
     } finally {
       setLoading(false);
       isFetchingNextRef.current = false;
@@ -372,7 +364,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         setUploadProgress(100);
         try { sessionStorage.removeItem(writingDraftKey(sessionId, currentItem.id)); } catch { /* Storage unavailable */ }
         setSectionCounts(prev => ({ ...prev, [currentSection]: (prev[currentSection] ?? 0) + 1 }));
-        fetchNextItem(sessionId);
+        await fetchNextItem(sessionId);
       }
     } catch (err) {
       console.error('[respond network]', err);
@@ -412,6 +404,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
           {isCodeRequired ? "Exam Code Required" : "Assessment Error"}
         </h2>
         <p className="text-slate-500 mb-8 max-w-md">{error}</p>
+        {sessionId && <p className="mb-6 text-xs text-slate-500 font-mono break-all">Exam ID: {sessionId}</p>}
         {isCodeRequired && onCancel ? (
           <Button size="lg" onClick={onCancel}>
             Back to Dashboard
@@ -694,13 +687,12 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
             )}
           </AnimatePresence>
 
-          <AnimatePresence mode="wait">
+          {/* Task delivery must not wait for an exit-animation callback. Browsers
+              can suspend animation frames while audio or tab visibility changes. */}
+          <div aria-busy={loading} data-testid="assessment-task-panel">
             {sectionTransition ? (
-              <motion.div
+              <div
                 key="section-transition"
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }}
                 className="flex flex-col items-center justify-center py-24 text-center"
               >
                 <div className={cn("w-20 h-20 rounded-2xl flex items-center justify-center text-white shadow-xl mb-6", SECTION_COLORS[sectionTransition.nextSection])}>
@@ -728,12 +720,10 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
                 >
                   Continue manually →
                 </button>
-              </motion.div>
+              </div>
             ) : finished ? (
-              <motion.div
+              <div
                 key="feedback"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
                 className="py-12"
               >
                 <CandidateFeedback 
@@ -743,27 +733,20 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
                     // Final redirect or cleanup
                   }} 
                 />
-              </motion.div>
+              </div>
             ) : loading ? (
-              <motion.div 
+              <div
                 key="loading"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
                 className="flex flex-col items-center justify-center py-32 text-center"
                 aria-live="polite"
               >
                 <Activity className="animate-spin text-indigo-600 mb-6" size={48} />
                 <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-2">Selecting Next Task</h3>
                 <p className="text-slate-500 font-medium">The adaptive engine is analyzing your performance...</p>
-              </motion.div>
+              </div>
             ) : currentItem ? (
-              <motion.div
+              <div
                 key={currentItem.id}
-                initial={{ x: 20, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: -20, opacity: 0 }}
-                transition={{ duration: 0.4, ease: "easeOut" }}
               >
                 <div className="mb-5 sm:mb-8 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -804,22 +787,22 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
                   uploadStatus={uploadStatus}
                   activePassage={activePassage}
                 />
-              </motion.div>
+              </div>
             ) : null}
-          </AnimatePresence>
+          </div>
         </div>
       </main>
 
       {/* Footer / Status */}
-      <footer className="bg-white border-t border-slate-200 px-4 sm:px-8 py-3 sm:py-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-4">
+      <footer className="bg-white border-t border-slate-200 px-4 sm:px-8 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap min-w-0 items-center gap-4">
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             Connected to Adaptive Engine
           </div>
           <div className="hidden sm:block h-4 w-px bg-slate-200" />
-          <div className="hidden sm:block text-xs text-slate-400 font-mono">
-            ID: {sessionId?.split('_')[1]}
+          <div className="text-xs text-slate-500 font-mono break-all" aria-label="Exam ID">
+            Exam ID: {sessionId ?? 'Preparing…'}
           </div>
         </div>
         <div className="hidden md:flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
