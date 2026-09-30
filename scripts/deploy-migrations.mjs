@@ -19,13 +19,16 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is required for migration deployment");
 }
 
-const prisma = new PrismaClient();
+// A direct/session-pooler connection can be supplied independently of the
+// transaction-pooler URL used by the app. No change to the runtime URL.
+const migrationUrl = process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL;
+const prisma = new PrismaClient({ datasources: { db: { url: migrationUrl } } });
 
 function runPrisma(args) {
   const executable = process.platform === "win32" ? "npx.cmd" : "npx";
   execFileSync(executable, ["prisma", ...args], {
     stdio: "inherit",
-    env: process.env,
+    env: { ...process.env, DATABASE_URL: migrationUrl },
   });
 }
 

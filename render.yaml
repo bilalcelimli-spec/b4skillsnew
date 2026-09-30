@@ -7,7 +7,7 @@ services:
     env: node
     region: oregon
     plan: starter
-    buildCommand: npm ci && npm run build && npx prisma migrate deploy
+    buildCommand: npm ci && npm run build && npm run db:migrate
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true
@@ -15,9 +15,21 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        fromDatabase:
-          name: linguadapt-db
-          property: connectionString
+        sync: false          # Supabase session-pooler URL (5432), configured securely
+      - key: MIGRATION_DATABASE_URL
+        sync: false          # Supabase direct/session-pooler URL, never transaction mode
+      - key: STORAGE_PROVIDER
+        value: supabase
+      - key: SUPABASE_URL
+        value: https://yodlirkepgdazryfxdae.supabase.co
+      - key: SUPABASE_SECRET_KEY
+        sync: false          # server-only secret; never VITE_ / public
+      - key: IDENTITY_SNAPSHOT_BUCKET
+        value: identity-snapshots
+      - key: PROCTORING_EVIDENCE_BUCKET
+        value: proctoring-evidence
+      - key: DATA_WAREHOUSE_BUCKET
+        value: data-exports
       - key: GEMINI_API_KEY
         sync: false          # set manually in Render dashboard
       - key: STRIPE_SECRET_KEY
@@ -30,6 +42,8 @@ services:
           name: linguadapt-app
           property: host
 
+# Existing Render database is intentionally not removed from this blueprint.
+# Retain it for rollback until the Supabase migration has been verified.
 databases:
   - name: linguadapt-db
     databaseName: linguadapt

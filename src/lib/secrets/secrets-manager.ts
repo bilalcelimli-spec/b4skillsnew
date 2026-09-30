@@ -17,6 +17,12 @@
 
 export type SecretKey =
   | "DATABASE_URL"
+  | "MIGRATION_DATABASE_URL"
+  | "SUPABASE_URL"
+  | "SUPABASE_SECRET_KEY"
+  | "SUPABASE_SERVICE_ROLE_KEY"
+  | "IDENTITY_SNAPSHOT_BUCKET"
+  | "PROCTORING_EVIDENCE_BUCKET"
   | "JWT_SECRET"
   | "REFRESH_SECRET"
   | "OPENAI_API_KEY"
@@ -106,6 +112,12 @@ async function loadFromAWS(secretArn: string, region: string): Promise<Record<st
 function loadFromEnv(): Record<string, string> {
   const keys: SecretKey[] = [
     "DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
+    "SUPABASE_URL",
+    "SUPABASE_SECRET_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "IDENTITY_SNAPSHOT_BUCKET",
+    "PROCTORING_EVIDENCE_BUCKET",
     "JWT_SECRET",
     "REFRESH_SECRET",
     "OPENAI_API_KEY",

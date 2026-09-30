@@ -154,25 +154,10 @@ async function rowsToParquet(rows: AssessmentExportRow[]): Promise<Buffer> {
 // S3 Upload
 // ---------------------------------------------------------------------------
 
-async function uploadToS3(buffer: Buffer, key: string): Promise<string> {
-  try {
-    // @ts-ignore — @aws-sdk/client-s3 optional dependency; install with: npm i @aws-sdk/client-s3
-    const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
-    const bucket = process.env.DATA_WAREHOUSE_BUCKET ?? "b4skills-data-warehouse";
-    const region = process.env.AWS_REGION ?? "eu-west-1";
-
-    const client = new S3Client({ region });
-    await client.send(new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: buffer,
-      ContentType: "application/octet-stream",
-    }));
-
-    return `s3://${bucket}/${key}`;
-  } catch (err) {
-    throw new Error(`S3 upload failed: ${(err as Error).message}`);
-  }
+async function uploadToStorage(buffer: Buffer, key: string): Promise<string> {
+  const { uploadPrivateObject } = await import("../storage/private-storage.js");
+  const reference = await uploadPrivateObject("exports", key, buffer, "application/octet-stream");
+  return `${reference.provider}://${reference.bucket}/${reference.key}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -211,9 +196,13 @@ export class DataWarehouseExporter {
   }
 
   async exportToS3(options: ExportOptions, s3KeyPrefix = "exports"): Promise<string> {
+    return this.exportToStorage(options, s3KeyPrefix);
+  }
+
+  async exportToStorage(options: ExportOptions, keyPrefix = "exports"): Promise<string> {
     const result = await this.exportAssessments({ ...options, format: "parquet" });
-    const key = `${s3KeyPrefix}/${result.filename}`;
-    return uploadToS3(result.data as Buffer, key);
+    const key = `${keyPrefix}/${Date.now()}-${result.filename}`;
+    return uploadToStorage(result.data as Buffer, key);
   }
 
   /** Get aggregate stats for BI dashboards (lightweight JSON endpoint) */

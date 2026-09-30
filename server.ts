@@ -28,6 +28,7 @@ import { ProctoringAuditBody, ProctoringEventBody } from "./src/lib/security/sch
 import { AITutorBody, SpeakingMultimodalBody } from "./src/lib/security/schemas/ai.js";
 import { GenerateCodesBody, RedeemCodeBody } from "./src/lib/security/schemas/codes.js";
 import { stripAnswerKeys } from "./src/lib/security/answer-sanitizer.js";
+import { uploadPrivateObject, downloadPrivateObject, storageReference, StorageConfigurationError } from "./src/lib/storage/private-storage.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1466,7 +1467,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   // POST /api/sessions/:id/identity-snapshot
   // Stores a candidate's identity photo (base64 JPEG) taken at exam start.
-  // Evidence is stored privately in S3. The exam UI may continue after repeated
+  // Evidence is stored privately in Supabase Storage (legacy S3 reads retained).
+  // The exam UI may continue after repeated
   // failures, but every skipped capture is persisted as a proctoring alert.
   app.post("/api/sessions/:id/identity-snapshot", authMiddleware, async (req, res) => {
     const { id } = req.params;
@@ -1531,18 +1533,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         return res.status(400).json({ error: "Invalid or oversized identity snapshot" });
       }
 
-      const bucket = process.env.IDENTITY_SNAPSHOT_BUCKET;
-      if (!bucket) return res.status(503).json({ error: "Identity evidence storage is not configured" });
-      const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3") as any;
-      const s3 = new S3Client({ region: process.env.AWS_REGION ?? "eu-west-1" });
       const evidenceKey = `identity/${id}/${Date.now()}-${crypto.randomBytes(8).toString("hex")}.jpg`;
-      await s3.send(new PutObjectCommand({
-        Bucket: bucket,
-        Key: evidenceKey,
-        Body: buffer,
-        ContentType: "image/jpeg",
-        ServerSideEncryption: "AES256",
-      }));
+      const evidence = await uploadPrivateObject("identity", evidenceKey, buffer, "image/jpeg");
 
       if (!id.startsWith("demo-session-")) {
         const existing = await prisma.session.findUnique({
@@ -1557,6 +1549,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
                 ? (existing.metadata as Record<string, unknown>)
                 : {}),
               identitySnapshotKey: evidenceKey,
+              identitySnapshotProvider: evidence.provider,
+              identitySnapshotBucket: evidence.bucket,
               identitySnapshotUrl: null,
               identitySnapshotAt: new Date().toISOString(),
             },
@@ -1567,6 +1561,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       return res.json({ success: true, stored: true });
     } catch (error) {
       console.error("[identity-snapshot] failed:", error);
+      if (error instanceof StorageConfigurationError) return res.status(503).json({ error: error.message });
       return res.status(500).json({
         error: "Failed to store identity snapshot",
       });
@@ -1581,17 +1576,15 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (!session) return res.status(404).json({ error: "Session not found" });
       const metadata = (session.metadata as Record<string, unknown> | null) ?? {};
       const evidenceKey = metadata.identitySnapshotKey;
-      const bucket = process.env.IDENTITY_SNAPSHOT_BUCKET;
-      if (!bucket || typeof evidenceKey !== "string") {
+      if (typeof evidenceKey !== "string") {
         return res.status(404).json({ error: "Identity snapshot not found" });
       }
-      const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3") as any;
-      const s3 = new S3Client({ region: process.env.AWS_REGION ?? "eu-west-1" });
-      const object = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: evidenceKey }));
-      const bytes = await object.Body.transformToByteArray();
-      res.setHeader("Content-Type", object.ContentType ?? "image/jpeg");
+      const object = await downloadPrivateObject(storageReference("identity", evidenceKey,
+        metadata.identitySnapshotProvider === "supabase" ? "supabase" : "s3",
+        typeof metadata.identitySnapshotBucket === "string" ? metadata.identitySnapshotBucket : process.env.LEGACY_IDENTITY_SNAPSHOT_BUCKET));
+      res.setHeader("Content-Type", object.contentType);
       res.setHeader("Cache-Control", "private, no-store");
-      return res.send(Buffer.from(bytes));
+      return res.send(object.bytes);
     } catch {
       return res.status(500).json({ error: "Failed to load identity snapshot" });
     }
@@ -4039,33 +4032,24 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (typeof frame !== "string" || frame.length > 5_000_000) {
         return res.status(400).json({ error: "frame must be a base64 string ≤ 5 MB" });
       }
-      const bucket = process.env.PROCTORING_EVIDENCE_BUCKET;
-      if (!bucket) return res.status(503).json({ error: "Proctoring evidence storage is not configured" });
       const base64Data = frame.replace(/^data:image\/\w+;base64,/, "");
       const buffer = Buffer.from(base64Data, "base64");
       if (buffer.length === 0 || buffer.length > 3_750_000) {
         return res.status(400).json({ error: "Invalid or oversized screenshot" });
       }
-      const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3") as any;
-      const s3 = new S3Client({ region: process.env.AWS_REGION ?? "eu-west-1" });
       const evidenceKey = `proctoring/${sessionId}/${Date.now()}-${crypto.randomBytes(8).toString("hex")}.jpg`;
-      await s3.send(new PutObjectCommand({
-        Bucket: bucket,
-        Key: evidenceKey,
-        Body: buffer,
-        ContentType: "image/jpeg",
-        ServerSideEncryption: "AES256",
-      }));
+      const evidence = await uploadPrivateObject("proctoring", evidenceKey, buffer, "image/jpeg");
       const event = await (prisma as any).proctoringEvent.create({
         data: {
           sessionId,
           type: "SCREENSHOT",
           severity: 2,
-          metadata: { reason: reason ?? "periodic", evidenceKey, capturedAt: new Date().toISOString() },
+          metadata: { reason: reason ?? "periodic", evidenceKey, evidenceProvider: evidence.provider, evidenceBucket: evidence.bucket, capturedAt: new Date().toISOString() },
         },
       });
       res.json({ stored: true, eventId: event.id });
     } catch (err) {
+      if (err instanceof StorageConfigurationError) return res.status(503).json({ error: err.message });
       res.status(500).json({ error: "Failed to store screenshot event" });
     }
   });
@@ -4079,15 +4063,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (!event) return res.status(404).json({ error: "Evidence not found" });
       if (!(await assertSessionOwnership(req, res, event.sessionId))) return;
       const evidenceKey = event.metadata?.evidenceKey;
-      const bucket = process.env.PROCTORING_EVIDENCE_BUCKET;
-      if (!bucket || typeof evidenceKey !== "string") return res.status(404).json({ error: "Evidence not found" });
-      const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3") as any;
-      const s3 = new S3Client({ region: process.env.AWS_REGION ?? "eu-west-1" });
-      const object = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: evidenceKey }));
-      const bytes = await object.Body.transformToByteArray();
-      res.setHeader("Content-Type", object.ContentType ?? "image/jpeg");
+      if (typeof evidenceKey !== "string") return res.status(404).json({ error: "Evidence not found" });
+      const object = await downloadPrivateObject(storageReference("proctoring", evidenceKey,
+        event.metadata?.evidenceProvider === "supabase" ? "supabase" : "s3",
+        typeof event.metadata?.evidenceBucket === "string" ? event.metadata.evidenceBucket : process.env.LEGACY_PROCTORING_EVIDENCE_BUCKET));
+      res.setHeader("Content-Type", object.contentType);
       res.setHeader("Cache-Control", "private, no-store");
-      return res.send(Buffer.from(bytes));
+      return res.send(object.bytes);
     } catch {
       return res.status(500).json({ error: "Failed to load proctoring evidence" });
     }
