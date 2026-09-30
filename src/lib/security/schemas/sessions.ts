@@ -29,9 +29,25 @@ export const SessionRespondBody = z.object({
    * boolean.
    */
   value: z.union([
+    z.object({
+      audio: z.string().min(1).max(20_000_000),
+      mimeType: z.string().min(1).max(100).regex(/^audio\/[a-zA-Z0-9.+;-]+(?:[ =a-zA-Z0-9.+;-]*)$/),
+    }).strict(),
+    z.object({
+      kind: z.literal("matching"),
+      mapping: z.record(z.string().regex(/^\d{1,3}$/), z.number().int().min(0).max(99))
+        .refine(mapping => Object.keys(mapping).length <= 100, "Too many matches"),
+    }).strict(),
+    z.object({
+      kind: z.literal("ordering"),
+      order: z.array(z.number().int().min(0).max(99)).min(1).max(100),
+    }).strict(),
     z.string().max(100_000),
     z.array(z.string().max(10_000)).max(100),
     z.record(z.string().max(100), z.union([z.string().max(10_000), z.number(), z.boolean(), z.null()])).superRefine((obj, ctx) => {
+      if ("audio" in obj || "mimeType" in obj || obj.kind === "matching" || obj.kind === "ordering") {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Use a valid typed response" });
+      }
       if (Object.keys(obj).length > 50) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "response record may not exceed 50 keys" });
       }

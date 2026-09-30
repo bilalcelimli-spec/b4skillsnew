@@ -5,6 +5,8 @@ const ANSWER_KEY_FIELDS = new Set([
   "correctanswer",
   "correctanswers",
   "correctindex",
+  "correctmapping",
+  "correctorder",
   "correctoption",
   "correctoptionindex",
   "expectedanswer",

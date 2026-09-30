@@ -46,7 +46,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const [playCount, setPlayCount] = useState(0);
   const [countdown, setCountdown] = useState<number | null>(autoPlay ? countdownSeconds : null);
   const [isMuted, setIsMuted] = useState(false);
-  const [volume, setVolume] = useState(1);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const playPendingRef = useRef(false);
   const [audioLoadError, setAudioLoadError] = useState(false);
   const [speed, setSpeed] = useState<number>(() => {
     try { const saved = localStorage.getItem("linguadapt_audio_speed"); return saved ? parseFloat(saved) : 1; } catch { return 1; }
@@ -54,6 +55,21 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
   const playsRemaining = maxPlays > 0 ? maxPlays - playCount : Infinity;
   const canPlay = !disabled && playsRemaining > 0;
+
+  useEffect(() => {
+    setPlayCount(0);
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
+    setAudioLoadError(false);
+    setAutoplayBlocked(false);
+    setCountdown(autoPlay ? countdownSeconds : null);
+  }, [src, autoPlay, countdownSeconds]);
+
+  useEffect(() => () => {
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    void audioCtxRef.current?.close().catch(() => {});
+  }, []);
 
   // Countdown before auto-play
   useEffect(() => {
@@ -145,9 +161,10 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   }, [isPlaying, showWaveform, drawWaveform]);
 
   const handlePlay = async () => {
-    if (!canPlay || !audioRef.current) return;
+    if (!canPlay || !audioRef.current || playPendingRef.current) return;
+    playPendingRef.current = true;
     setAudioLoadError(false);
-    setupAudioContext();
+    if (showWaveform) setupAudioContext();
     try {
       // IMPORTANT: resume() must be awaited before play().
       // Once createMediaElementSource() is called, the audio element is routed
@@ -158,17 +175,21 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         await audioCtxRef.current.resume();
       }
       await audioRef.current.play();
+      setAutoplayBlocked(false);
       setIsPlaying(true);
     } catch (err) {
       console.warn("Audio playback failed:", err);
       setIsPlaying(false);
       const name = (err as DOMException)?.name;
+      if (name === "NotAllowedError") setAutoplayBlocked(true);
       // NotAllowedError  = browser autoplay policy — user can still press play manually.
       // AbortError       = play() was interrupted by a subsequent pause/src-change — not a real error.
       // NotSupportedError = can happen transiently before the audio element is ready; not a load failure.
       if (name !== "NotAllowedError" && name !== "AbortError" && name !== "NotSupportedError") {
         setAudioLoadError(true);
       }
+    } finally {
+      playPendingRef.current = false;
     }
   };
 
@@ -219,8 +240,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   };
 
   // Countdown overlay
-  if (countdown !== null && countdown > 0) {
-    return (
+  const countdownOverlay = countdown !== null && countdown > 0 ? (
       <div className={cn("p-8 bg-indigo-50 border border-indigo-100 rounded-2xl flex flex-col items-center gap-4", className)}>
         <div className="w-20 h-20 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-200">
           <Volume2 size={36} />
@@ -238,8 +258,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           {maxPlays > 0 ? `You may listen up to ${maxPlays} times` : "Unlimited plays"}
         </p>
       </div>
-    );
-  }
+    ) : null;
 
   return (
     <div
@@ -265,6 +284,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       />
 
       {/* Audio load error banner */}
+      {countdownOverlay}
+      {autoplayBlocked && <p role="status" className="text-sm text-indigo-700">Press Play audio to start listening. Automatic playback was blocked by your browser.</p>}
       {audioLoadError && (
         <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium">
           <span className="shrink-0">⚠</span>
@@ -297,7 +318,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       {/* Progress bar */}
       <div className="relative h-2 bg-white/80 rounded-full overflow-hidden cursor-pointer"
         onClick={(e) => {
-          if (!audioRef.current || !canPlay) return;
+          if (!audioRef.current || !canPlay || !Number.isFinite(duration) || duration <= 0) return;
           const rect = e.currentTarget.getBoundingClientRect();
           const pct = (e.clientX - rect.left) / rect.width;
           audioRef.current.currentTime = pct * duration;
@@ -309,9 +330,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         aria-valuenow={Math.floor(currentTime)}
         tabIndex={0}
         onKeyDown={(e) => {
-          if (!audioRef.current) return;
-          if (e.key === "ArrowRight") audioRef.current.currentTime = Math.min(duration, currentTime + 5);
-          if (e.key === "ArrowLeft") audioRef.current.currentTime = Math.max(0, currentTime - 5);
+          if (!audioRef.current || !canPlay || !Number.isFinite(duration) || duration <= 0) return;
+          if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+            e.preventDefault();
+            audioRef.current.currentTime = Math.max(0, Math.min(duration, currentTime + (e.key === "ArrowRight" ? 5 : -5)));
+          }
         }}
       >
         <motion.div
@@ -326,7 +349,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           {/* Play/Pause */}
           <button
             onClick={isPlaying ? handlePause : handlePlay}
-            disabled={!canPlay && !isPlaying}
+            disabled={countdown !== null || (!canPlay && !isPlaying)}
             className={cn(
               "w-12 h-12 rounded-full flex items-center justify-center transition-all focus:ring-4 focus:ring-indigo-200 outline-none",
               canPlay || isPlaying
@@ -341,7 +364,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           {/* Replay */}
           <button
             onClick={handleReplay}
-            disabled={!canPlay}
+            disabled={countdown !== null || !canPlay}
             className={cn(
               "w-10 h-10 rounded-full flex items-center justify-center transition-all focus:ring-4 focus:ring-indigo-200 outline-none",
               canPlay

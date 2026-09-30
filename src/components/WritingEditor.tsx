@@ -5,8 +5,10 @@ import { motion } from "motion/react";
 import { cn } from "../lib/utils";
 
 interface WritingEditorProps {
+  draftKey?: string;
   prompt: string;
   minWords: number;
+  maxWords?: number | null;
   onWritingComplete: (text: string) => void;
   isUploading: boolean;
   uploadProgress?: number;
@@ -15,30 +17,21 @@ interface WritingEditorProps {
 
 export const WritingEditor: React.FC<WritingEditorProps> = ({ 
   prompt, 
-  minWords, 
+  minWords,
+  maxWords,
   onWritingComplete, 
   isUploading,
   uploadProgress = 0,
-  uploadStatus = 'idle'
+  uploadStatus = 'idle',
+  draftKey
 }) => {
   const [text, setText] = useState("");
-  const [wordCount, setWordCount] = useState(0);
-  const [charCount, setCharCount] = useState(0);
+  const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const charCount = text.trim().length;
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [timeSpent, setTimeSpent] = useState(0);
 
-  // Auto-save every 30 seconds
-  useEffect(() => {
-    if (!text || isUploading) return;
-    const interval = setInterval(() => {
-      setLastSaved(new Date());
-      // Auto-save to sessionStorage for recovery
-      try {
-        sessionStorage.setItem(`writing-draft-${prompt.slice(0, 20)}`, text);
-      } catch {}
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [text, isUploading, prompt]);
+  const storageKey = draftKey ?? `writing-draft:preview:${encodeURIComponent(prompt)}`;
 
   // Time tracking
   useEffect(() => {
@@ -49,17 +42,18 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
   // Recover draft on mount
   useEffect(() => {
     try {
-      const draft = sessionStorage.getItem(`writing-draft-${prompt.slice(0, 20)}`);
-      if (draft) setText(draft);
-    } catch {}
-  }, [prompt]);
+      setText(sessionStorage.getItem(storageKey) ?? "");
+    } catch { setText(""); }
+    setLastSaved(null);
+    setTimeSpent(0);
+  }, [storageKey]);
 
   const handleChange = (value: string) => {
     setText(value);
-    const plain = value.trim();
-    const words = plain ? plain.split(/\s+/).filter((w: string) => w.length > 0) : [];
-    setWordCount(words.length);
-    setCharCount(plain.length);
+    try {
+      sessionStorage.setItem(storageKey, value);
+      setLastSaved(new Date());
+    } catch { setLastSaved(null); }
   };
 
   const formatTimeSpent = (s: number) => {
@@ -93,7 +87,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
             value={text}
             onChange={(event) => handleChange(event.target.value)}
             placeholder="Start writing your response here..."
-            className="block h-80 w-full resize-none bg-white p-6 text-lg leading-8 text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50"
+            className="block h-64 sm:h-80 w-full resize-y bg-white p-4 sm:p-6 text-base sm:text-lg leading-8 text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50"
             disabled={isUploading}
             spellCheck={false}
             autoCorrect="off"
@@ -138,7 +132,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-slate-100">
         <div className="flex items-center gap-3 text-slate-500 text-sm">
           <AlertCircle size={18} className="text-indigo-400" />
-          <span>Autosave active. Your work is being saved every 30 seconds.</span>
+          <span>{lastSaved ? "Your draft is saved on this device." : "Your draft will be saved as you type."}</span>
         </div>
         
         <Button 
@@ -179,6 +173,11 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
         </div>
       )}
 
+      {maxWords && wordCount > maxWords && (
+        <p role="status" className="text-sm text-amber-700 bg-amber-50 p-3 rounded-lg">
+          Your response is {wordCount - maxWords} words above the task's {maxWords}-word target. Review your answer before submitting.
+        </p>
+      )}
       {wordCount < minWords && text.length > 0 && (
         <motion.p 
           initial={{ opacity: 0, y: -10 }}

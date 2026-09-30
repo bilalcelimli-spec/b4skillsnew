@@ -7,8 +7,12 @@ import { cn } from "../lib/utils";
 import { SpeakingRecorder } from "./SpeakingRecorder";
 import { WritingEditor } from "./WritingEditor";
 import { AudioPlayer } from "./AudioPlayer";
+import { StructuredResponse } from "./StructuredResponse";
+import { writingDraftKey } from "../lib/assessment-engine/writing-draft";
+import { normalizeBlankScaffold } from "../lib/assessment-engine/blank-response";
 
 interface ItemRendererProps {
+  sessionId?: string;
   item: Item;
   onResponse: (value: any) => void;
   disabled?: boolean;
@@ -30,14 +34,25 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   uploadProgress = 0,
   uploadStatus = 'idle',
   activePassage,
+  sessionId = "preview",
 }) => {
-  const content = (item as any).content ?? item.metadata ?? {};
+  const rawContent = (item as any).content ?? item.metadata ?? {};
+  const content = {
+    ...rawContent,
+    prompt: rawContent.prompt || rawContent.stem || rawContent.question || "",
+    passage: rawContent.passage || (String(item.skill).toUpperCase() === "READING" ? rawContent.readingText || rawContent.text : undefined),
+  };
   const itemCode = (item as any).itemCode as string | null | undefined;
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [textValue, setTextValue] = useState<string>("");
   const [fibAnswers, setFibAnswers] = useState<string[]>([]);
   const itemSkill = String(item.skill).toUpperCase();
   const itemId = (item as any).id as string | undefined;
+  const gapChoices: Array<{ value: string; text: string }> = Array.isArray(content.wordBank)
+    ? content.wordBank.filter((word: unknown) => typeof word === "string").map((word: string) => ({ value: word, text: word }))
+    : item.type === "FILL_IN_BLANKS" && Array.isArray(content.options)
+    ? content.options.map((option: any) => typeof option === "string" ? { value: option, text: option } : { value: option.id ?? option.text, text: option.text })
+    : [];
 
   // Reset all input state when item changes
   useEffect(() => {
@@ -45,6 +60,26 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     setTextValue("");
     setFibAnswers([]);
   }, [itemId]);
+
+  const supportsOptionShortcuts = ["READING", "GRAMMAR", "VOCABULARY"].includes(itemSkill) &&
+    item.type !== "FILL_IN_BLANKS" && item.type !== "DRAG_DROP" && Array.isArray(content.options);
+  useEffect(() => {
+    if (!supportsOptionShortcuts) return;
+    const handleKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (disabled || target?.closest("input, textarea, select, button, [contenteditable=true]")) return;
+      const number = Number(event.key);
+      if (number >= 1 && number <= content.options.length) {
+        event.preventDefault();
+        setSelectedOption(number - 1);
+      } else if (event.key === "Enter" && selectedOption !== null) {
+        event.preventDefault();
+        onResponse(content.options[selectedOption]?.id ?? selectedOption);
+      } else if (event.key === "Escape") setSelectedOption(null);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [supportsOptionShortcuts, content.options, disabled, selectedOption, onResponse]);
 
   /**
    * Renders a fill-in-the-blanks scaffold inline.
@@ -67,6 +102,18 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           <React.Fragment key={i}>
             <span>{part}</span>
             {i < count && (
+              gapChoices.length > 0 ? (
+                <select
+                  value={ans[i] ?? ""}
+                  disabled={dis}
+                  onChange={event => { const next = [...ans]; next[i] = event.target.value; setAnswers(next); }}
+                  aria-label={`Blank ${i + 1}`}
+                  className="inline-block max-w-full min-h-11 mx-1 my-1 px-2 rounded-lg border-2 border-indigo-300 bg-white text-base text-indigo-900"
+                >
+                  <option value="">Choose…</option>
+                  {gapChoices.map((choice, index) => <option key={index} value={choice.value}>{choice.text}</option>)}
+                </select>
+              ) :
               <input
                 type="text"
                 value={ans[i] ?? ""}
@@ -77,8 +124,11 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                 }}
                 disabled={dis}
                 placeholder={`···`}
-                className="inline-block border-b-2 border-indigo-500 focus:border-indigo-700 bg-transparent outline-none text-indigo-700 font-bold px-1 mx-1 text-center transition-all disabled:opacity-50"
-                style={{ minWidth: "72px", width: Math.max(72, ((ans[i]?.length || 4) + 2) * 11) }}
+                className="inline-block max-w-full min-h-11 border-b-2 border-indigo-500 focus:border-indigo-700 focus:ring-2 focus:ring-indigo-200 bg-transparent outline-none text-indigo-700 font-bold px-1 mx-1 text-center transition-all disabled:opacity-50"
+                style={{ minWidth: "72px", width: Math.min(240, Math.max(72, ((ans[i]?.length || 4) + 2) * 11)) }}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
                 aria-label={`Blank ${i + 1}`}
               />
             )}
@@ -135,7 +185,6 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     if (!passage) return elements.length > 0 ? <>{elements}</> : null;
 
     if (passage.startsWith('[Audio:') && passage.endsWith(']')) {
-      const audioText = passage.slice(7, -1).trim();
       // Use content.audioUrl if available, otherwise show a pending-asset notice
       const audioSrc = content?.audioUrl as string | undefined;
       elements.push(
@@ -156,7 +205,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
             </div>
             <div>
               <div className="font-bold text-indigo-900 text-sm">Listening Task</div>
-              <div className="text-xs text-indigo-700 mt-1 leading-relaxed">{audioText}</div>
+              <div role="alert" className="text-xs text-indigo-700 mt-1 leading-relaxed">Audio is unavailable. Please contact support before answering.</div>
             </div>
           </div>
         )
@@ -175,7 +224,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
       elements.push(
         <div 
           key="text"
-          className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm leading-relaxed text-slate-700 mb-6"
+          className="p-4 sm:p-6 bg-white border border-slate-200 rounded-xl shadow-sm leading-relaxed whitespace-pre-wrap break-words text-slate-700 mb-6"
           aria-label="Reading passage"
           tabIndex={0}
         >
@@ -188,6 +237,9 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   };
 
   const renderItem = (): React.ReactElement => {
+  if (item.type === "DRAG_DROP") {
+    return <StructuredResponse key={itemId} content={content} disabled={disabled} onResponse={onResponse} />;
+  }
   switch (itemSkill) {
     case "READING":
     case "GRAMMAR":
@@ -201,8 +253,9 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
         // Determine if prompt has inline blanks (___)
         const rgvPrompt = content.prompt as string | undefined;
         const rgvPassageRaw = content.passage as string | undefined;
-        const rgvScaffold = (rgvPrompt?.includes("___") ? rgvPrompt : null) ??
+        const scaffoldRaw = content.scaffold || (rgvPrompt?.includes("___") ? rgvPrompt : null) ||
                              (rgvPassageRaw?.includes("___") ? rgvPassageRaw : null);
+        const rgvScaffold = scaffoldRaw ? normalizeBlankScaffold(scaffoldRaw) : null;
         const rgvBlankCount = rgvScaffold ? (rgvScaffold.match(/___/g) || []).length : 0;
 
         // Ensure fibAnswers is sized for this item
@@ -218,12 +271,11 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
             {renderPassage(rgvScaffold ? undefined : rgvPassageRaw)}
             <fieldset className="space-y-4">
               {/* Show prompt as label only when it's not the scaffold */}
-              {rgvPrompt && !rgvScaffold && (
-                <legend id="item-prompt" className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">
-                  {rgvPrompt}
-                </legend>
-              )}
-              {content.question && (
+              <legend id="item-prompt" className="text-lg sm:text-xl font-bold text-slate-900 mb-2">
+                {rgvPrompt && !rgvPrompt.includes("___") ? rgvPrompt : "Fill in the blanks"}
+              </legend>
+              <p className="text-sm text-slate-600">{gapChoices.length ? "Choose an answer for each blank." : "Type an answer in each blank."}</p>
+              {content.question && content.question !== rgvPrompt && (
                 <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-lg font-medium text-slate-800 mb-4">
                   {content.question}
                 </div>
@@ -241,6 +293,9 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                   onChange={(e) => setTextValue(e.target.value)}
                   disabled={disabled}
                   placeholder="Type your answer here..."
+                  aria-label="Answer"
+                  autoComplete="off"
+                  spellCheck={false}
                   className="w-full text-lg p-4 rounded-2xl border-2 border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all disabled:opacity-50"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && textValue.trim() && !disabled) {
@@ -292,29 +347,6 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
       // READING — sticky question panel: passage scrolls, question stays anchored
       const isReadingWithPassage = itemSkill === "READING" && !!displayPassage;
 
-      // Keyboard shortcut: 1-4 selects option, Enter confirms, Escape clears
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      useEffect(() => {
-        const numOptions = content.options?.length ?? 0;
-        const handleKey = (e: KeyboardEvent) => {
-          if (disabled) return;
-          const num = parseInt(e.key);
-          if (num >= 1 && num <= numOptions) {
-            e.preventDefault();
-            setSelectedOption(num - 1);
-          } else if (e.key === "Enter" && selectedOption !== null) {
-            e.preventDefault();
-            const opt = content.options[selectedOption];
-            const answer = (opt && typeof opt === "object" && opt.id) ? opt.id : selectedOption;
-            onResponse(answer);
-          } else if (e.key === "Escape") {
-            setSelectedOption(null);
-          }
-        };
-        window.addEventListener("keydown", handleKey);
-        return () => window.removeEventListener("keydown", handleKey);
-      }, [selectedOption, disabled, content.options]);
-
       const optionButtons = (
         <div className="grid grid-cols-1 gap-3" role="radiogroup" aria-labelledby="item-prompt">
           {content.options?.map((option: any, index: number) => {
@@ -327,7 +359,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                 disabled={disabled}
                 onClick={() => setSelectedOption(index)}
                 className={cn(
-                  "w-full text-left p-5 rounded-2xl border-2 transition-all group focus:ring-4 focus:ring-indigo-100 outline-none",
+                  "w-full min-w-0 text-left p-3 sm:p-5 rounded-2xl border-2 transition-all group focus:ring-4 focus:ring-indigo-100 outline-none",
                   selectedOption === index
                     ? "border-indigo-500 bg-indigo-50"
                     : "border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/50",
@@ -337,14 +369,14 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
               >
                 <div className="flex items-center gap-4">
                   <div className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs transition-colors border",
+                    "w-10 h-10 shrink-0 rounded-xl flex items-center justify-center font-black text-xs transition-colors border",
                     selectedOption === index
                       ? "bg-indigo-600 text-white border-indigo-600"
                       : "bg-slate-50 text-slate-400 group-hover:bg-white group-hover:text-indigo-600 border-slate-100"
                   )}>
                     {String.fromCharCode(65 + index)}
                   </div>
-                  <span className="font-bold text-slate-700 uppercase tracking-tight text-sm">{optionText}</span>
+                  <span className="min-w-0 break-words whitespace-pre-wrap font-medium text-slate-700 text-base leading-relaxed">{optionText}</span>
                   {/* Keyboard shortcut badge */}
                   <span className="ml-auto text-[10px] font-mono text-slate-300 select-none" aria-hidden="true">
                     {index + 1}
@@ -399,16 +431,18 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                 passage genuinely changes, preserving scroll position between
                 consecutive questions on the same passage. */}
             <div
-              key={passageText.slice(0, 80)}
-              className="md:w-[55%] w-full overflow-y-auto border-b md:border-b-0 md:border-r border-slate-200 bg-slate-50/60"
+              id="reading-passage"
+              key={passageText}
+              className="md:w-[55%] min-w-0 w-full max-h-[50dvh] md:max-h-none overflow-y-auto border-b md:border-b-0 md:border-r border-slate-200 bg-slate-50/60"
               aria-label="Reading passage"
               tabIndex={0}
             >
               <div className="p-6 md:p-8">
+                {renderPassage(undefined)}
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
                   Reading Passage
                 </p>
-                <div className="prose prose-sm max-w-none text-slate-700 leading-relaxed text-[15px]">
+                <div className="prose prose-sm max-w-none break-words text-slate-700 leading-relaxed text-base">
                   {passageText.split("\n").filter(Boolean).map((para, i) => (
                     <p key={i} className="mb-4 last:mb-0">{para}</p>
                   ))}
@@ -421,9 +455,10 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                 time the question changes, even when the passage stays the same. */}
             <div
               key={item.id}
-              className="md:w-[45%] w-full flex flex-col justify-between bg-white"
+              className="md:w-[45%] min-w-0 min-h-0 w-full flex flex-col justify-between bg-white"
             >
-              <div className="p-6 md:p-8 flex-1 overflow-y-auto space-y-5">
+              <div className="p-4 md:p-6 min-h-0 flex-1 overflow-y-auto space-y-5">
+                <a href="#reading-passage" className="md:hidden inline-block text-sm text-indigo-700 underline">Return to reading passage</a>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Question
                 </p>
@@ -447,7 +482,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
         <div className="space-y-6" role="form" aria-labelledby="item-prompt">
           {renderPassage(displayPassage)}
           <fieldset className="space-y-4">
-            <legend id="item-prompt" className="text-xl font-black text-slate-900 uppercase tracking-tight mb-4">
+            <legend id="item-prompt" className="text-lg sm:text-xl font-bold text-slate-900 whitespace-pre-line mb-4">
               {displayPrompt}
             </legend>
             {optionButtons}
@@ -461,10 +496,11 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
       // ── Type detection ────────────────────────────────────────────────────
       const hasOptions = Array.isArray(content.options) && content.options.length > 0;
       // FIB scaffold can be in content.prompt (new seed format) or content.passage (legacy)
-      const fibScaffold: string | undefined =
+      const listeningScaffold: string | undefined = content.scaffold ||
         (typeof content.prompt === "string" && content.prompt.includes("___")) ? content.prompt :
         (typeof content.passage === "string" && content.passage.includes("___")) ? content.passage :
         undefined;
+      const fibScaffold = listeningScaffold ? normalizeBlankScaffold(listeningScaffold) : undefined;
       const isListeningFIB =
         item.type === "FILL_IN_BLANKS" ||
         (!item.type && !hasOptions && !!fibScaffold);
@@ -499,6 +535,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           {/* ── Audio player ─ NEVER show transcript/passage/ttsScript to student ── */}
           {content.audioUrl ? (
             <AudioPlayer
+              key={itemId}
               src={content.audioUrl}
               maxPlays={2}
               autoPlay={true}
@@ -577,6 +614,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                 )}
               </div>
               <WritingEditor
+                draftKey={writingDraftKey(sessionId, itemId ?? "unknown")}
                 prompt={content.prompt || ""}
                 minWords={productiveMinWords}
                 onWritingComplete={onResponse}
@@ -680,7 +718,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           )}
 
           {/* Task card */}
-          <div className="p-8 bg-rose-50 border border-rose-100 rounded-3xl flex flex-col items-center gap-4">
+          <div className="p-4 sm:p-8 bg-rose-50 border border-rose-100 rounded-3xl flex flex-col items-center gap-4">
             <div className="w-16 h-16 bg-rose-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-rose-200">
               <Mic size={32} />
             </div>
@@ -721,7 +759,9 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           )}
 
           <SpeakingRecorder
+            key={itemId}
             maxTime={maxTime}
+            prepTime={prepTime}
             onRecordingComplete={onResponse}
             isUploading={isUploading}
             uploadProgress={uploadProgress}
@@ -744,17 +784,13 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
       return (
         <div className="space-y-6">
           {/* Stimulus material (reading input, chart description, etc.) */}
-          {hasStimulus && (
-            <div
-              className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm leading-relaxed text-slate-700"
-              aria-label="Reading input for writing task"
-            >
-              {stimulus}
-            </div>
+          {renderPassage(hasStimulus ? stimulus : undefined)}
+          {content.audioUrl && !stimulus.startsWith("[Audio:") && (
+            <AudioPlayer key={itemId} src={content.audioUrl} maxPlays={2} showWaveform />
           )}
 
           {/* Task card */}
-          <div className="p-7 bg-indigo-50 border border-indigo-100 rounded-3xl">
+          <div className="p-4 sm:p-7 bg-indigo-50 border border-indigo-100 rounded-3xl">
             <div className="flex items-center gap-2 mb-3 text-indigo-600 font-black uppercase tracking-widest text-[10px]">
               <FileText size={14} />
               Writing Task
@@ -773,8 +809,10 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           </div>
 
           <WritingEditor
+            draftKey={writingDraftKey(sessionId, itemId ?? "unknown")}
             prompt={writingTask}
             minWords={minWords}
+            maxWords={maxWords}
             onWritingComplete={onResponse}
             isUploading={isUploading}
             uploadProgress={uploadProgress}

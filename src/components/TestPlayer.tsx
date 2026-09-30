@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Item, SessionState } from "../lib/assessment-engine/types";
 import { ItemRenderer } from "./ItemRenderer";
+import { writingDraftKey } from "../lib/assessment-engine/writing-draft";
 import { ProctoringMonitor } from "./ProctoringMonitor";
 import { ProctoringEventType } from "../lib/proctoring/proctoring-service";
 import { Card, CardContent, CardHeader } from "./ui/Card";
@@ -344,57 +345,15 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     setUploadProgress(10);
 
     let finalValue = value;
-    let aiPayload: any = { content: value };
-
-    // Productive listening task (listen-and-write): treat like WRITING for AI scoring
-    const isProductiveListening =
-      currentItem.skill === "LISTENING" &&
-      (currentItem as any).content?.taskType === 'productive';
-
-    // Phase 7: Real-time AI Feedback for Writing/Speaking
-    if (currentItem.skill === "WRITING" || currentItem.skill === "SPEAKING" || isProductiveListening) {
-      try {
-        if (currentItem.skill === "SPEAKING" && value instanceof Blob) {
-          setUploadProgress(30);
-          const base64 = await blobToBase64(value);
-          setUploadProgress(60);
-          aiPayload = {
-            audioBase64: base64,
-            mimeType: value.type,
-            prompt: currentItem.metadata?.prompt ?? (currentItem as any).content?.prompt
-          };
-          finalValue = { audio: base64, mimeType: value.type };
-        } else if (currentItem.skill === "WRITING" || isProductiveListening) {
-          aiPayload = {
-            content: value,
-            prompt: currentItem.metadata?.prompt ?? (currentItem as any).content?.prompt
-          };
-        }
-
-        setUploadStatus('analyzing');
-        setUploadProgress(80);
-        
-        const endpoint = (currentItem.skill === "WRITING" || isProductiveListening) ? "/api/ai/score/writing" : "/api/ai/score/speaking-multimodal";
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(aiPayload)
-        });
-        
-        const feedback = await res.json();
-        setItemFeedback(feedback);
-        setUploadStatus('success');
-        setUploadProgress(100);
-        
-        // Wait a bit for the user to see the feedback before moving on
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      } catch (err) {
-        console.error("AI Feedback Error:", err);
-        setUploadStatus('error');
-      }
-    }
 
     try {
+      // Save the response first. The server queues productive scoring after persistence.
+      if (currentItem.skill === "SPEAKING" && value instanceof Blob) {
+        if (!value.size) throw new Error("Empty recording");
+        const base64 = await blobToBase64(value);
+        finalValue = { audio: base64, mimeType: value.type };
+        setUploadProgress(60);
+      }
       const res = await fetch(`/api/sessions/${sessionId}/respond`, {
         credentials: "include",
         method: "POST",
@@ -409,6 +368,9 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         setItemFeedback({ error: submitData?.error || "Failed to submit response. Please try again." });
         setUploadStatus('error');
       } else {
+        setUploadStatus('success');
+        setUploadProgress(100);
+        try { sessionStorage.removeItem(writingDraftKey(sessionId, currentItem.id)); } catch { /* Storage unavailable */ }
         setSectionCounts(prev => ({ ...prev, [currentSection]: (prev[currentSection] ?? 0) + 1 }));
         fetchNextItem(sessionId);
       }
@@ -832,6 +794,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
                   </div>
                 )}
                 <ItemRenderer
+                  sessionId={sessionId ?? undefined}
                   item={currentItem}
                   onResponse={handleResponse}
                   disabled={submitting}
