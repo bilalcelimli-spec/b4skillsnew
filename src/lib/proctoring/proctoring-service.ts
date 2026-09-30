@@ -1,3 +1,4 @@
+import { proctoringEventPayload } from './event-protocol';
 /**
  * b4skills Proctoring & Fraud Detection Service
  * Tracks session telemetry and calculates candidate trust scores via REST.
@@ -8,6 +9,7 @@ export enum ProctoringEventType {
   WINDOW_BLUR = "WINDOW_BLUR",
   MULTIPLE_FACES = "MULTIPLE_FACES",
   NO_FACE = "NO_FACE",
+  CAMERA_UNAVAILABLE = "CAMERA_UNAVAILABLE",
   HIGH_NOISE = "HIGH_NOISE",
   COPY_PASTE = "COPY_PASTE",
   UNUSUAL_LATENCY = "UNUSUAL_LATENCY",
@@ -41,8 +43,9 @@ export const ProctoringService = {
         : '';
       const res = await fetch(`${base}/api/proctoring/event`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...event, sessionId })
+        body: JSON.stringify(proctoringEventPayload(sessionId, event.type, event.severity, event.metadata))
       });
       if (!res.ok) throw new Error('API error logEvent');
       const data = await res.json();

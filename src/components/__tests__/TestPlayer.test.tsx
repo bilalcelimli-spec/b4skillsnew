@@ -4,10 +4,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TestPlayer } from "../TestPlayer";
 import { writingDraftKey } from "../../lib/assessment-engine/writing-draft";
+import { ProctoringEventBody } from '../../lib/security/schemas/proctoring';
 
 vi.mock("../../lib/i18n/config", () => ({}));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock("../ProctoringMonitor", () => ({ ProctoringMonitor: () => null }));
+vi.mock("../ProctoringMonitor", () => ({ ProctoringMonitor: ({ onEvent }: any) => <button onClick={() => onEvent('TAB_SWITCH', 'MEDIUM', { count: 1 })}>Emit proctoring event</button> }));
 vi.mock("../LanguageSwitcher", () => ({ LanguageSwitcher: () => null }));
 vi.mock("../FaceCapture", () => ({ FaceCapture: ({ onCaptureDone }: any) => <button onClick={onCaptureDone}>Verify</button> }));
 vi.mock("../PracticeMode", () => ({ PracticeMode: ({ onComplete }: any) => <button onClick={onComplete}>Finish practice</button> }));
@@ -17,6 +18,23 @@ vi.mock("motion/react", () => ({ motion: { div: ({ children }: any) => <div>{chi
 
 describe("TestPlayer response persistence", () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); sessionStorage.clear(); vi.restoreAllMocks(); });
+  it('sends monitor events using the server validation contract', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/launch')) return { ok: true, json: async () => ({ sessionId: 'exam-cuid' }) };
+      if (url.endsWith('/status')) return { ok: true, json: async () => ({ progress: 0 }) };
+      if (url === '/api/proctoring/event') return { ok: true, status: 200 };
+      return { ok: true, json: async () => ({ item: { id: 'listening-1', skill: 'LISTENING' } }) };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<TestPlayer organizationId="org" candidateId="candidate" onComplete={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Verify' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Finish practice' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Emit proctoring event' }));
+    const eventCall = (fetchMock.mock.calls as unknown as [string, RequestInit][]).find(([url]) => url === '/api/proctoring/event')!;
+    const payload = JSON.parse(String(eventCall[1].body));
+    expect(ProctoringEventBody.parse(payload)).toEqual({ sessionId: 'exam-cuid', eventType: 'TAB_BLUR', severity: 'WARNING', metadata: { count: 1 } });
+    expect(eventCall[1].credentials).toBe('include');
+  });
   it('advances from the first listening item and displays the complete CUID exam ID', async () => {
     const sid = 'cmuodnduq0006qo1s8x1mv07x';
     let saved = false;

@@ -5,6 +5,7 @@ import { writingDraftKey } from "../lib/assessment-engine/writing-draft";
 import { requestNextItem } from "../lib/assessment-engine/next-item-request";
 import { ProctoringMonitor } from "./ProctoringMonitor";
 import { ProctoringEventType } from "../lib/proctoring/proctoring-service";
+import { proctoringEventPayload } from "../lib/proctoring/event-protocol";
 import { Card, CardContent, CardHeader } from "./ui/Card";
 import { Button } from "./ui/Button";
 import { 
@@ -275,12 +276,13 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   const handleProctoringEvent = async (type: ProctoringEventType, severity: "LOW" | "MEDIUM" | "HIGH", metadata?: any) => {
     if (!sessionId) return;
     try {
-      await fetch("/api/proctoring/event", {
+      const response = await fetch("/api/proctoring/event", {
         credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, type, severity, metadata })
+        body: JSON.stringify(proctoringEventPayload(sessionId, type, severity, metadata))
       });
+      if (!response.ok) throw new Error(`Proctoring event was not saved (${response.status})`);
     } catch (err) {
       console.error("Failed to log proctoring event");
     }
