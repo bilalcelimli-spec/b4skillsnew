@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ItemRenderer } from "../../../src/components/ItemRenderer";
 import { AppToastProvider } from "../../../src/hooks/useToast";
+import { FaceCapture } from "../../../src/components/FaceCapture";
 import "../../../src/index.css";
 
 const mode = new URLSearchParams(location.search).get("mode") ?? "reading";
@@ -19,6 +20,7 @@ const variants: Record<string, any> = {
 };
 function Fixture() {
   const [answer, setAnswer] = useState<unknown>();
+  if (mode === "face") return answer ? <p>Ready for practice</p> : <FaceCapture sessionId="fixture-session" onCaptureDone={() => setAnswer(true)} />;
   return <main className="mx-auto w-full max-w-4xl p-3">
     <ItemRenderer sessionId="fixture-session" item={{ id: `fixture-${mode}`, ...variants[mode] } as any} onResponse={setAnswer} />
     <output aria-label="Submitted answer">{answer === undefined ? "Not submitted" : JSON.stringify(answer instanceof Blob ? { size: answer.size, type: answer.type } : answer)}</output>

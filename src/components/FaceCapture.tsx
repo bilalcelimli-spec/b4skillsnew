@@ -19,7 +19,7 @@ interface FaceCaptureProps {
   onCaptureDone: () => void;
 }
 
-type Phase = "init" | "preview" | "capturing" | "uploading" | "done" | "error" | "upload_failed";
+type Phase = "init" | "preview" | "capturing" | "uploading" | "done" | "error" | "upload_failed" | "skipping";
 
 export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDone }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -28,31 +28,58 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
   const [phase, setPhase] = useState<Phase>("init");
   const [countdown, setCountdown] = useState(3);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  // Track upload attempts — after 3 failures the session is cancelled.
+  const [videoReady, setVideoReady] = useState(false);
+  const mountedRef = useRef(false);
+  const cameraRequestRef = useRef(0);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const advanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestRef = useRef<AbortController | null>(null);
+  const completedRef = useRef(false);
+  const capturePendingRef = useRef(false);
+  // Preserve the existing fallback policy after three failed uploads.
   const uploadAttemptsRef = useRef(0);
   const MAX_UPLOAD_ATTEMPTS = 3;
 
   // Start camera
   const startCamera = async () => {
+    const request = ++cameraRequestRef.current;
+    stopCamera();
     setPhase("init");
     setErrorMsg(null);
+    setVideoReady(false);
+    const timeout = setTimeout(() => {
+      if (!mountedRef.current || cameraRequestRef.current !== request) return;
+      cameraRequestRef.current++;
+      stopCamera();
+      setErrorMsg("Camera did not become ready. Check camera permissions and try again.");
+      setPhase("error");
+    }, 15_000);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480, facingMode: "user" },
       });
+      if (!mountedRef.current || cameraRequestRef.current !== request) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
+      if (!mountedRef.current || cameraRequestRef.current !== request) return;
       setPhase("preview");
     } catch (err: any) {
+      if (!mountedRef.current || cameraRequestRef.current !== request) return;
+      stopCamera();
       setErrorMsg(
         err.name === "NotAllowedError"
           ? "Camera access was denied. Please allow camera access to continue."
           : "Could not access camera. Please check your device settings."
       );
       setPhase("error");
+    } finally {
+      clearTimeout(timeout);
     }
   };
 
@@ -63,21 +90,39 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
   };
 
   useEffect(() => {
+    mountedRef.current = true;
     startCamera();
-    return () => stopCamera();
+    return () => {
+      mountedRef.current = false;
+      cameraRequestRef.current++;
+      stopCamera();
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      if (advanceRef.current) clearTimeout(advanceRef.current);
+      requestRef.current?.abort();
+    };
   }, []);
+
+  const completeCapture = () => {
+    if (!mountedRef.current || completedRef.current) return;
+    completedRef.current = true;
+    if (advanceRef.current) clearTimeout(advanceRef.current);
+    stopCamera();
+    onCaptureDone();
+  };
 
   // Countdown then capture
   const beginCapture = () => {
+    if (!videoReady || capturePendingRef.current) return;
+    capturePendingRef.current = true;
     setPhase("capturing");
     setCountdown(3);
     let c = 3;
-    const iv = setInterval(() => {
+    countdownRef.current = setInterval(() => {
       c--;
       setCountdown(c);
       if (c <= 0) {
-        clearInterval(iv);
-        captureFrame();
+        if (countdownRef.current) clearInterval(countdownRef.current);
+        void captureFrame();
       }
     }, 1000);
   };
@@ -85,22 +130,22 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
   const captureFrame = async () => {
     const video  = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) { onCaptureDone(); return; }
-
-    canvas.width  = 640;
-    canvas.height = 480;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) { onCaptureDone(); return; }
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.75);
-
-    stopCamera();
-    setPhase("uploading");
-
     const controller = new AbortController();
+    requestRef.current = controller;
     const timeoutId = setTimeout(() => controller.abort(), 15_000);
 
     try {
+      if (!video || !canvas || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+        throw new Error("Camera image is not ready. Please try again.");
+      }
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Could not prepare the camera image. Please try again.");
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.75);
+      stopCamera();
+      setPhase("uploading");
       const res = await fetch(`/api/sessions/${sessionId}/identity-snapshot`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -108,12 +153,16 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
         body: JSON.stringify({ frame: dataUrl }),
         signal: controller.signal,
       });
-      clearTimeout(timeoutId);
-      if (!res.ok) throw new Error("Upload failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Photo upload failed (${res.status}).`);
+      }
+      if (!mountedRef.current) return;
       setPhase("done");
-      setTimeout(onCaptureDone, 1200);
+      advanceRef.current = setTimeout(completeCapture, 1200);
     } catch (err: any) {
-      clearTimeout(timeoutId);
+      if (!mountedRef.current) return;
+      stopCamera();
       uploadAttemptsRef.current += 1;
       if (uploadAttemptsRef.current >= MAX_UPLOAD_ATTEMPTS) {
         setPhase("upload_failed");
@@ -126,11 +175,35 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
         setErrorMsg(
           isTimeout
             ? `Connection timed out (attempt ${uploadAttemptsRef.current}/${MAX_UPLOAD_ATTEMPTS}). Please try again.`
-            : `Verification failed (attempt ${uploadAttemptsRef.current}/${MAX_UPLOAD_ATTEMPTS}). Please try again.`
+            : `${err.message || "Photo upload failed."} (attempt ${uploadAttemptsRef.current}/${MAX_UPLOAD_ATTEMPTS})`
         );
-        startCamera();
       }
+    } finally {
+      clearTimeout(timeoutId);
+      if (requestRef.current === controller) requestRef.current = null;
+      capturePendingRef.current = false;
     }
+  };
+
+  const skipCapture = async () => {
+    if (capturePendingRef.current) return;
+    capturePendingRef.current = true;
+    setPhase("skipping");
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      await fetch(`/api/sessions/${sessionId}/identity-snapshot`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ frame: null, failureReason: "max_retries_exceeded" }), signal: controller.signal,
+      });
+    } catch { /* Existing non-fatal fallback; do not leave the candidate stuck. */ }
+    finally {
+      clearTimeout(timeout);
+      if (requestRef.current === controller) requestRef.current = null;
+      capturePendingRef.current = false;
+    }
+    completeCapture();
   };
 
   return (
@@ -163,6 +236,7 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
             autoPlay
             muted
             playsInline
+            onLoadedData={() => setVideoReady(true)}
             className={cn(
               "w-full h-full object-cover transition-opacity duration-300",
               phase === "preview" || phase === "capturing" ? "opacity-100" : "opacity-0"
@@ -193,10 +267,10 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
           )}
 
           {/* Uploading spinner */}
-          {phase === "uploading" && (
+          {(phase === "uploading" || phase === "skipping") && (
             <div className="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center gap-3">
               <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
-              <span className="text-sm font-bold text-white">Uploading…</span>
+              <span role="status" className="text-sm font-bold text-white">{phase === "skipping" ? "Continuing…" : "Uploading…"}</span>
             </div>
           )}
 
@@ -204,7 +278,7 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
           {phase === "done" && (
             <div className="absolute inset-0 bg-emerald-900/80 flex flex-col items-center justify-center gap-3">
               <ShieldCheck className="w-10 h-10 text-emerald-400" />
-              <span className="text-sm font-bold text-white">Verified</span>
+              <span role="status" className="text-sm font-bold text-white">Photo saved</span>
             </div>
           )}
 
@@ -214,7 +288,7 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
               {phase === "upload_failed"
                 ? <XCircle className="w-8 h-8 text-red-400" />
                 : <AlertTriangle className="w-8 h-8 text-amber-400" />}
-              <span className="text-xs text-slate-300">{errorMsg}</span>
+              <span role="alert" className="text-xs text-slate-300">{errorMsg}</span>
             </div>
           )}
 
@@ -231,9 +305,10 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
           {phase === "preview" && (
             <Button
               onClick={beginCapture}
+              disabled={!videoReady}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl py-3"
             >
-              <Camera size={16} className="mr-2" /> Take Photo
+              <Camera size={16} className="mr-2" /> {videoReady ? "Take Photo" : "Preparing Camera…"}
             </Button>
           )}
 
@@ -252,17 +327,7 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
           {phase === "upload_failed" && (
             <div className="space-y-3">
               <Button
-                onClick={async () => {
-                  try {
-                    await fetch(`/api/sessions/${sessionId}/identity-snapshot`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      credentials: "include",
-                      body: JSON.stringify({ frame: null, failureReason: "max_retries_exceeded" }),
-                    });
-                  } catch { /* non-fatal — proceed regardless */ }
-                  onCaptureDone();
-                }}
+                onClick={skipCapture}
                 className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl py-3"
               >
                 Start Exam (Without Photo)
@@ -274,7 +339,9 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({ sessionId, onCaptureDo
             </div>
           )}
 
-          {(phase === "init" || phase === "capturing" || phase === "uploading" || phase === "done") && (
+          {phase === "done" && <Button onClick={completeCapture} className="w-full">Continue to Exam</Button>}
+
+          {(phase === "init" || phase === "capturing" || phase === "uploading" || phase === "skipping") && (
             <div className="h-12" /> // spacer
           )}
 

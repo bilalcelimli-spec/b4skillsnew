@@ -1,6 +1,17 @@
 import { test, expect } from "@playwright/test";
 
 for (const width of [320, 1280]) {
+  test(`photo capture advances after the server confirms upload at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 700 });
+    await page.route("https://fonts.googleapis.com/**", route => route.abort());
+    await page.route("**/api/sessions/fixture-session/identity-snapshot", async route => {
+      expect(route.request().postDataJSON().frame).toMatch(/^data:image\/jpeg;base64,/);
+      await route.fulfill({ json: { success: true, stored: true } });
+    });
+    await page.goto("/test/e2e/fixtures/item-renderer.html?mode=face");
+    await page.getByRole("button", { name: "Take Photo", exact: true }).click();
+    await expect(page.getByText("Ready for practice")).toBeVisible({ timeout: 10000 });
+  });
   test(`spoken answer survives mode changes and submits recorded audio at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     await page.route("https://fonts.googleapis.com/**", route => route.abort());
