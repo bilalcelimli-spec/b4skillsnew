@@ -3,7 +3,8 @@ export function parseSpeakerTurn(line: string): { speaker: string; utterance: st
   const normalized = line.trim().replace(/^\[([^\]\n]+)\]:\s*/, '$1: ');
   const match = normalized.match(/^((?:Speaker\s+[A-Z])|(?:[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3})):\s+(\S.*)$/);
   // Worksheet fields such as "Wearing: green ____" are not speakers.
-  return match && !/_{2,}/.test(match[2]) ? { speaker: match[1], utterance: match[2] } : null;
+  return match && (!/_{2,}/.test(match[2]) || /^Speaker\s+[A-Z]$/.test(match[1]))
+    ? { speaker: match[1], utterance: match[2] } : null;
 }
 export function speakerLabels(script: string): string[] {
   return [...new Set(script.split(/\r?\n/).flatMap(line => {

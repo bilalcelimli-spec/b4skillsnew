@@ -24,6 +24,12 @@ describe("listening TTS source selection", () => {
     const source = 'Speaker A: Notes about the meeting: everyone agreed.';
     expect(stripListeningWorksheet(source)).toBe(source);
   });
+  it('preserves explicit speaker turns that contain a cloze cue', () => {
+    const source = '[Speaker A]: Begin.\n[Speaker B]: The answer is ____.\nWearing: green ____';
+    expect(detectSpeakers(source)).toEqual(['Speaker A', 'Speaker B']);
+    expect(normalizeSpeakerLabels(source)).toContain('Speaker B: The answer is ____.');
+    expect(normalizeSpeakerLabels(source)).toContain('Wearing: green ____');
+  });
   it("recognizes titles and multi-word speaker names", () => {
     expect(detectSpeakers("Ms. Green: Hello.\nTom: Hi.\nMs. Green: Sit down.")).toEqual([
       "Ms. Green",
