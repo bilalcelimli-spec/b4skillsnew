@@ -29,6 +29,7 @@
     "audit:item-evidence": "tsx scripts/audit-item-evidence.ts",
     "audit:listening-media": "tsx scripts/audit-listening-media.ts",
     "repair:speaking-quality": "tsx scripts/apply-speaking-corrections.ts",
+    "repair:writing-quality": "tsx scripts/apply-writing-corrections.ts",
     "repair:bracketed-listening": "tsx scripts/repair-bracketed-listening.ts",
     "repair:activate-listening": "tsx scripts/activate-listening-repairs.ts",
     "repair:quarantine-listening": "tsx scripts/quarantine-unresolved-listening.ts",

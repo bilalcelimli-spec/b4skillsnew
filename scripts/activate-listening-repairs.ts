@@ -7,6 +7,7 @@ import path from 'node:path';
 import { record } from '../src/lib/quality/item-evidence-audit.js';
 import { resolveListeningScript } from '../src/lib/audio/tts-generator.js';
 import { normalizeSpeakerLabels, stripListeningWorksheet } from '../src/lib/audio/speaker-labels.js';
+import { inAudioRepairScope } from '../src/lib/quality/audio-repair-scope.js';
 config({ path: '.env.local', quiet: true }); config({ quiet: true });
 const prisma = new PrismaClient();
 async function deployedPlayer() {
@@ -27,7 +28,9 @@ async function deployedPlayer() {
   return url;
 }
 async function main() {
-  const rows = await prisma.item.findMany({ where: { skill: 'LISTENING', status: { in: ['ACTIVE', 'PRETEST'] } } });
+  const includeQuarantined = process.argv.includes('--include-quarantined');
+  const fetched = await prisma.item.findMany({ where: { skill: 'LISTENING', status: { in: includeQuarantined ? ['ACTIVE', 'PRETEST', 'REVIEW'] : ['ACTIVE', 'PRETEST'] } } });
+  const rows = fetched.filter(item => inAudioRepairScope(item, includeQuarantined));
   const staged = rows.filter(r => record(record(r.metadata).pendingAudioReplacement).audioUrl);
   const pending = staged.filter(row => {
     const replacement = record(record(row.metadata).pendingAudioReplacement);

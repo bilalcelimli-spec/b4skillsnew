@@ -1,5 +1,6 @@
 /** Read-only first-phase checks. No automatic approval or empirical validity claims. */
 import { speakerLabels } from '../audio/speaker-labels.js';
+import { writingContentFindings, writingWordRange } from './writing-content-audit.js';
 export type Severity = 'BLOCKER' | 'REVIEW' | 'EVIDENCE_GAP';
 export interface AuditFinding {
   rule: string;
@@ -91,12 +92,13 @@ export function auditItemEvidence(item: AuditItem): AuditFinding[] {
   }
   if (['WRITING', 'SPEAKING'].includes(item.skill)) {
     if (!populated(c.rubric) && !populated(c.scoringRubric)) add('RUBRIC_MISSING', 'EVIDENCE_GAP', 'No item-specific rubric in content.', 'Link the applicable scoring rubric and version.');
-    if (!populated(c.sampleAnswer) && !populated(c.sampleAnswers) && !populated(c.exemplar)) add('EXEMPLAR_MISSING', 'EVIDENCE_GAP', 'No model response recorded in recognized fields.', 'Add feasible responses with adjudicated dimension scores.');
+    if (!populated(c.sampleAnswer) && !populated(c.sampleAnswers) && !populated(c.exemplar) && !populated(c.example)) add('EXEMPLAR_MISSING', 'EVIDENCE_GAP', 'No model response recorded in recognized fields.', 'Add feasible responses with adjudicated dimension scores.');
     const seconds = Number(c.responseTime || c.maxTime || c.responseTimeSec || item.estimatedResponseTimeSec || 0);
     const limits = ['responseTime', 'maxTime', 'responseTimeSec', 'timeLimitSeconds'].flatMap(field => Number(c[field]) > 0 ? [Number(c[field])] : []);
     if (new Set(limits).size > 1) add('RESPONSE_LIMIT_CONFLICT', 'REVIEW', `Conflicting item-level seconds: ${limits.join(', ')}; renderer uses responseTime/maxTime.`, 'Choose one effective limit and align delivery, instructions and scoring evidence.');
-    const words = Number(c.maxWords || c.wordLimit || 0);
-    if (item.skill === 'SPEAKING' ? !(seconds > 0) : !(words > 0)) add('RESPONSE_LIMIT_UNDOCUMENTED', 'EVIDENCE_GAP', 'Response time/word limit is absent at item level.', 'Document the effective delivery limit, including profile defaults.');
+    const words = Number(writingWordRange(c).max || 0);
+    if (item.skill === 'SPEAKING' ? !(seconds > 0) : !writingWordRange(c).documented) add('RESPONSE_LIMIT_UNDOCUMENTED', 'EVIDENCE_GAP', 'Response time/word limit is absent at item level.', 'Document the effective delivery limit, including profile defaults.');
+    if (item.skill === 'WRITING') findings.push(...writingContentFindings(c));
     const demands = Math.max((prompt.match(/\?/g) || []).length, (prompt.match(/(?:^|\n)\s*(?:[-•]|\d+[.)])\s+/g) || []).length, 1)
       + (prompt.match(/\b(?:and|then)\s+(?:explain|describe|justify|compare|give|discuss|suggest)\b/gi) || []).length;
     if ((item.skill === 'SPEAKING' && seconds > 0 && seconds <= 60 && demands >= 4) || (item.skill === 'WRITING' && words > 0 && words <= 120 && demands >= 5))

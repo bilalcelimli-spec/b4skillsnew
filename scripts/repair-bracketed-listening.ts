@@ -9,10 +9,13 @@ import { normalizeSpeakerLabels, speakerLabels, stripListeningWorksheet } from '
 import { inspectWav } from '../src/lib/audio/wav-evidence.js';
 import { record } from '../src/lib/quality/item-evidence-audit.js';
 import { supabaseStorageClient } from '../src/lib/storage/private-storage.js';
+import { inAudioRepairScope } from '../src/lib/quality/audio-repair-scope.js';
 config({ path: '.env.local', quiet: true }); config({ quiet: true });
 const prisma = new PrismaClient();
 async function main() {
-  const rows = await prisma.item.findMany({ where: { skill: 'LISTENING', status: { in: ['ACTIVE', 'PRETEST'] } } });
+  const includeQuarantined = process.argv.includes('--include-quarantined');
+  const fetched = await prisma.item.findMany({ where: { skill: 'LISTENING', status: { in: includeQuarantined ? ['ACTIVE', 'PRETEST', 'REVIEW'] : ['ACTIVE', 'PRETEST'] } } });
+  const rows = fetched.filter(item => inAudioRepairScope(item, includeQuarantined));
   const affected = rows.filter(item => {
     const c = record(item.content), pending = record(record(item.metadata).pendingAudioReplacement);
     const script = normalizeSpeakerLabels(stripListeningWorksheet(resolveListeningScript(c)));
