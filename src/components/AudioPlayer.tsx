@@ -244,7 +244,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   return (
     <div
       className={cn(
-        "p-6 bg-indigo-50 border border-indigo-100 rounded-2xl space-y-4",
+        "p-4 sm:p-6 bg-indigo-50 border border-indigo-100 rounded-2xl space-y-4",
         className
       )}
       role="region"
@@ -321,7 +321,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       </div>
 
       {/* Controls */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
           {/* Play/Pause */}
           <button
@@ -364,7 +364,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         </div>
 
         {/* Time + plays remaining + speed */}
-        <div className="flex items-center gap-3 flex-wrap justify-end">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:justify-end">
           <span className="text-sm font-mono text-slate-600">
             {formatTime(currentTime)} / {formatTime(duration)}
           </span>

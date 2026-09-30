@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Clock, Mic, Camera, BookOpen, Headphones, PenLine, MessageSquare, ShieldCheck, XCircle, Wifi, ChevronDown } from "lucide-react";
+import React from "react";
+import { Clock, Mic, Camera, BookOpen, Headphones, PenLine, MessageSquare, ShieldCheck, XCircle, Wifi } from "lucide-react";
 import { RubricPreview } from "./RubricPanel.js";
 import { getProfile } from "../lib/product-lines/profiles.js";
 
@@ -26,14 +26,19 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
   const needsCamera = true;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-start sm:items-center justify-center p-0 sm:p-4">
+      <div
+        className="bg-white shadow-2xl w-full sm:max-w-xl min-h-[100dvh] sm:min-h-0 sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl overflow-hidden flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pre-test-briefing-title"
+      >
         {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 px-6 py-5 text-white">
+        <div className="flex-shrink-0 bg-gradient-to-r from-indigo-600 to-indigo-500 px-5 sm:px-6 py-4 sm:py-5 text-white">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-widest text-indigo-200 mb-1">B4Skills Adaptive Assessment</p>
-              <h1 className="text-xl font-black">{profile.displayName ?? profile.name}</h1>
+              <h1 id="pre-test-briefing-title" className="text-xl font-black">{profile.displayName ?? profile.name}</h1>
             </div>
             <button onClick={onCancel} className="text-indigo-200 hover:text-white transition-colors" aria-label="Cancel">
               <XCircle size={22} />
@@ -41,9 +46,9 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
           </div>
         </div>
 
-        <div className="px-6 py-5 space-y-5">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 sm:px-6 py-5 space-y-5">
           {/* Duration + skills overview */}
-          <div className="flex items-start gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="flex-1 bg-indigo-50 border border-indigo-100 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-1">
                 <Clock size={16} className="text-indigo-500" />
@@ -133,7 +138,7 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
         </div>
 
         {/* Footer */}
-        <div className="px-6 pb-6 flex gap-3">
+        <div className="flex-shrink-0 border-t border-slate-200 bg-white px-5 sm:px-6 py-4 sm:py-5 flex gap-3 shadow-[0_-8px_24px_-20px_rgba(15,23,42,0.5)]">
           <button
             onClick={onCancel}
             className="flex-1 border border-slate-200 text-slate-600 font-semibold text-sm py-2.5 rounded-xl hover:bg-slate-50 transition-colors"

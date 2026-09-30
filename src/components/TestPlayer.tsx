@@ -48,10 +48,10 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   const [finished, setFinished] = useState(false);
   const [status, setStatus] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  // Adaptive timing: elapsed seconds (counts up). No fixed countdown.
+  // Elapsed time is tracked locally and reconciled with the server response.
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   // maxDurationMs: server-enforced safety-net ceiling received on launch.
-  // Never shown as a countdown — used only to render a faint progress arc.
+  // The client displays the remaining portion, while the server remains authoritative.
   const [maxDurationMs, setMaxDurationMs] = useState<number>(5_400_000); // 90 min default
   const sessionStartRef = React.useRef<number>(Date.now());
   const [showInsights, setShowInsights] = useState(false);
@@ -455,7 +455,17 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
             Back to Dashboard
           </Button>
         ) : (
-          <Button size="lg" onClick={() => window.location.reload()}>
+          <Button
+            size="lg"
+            onClick={() => {
+              setError(null);
+              if (sessionId) {
+                fetchNextItem(sessionId);
+              } else {
+                window.location.reload();
+              }
+            }}
+          >
             Try Reconnecting
           </Button>
         )}
@@ -506,22 +516,24 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       )}
 
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-6">
+      <header className="bg-white border-b border-slate-200 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 sticky top-0 z-10">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-6">
           <div className="flex items-center gap-2">
             <div className="bg-[#9b276c] justify-center text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight flex items-center">
               <span style={{ textShadow: '0 0 8px rgba(253, 224, 71, 0.8), 0 0 15px rgba(253, 224, 71, 0.4)' }}>b4skills</span>
             </div>
           </div>
           <div className="h-8 w-px bg-slate-100 hidden md:block" />
-          <LanguageSwitcher />
+          <div className="hidden sm:block">
+            <LanguageSwitcher />
+          </div>
         </div>
         
-        <div className="flex items-center gap-6">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-6">
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex items-center gap-2 text-slate-500 hover:text-indigo-600 font-bold text-xs uppercase tracking-widest"
+            className="hidden lg:flex items-center gap-2 text-slate-500 hover:text-indigo-600 font-bold text-xs uppercase tracking-widest"
             onClick={() => setShowInsights(!showInsights)}
           >
             <Activity size={16} />
@@ -539,7 +551,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
               return (
                 <div
                   className={cn(
-                    "flex items-center gap-2 px-4 py-2 rounded-xl font-mono font-bold transition-colors",
+                    "flex items-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-xl font-mono text-sm sm:text-base font-bold transition-colors",
                     isCritical
                       ? "bg-red-100 text-red-700 animate-pulse"
                       : isWarning
@@ -551,7 +563,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
                   aria-live={isWarning ? "polite" : undefined}
                   title="Time remaining in this assessment"
                 >
-                  <Clock size={18} className={isCritical ? "text-red-500" : isWarning ? "text-amber-500" : "text-slate-400"} />
+                  <Clock size={16} className={isCritical ? "text-red-500" : isWarning ? "text-amber-500" : "text-slate-400"} />
                   {formatTime(remaining)}
                 </div>
               );
@@ -566,7 +578,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
               const color = pct >= 80 ? "#10b981" : pct >= 50 ? "#6366f1" : "#94a3b8";
               return (
                 <div
-                  className="flex flex-col items-center gap-0.5 cursor-default"
+                  className="hidden sm:flex flex-col items-center gap-0.5 cursor-default"
                   title={`Measurement precision: ${pct}% — exam ends when precision target is reached`}
                   aria-label={`Measurement precision ${pct}%`}
                 >
@@ -590,7 +602,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
             })()}
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-1 bg-red-50 text-red-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
+          <div className="hidden xl:flex items-center gap-2 px-3 py-1 bg-red-50 text-red-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
             <ShieldCheck size={14} />
             Secure Session
           </div>
@@ -598,7 +610,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       </header>
 
       {/* Section Progress Bar — driven by sectionOrder from server response */}
-      <div className="bg-white border-b border-slate-100 px-6 py-2 flex items-center gap-2 overflow-x-auto" role="navigation" aria-label="Test section progress">
+      <div className="bg-white border-b border-slate-100 px-3 sm:px-6 py-2 flex items-center gap-2 overflow-x-auto" role="navigation" aria-label="Test section progress">
         {sectionOrder.map((sec, i) => (
           <div key={sec} className="flex items-center gap-1.5 shrink-0">
             <div
@@ -630,7 +642,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col items-center p-6 md:p-12 overflow-y-auto" role="main">
+      <main className="flex-1 flex flex-col items-center p-3 sm:p-6 md:p-12 overflow-y-auto" role="main">
         <div className="w-full max-w-3xl">
           <AnimatePresence>
             {showInsights && status && (
@@ -791,7 +803,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
                 exit={{ x: -20, opacity: 0 }}
                 transition={{ duration: 0.4, ease: "easeOut" }}
               >
-                <div className="mb-8 flex items-center justify-between">
+                <div className="mb-5 sm:mb-8 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <span className={cn("px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-widest text-white", SECTION_COLORS[currentSection] ?? 'bg-indigo-500')}>
                       {SECTION_LABELS[currentSection] ?? currentItem.skill}
@@ -809,7 +821,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
                 </div>
 
                 {itemFeedback?.error && (
-                  <div className="mb-4 px-5 py-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3">
+                  <div className="mb-4 px-4 sm:px-5 py-3 bg-rose-50 border border-rose-200 rounded-2xl flex flex-wrap items-center gap-3" role="alert">
                     <span className="text-rose-600 font-bold text-sm">⚠ {itemFeedback.error}</span>
                     <button
                       onClick={() => setItemFeedback(null)}
@@ -836,18 +848,18 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       </main>
 
       {/* Footer / Status */}
-      <footer className="bg-white border-t border-slate-200 px-8 py-4 flex items-center justify-between">
+      <footer className="bg-white border-t border-slate-200 px-4 sm:px-8 py-3 sm:py-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             Connected to Adaptive Engine
           </div>
-          <div className="h-4 w-px bg-slate-200" />
-          <div className="text-xs text-slate-400 font-mono">
+          <div className="hidden sm:block h-4 w-px bg-slate-200" />
+          <div className="hidden sm:block text-xs text-slate-400 font-mono">
             ID: {sessionId?.split('_')[1]}
           </div>
         </div>
-        <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+        <div className="hidden md:flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
           <Activity size={12} />
           Real-time Psychometric Sync
         </div>

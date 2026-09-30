@@ -245,7 +245,6 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && textValue.trim() && !disabled) {
                       onResponse(textValue.trim());
-                      setTextValue("");
                     }
                   }}
                 />
@@ -257,10 +256,8 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                     if (!rgvAllFilled) return;
                     if (rgvScaffold && rgvBlankCount > 0) {
                       onResponse(rgvAnswers.map((a) => a.trim()).join("|"));
-                      setFibAnswers([]);
                     } else {
                       onResponse(textValue.trim());
-                      setTextValue("");
                     }
                   }}
                   className={cn(
@@ -393,8 +390,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
 
         return (
           <div
-            className="flex flex-col md:flex-row gap-0 rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm"
-            style={{ minHeight: "520px" }}
+            className="flex flex-col md:h-[min(68vh,720px)] md:min-h-[520px] md:flex-row gap-0 rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm"
             role="form"
             aria-labelledby="item-prompt"
           >
@@ -553,7 +549,6 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                 onClick={() => {
                   if (fibAllFilled) {
                     onResponse(currentFibAnswers.map((a) => a.trim()).join("|"));
-                    setFibAnswers([]);
                   }
                 }}
                 className={cn(
@@ -639,7 +634,6 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                           // Send option id if available (e.g. "A"), else index
                           const answer = (opt && typeof opt === "object" && opt.id) ? opt.id : selectedOption;
                           onResponse(answer);
-                          setSelectedOption(null);
                         }
                       }}
                       className={cn(
