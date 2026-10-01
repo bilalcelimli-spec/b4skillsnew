@@ -15,6 +15,7 @@ import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { Resend } from "resend";
 import { prisma } from "./src/lib/prisma.js";
+import { createDatabaseProbe } from "./src/lib/database/availability.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
 import { SecretsManager } from "./src/lib/secrets/secrets-manager.js";
 import { buildCorsMiddleware, buildHelmetMiddleware } from "./src/lib/security/http-security.js";
@@ -40,7 +41,7 @@ import { uploadPrivateObject, downloadPrivateObject, storageReference, StorageCo
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Set to true once a live DB connection is confirmed at startup
+// Updated by startup, periodic probes, and readiness checks.
 let dbAvailable = false;
 
 async function startServer() {
@@ -54,7 +55,7 @@ async function startServer() {
   // Required so express-rate-limit reads X-Forwarded-For correctly.
   app.set("trust proxy", 1);
 
-  // Probe DB connectivity — fall back to mock/demo mode if unreachable
+  // Probe DB connectivity; production never falls back to demo assessments.
   if (process.env.DATABASE_URL) {
     try {
       await (prisma as any).$queryRaw`SELECT 1`;
@@ -97,13 +98,35 @@ async function startServer() {
       }
     } catch {
       dbAvailable = false;
-      console.warn("⚠️  Database not reachable — running in mock/demo mode");
+      console.warn(process.env.NODE_ENV === "production"
+        ? "⚠️ Database unavailable — assessment APIs disabled until connectivity recovers"
+        : "⚠️ Database not reachable — running in mock/demo mode");
     }
   }
 
   if (dbAvailable) {
     const { recoverPendingScoringJobs } = await import("./src/lib/scoring/scoring-queue.js");
     void recoverPendingScoringJobs().catch(() => console.error("Could not recover pending scoring jobs"));
+  }
+  const probeDatabase = createDatabaseProbe(
+    async () => {
+      if (!process.env.DATABASE_URL) throw new Error("Database is not configured");
+      return prisma.$queryRaw`SELECT 1`;
+    },
+    (available) => {
+      const recovered = available && !dbAvailable;
+      dbAvailable = available;
+      if (recovered) {
+        console.log("✅ Database connectivity recovered — assessment APIs enabled");
+        void import("./src/lib/scoring/scoring-queue.js")
+          .then(({ recoverPendingScoringJobs }) => recoverPendingScoringJobs())
+          .catch(() => console.error("Could not recover pending scoring jobs"));
+      }
+    },
+  );
+  if (process.env.DATABASE_URL) {
+    const reconnectTimer = setInterval(() => { void probeDatabase(); }, 30_000);
+    reconnectTimer.unref();
   }
   app.use(buildHelmetMiddleware());
   app.use(buildCorsMiddleware());
@@ -1282,8 +1305,13 @@ async function startServer() {
   };
 
   // API Routes
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  app.get("/api/health", async (_req, res) => {
+    const available = await probeDatabase();
+    const ready = available || process.env.NODE_ENV !== "production";
+    res.status(ready ? 200 : 503).json({
+      status: ready ? "ok" : "unavailable", database: available ? "up" : "down",
+      timestamp: new Date().toISOString(),
+    });
   });
 
   // --- STATUS PAGE ---

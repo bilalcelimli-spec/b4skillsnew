@@ -8,14 +8,22 @@ const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
 const isDev = process.env.NODE_ENV !== "production";
 
-// Bound the Prisma pool for managed PostgreSQL (including Supabase session
-// pooling). Appends only if not already present.
-// DB_CONNECTION_LIMIT env var overrides the default (3; shared by all runtime services).
-if (process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("connection_limit")) {
-  const limit = process.env.DB_CONNECTION_LIMIT ?? "3";
-  const timeout = process.env.DB_POOL_TIMEOUT ?? "20";
-  const sep = process.env.DATABASE_URL.includes("?") ? "&" : "?";
-  process.env.DATABASE_URL = `${process.env.DATABASE_URL}${sep}connection_limit=${limit}&pool_timeout=${timeout}`;
+// An explicit deployment limit overrides stale URL settings. Otherwise preserve
+// existing URL parameters and use a small default across shared runtime services.
+if (process.env.DATABASE_URL) {
+  const url = new URL(process.env.DATABASE_URL);
+  for (const [key, configured, fallback] of [
+    ["connection_limit", process.env.DB_CONNECTION_LIMIT, "3"],
+    ["pool_timeout", process.env.DB_POOL_TIMEOUT, "20"],
+  ] as const) {
+    if (configured !== undefined && !/^[1-9]\d*$/.test(configured)) {
+      throw new Error(`Invalid database pool setting: ${key}`);
+    }
+    if (configured !== undefined || !url.searchParams.has(key)) {
+      url.searchParams.set(key, configured ?? fallback);
+    }
+  }
+  process.env.DATABASE_URL = url.toString();
 }
 
 export const prisma =
