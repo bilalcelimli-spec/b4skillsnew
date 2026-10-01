@@ -310,6 +310,7 @@ function buildRecommendation(issues: IntegrityIssue[]): "score" | "review" | "re
   for (const issue of issues) {
     if (
       issue.flag === "EMPTY_RESPONSE" ||
+      (issue.flag === "BELOW_MIN_LENGTH" && issue.severity >= 0.9) ||
       issue.flag === "PROMPT_INJECTION" ||
       (issue.flag === "SUSPICIOUS_FORMATTING" && issue.severity >= 1)
     ) {

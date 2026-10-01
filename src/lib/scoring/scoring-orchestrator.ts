@@ -85,6 +85,7 @@ function buildFinalScore(primary: AIScore, verifier: AIScore): OrchestratedScore
     reviewReasons.push("CEFR_DISAGREEMENT");
   }
 
+  if (primary.rubricScores.taskRelevance < 3 || verifier.rubricScores.taskRelevance < 3) reviewReasons.push("LOW_TASK_RELEVANCE");
   const requiresHumanReview = reviewReasons.length > 0;
   const blendedScore = Number(((primary.score + verifier.score) / 2).toFixed(4));
 
@@ -230,7 +231,7 @@ export const ScoringOrchestrator = {
       // If discourse quality diverges strongly from Gemini's coherence score, flag for review
       // raterAgreementKappa expects both values on 0..1 scale; rubricScores.coherence is 0..10
       const rawCoherence = orchestrated.aiResult.rubricScores.coherence ?? (orchestrated.aiResult.score * 10);
-      const geminiCoherence = rawCoherence > 1 ? rawCoherence / 10 : rawCoherence;
+      const geminiCoherence = rawCoherence / 10;
       const aqAgreement = ArgumentQualityAnalyzer.raterAgreementKappa(geminiCoherence, aqProfile.discourseQualityScore);
       (orchestrated.aiResult as any).argumentQualityAgreement = aqAgreement;
 
@@ -382,7 +383,7 @@ export const ScoringOrchestratorEnsemble = {
       (orchestrated.aiResult as any).argumentQualityProfile = aqProfile;
 
       const rawCoherence = orchestrated.aiResult.rubricScores.coherence ?? (orchestrated.aiResult.score * 10);
-      const normalizedCoherence = rawCoherence > 1 ? rawCoherence / 10 : rawCoherence;
+      const normalizedCoherence = rawCoherence / 10;
       const aqAgreement = ArgumentQualityAnalyzer.raterAgreementKappa(normalizedCoherence, aqProfile.discourseQualityScore);
       (orchestrated.aiResult as any).argumentQualityAgreement = aqAgreement;
 

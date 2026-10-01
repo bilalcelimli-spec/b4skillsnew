@@ -10,9 +10,9 @@ const isDev = process.env.NODE_ENV !== "production";
 
 // Bound the Prisma pool for managed PostgreSQL (including Supabase session
 // pooling). Appends only if not already present.
-// DB_CONNECTION_LIMIT env var overrides the default (20 for 100-user concurrency).
+// DB_CONNECTION_LIMIT env var overrides the default (3; shared by all runtime services).
 if (process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("connection_limit")) {
-  const limit = process.env.DB_CONNECTION_LIMIT ?? "20";
+  const limit = process.env.DB_CONNECTION_LIMIT ?? "3";
   const timeout = process.env.DB_POOL_TIMEOUT ?? "20";
   const sep = process.env.DATABASE_URL.includes("?") ? "&" : "?";
   process.env.DATABASE_URL = `${process.env.DATABASE_URL}${sep}connection_limit=${limit}&pool_timeout=${timeout}`;

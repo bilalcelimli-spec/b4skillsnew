@@ -17,6 +17,9 @@
  * logged so ops can scale the instance or add a dedicated scoring worker.
  */
 
+import { buildScoringPrompt } from "./task-context.js";
+import { productiveScoringMode } from "../assessment-engine/productive-response.js";
+import { refreshScoredSession } from "./score-report-refresh.js";
 import { prisma } from "../prisma.js";
 import { ScoringOrchestrator } from "./scoring-orchestrator.js";
 import { RatingQueueService } from "./rating-queue.js";
@@ -57,14 +60,17 @@ export interface ScoringResult {
 
 const queue: ScoringJobWithResolve[] = [];
 let activeCount = 0;
+const pendingResponseIds = new Set<string>();
+
+export function isScoringJobPending(responseId: string): boolean { return pendingResponseIds.has(responseId); }
 
 // ─── Core processor ───────────────────────────────────────────────────────────
 
 async function processJob(job: ScoringJobWithResolve): Promise<void> {
-  activeCount++;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`AI scoring timed out after ${AI_TIMEOUT_MS}ms`)), AI_TIMEOUT_MS)
+      timeoutHandle = setTimeout(() => reject(new Error(`AI scoring timed out after ${AI_TIMEOUT_MS}ms`)), AI_TIMEOUT_MS)
     );
     // Prevent an unhandled-rejection crash if the race resolves before the timer fires
     timeoutPromise.catch(() => undefined);
@@ -84,10 +90,7 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
           timeoutPromise,
         ]);
       } else {
-        scoringDecision = await Promise.race([
-          ScoringOrchestrator.scoreSpeakingFromText(String(val), job.prompt),
-          timeoutPromise,
-        ]);
+        throw new Error("Speaking assessment requires actual audio; a text marker is not a recording");
       }
     }
 
@@ -99,12 +102,14 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
     await prisma.response.update({
       where: { id: job.responseId },
       data: {
-        score,
-        isCorrect: score >= 0.5,
-        aiScore: aiResult?.score as number | undefined,
+        score: requiresHumanReview ? null : score,
+        adjustedScore: null,
+        isCorrect: requiresHumanReview ? null : score >= 0.5,
+        aiScore: scoringDecision?.scoreSource === "ai_unavailable" ? null : aiResult?.score as number | undefined,
         metadata: aiResult
           ? {
               aiFeedback: aiResult.feedback,
+              scoringMode: job.skill,
               confidence: aiResult.confidence,
               speakingFeatures: aiResult.speakingFeatures,
               cefrLevel: aiResult.cefrLevel,
@@ -118,6 +123,9 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
               modelVersion: scoringDecision?.modelVersion,
               scoringPasses: scoringDecision?.scoringPasses,
               asyncScored: true,
+              pendingAsyncScore: false,
+              requiresHumanReview,
+              scoreFailed: scoringDecision?.scoreSource === "ai_unavailable",
             }
           : { asyncScored: true, scoreFailed: true },
       } as any,
@@ -144,6 +152,8 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
       });
     }
 
+    try { await refreshScoredSession(job.sessionId); }
+    catch (err) { logger.error({ err, sessionId: job.sessionId }, "async-scoring: report refresh failed"); }
     job.resolve({ score, aiResult: aiResult as any, requiresHumanReview, scoreSource: scoringDecision?.scoreSource });
     logger.debug({ sessionId: job.sessionId, responseId: job.responseId, skill: job.skill, score }, "async-scoring: job complete");
   } catch (err) {
@@ -154,7 +164,8 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
       await prisma.response.update({
         where: { id: job.responseId },
         data: {
-          metadata: { asyncScored: true, scoreFailed: true, failureReason: (err as Error).message } as any,
+          score: null, adjustedScore: null, isCorrect: null,
+          metadata: { asyncScored: true, pendingAsyncScore: false, requiresHumanReview: true, scoreFailed: true, failureReason: (err as Error).message } as any,
         } as any,
       });
       await RatingQueueService.enqueue({
@@ -169,7 +180,9 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
 
     job.reject(err as Error);
   } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
     activeCount--;
+    pendingResponseIds.delete(job.responseId);
     drain();
   }
 }
@@ -177,6 +190,7 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
 function drain(): void {
   while (activeCount < MAX_CONCURRENT_AI && queue.length > 0) {
     const job = queue.shift()!;
+    activeCount++;
     // Use setImmediate so the event loop processes pending I/O between jobs
     setImmediate(() => processJob(job));
   }
@@ -193,6 +207,8 @@ function drain(): void {
  * **For awaitable scoring (tests):** await the returned promise to get the result.
  */
 export function enqueueScoringJob(job: ScoringJob): Promise<ScoringResult> {
+  if (pendingResponseIds.has(job.responseId)) return Promise.reject(new Error("Response is already being scored"));
+  pendingResponseIds.add(job.responseId);
   if (queue.length >= QUEUE_WARN_SIZE) {
     logger.warn(
       { queueSize: queue.length, activeCount },
@@ -240,4 +256,26 @@ export function drainScoringQueue(timeoutMs = 25_000): Promise<void> {
       }
     }, 100);
   });
+}
+
+/** Recover persisted submissions after a worker restart; old numeric placeholders stay withheld. */
+export async function recoverPendingScoringJobs(): Promise<number> {
+  const responses = await prisma.response.findMany({
+    where:{metadata:{path:["pendingAsyncScore"],equals:true}},
+    include:{item:true},orderBy:{createdAt:"asc"},take:100,
+  });
+  let recovered=0;
+  for (const response of responses) {
+    const metadata=(response.metadata as Record<string,unknown>) ?? {};
+    if (metadata.asyncScored === true || isScoringJobPending(response.id)) continue;
+    let value: any=response.value ?? "";
+    if (typeof value === "string" && value.startsWith("{")) { try { value=JSON.parse(value); } catch { /* Keep literal writing text. */ } }
+    const content=(response.item.content as Record<string,any>) ?? {};
+    const mode=productiveScoringMode(response.item.skill,response.item.type,content,value);
+    if (!mode) continue;
+    void enqueueScoringJob({sessionId:response.sessionId,responseId:response.id,itemId:response.itemId,
+      skill:mode,value,prompt:buildScoringPrompt(content)}).catch(() => undefined);
+    recovered++;
+  }
+  return recovered;
 }

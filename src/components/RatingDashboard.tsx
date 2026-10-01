@@ -118,7 +118,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
       const normalised: RatingTask[] = (Array.isArray(tasksData) ? tasksData : []).map((t: any) => {
         const meta       = t.response?.metadata ?? {};
         const aiResult   = meta?.reviewQueue?.aiResult ?? meta?.aiResult ?? null;
-        const taskType   = t.response?.item?.skill === "WRITING" ? "WRITING" : "SPEAKING";
+        const taskType   = meta.scoringMode === "WRITING" || meta.scoringMode === "SPEAKING" ? meta.scoringMode : t.response?.item?.skill === "WRITING" ? "WRITING" : "SPEAKING";
         const content    = t.response?.value ?? t.response?.metadata?.transcript ?? t.content ?? "";
         return {
           id:               t.id,
@@ -128,7 +128,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
           content,
           aiResult,
           status:           t.status,
-          needsSecondRater: t.status === "PENDING" && t.score != null,
+          needsSecondRater: t.needsSecondRater ?? (t.status === "PENDING" && t.score != null),
           qwk:              t.qwk ?? null,
           createdAt:        t.createdAt,
           response:         t.response,

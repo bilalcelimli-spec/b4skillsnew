@@ -1,8 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../prisma.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-const prisma = new PrismaClient();
 
 /**
  * AutoItemGenerator — SOTA Psychometric Item Factory

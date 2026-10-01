@@ -7,6 +7,8 @@ export function productiveModes(skill: string, type: string | undefined, content
     if (content.responseFormat === "spoken") return ["SPEAKING"];
     if (content.responseFormat === "written" || content.taskType === "productive") return ["WRITING"];
   }
+  if (type !== "INTEGRATED_TASK" && (["MULTIPLE_CHOICE", "FILL_IN_BLANKS", "DRAG_DROP"].includes(type ?? "") ||
+      (Array.isArray(content.options) && content.options.length > 0))) return [];
   return skill === "WRITING" || skill === "SPEAKING" ? [skill] : [];
 }
 

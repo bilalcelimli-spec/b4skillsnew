@@ -1,3 +1,4 @@
+import { refreshScoredSession } from "./score-report-refresh.js";
 import { prisma } from "../prisma";
 import { RatingStatus } from "@prisma/client";
 
@@ -15,16 +16,6 @@ import { RatingStatus } from "@prisma/client";
  *     requiresArbitration=true and status=FLAGGED for a third rater
  *  6. Otherwise status=COMPLETED and final score = average of A & B
  */
-
-/** Quadratic Weighted Kappa between two ratings on a 0–1 continuous scale. */
-function computeQwk(score1: number, score2: number): number {
-  // For two scalar ratings, QWK simplifies to 1 - (d/max_d)^2
-  // where d = |score1 - score2|.  We discretise to 7 CEFR bands (0-indexed).
-  const band = (s: number) => Math.round(s * 6); // [0,1] → {0,1,2,3,4,5,6}
-  const diff = Math.abs(band(score1) - band(score2));
-  const maxDiff = 6; // maximum possible band distance
-  return 1 - Math.pow(diff / maxDiff, 2);
-}
 
 const SECOND_RATER_AGREEMENT_THRESHOLD = 0.20; // |score_A - score_B| > this → arbitration
 
@@ -52,12 +43,13 @@ export const RatingQueueService = {
 
     if (!response) throw new Error("Response not found for enqueuing");
 
-    if (params.aiResult) {
+    {
       await prisma.response.update({
         where: { id: response.id },
         data: {
           metadata: {
             ...((response.metadata as any) || {}),
+            scoringMode: params.type,
             reviewQueue: {
               enqueuedAt: new Date().toISOString(),
               aiResult: params.aiResult
@@ -67,11 +59,10 @@ export const RatingQueueService = {
       });
     }
 
-    const task = await prisma.ratingTask.create({
-      data: {
-        responseId: response.id,
-        status: RatingStatus.PENDING
-      }
+    const task = await prisma.ratingTask.upsert({
+      where:{responseId:response.id},
+      create:{responseId:response.id,status:RatingStatus.PENDING},
+      update:{},
     });
     return task.id;
   },
@@ -79,9 +70,9 @@ export const RatingQueueService = {
   /**
    * Get pending tasks for a rater
    */
-  async getTasks(status: RatingStatus = RatingStatus.PENDING) {
-    return await prisma.ratingTask.findMany({
-      where: { status },
+  async getTasks(status: RatingStatus = RatingStatus.PENDING, raterId?: string) {
+    const tasks = await prisma.ratingTask.findMany({
+      where: { status, ...(status === RatingStatus.PENDING && raterId ? {OR:[{raterId:null},{raterId:{not:raterId}}]} : {}) },
       include: {
         response: {
           include: {
@@ -96,19 +87,20 @@ export const RatingQueueService = {
       },
       orderBy: { createdAt: "asc" }
     });
+    return tasks.map(task => {
+      const needsSecondRater = task.status === RatingStatus.PENDING && task.score != null;
+      return {...task,needsSecondRater,...(needsSecondRater ? {score:null,feedback:null} : {})};
+    });
   },
 
   /**
    * Claim a task for rating
    */
   async claimTask(taskId: string, raterId: string) {
-    return await prisma.ratingTask.update({
-      where: { id: taskId },
-      data: {
-        status: RatingStatus.CLAIMED,
-        raterId
-      }
-    });
+    const claimed = await prisma.ratingTask.updateMany({where:{id:taskId,status:RatingStatus.PENDING,raterId:null},
+      data:{status:RatingStatus.CLAIMED,raterId}});
+    if (claimed.count !== 1) throw new Error("Rating task is already claimed or awaits a second rater");
+    return prisma.ratingTask.findUnique({where:{id:taskId}});
   },
 
   /**
@@ -116,7 +108,10 @@ export const RatingQueueService = {
    * After submission the task transitions to PENDING_SECOND_RATER so a second
    * blind rater can independently score the same response.
    */
-  async submitRating(taskId: string, score: number, feedback: string) {
+  async submitRating(taskId: string, score: number, feedback = "", raterId?: string) {
+    if (!Number.isFinite(score) || score < 0 || score > 1) throw new Error("Rating score must be between 0 and 1");
+    const current = await prisma.ratingTask.findUnique({where:{id:taskId}});
+    if (!raterId || current?.raterId !== raterId || current?.status !== RatingStatus.CLAIMED || current.score != null) throw new Error("Only the assigned first rater can submit this rating");
     const task = await prisma.ratingTask.update({
       where: { id: taskId },
       include: { response: true },
@@ -138,15 +133,10 @@ export const RatingQueueService = {
    * The second rater must be a different user from the first rater.
    */
   async claimSecondRating(taskId: string, raterId: string) {
-    const task = await prisma.ratingTask.findUnique({ where: { id: taskId } });
-    if (!task) throw new Error("Rating task not found");
-    if (task.raterId === raterId) {
-      throw new Error("Second rater must be a different user from the first rater.");
-    }
-    return prisma.ratingTask.update({
-      where: { id: taskId },
-      data: { secondRaterId: raterId, status: RatingStatus.CLAIMED } as any,
-    });
+    const claimed = await prisma.ratingTask.updateMany({where:{id:taskId,status:RatingStatus.PENDING,
+      score:{not:null},raterId:{not:raterId},secondRaterId:null},data:{secondRaterId:raterId,status:RatingStatus.CLAIMED}});
+    if (claimed.count !== 1) throw new Error("Second rater must be different and the task must be available");
+    return prisma.ratingTask.findUnique({where:{id:taskId}});
   },
 
   /**
@@ -154,18 +144,22 @@ export const RatingQueueService = {
    * Computes QWK, determines if arbitration is needed, and finalises the response
    * with the averaged score when agreement is sufficient.
    */
-  async submitSecondRating(taskId: string, score: number, feedback: string) {
+  async submitSecondRating(taskId: string, score: number, feedback = "", raterId?: string) {
+    if (!Number.isFinite(score) || score < 0 || score > 1) throw new Error("Rating score must be between 0 and 1");
     const task = await prisma.ratingTask.findUnique({
       where: { id: taskId },
       include: { response: true },
     });
     if (!task) throw new Error("Rating task not found");
+    if (!raterId || task.secondRaterId !== raterId || task.raterId === raterId || task.status !== RatingStatus.CLAIMED) throw new Error("Only the assigned independent second rater can submit");
     if (task.score === null || task.score === undefined) {
       throw new Error("First rater has not yet submitted a score.");
     }
 
     const firstScore = task.score as number;
-    const qwk = computeQwk(firstScore, score);
+    // A single pair cannot establish chance-corrected inter-rater reliability.
+    // Compute QWK across a rating sample in ai-human-agreement.ts instead.
+    const qwk = null;
     const requiresArbitration = Math.abs(firstScore - score) > SECOND_RATER_AGREEMENT_THRESHOLD;
     const finalScore = requiresArbitration ? null : (firstScore + score) / 2;
 
@@ -188,9 +182,15 @@ export const RatingQueueService = {
         data: {
           humanScore: finalScore,
           score: finalScore,
+          adjustedScore: null,
+          isCorrect: finalScore >= 0.5,
           metadata: {
             ...((task.response?.metadata as any) || {}),
             humanFeedback: feedback,
+            scoreSource: "human",
+            requiresHumanReview: false,
+            pendingAsyncScore: false,
+            scoreFailed: false,
             irrQwk: qwk,
             finalScoreSource: "double_blind_average",
           },
@@ -198,6 +198,7 @@ export const RatingQueueService = {
       });
     }
 
+    if (finalScore !== null) await refreshScoredSession(task.response.sessionId);
     return updatedTask;
   },
 

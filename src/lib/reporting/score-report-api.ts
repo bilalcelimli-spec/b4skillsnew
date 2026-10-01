@@ -14,10 +14,10 @@
  * value; plain-text prefix stored separately for lookup).
  */
 
-import { PrismaClient } from "@prisma/client";
+import { shouldExcludeResponseFromAbility } from "../scoring/score-evidence.js";
+import { prisma } from "../prisma.js";
 import crypto from "crypto";
 
-const prisma = new PrismaClient();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -136,13 +136,14 @@ async function buildReport(
 
   const candidate = await prisma.user.findUnique({ where: { id: session.candidateId }, select: { id: true, email: true } });
   const report    = await prisma.scoreReport.findUnique({ where: { sessionId: session.id } });
-  const responses = await prisma.response.findMany({ where: { sessionId: session.id }, select: { metadata: true, score: true, isCorrect: true } });
+  const responses = await prisma.response.findMany({ where: { sessionId: session.id }, select: { metadata: true, score: true, isCorrect: true, isPretest: true, item:{select:{skill:true}} } });
 
   // Aggregate per-skill from response metadata
   const skillMap: Record<string, { sumTheta: number; count: number; sumScore: number }> = {};
   for (const r of responses) {
+    if (shouldExcludeResponseFromAbility(r)) continue;
     const meta  = (r.metadata ?? {}) as any;
-    const skill = meta?.skill ?? meta?.diagnosticSkill;
+    const skill = r.item.skill ?? meta?.skill ?? meta?.diagnosticSkill;
     if (!skill) continue;
     if (!skillMap[skill]) skillMap[skill] = { sumTheta: 0, count: 0, sumScore: 0 };
     skillMap[skill].count++;
@@ -151,13 +152,13 @@ async function buildReport(
 
   // Pull per-skill theta from ScoreReport.diagnosticReport if available
   const diagnosticData = (report?.diagnosticReport ?? {}) as Record<string, any>;
-  const skillBreakdown = (diagnosticData?.skillBreakdown ?? diagnosticData) as Record<string, any>;
-  const skills: SkillScore[] = Object.keys(skillBreakdown).map((sk) => {
+  const skillBreakdown = (diagnosticData?.skillProfiles ?? diagnosticData?.skillBreakdown ?? {}) as Record<string, any>;
+  const skills: SkillScore[] = Object.keys(skillBreakdown).filter(sk => ["READING","LISTENING","WRITING","SPEAKING","GRAMMAR","VOCABULARY"].includes(sk.toUpperCase()) && Number.isFinite(skillBreakdown[sk]?.theta) && Number.isFinite(skillBreakdown[sk]?.sem)).map((sk) => {
     const s = skillBreakdown[sk];
     return {
       skill:     sk,
       theta:     s.theta ?? 0,
-      cefr_band: s.cefrBand ?? thetaToCefr(s.theta ?? 0),
+      cefr_band: s.cefr ?? s.cefrBand ?? thetaToCefr(s.theta ?? 0),
       sem:       s.sem ?? 0.5,
       responses: skillMap[sk]?.count ?? 0,
     };

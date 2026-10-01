@@ -1,3 +1,4 @@
+import { validateAIScore } from "./validate-ai-score.js";
 import { GoogleGenAI, Type } from "@google/genai";
 import { buildCefrRubricPrompt, type CefrLevel } from "../cefr/cefr-framework.js";
 import { buildCefrScoringKnowledge } from "../cefr/cefr-knowledge-base.js";
@@ -11,7 +12,7 @@ import { geminiScoringBreaker } from "../ai/circuit-breaker.js";
  */
 
 // Initialize Gemini with the platform-provided API key
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "", httpOptions: { timeout: 20_000, retryOptions: { attempts: 1 } } });
 
 export interface AIScore {
   score: number;           // Normalized 0.0 to 1.0
@@ -45,7 +46,7 @@ export interface AIScore {
 type ScoreMode = "primary" | "verifier";
 
 const SYSTEM_INSTRUCTION = `
-You are a senior CEFR examiner certified by the Council of Europe.
+Evaluate language responses using the supplied CEFR descriptors and rubric.
 Your evaluations are used in high-stakes language assessments for universities, corporations, and immigration bodies.
 You are intimately familiar with:
   • The CEFR Companion Volume (2018) — including mediation, interaction, and online communication scales
@@ -72,22 +73,6 @@ function buildSystemInstruction(mode: ScoreMode): string {
   return mode === "verifier"
     ? `${SYSTEM_INSTRUCTION}\nYou are the independent verification scorer. Re-evaluate from scratch, apply the rubric strictly, and do not try to match any previous score.`
     : SYSTEM_INSTRUCTION;
-}
-
-function normalizeScore(result: AIScore): AIScore {
-  return {
-    ...result,
-    score: Math.max(0, Math.min(1, Number(result.score ?? 0))),
-    confidence: Math.max(0, Math.min(1, Number(result.confidence ?? 0.5))),
-    corrections: result.corrections || [],
-    rubricScores: {
-      grammar: Number(result.rubricScores?.grammar ?? 0),
-      vocabulary: Number(result.rubricScores?.vocabulary ?? 0),
-      coherence: Number(result.rubricScores?.coherence ?? 0),
-      taskRelevance: Number(result.rubricScores?.taskRelevance ?? 0),
-      ...(result.rubricScores?.fluency !== undefined ? { fluency: Number(result.rubricScores.fluency) } : {})
-    }
-  };
 }
 
 async function scoreSpeakingInternal(
@@ -204,7 +189,7 @@ Return JSON with these exact fields:
     }
   });
 
-  return normalizeScore(JSON.parse(response.text));
+  return validateAIScore(JSON.parse(response.text));
 }
 
 async function scoreWritingInternal(text: string, prompt: string, mode: ScoreMode, targetCefr?: CefrLevel): Promise<AIScore> {
@@ -276,7 +261,7 @@ Return JSON:
     }
   });
 
-  return normalizeScore(JSON.parse(response.text));
+  return validateAIScore(JSON.parse(response.text));
 }
 
 export const GeminiScoringService = {

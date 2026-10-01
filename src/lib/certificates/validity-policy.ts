@@ -15,9 +15,8 @@
  * Notification state is tracked in Session.metadata.validityNotifications.
  */
 
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../prisma.js";
 
-const prisma = new PrismaClient();
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

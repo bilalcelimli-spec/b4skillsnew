@@ -103,7 +103,7 @@ export class AssessmentEngine {
     const updatedResponse: Response = {
       ...response,
       score: adjustedScore,
-      isPretest: item?.isPretest
+      isPretest: response.isPretest || item?.isPretest
     };
 
     const updatedResponses = [...state.responses, updatedResponse];
@@ -124,7 +124,7 @@ export class AssessmentEngine {
       ...(state.skillProfiles || {})
     };
 
-    if (item && !item.isPretest) {
+    if (item && !updatedResponse.isPretest) {
       const skill = item.skill;
       const skillResponses = updatedResponses.filter(
         r => !r.isPretest && items[r.itemId]?.skill === skill

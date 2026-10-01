@@ -1,3 +1,6 @@
+import { buildScoringPrompt } from "../scoring/task-context.js";
+import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence } from "../scoring/score-evidence.js";
+import { estimateTheta } from "./estimator.js";
 import { AssessmentEngine } from "./engine";
 import { selectNextItem } from "./selector.js";
 import { getCATSelector, ShadowItem } from "../selection/cat-selector.js";
@@ -7,6 +10,8 @@ import { resolveMstPhase, buildMstTagFilter } from "../selection/mst-router.js";
 import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint, IrtParameters } from "./types";
 import { prisma } from "../prisma";
 import { stripAnswerKeys } from "../security/answer-sanitizer.js";
+import { shuffleMcqOptions, seededFisherYates } from "./mcq-options.js";
+import { scoreFreemiumResponse } from "../product-lines/freemium-response-scoring.js";
 import { scoreStructuredResponse } from "./structured-response.js";
 import { scoreBlankResponse } from "./blank-response.js";
 import { productiveScoringMode } from "./productive-response.js";
@@ -21,7 +26,7 @@ import { Prisma, SessionStatus, ItemType, CefrLevel } from "@prisma/client";
 import { BillingService } from "../enterprise/billing-service";
 import { validateItem } from "../language-skills/item-quality-validator.js";
 import { logger } from "../observability/index.js";
-import { getCanDo, thetaToCefr, CEFR_LEVELS } from "../cefr/cefr-framework.js";
+import { getCanDo, thetaToCefr, CEFR_LEVELS, CEFR_THETA_THRESHOLDS } from "../cefr/cefr-framework.js";
 import { initExposureStore, getExposureStore } from "./exposure-store.js";
 import { bootstrapExposureFromDb } from "./exposure-bootstrap.js";
 import { parseSystemConfigPayload } from "./system-config-zod.js";
@@ -70,67 +75,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   );
   return Promise.race([promise, timeout]);
 }
-
-// ── OPTION SHUFFLING ──────────────────────────────────────────────────────────
-/**
- * Seeded LCG PRNG (not cryptographic — used only for deterministic option
- * ordering so the server can reproduce the same shuffle at scoring time
- * without persisting extra state).
- */
-function seededRng(seed: string): () => number {
-  // FNV-1a 32-bit hash to convert string seed to numeric
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return () => {
-    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
-    return h / 0x100000000;
-  };
-}
-
-function seededFisherYates<T>(arr: T[], seed: string): T[] {
-  const result = [...arr];
-  const rng = seededRng(seed);
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
-}
-
-/**
- * Shuffles MCQ options for a (sessionId, itemId) pair and returns:
- * - shuffledOptions: options array with re-labelled positional ids (A/B/C/D)
- * - newCorrectAnswer: the letter the correct option received after shuffle
- *
- * Returns null for non-MCQ items or items without the expected format.
- */
-function shuffleMcqOptions(
-  options: unknown[],
-  correctAnswer: string,
-  sessionId: string,
-  itemId: string,
-): { shuffledOptions: { id: string; text: string }[]; newCorrectAnswer: string } | null {
-  if (!Array.isArray(options) || options.length === 0) return null;
-  if (!/^[A-Da-d]$/.test(correctAnswer)) return null;
-  const hasIdText = options.every(
-    (o) => typeof o === "object" && o !== null && typeof (o as any).id === "string" && typeof (o as any).text === "string",
-  );
-  if (!hasIdText) return null;
-
-  const seed = `${sessionId}:${itemId}`;
-  const shuffled = seededFisherYates(options as { id: string; text: string }[], seed);
-  const LABELS = ["A", "B", "C", "D"];
-  const originalCorrectId = correctAnswer.toUpperCase();
-  const newCorrectIndex = shuffled.findIndex((o) => o.id.toUpperCase() === originalCorrectId);
-  if (newCorrectIndex === -1) return null;
-
-  const shuffledOptions = shuffled.map((o, i) => ({ ...o, id: LABELS[i] }));
-  return { shuffledOptions, newCorrectAnswer: LABELS[newCorrectIndex] };
-}
-// ─────────────────────────────────────────────────────────────────────────────
 
 function dbItemToEngineItem(u: {
   id: string;
@@ -233,20 +177,6 @@ function toEngineState(session: {
   };
 }
 
-function shouldExcludeResponseFromAbility(response: {
-  isPretest?: boolean | null;
-  metadata?: unknown;
-}): boolean {
-  const metadata =
-    response.metadata && typeof response.metadata === "object" && !Array.isArray(response.metadata)
-      ? (response.metadata as Record<string, unknown>)
-      : {};
-
-  return Boolean(
-    response.isPretest || metadata.pendingAsyncScore === true || metadata.scoreFailed === true
-  );
-}
-
 /**
  * Server-side Assessment Service
  * Manages the lifecycle of test sessions and interacts with the database.
@@ -294,17 +224,14 @@ const DEFAULT_CONFIG: EngineConfig = {
   blueprint: DEFAULT_BLUEPRINT,
   useMirt: true,
   useRtIrt: false,             // Faz4 RT-IRT; enable via SystemConfig
-  useGrmProductive: process.env.USE_GRM_PRODUCTIVE === "true",  // Faz5 GRM for W/S
+  useGrmProductive: process.env.USE_GRM_PRODUCTIVE !== "false",  // Faz5 GRM for W/S
   useRlSelector:   process.env.USE_RL_SELECTOR   === "true",   // RL policy item selection
   useShadowTest: false,        // Shadow test off by default; enable via SystemConfig
   classificationConfidenceThreshold: 0.90,
   cefrThresholds: {
-    A1: -2.5,
-    A2: -1.5,
-    B1: -0.5,
-    B2: 0.5,
-    C1: 1.5,
-    C2: 2.5
+    A1: CEFR_THETA_THRESHOLDS.PRE_A1, A2: CEFR_THETA_THRESHOLDS.A1,
+    B1: CEFR_THETA_THRESHOLDS.A2, B2: CEFR_THETA_THRESHOLDS.B1,
+    C1: CEFR_THETA_THRESHOLDS.B2, C2: CEFR_THETA_THRESHOLDS.C1
   }
 };
 
@@ -961,6 +888,11 @@ export const AssessmentService = {
       // via the same shuffle function (no need to embed it in the payload).
     }
 
+    // Persist the served item so arbitrary or replayed responses cannot change ability.
+    await prisma.$executeRaw`
+      UPDATE "Session" SET metadata = jsonb_set(COALESCE(metadata, '{}'), '{currentItemId}', ${JSON.stringify(nextItem.id)}::jsonb)
+      WHERE id = ${sessionId}
+    `;
     const candidateSafeContent = stripAnswerKeys(safeContent);
 
     // Compute elapsed time to send alongside the item so the UI can render
@@ -995,6 +927,9 @@ export const AssessmentService = {
       throw new Error("Invalid session");
     }
 
+    if ((session.metadata as Record<string, unknown> | null)?.currentItemId !== itemId || session.responses.some(response => response.itemId === itemId)) {
+      throw new Error("Response must match the current unanswered item");
+    }
     const dbItem = await prisma.item.findUnique({
       where: { id: itemId }
     });
@@ -1014,37 +949,21 @@ export const AssessmentService = {
       score = scoreStructuredResponse(item.metadata ?? {}, value);
     } else if (item.type === "FILL_IN_BLANKS" && Array.isArray(item.metadata?.blanks) && item.metadata.blanks.length > 0) {
       score = scoreBlankResponse(item.metadata.blanks, value);
-    } else if (item.metadata?.correctIndex !== undefined) {
-      score = value === item.metadata?.correctIndex ? 1 : 0;
-    } else if (item.metadata?.correctAnswer !== undefined && typeof value === 'string') {
-      const storedCorrect = String(item.metadata.correctAnswer).trim().toUpperCase();
-      const candidateAnswer = value.trim().toUpperCase();
-
-      // For MCQ letter answers (A/B/C/D) re-derive the shuffled position
-      if (/^[A-D]$/.test(storedCorrect) && /^[A-D]$/.test(candidateAnswer)) {
-        const shuffleResult = shuffleMcqOptions(
-          item.metadata?.options,
-          storedCorrect,
-          sessionId,
-          itemId,
-        );
-        const effectiveCorrect = shuffleResult ? shuffleResult.newCorrectAnswer : storedCorrect;
-        score = candidateAnswer === effectiveCorrect ? 1 : 0;
-      } else {
-        // FILL_IN_BLANKS: compare text answers case-insensitively
-        score = value.trim().toLowerCase() === String(item.metadata.correctAnswer).trim().toLowerCase() ? 1 : 0;
-      }
-    } else if (item.metadata?.options && Array.isArray(item.metadata?.options) && typeof value === 'number') {
-      const option = item.metadata?.options[value];
-      score = option && option.isCorrect ? 1 : 0;
     } else {
-      // WRITING / SPEAKING — use async queue (fire-and-forget).
-      // The response row is saved immediately as an operational item. Its
-      // pendingAsyncScore marker keeps it out of theta estimation until the
-      // queue updates the row when AI returns.
-      // This prevents 100 × 30 s open HTTP connections under concurrent load.
-      aiResult = { requiresHumanReview: true, pendingAsyncScore: true };
-      score = 0; // Conservative; overwritten by scoring-queue when AI completes
+      const metadata = item.metadata ?? {};
+      const shuffle = shuffleMcqOptions(metadata.options, metadata.correctAnswer, sessionId, itemId);
+      const rawOptions = shuffle?.shuffledOptions ?? metadata.options;
+      const options = Array.isArray(rawOptions) ? rawOptions.map(option => typeof option === "string" ? option : String(option.text)) : undefined;
+      const flaggedIndex = Array.isArray(rawOptions) ? rawOptions.findIndex(option => typeof option === "object" && option?.isCorrect === true) : -1;
+      const normalizedValue = options?.length && typeof value === "string" && /^[A-Z]$/i.test(value.trim())
+        ? value.trim().toUpperCase().charCodeAt(0) - 65 : value;
+      const objective = scoreFreemiumResponse({skill:String(item.skill),type:item.type ?? "",content:{...metadata,
+        options, correctIndex: shuffle ? undefined : metadata.correctIndex ?? (flaggedIndex >= 0 ? flaggedIndex : undefined),
+        correctOption: shuffle ? undefined : metadata.correctOption,
+        correctAnswer: shuffle?.newCorrectAnswer ?? metadata.correctAnswer,
+      }}, normalizedValue);
+      if (objective === null) throw new Error("Item has no supported answer key or response format");
+      score = objective ? 1 : 0;
     }
 
     const state = toEngineState(session);
@@ -1109,20 +1028,26 @@ export const AssessmentService = {
       const newState = rawState;
             
             // Persist response and update session
-            const [savedResponse] = await prisma.$transaction([
-              prisma.response.create({
+            const [savedResponse] = await prisma.$transaction(async tx => {
+              await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+              const latest = await tx.session.findUnique({where:{id:sessionId}});
+              if ((latest?.metadata as Record<string, unknown> | null)?.currentItemId !== itemId ||
+                  latest?.status !== SessionStatus.IN_PROGRESS || await tx.response.count({where:{sessionId,itemId}}) > 0) {
+                throw new Error("Response must match the current unanswered item");
+              }
+              const saved = await tx.response.create({
                 data: {
                   sessionId,
                   itemId,
                   value: typeof value === 'string' ? value : JSON.stringify(value),
-          score,
+          score: requiresHumanReview ? null : score,
           adjustedScore:
             cfg.useRtIrt &&
             typeof clientLatencyMs === "number" &&
             clientLatencyMs > 0
               ? irtInputScore
               : null,
-          isCorrect: score >= 0.5,
+          isCorrect: requiresHumanReview ? null : score >= 0.5,
           isPretest: item.isPretest || dbItem.status === "PRETEST",
           aiScore: aiResult?.score,
           latencyMs: typeof clientLatencyMs === 'number' && clientLatencyMs > 0 ? clientLatencyMs : 0,
@@ -1147,14 +1072,15 @@ export const AssessmentService = {
             pendingAsyncScore: (aiResult as any).pendingAsyncScore ?? false,
           } : undefined
         } as any
-      }),
-      prisma.session.update({
+      });
+      await tx.session.update({
         where: { id: sessionId },
         data: {
           theta: newState.theta,
           sem: newState.sem,
           metadata: {
-            ...((session.metadata as Record<string, unknown> | null) || {}),
+            ...((latest?.metadata as Record<string, unknown> | null) || {}),
+            currentItemId: "",
             ...(newState.mstRouteKey != null ? { mstRouteKey: newState.mstRouteKey } : {}),
             ...(newState.skillProfiles && Object.keys(newState.skillProfiles).length
               ? { skillProfiles: newState.skillProfiles }
@@ -1163,15 +1089,16 @@ export const AssessmentService = {
               ? { mirtAbilityVector: newState.mirtAbilityVector }
               : {}),
             ...(newState.mirt2B ? { mirt2B: newState.mirt2B } : {}),
-          } as Prisma.InputJsonValue,
+          } as unknown as Prisma.InputJsonValue,
         }
-      })
-    ]);
+      });
+      return [saved];
+    });
 
     // Async AI scoring: dispatch WRITING / SPEAKING jobs to the queue (fire-and-forget).
     // The queue updates the response row when Gemini returns; the client polls for the score.
     if (scoringMode && (aiResult as any)?.pendingAsyncScore) {
-      const prompt = item.metadata?.prompt || "Please respond to the task.";
+      const prompt = buildScoringPrompt(item.metadata ?? {});
       void enqueueScoringJob({
         sessionId,
         responseId: savedResponse.id,
@@ -1226,7 +1153,7 @@ export const AssessmentService = {
       success: true, 
       theta: newState.theta, 
       sem: newState.sem,
-      isCorrect: score >= 0.5,
+      isCorrect: requiresHumanReview ? null : score >= 0.5,
       aiResult,
       skillProfiles: newState.skillProfiles
     };
@@ -1242,19 +1169,22 @@ export const AssessmentService = {
     opts?: { stopReason?: string | null }
   ) {
     const engine = await getEngine();
-    const cefrLevel = engine.mapToCefr(theta);
-
-    // Simple scaled score: map [-4,4] → [0,100]
-    const scaledScore = Math.max(0, Math.min(100, Math.round(((theta + 4) / 8) * 100)));
-
     // Fetch full session including responses and MIRT profiles stored in metadata
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
       include: { responses: { include: { item: true } } },
     });
 
+    if (!session) throw new Error("Session not found");
+    const itemDict = Object.fromEntries(session.responses.filter(r => r.item).map(r => [r.itemId, dbItemToEngineItem(r.item)]));
+    const state = toEngineState(session);
+    const estimate = estimateTheta(state.responses, itemDict, engine.getConfig().priorMean ?? 0,
+      engine.getConfig().priorSd ?? 1, { useGrmProductive: engine.getConfig().useGrmProductive === true });
+    theta = estimate.theta;
+    const sessionSem = estimate.sem;
+    const cefrLevel = engine.mapToCefr(theta);
+    const scaledScore = Math.max(0, Math.min(100, Math.round(((theta + 4) / 8) * 100)));
     // These values are needed for the Prisma transaction regardless of analysis outcome
-    const sessionSem = session?.sem ?? 1;
     const sessionMeta = (session?.metadata as Record<string, unknown> | null) ?? {};
     const sessionProductLine: string | null = (sessionMeta.productLine as string) ?? null;
     const sessionMstTrack: string | null = (sessionMeta.mstTrack as string) ?? null;
@@ -1274,6 +1204,8 @@ export const AssessmentService = {
       return metadata.pendingAsyncScore === true && metadata.asyncScored !== true;
     });
     const pendingAsyncScoring = pendingAsyncResponses.length > 0;
+    const scoringComplete = hasCompleteScoringEvidence(session.responses, Object.fromEntries(
+      sessionProfile.sectionOrder.map(skill => [skill,sessionProfile.sectionConfig[skill]?.minItems ?? 1])));
 
     // Initialize with safe defaults — overwritten by analysis block below if successful
     let skillScoresForDb: Record<string, number | null> = {
@@ -1657,6 +1589,7 @@ export const AssessmentService = {
       })();
 
       diagnosticReport = {
+        scoringComplete,
         overallTheta: theta,
         overallSem: sessionSem,
         overallCefr: cefrLevel,
@@ -1713,7 +1646,8 @@ export const AssessmentService = {
         where: { id: sessionId },
         data: {
           status: SessionStatus.COMPLETED,
-          completedAt: new Date(),
+          completedAt: session.completedAt ?? new Date(),
+          theta, sem: sessionSem,
           cefrLevel: cefrLevel as any,
           metadata: {
             ...sessionMeta,
@@ -1721,7 +1655,7 @@ export const AssessmentService = {
             skillProfiles: skillProfilesSnapshot,
             ...(sessionMstTrack != null ? { mstTrack: sessionMstTrack } : {}),
             stoppingRule,
-            ...(pendingAsyncScoring ? { pendingAsyncScoring: true, pendingCount: pendingAsyncResponses.length } : {}),
+            pendingAsyncScoring, pendingCount: pendingAsyncResponses.length,
           } as Prisma.InputJsonValue,
         }
       }),
@@ -1733,9 +1667,10 @@ export const AssessmentService = {
           overallScore: scaledScore,
           ...skillScoresForDb,
           diagnosticReport,
-          isVerified: true,
+          isVerified: scoringComplete,
         } as any,
         update: {
+          isVerified: scoringComplete,
           overallCefr: cefrLevel as any,
           overallScore: scaledScore,
           ...skillScoresForDb,
@@ -1743,6 +1678,30 @@ export const AssessmentService = {
         } as any,
       }),
     ]);
+  },
+
+  async refreshSessionScoring(sessionId: string) {
+    const engine = await getEngine();
+    const session = await prisma.session.findUnique({ where: { id: sessionId }, include: { responses: { include: { item: true } } } });
+    if (!session) return;
+    if (session.status === SessionStatus.COMPLETED) {
+      await this.finalizeSession(sessionId, session.theta);
+      return;
+    }
+    const items = Object.fromEntries(session.responses.filter(r => r.item).map(r => [r.itemId, dbItemToEngineItem(r.item)]));
+    const state = toEngineState(session);
+    const estimate = estimateTheta(state.responses, items, engine.getConfig().priorMean ?? 0,
+      engine.getConfig().priorSd ?? 1, { useGrmProductive: engine.getConfig().useGrmProductive === true });
+    const skillProfiles: Record<string, { theta: number; sem: number }> = {};
+    for (const skill of Object.values(SkillType)) {
+      const responses = state.responses.filter(r => !r.isPretest && items[r.itemId]?.skill === skill);
+      if (responses.length) skillProfiles[skill] = estimateTheta(responses, items, 0, 1,
+        { useGrmProductive: engine.getConfig().useGrmProductive === true });
+    }
+    await prisma.session.update({ where: { id: sessionId }, data: {
+      theta: estimate.theta, sem: estimate.sem,
+      metadata: { ...((session.metadata as Record<string, unknown>) ?? {}), skillProfiles } as Prisma.InputJsonValue,
+    } });
   },
 
   /**

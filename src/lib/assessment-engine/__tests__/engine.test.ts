@@ -176,10 +176,10 @@ describe("AssessmentEngine.mapToCefr", () => {
   it.each([
     [-5.0, "PRE_A1"],
     [-3.0, "A1"],
-    [-1.8, "A2"],
+    [-1.0, "A2"],
     [-0.2, "B1"],
     [ 1.2, "B2"],
-    [ 2.5, "C1"],
+    [ 2.0, "C1"],
     [ 4.0, "C2"],
   ] as const)("theta=%s → %s", (theta, expected) => {
     expect(engine.mapToCefr(theta)).toBe(expected);

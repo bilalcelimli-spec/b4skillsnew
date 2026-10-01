@@ -1,4 +1,4 @@
-import { probability, likelihood } from "./irt";
+import { probability } from "./irt";
 import { Response, Item, SkillType } from "./types";
 import {
   categoryProbability,
@@ -48,7 +48,8 @@ function grmParamsForItem(item: Item): GrmParameters {
 }
 
 function isGrmProductiveItem(item: Item): boolean {
-  return item.skill === SkillType.WRITING || item.skill === SkillType.SPEAKING;
+  return (item.skill === SkillType.WRITING || item.skill === SkillType.SPEAKING) &&
+    item.type !== "FILL_IN_BLANKS" && item.type !== "MULTIPLE_CHOICE" && item.type !== "DRAG_DROP";
 }
 
 /**
@@ -104,6 +105,7 @@ export function estimateTheta(
   priorSd = 1,
   options?: EstimateThetaOptions
 ): { theta: number; sem: number } {
+  if (!Number.isFinite(priorMean) || !Number.isFinite(priorSd) || priorSd <= 0) throw new Error("Invalid ability prior");
   if (responses.length === 0) {
     return { theta: priorMean, sem: priorSd };
   }
@@ -113,6 +115,12 @@ export function estimateTheta(
     return { theta: priorMean, sem: priorSd };
   }
 
+  for (const response of op) {
+    if (!items[response.itemId]) throw new Error(`Missing item parameters: ${response.itemId}`);
+    const params = items[response.itemId]!.params;
+    if (!Number.isFinite(params.a) || !Number.isFinite(params.b) || !Number.isFinite(params.c) || params.c < 0 || params.c >= 1) throw new Error("Invalid item parameters");
+    if (!Number.isFinite(response.score) || response.score < 0 || response.score > 1) throw new Error("Invalid response score");
+  }
   const useGrm = options?.useGrmProductive === true;
   const responseData = op.map((r) => ({
     score: r.score,
@@ -124,22 +132,17 @@ export function estimateTheta(
     ? DEFAULT_PRIOR_WEIGHTS
     : PRIOR_THETA_POINTS.map(t => normalDensity(t, priorMean, priorSd));
 
-  // Pre-compute likelihood × prior terms in a single pass.
-  // Previously the likelihood was evaluated twice (once for the mean, once for
-  // the variance), doubling the most expensive operation in the EAP loop.
-  // Caching in a typed Float64Array eliminates the second evaluation entirely.
-  const terms = new Float64Array(PRIOR_THETA_POINTS.length);
-  let denominator = 0;
-
-  for (let i = 0; i < PRIOR_THETA_POINTS.length; i++) {
-    const theta = PRIOR_THETA_POINTS[i]!;
-    const weight = priorWeights[i]!;
-    const l = useGrm
-      ? Math.exp(jointLogLikelihoodAt(theta, op, items))
-      : likelihood(theta, responseData);
-    terms[i] = l * weight;
-    denominator += terms[i]!;
-  }
+  // Work in log space so long sessions cannot underflow to a NaN estimate.
+  const logTerms = PRIOR_THETA_POINTS.map((theta, index) => {
+    const logLikelihood = useGrm ? jointLogLikelihoodAt(theta, op, items) : responseData.reduce((sum, response) => {
+      const p = Math.max(1e-10, Math.min(1 - 1e-10, probability(theta, response.params)));
+      return sum + response.score * Math.log(p) + (1 - response.score) * Math.log(1 - p);
+    }, 0);
+    return logLikelihood + Math.log(Math.max(priorWeights[index]!, Number.MIN_VALUE));
+  });
+  const maxLog = Math.max(...logTerms);
+  const terms = logTerms.map(value => Math.exp(value - maxLog));
+  const denominator = terms.reduce((sum, value) => sum + value, 0);
 
   // Mean (EAP) — reuse cached terms, no second likelihood evaluation
   let numerator = 0;

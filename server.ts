@@ -2,7 +2,6 @@ import "dotenv/config";
 // Observability bootstrap — Sentry + OpenTelemetry. Must run before any other import that might throw.
 import "./src/lib/observability/instrument.js";
 import * as Sentry from "@sentry/node";
-import PDFDocument from "pdfkit";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -27,6 +26,12 @@ import { CreateWebhookBody, BrandingPatchBody, UpdateSettingsBody, SsoConfigBody
 import { ProctoringAuditBody, ProctoringEventBody } from "./src/lib/security/schemas/proctoring.js";
 import { AITutorBody, SpeakingMultimodalBody } from "./src/lib/security/schemas/ai.js";
 import { GenerateCodesBody, RedeemCodeBody } from "./src/lib/security/schemas/codes.js";
+import { recordFreemiumScore, type FreemiumSkillBreakdown } from "./src/lib/product-lines/freemium-response-scoring.js";
+import { evaluateFreemiumResponse } from "./src/lib/product-lines/freemium-productive-scoring.js";
+import { estimateTheta as estimatePlacementTheta } from "./src/lib/assessment-engine/estimator.js";
+import { thetaToCefr as placementThetaToCefr } from "./src/lib/cefr/cefr-framework.js";
+import type { Response as PlacementResponse, Item as PlacementItem } from "./src/lib/assessment-engine/types.js";
+import { shouldExcludeResponseFromAbility } from "./src/lib/scoring/score-evidence.js";
 import { stripAnswerKeys } from "./src/lib/security/answer-sanitizer.js";
 import { staticCacheControl, noStoreMissingAsset } from "./src/lib/security/static-cache.js";
 import { uploadPrivateObject, downloadPrivateObject, storageReference, StorageConfigurationError } from "./src/lib/storage/private-storage.js";
@@ -96,11 +101,22 @@ async function startServer() {
     }
   }
 
+  if (dbAvailable) {
+    const { recoverPendingScoringJobs } = await import("./src/lib/scoring/scoring-queue.js");
+    void recoverPendingScoringJobs().catch(() => console.error("Could not recover pending scoring jobs"));
+  }
   app.use(buildHelmetMiddleware());
   app.use(buildCorsMiddleware());
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.use(cookieParser());
+  // A production database outage must never turn an assessment into demo scoring.
+  app.use("/api", (req, res, next) => {
+    if (process.env.NODE_ENV === "production" && !dbAvailable && !req.path.startsWith("/health")) {
+      return res.status(503).json({ error: "Assessment data service is unavailable. Please try again later." });
+    }
+    next();
+  });
 
   // ── White-label: resolve org by custom domain and attach to request ──────────
   // Runs before auth so every route can read req.whitelabelOrg.
@@ -1415,7 +1431,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           productLine
         );
       } catch (err: any) {
-        if (isDBError(err) || err.name === "PrismaClientInitializationError") {
+        if (process.env.NODE_ENV !== "production" && (isDBError(err) || err.name === "PrismaClientInitializationError")) {
           const { studioItems } = await import("./src/data/studioItems.js");
           const sId = "demo-session-" + Date.now();
           const filteredItems = productLine && productLine !== "General" && productLine !== "General English" ? studioItems.filter((i: any) => i.productLine === productLine) : studioItems;
@@ -1599,7 +1615,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       try {
         next = await AssessmentService.getNextItem(id);
       } catch(err: any) {
-        if (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-")) {
+        if (process.env.NODE_ENV !== "production" && (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-"))) {
           const sDate = mockSessions[id];
           if (!sDate) return res.json({ stop: true, finalTheta: 0 });
           if (sDate.progress >= sDate.items.length) {
@@ -1626,7 +1642,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       try {
         result = await AssessmentService.submitResponse(id, itemId, value, latencyMs);
       } catch(err: any) {
-        if (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-")) {
+        if (process.env.NODE_ENV !== "production" && (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-"))) {
           if (mockSessions[id]) mockSessions[id].progress++;
           const p = mockSessions[id]?.progress || 0;
           return res.json({ success: true, progress: p, theta: 0.5 + p * 0.2 });
@@ -1647,7 +1663,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       try {
         status = await AssessmentService.getSessionStatus(id);
       } catch(err: any) {
-        if (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-")) {
+        if (process.env.NODE_ENV !== "production" && (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-"))) {
           const sData = mockSessions[id];
           const pr = sData ? sData.progress : 0;
           const max = sData ? sData.items.length : 20;
@@ -3266,7 +3282,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   app.get("/api/rating/tasks", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
     try {
       const { status } = req.query;
-      const tasks = await RatingQueueService.getTasks(status as any);
+      const tasks = await RatingQueueService.getTasks(status as any, (req as any).user.id);
       res.json(tasks);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch rating tasks" });
@@ -3279,7 +3295,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (!body) return;
       const { id } = req.params;
       const { raterId } = body;
-      const task = await RatingQueueService.claimTask(id, raterId);
+      const task = await RatingQueueService.claimTask(id, (req as any).user.id);
       res.json(task);
     } catch (error) {
       res.status(500).json({ error: "Failed to claim task" });
@@ -3292,11 +3308,26 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (!body) return;
       const { id } = req.params;
       const { score, feedback } = body;
-      const task = await RatingQueueService.submitRating(id, score, feedback);
+      const task = await RatingQueueService.submitRating(id, score, feedback, (req as any).user.id);
       res.json(task);
     } catch (error) {
       res.status(500).json({ error: "Failed to submit rating" });
     }
+  });
+
+  app.post("/api/rating/tasks/:id/claim-second", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
+    try {
+      const task = await RatingQueueService.claimSecondRating(req.params.id, (req as any).user.id);
+      res.json(task);
+    } catch (error) { res.status(409).json({error:"The task requires a different available second rater"}); }
+  });
+  app.post("/api/rating/tasks/:id/submit-second", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
+    try {
+      const body = validate(RatingSubmitBody, req.body, res);
+      if (!body) return;
+      const task = await RatingQueueService.submitSecondRating(req.params.id, body.score, body.feedback, (req as any).user.id);
+      res.json(task);
+    } catch (error) { res.status(409).json({error:"Could not finalize the second rating"}); }
   });
 
   // --- BRANDING API ---
@@ -4454,11 +4485,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       // Calculate real-time insights based on current theta
       const { getEngine } = await import("./src/lib/assessment-engine/server-engine.js");
       const engine = await getEngine();
-      const cefrLevel = engine.mapToCefr(session.currentTheta || 0);
+      const cefrLevel = engine.mapToCefr(session.theta ?? 0);
       
       res.json({
         cefrLevel,
-        theta: session.currentTheta,
+        theta: session.theta,
         progress: session.responsesCount || 0,
         skills: await (async () => {
           // Compute skill scores from actual response data
@@ -4467,19 +4498,18 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
             include: { item: { select: { skill: true, type: true } } },
             take: 500,
           });
-          const skillBuckets: Record<string, { correct: number; total: number }> = {};
+          const { shouldExcludeResponseFromAbility } = await import("./src/lib/scoring/score-evidence.js");
+          const skillBuckets: Record<string, { scoreSum: number; total: number }> = {};
           for (const r of responses) {
+            if (shouldExcludeResponseFromAbility(r)) continue;
             const skill = (r.item?.skill ?? "UNKNOWN").toLowerCase();
-            if (!skillBuckets[skill]) skillBuckets[skill] = { correct: 0, total: 0 };
+            if (!skillBuckets[skill]) skillBuckets[skill] = { scoreSum: 0, total: 0 };
             skillBuckets[skill].total++;
-            // Numeric score > 0.5 or value === correctIndex treated as correct
-            const val = r.value as any;
-            const score = typeof val === "number" ? val : (val?.score ?? 0);
-            if (score > 0) skillBuckets[skill].correct++;
+            skillBuckets[skill].scoreSum += r.score ?? 0;
           }
           const pct = (sk: string) =>
             skillBuckets[sk]
-              ? Math.round((skillBuckets[sk].correct / skillBuckets[sk].total) * 100)
+              ? Math.round((skillBuckets[sk].scoreSum / skillBuckets[sk].total) * 100)
               : null;
           return {
             reading: pct("reading"),
@@ -4547,7 +4577,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const diagnostic = (session.scoreReport?.diagnosticReport as Record<string, any> | null) ?? {};
       const theta: number = diagnostic.overallTheta ?? session.currentTheta ?? session.theta ?? 0;
       const sem:   number = diagnostic.overallSem ?? session.sem ?? 0.5;
-      const level = thetaToCefr(theta);
+      const level = session.scoreReport?.overallCefr ?? session.cefrLevel ?? thetaToCefr(theta);
       const beps  = thetaToBeps(theta);
 
       // Build per-response entries
@@ -4564,49 +4594,19 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           latencyMs:  r.latencyMs ?? 0,
           rubricScores: responseMeta.rubricScores ?? undefined,
           aiFeedback:   responseMeta.aiFeedback ?? undefined,
-          pendingAsyncScore: responseMeta.pendingAsyncScore === true && responseMeta.asyncScored !== true,
+          pendingAsyncScore: !r.isPretest && shouldExcludeResponseFromAbility(r),
         };
       });
 
-      // Aggregate skill-level ability estimates from scoreReport or response data
-      const skillMap: Record<string, { thetas: number[]; sems: number[]; cefrLevel: string }> = {};
-      for (const r of responses) {
-        if (!skillMap[r.skill]) skillMap[r.skill] = { thetas: [], sems: [], cefrLevel: r.cefrLevel };
-        if (r.thetaAfter != null) skillMap[r.skill].thetas.push(r.thetaAfter);
-        if (r.semAfter   != null) skillMap[r.skill].sems.push(r.semAfter);
-      }
-      const skillScores: { skill: string; theta: number; sem: number; cefrLevel: string; ciLo: string; ciHi: string }[] =
-        Object.entries(skillMap).map(([skill, { thetas, sems }]) => {
-          const t  = thetas.length ? thetas[thetas.length - 1] : theta;
-          const s  = sems.length   ? sems[sems.length - 1]     : sem;
-          return {
-            skill, theta: t, sem: s,
-            cefrLevel: thetaToCefr(t),
-            ciLo: thetaToCefr(t - 1.96 * s),
-            ciHi: thetaToCefr(t + 1.96 * s),
-          };
-        });
-
-      // Supplement from scoreReport if available
+      // Use measured per-skill estimates; never copy the overall theta into each skill.
       const sr = session.scoreReport as any;
-      if (diagnostic.skillProfiles) {
-        try {
-          const parsed = diagnostic.skillProfiles;
-          for (const [sk, val] of Object.entries(parsed as Record<string, any>)) {
-            const existing = skillScores.find((s) => s.skill === sk.toUpperCase());
-            if (existing) {
-              existing.theta = val.theta ?? existing.theta;
-              existing.cefrLevel = thetaToCefr(existing.theta);
-              existing.ciLo = thetaToCefr(existing.theta - 1.96 * existing.sem);
-              existing.ciHi = thetaToCefr(existing.theta + 1.96 * existing.sem);
-            } else {
-              const t2  = val.theta ?? theta;
-              const s2  = val.sem ?? sem;
-              skillScores.push({ skill: sk.toUpperCase(), theta: t2, sem: s2, cefrLevel: thetaToCefr(t2), ciLo: thetaToCefr(t2 - 1.96 * s2), ciHi: thetaToCefr(t2 + 1.96 * s2) });
-            }
-          }
-        } catch {}
-      }
+      const profiles = diagnostic.skillProfiles ?? sessionMeta.skillProfiles ?? {};
+      const skillScores = Object.entries(profiles as Record<string, any>)
+        .filter(([skill, profile]) => Number.isFinite(profile.theta) && Number.isFinite(profile.sem) &&
+          session.responses.some((response: any) => response.item?.skill === skill.toUpperCase() && !shouldExcludeResponseFromAbility(response)))
+        .map(([skill, profile]) => ({skill:skill.toUpperCase(),theta:profile.theta,sem:profile.sem,
+          cefrLevel:profile.cefr ?? profile.cefrLevel ?? thetaToCefr(profile.theta),
+          ciLo:thetaToCefr(profile.theta - 1.96 * profile.sem),ciHi:thetaToCefr(profile.theta + 1.96 * profile.sem)}));
 
       res.json({
         sessionId: id,
@@ -4639,198 +4639,27 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const { id } = req.params;
     try {
       if (!(await assertSessionOwnership(req, res, id))) return;
-      const { thetaToCefr, thetaToBeps } = await import("./src/lib/cefr/cefr-framework.js");
-
-      const session = await (prisma.session.findUnique as any)({
+      const { buildAssessmentReport } = await import("./src/lib/reporting/assessment-report-model.js");
+      const { generateAssessmentReportPdf } = await import("./src/lib/reporting/assessment-report-pdf.js");
+      const session = await prisma.session.findUnique({
         where: { id },
         include: {
           candidate: { select: { name: true, email: true } },
           scoreReport: true,
-          responses: {
-            orderBy: { order: "asc" },
-            include: { item: { select: { skill: true, cefrLevel: true } } },
-          },
+          responses: { include: { item: { select: { skill: true } } } },
         },
-      }) as any;
-      if (!session) return res.status(404).json({ error: "Session not found" });
-
-      const sessionMeta = (session.metadata as Record<string, unknown> | null) ?? {};
-      const sr = session.scoreReport as any;
-      const diagnostic = (sr?.diagnosticReport as Record<string, any> | null) ?? {};
-      const theta: number = diagnostic.overallTheta ?? session.currentTheta ?? session.theta ?? 0;
-      const sem:   number = diagnostic.overallSem ?? session.sem ?? 0.5;
-      const cefr  = thetaToCefr(theta);
-      const beps  = thetaToBeps(theta);
-      const candidateName = session.candidate?.name ?? session.candidate?.email ?? "Candidate";
-      const completedAt = session.completedAt ?? session.updatedAt ?? new Date();
-      const dateStr = new Date(completedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
-      const productLine = diagnostic.productLine ?? sessionMeta.productLine ?? "English Assessment";
-      const safeFileName = `b4skills_report_${candidateName.replace(/[^a-zA-Z0-9]/g, "_")}_${new Date(completedAt).toISOString().slice(0, 10)}.pdf`;
-
-      // Build per-skill breakdown
-      const skillMap: Record<string, number[]> = {};
-      for (const [skill, profile] of Object.entries(diagnostic.skillProfiles ?? {})) {
-        const skillTheta = (profile as { theta?: unknown }).theta;
-        if (typeof skillTheta === "number") skillMap[skill] = [skillTheta];
-      }
-      for (const r of session.responses ?? []) {
-        const sk = r.item?.skill ?? "UNKNOWN";
-        if (!skillMap[sk]) skillMap[sk] = [theta];
-      }
-      const skills = Object.entries(skillMap).map(([skill, thetas]) => {
-        const t = thetas.length ? thetas[thetas.length - 1] : theta;
-        return { skill, theta: t, cefr: thetaToCefr(t) };
       });
-
-      // Override from scoreReport scored columns when available
-      const scoredFields: Record<string, number | null> = {
-        READING: sr?.readingScore ?? null, LISTENING: sr?.listeningScore ?? null,
-        WRITING: sr?.writingScore ?? null, SPEAKING: sr?.speakingScore ?? null,
-      };
-
-      const CEFR_HEX: Record<string, string> = {
-        PRE_A1: "#94a3b8", A1: "#64748b", A2: "#94a3b8",
-        B1: "#3b82f6", B2: "#1a56db", C1: "#7c3aed", C2: "#059669",
-      };
-      const bandHex = CEFR_HEX[cefr] ?? "#1a56db";
-      const SKILL_LABEL: Record<string, string> = {
-        READING: "Reading", LISTENING: "Listening", WRITING: "Writing",
-        SPEAKING: "Speaking", GRAMMAR: "Grammar", VOCABULARY: "Vocabulary",
-      };
-
-      const doc = new PDFDocument({ size: "A4", margin: 0, info: {
-        Title: `B4Skills Assessment Report — ${candidateName}`,
-        Author: "B4Skills Assessment Platform",
-        Subject: `CEFR ${cefr} English Assessment`,
-        CreationDate: new Date(),
-      }});
-
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      const report = buildAssessmentReport(session, APP_BASE_URL);
+      // Build before sending headers so a font/rendering failure returns JSON,
+      // never a partially streamed, corrupt PDF.
+      const buffer = await generateAssessmentReportPdf(report);
+      const fileDate = (report.completedAt ?? report.generatedAt).toISOString().slice(0, 10);
+      const safeName = report.candidateName.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 80);
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${safeFileName}"`);
-      doc.pipe(res);
-
-      const W = 595.28, H = 841.89;
-      const M = 48; // side margin
-
-      // ── Header band ─────────────────────────────────────────────────────
-      doc.rect(0, 0, W, 110).fill(bandHex);
-      doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(22).text("B4Skills", M, 28);
-      doc.font("Helvetica").fontSize(10).fillColor("rgba(255,255,255,0.8)").text("English Assessment Platform", M, 54);
-      doc.font("Helvetica").fontSize(10).fillColor("rgba(255,255,255,0.7)").text(dateStr, W - M - 120, 28, { width: 120, align: "right" });
-      doc.font("Helvetica").fontSize(10).fillColor("rgba(255,255,255,0.7)").text(productLine, W - M - 120, 44, { width: 120, align: "right" });
-
-      // ── CEFR badge (right side of header) ───────────────────────────────
-      const badgeX = W - M - 64, badgeY = 20, badgeW = 64, badgeH = 60;
-      doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 8).fillAndStroke("rgba(255,255,255,0.18)", "rgba(255,255,255,0.4)");
-      doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(26).text(cefr.replace("_", " "), badgeX, badgeY + 10, { width: badgeW, align: "center" });
-      doc.font("Helvetica").fontSize(8).fillColor("rgba(255,255,255,0.8)").text("CEFR LEVEL", badgeX, badgeY + 44, { width: badgeW, align: "center" });
-
-      // ── Candidate info section ───────────────────────────────────────────
-      let y = 128;
-      doc.fillColor("#1e293b").font("Helvetica-Bold").fontSize(18).text(candidateName, M, y);
-      y += 24;
-      doc.fillColor("#64748b").font("Helvetica").fontSize(10).text(session.candidate?.email ?? "", M, y);
-      y += 20;
-      doc.moveTo(M, y).lineTo(W - M, y).strokeColor("#e2e8f0").lineWidth(1).stroke();
-      y += 16;
-
-      // ── Score summary boxes ──────────────────────────────────────────────
-      const boxW = (W - M * 2 - 16) / 3;
-      const boxes = [
-        { label: "CEFR Level",  value: cefr.replace("_", " "), color: bandHex },
-        { label: "BEPS Score",  value: String(beps),            color: "#1a56db" },
-        { label: "Theta (θ)",   value: theta.toFixed(2),        color: "#7c3aed" },
-      ];
-      for (let i = 0; i < boxes.length; i++) {
-        const bx = M + i * (boxW + 8);
-        doc.roundedRect(bx, y, boxW, 68, 6).fill("#f8fafc");
-        doc.fillColor(boxes[i].color).font("Helvetica-Bold").fontSize(22).text(boxes[i].value, bx + 8, y + 10, { width: boxW - 16, align: "center" });
-        doc.fillColor("#94a3b8").font("Helvetica").fontSize(9).text(boxes[i].label, bx + 8, y + 42, { width: boxW - 16, align: "center" });
-      }
-      y += 84;
-
-      // Confidence interval line
-      const ciLo = thetaToCefr(theta - 1.96 * sem);
-      const ciHi = thetaToCefr(theta + 1.96 * sem);
-      doc.fillColor("#64748b").font("Helvetica").fontSize(9)
-        .text(`95% Confidence Interval: ${ciLo} – ${ciHi}  |  SEM: ${sem.toFixed(2)}`, M, y);
-      y += 20;
-      doc.moveTo(M, y).lineTo(W - M, y).strokeColor("#e2e8f0").lineWidth(1).stroke();
-      y += 16;
-
-      // ── Skill breakdown ──────────────────────────────────────────────────
-      doc.fillColor("#1e293b").font("Helvetica-Bold").fontSize(12).text("Skill Profile", M, y);
-      y += 18;
-
-      const DISPLAY_SKILLS = ["READING", "LISTENING", "WRITING", "SPEAKING", "GRAMMAR", "VOCABULARY"];
-      const colW = (W - M * 2 - 12) / 2;
-      let col = 0;
-      for (const skillKey of DISPLAY_SKILLS) {
-        const entry = skills.find((s) => s.skill === skillKey);
-        const t = entry?.theta ?? theta;
-        const band = entry?.cefr ?? cefr;
-        const hex = CEFR_HEX[band] ?? "#1a56db";
-        const scoredScore = scoredFields[skillKey];
-        const sx = M + col * (colW + 12);
-        const sy = y;
-        const rowH = 44;
-
-        doc.roundedRect(sx, sy, colW, rowH, 5).fill("#f8fafc");
-        // skill name
-        doc.fillColor("#1e293b").font("Helvetica-Bold").fontSize(10)
-          .text(SKILL_LABEL[skillKey] ?? skillKey, sx + 10, sy + 8);
-        // CEFR badge inline
-        doc.roundedRect(sx + colW - 52, sy + 8, 44, 20, 4).fill(hex + "22");
-        doc.fillColor(hex).font("Helvetica-Bold").fontSize(10)
-          .text(band.replace("_", " "), sx + colW - 52, sy + 13, { width: 44, align: "center" });
-        // theta bar
-        const barFull = colW - 20;
-        const frac = Math.min(1, Math.max(0, (t + 4) / 8));
-        doc.rect(sx + 10, sy + 32, barFull, 5).fill("#e2e8f0");
-        doc.rect(sx + 10, sy + 32, barFull * frac, 5).fill(hex);
-        // theta value
-        doc.fillColor("#64748b").font("Helvetica").fontSize(8)
-          .text(`θ ${t.toFixed(2)}${scoredScore != null ? "  |  " + scoredScore.toFixed(0) + " pts" : ""}`, sx + 10, sy + 24);
-
-        col++;
-        if (col >= 2) { col = 0; y += rowH + 8; }
-      }
-      if (col !== 0) y += 44 + 8;
-      y += 4;
-
-      // ── CEFR Scale bar ───────────────────────────────────────────────────
-      doc.moveTo(M, y).lineTo(W - M, y).strokeColor("#e2e8f0").lineWidth(1).stroke();
-      y += 14;
-      doc.fillColor("#1e293b").font("Helvetica-Bold").fontSize(12).text("CEFR Scale", M, y);
-      y += 14;
-      const levels = ["A1","A2","B1","B2","C1","C2"];
-      const segW = (W - M * 2) / levels.length;
-      for (let i = 0; i < levels.length; i++) {
-        const lv = levels[i];
-        const lx = M + i * segW;
-        const isActive = lv === cefr;
-        doc.rect(lx, y, segW - 2, 20).fill(isActive ? (CEFR_HEX[lv] ?? "#1a56db") : "#f1f5f9");
-        doc.fillColor(isActive ? "#ffffff" : "#94a3b8").font(isActive ? "Helvetica-Bold" : "Helvetica").fontSize(9)
-          .text(lv, lx, y + 5, { width: segW - 2, align: "center" });
-      }
-      y += 36;
-
-      // ── Certificate ID (if any) ──────────────────────────────────────────
-      const certificateId = sr?.isVerified ? sr.id : null;
-      if (certificateId) {
-        doc.fillColor("#64748b").font("Helvetica").fontSize(9)
-          .text(`Certificate ID: ${certificateId}`, M, y);
-        doc.fillColor("#3b82f6").font("Helvetica").fontSize(9)
-          .text(`Verify at: ${APP_BASE_URL}/verify/${certificateId}`, M + 200, y);
-        y += 16;
-      }
-
-      // ── Footer ───────────────────────────────────────────────────────────
-      doc.rect(0, H - 40, W, 40).fill("#f8fafc");
-      doc.fillColor("#94a3b8").font("Helvetica").fontSize(8)
-        .text("This report was generated by the B4Skills Adaptive Assessment Platform. Results are based on Item Response Theory (IRT).", M, H - 28, { width: W - M * 2, align: "center" });
-
-      doc.end();
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("Content-Disposition", `attachment; filename="b4skills_report_${safeName}_${fileDate}.pdf"`);
+      res.send(buffer);
     } catch (err) {
       console.error("PDF report error:", err);
       if (!res.headersSent) res.status(500).json({ error: "Failed to generate PDF" });
@@ -6073,7 +5902,11 @@ ${codeSection}
     theta: number; sem: number; items: any[]; usedIds: Set<string>;
     itemsAdministered: number; maxItems: number;
     name: string; email: string;
-    skillBreakdown: Record<string, { total: number; correct: number }>;
+    skillBreakdown: Record<string, FreemiumSkillBreakdown>;
+    responses: PlacementResponse[];
+    itemMeta: Record<string, PlacementItem>;
+    scoringInProgress: boolean;
+    currentItemId: string;
     createdAt: number;
   }> = {};
 
@@ -6085,16 +5918,11 @@ ${codeSection}
     }
   }, 30 * 60 * 1000); // runs every 30 min
 
-  const CEFR_BANDS: { level: string; minTheta: number }[] = [
-    { level: "C2", minTheta: 2.67 }, { level: "C1", minTheta: 1.67 },
-    { level: "B2", minTheta: 0.67 }, { level: "B1", minTheta: -0.33 },
-    { level: "A2", minTheta: -1.33 }, { level: "A1", minTheta: -Infinity },
-  ];
-  const thetaToCefr = (theta: number) => CEFR_BANDS.find(b => theta >= b.minTheta)?.level ?? "A1";
+  const thetaToCefr = placementThetaToCefr;
 
   // Freemium placement now covers ALL 6 macro skills (Q3 2026 expansion).
-  // Productive (WRITING/SPEAKING) responses are accepted as text/audio and IRT-
-  // scored on submission; deep AI scoring runs server-side via the scoring queue.
+  // Productive tasks are rubric-scored from actual text/audio. Unavailable or
+  // disputed evaluations are withheld from ability estimation.
   const FREEMIUM_PLACEMENT_SKILLS = ["GRAMMAR", "VOCABULARY", "READING", "LISTENING", "WRITING", "SPEAKING"];
 
   // Each skill must collect at least this many items before the test may stop —
@@ -6175,7 +6003,7 @@ ${codeSection}
       let allItems: any[] = [];
       try {
         const dbItems = await prisma.item.findMany({
-          where: { status: "ACTIVE" },
+          where: { status: "ACTIVE", isPretest: false },
           select: { id: true, skill: true, type: true, cefrLevel: true, content: true,
                     difficulty: true, discrimination: true, guessing: true, assets: true }
         });
@@ -6186,6 +6014,7 @@ ${codeSection}
             (opts ?? []).map(o => (typeof o === "string" ? o : String(o?.text ?? o)));
           const content = {
             ...raw,
+            audioUrl: raw?.audioUrl ?? it.assets.find(asset => asset.type === "AUDIO")?.url,
             options: raw?.options ? normalizeOptions(raw.options) : undefined,
             correctIndex: raw?.correctIndex ?? (Array.isArray(raw?.options)
               ? raw.options.findIndex((o: any) => typeof o === "object" && o?.isCorrect)
@@ -6198,6 +6027,7 @@ ${codeSection}
           };
         });
       } catch {
+        if (process.env.NODE_ENV === "production") return res.status(503).json({ error: "Item bank is unavailable" });
         // DB unavailable — fall back to studioItems
         const { studioItems } = await import("./src/data/studioItems.js");
         allItems = (studioItems as any[]).map((it: any) => ({
@@ -6208,7 +6038,19 @@ ${codeSection}
         }));
       }
 
-      if (!allItems.length) return res.status(503).json({ error: "No items available" });
+      allItems = allItems.filter(item => {
+        const content = item.content ?? {};
+        if (item.skill === "LISTENING" && !content.audioUrl) return false;
+        if (["WRITING", "SPEAKING"].includes(item.skill)) return !(content.options?.length) &&
+          item.type !== "FILL_IN_BLANKS" && item.type !== "DRAG_DROP" && item.type !== "INTEGRATED_TASK";
+        if (item.type === "MULTIPLE_CHOICE") return Array.isArray(content.options) && content.options.length >= 2 &&
+          ((Number.isInteger(content.correctIndex) && content.correctIndex >= 0 && content.correctIndex < content.options.length) ||
+            content.correctAnswer !== undefined || content.correctOption !== undefined);
+        return item.type === "FILL_IN_BLANKS" && !content.blanks?.length && content.correctAnswer !== undefined;
+      });
+      const missingSkills = FREEMIUM_PLACEMENT_SKILLS.filter(skill =>
+        allItems.filter(item => item.skill === skill).length < FREEMIUM_MIN_ITEMS_PER_SKILL);
+      if (missingSkills.length) return res.status(503).json({error: "Six-skill placement requires valid items and listening audio for every section", missingSkills});
 
       const pId = "placement-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
       const startTheta = 0.0;
@@ -6218,9 +6060,9 @@ ${codeSection}
       placementSessions[pId] = {
         theta: startTheta, sem: 1.5, items: allItems,
         usedIds: new Set([firstItem.id]),
-        itemsAdministered: 0, maxItems: 36,
+        itemsAdministered: 0, maxItems: FREEMIUM_PLACEMENT_SKILLS.length * FREEMIUM_MAX_ITEMS_PER_SKILL,
         name: guestName, email: guestEmail ?? "",
-        skillBreakdown: {},
+        skillBreakdown: {}, responses: [], itemMeta: {}, currentItemId: firstItem.id, scoringInProgress: false,
         createdAt: Date.now(),
       };
 
@@ -6229,7 +6071,7 @@ ${codeSection}
       return res.json({
         placementId: pId,
         firstItem: stripAnswers(firstItem),
-        maxItems: 36,
+        maxItems: FREEMIUM_PLACEMENT_SKILLS.length * FREEMIUM_MAX_ITEMS_PER_SKILL,
         sectionOrder: FREEMIUM_PLACEMENT_SKILLS,
       });
     } catch (err) {
@@ -6238,7 +6080,7 @@ ${codeSection}
     }
   });
 
-  app.post("/api/assessment/placement/:id/respond", express.json({ limit: "4kb" }), async (req, res) => {
+  app.post("/api/assessment/placement/:id/respond", placementLimiter, express.json({ limit: "14mb" }), async (req, res) => {
     try {
       const { id } = req.params;
       const sess = placementSessions[id];
@@ -6247,45 +6089,29 @@ ${codeSection}
       const { itemId, selectedOption, latencyMs } = req.body;
       const item = sess.items.find(it => it.id === itemId);
 
-      // Simple IRT-based theta update (EAP approximation)
-      if (item) {
-        const a = item.irtA ?? 1; const b = item.irtB ?? 0; const c = item.irtC ?? 0;
-        const correct = (() => {
-          if (selectedOption === "speaking_recorded") return true;
-          // Open-response (writing/speaking): any non-empty text answer is treated as
-          // correct for IRT purposes — the freemium test cannot machine-score prose.
-          if (
-            (item.type === "OPEN_RESPONSE" || item.skill === "WRITING") &&
-            typeof selectedOption === "string" &&
-            selectedOption.trim().length > 0
-          ) return true;
-          const ci = item.content?.correctIndex;
-          if (ci !== undefined && ci !== null) return Number(selectedOption) === ci;
-          const co = item.content?.correctOption || item.content?.correctAnswer;
-          if (co !== undefined) {
-             const normalizedInput = String(selectedOption || "").toLowerCase().trim();
-             const normalizedCorrect = String(co).toLowerCase().trim();
-             if (normalizedCorrect.includes("|")) {
-                const parts = normalizedCorrect.split("|").map(p => p.trim());
-                return parts.some(p => p === normalizedInput) || normalizedInput === normalizedCorrect;
-             }
-             return normalizedInput === normalizedCorrect;
-          }
-          return false;
-        })();
-
-        // Update skill breakdown
-        const sk = item.skill || "GENERAL";
-        if (!sess.skillBreakdown[sk]) sess.skillBreakdown[sk] = { total: 0, correct: 0 };
-        sess.skillBreakdown[sk].total++;
-        if (correct) sess.skillBreakdown[sk].correct++;
-
-        const p = c + (1 - c) / (1 + Math.exp(-1.702 * a * (sess.theta - b)));
-        const info = Math.pow(1.702 * a, 2) * p * (1 - p);
-        sess.theta += ((correct ? 1 : 0) - p) / Math.max(info, 0.01);
-        sess.theta = Math.max(-4, Math.min(4, sess.theta));
-        sess.sem = Math.max(0.1, 1 / Math.sqrt(Math.max(info, 0.01)));
+      if (sess.scoringInProgress || !item || itemId !== sess.currentItemId) {
+        return res.status(409).json({ error: "Response must match the current unanswered item" });
       }
+      sess.scoringInProgress = true;
+      let evaluation;
+      try { evaluation = await evaluateFreemiumResponse(item, selectedOption); }
+      finally { sess.scoringInProgress = false; }
+      recordFreemiumScore(sess.skillBreakdown, item.skill || "GENERAL", evaluation.score, evaluation.kind);
+      if (evaluation.status === "review_required") {
+        sess.skillBreakdown[item.skill].reviewRequired = (sess.skillBreakdown[item.skill].reviewRequired ?? 0) + 1;
+      }
+      if (evaluation.score !== null) {
+        sess.responses.push({ itemId, score: evaluation.score, latencyMs: Number(latencyMs) || 0 });
+        sess.itemMeta[itemId] = {
+          id: itemId, skill: item.skill, type: item.type,
+          params: { a: item.irtA ?? 1, b: item.irtB ?? 0, c: item.irtC ?? 0 },
+          isPretest: false, status: "ACTIVE", metadata: item.content,
+        };
+        const estimate = estimatePlacementTheta(sess.responses, sess.itemMeta, 0, 1, { useGrmProductive: true });
+        sess.theta = estimate.theta;
+        sess.sem = estimate.sem;
+      }
+      sess.currentItemId = "";
       sess.itemsAdministered++;
       // ── Stop condition (6-skill coverage required) ─────────────────────────
       // The session may stop only when every skill in FREEMIUM_PLACEMENT_SKILLS
@@ -6319,6 +6145,9 @@ ${codeSection}
           itemsAdministered: sess.itemsAdministered,
           completionMs,
           skillBreakdown: sess.skillBreakdown,
+          assessmentScope: "SCORED_EVIDENCE",
+          scoringComplete: Object.values(sess.skillBreakdown).every(skill => skill.unassessed === 0),
+          scoredItems: sess.responses.length,
           upgradePrompt: {
             message: "Unlock the full psychometric report — detailed error analysis, per-CEFR can-do breakdown, and a personalised study plan.",
             skills: ["Detailed Psychometrics", "Error Analysis", "Personalised Study Plan"],
@@ -6350,6 +6179,9 @@ ${codeSection}
           itemsAdministered: sess.itemsAdministered,
           completionMs,
           skillBreakdown: sess.skillBreakdown,
+          assessmentScope: "SCORED_EVIDENCE",
+          scoringComplete: Object.values(sess.skillBreakdown).every(skill => skill.unassessed === 0),
+          scoredItems: sess.responses.length,
           upgradePrompt: {
             message: "Unlock the full psychometric report — detailed error analysis, per-CEFR can-do breakdown, and a personalised study plan.",
             skills: ["Detailed Psychometrics", "Error Analysis", "Personalised Study Plan"],
@@ -6360,6 +6192,7 @@ ${codeSection}
         delete placementSessions[id];
         return res.json({ complete: true, result });
       }
+      sess.currentItemId = nextItem.id;
       sess.usedIds.add(nextItem.id);
       return res.json({
         complete: false, nextItem: stripAnswers(nextItem),
@@ -7627,7 +7460,7 @@ ${codeSection}
         const { itemId, value, latencyMs } = req.body;
         if (!itemId || value === undefined) return res.status(400).json({ error: "itemId and value required" });
         if (!(await assertSessionOwnership(req, res, req.params.id))) return;
-        const result = await DiagnosticService.respond(req.params.id, itemId, String(value), Number(latencyMs ?? 0));
+        const result = await DiagnosticService.respond(req.params.id, itemId, value, Number(latencyMs ?? 0));
         return res.json(result);
       } catch (err: any) {
         return res.status(400).json({ error: err.message });
@@ -7801,28 +7634,27 @@ ${codeSection}
           score: null,
           item: { skill: { in: ["SPEAKING", "WRITING"] } },
         },
-        include: { item: { select: { skill: true } }, session: true },
+        include: { item: { select: { skill: true, content: true } }, session: true },
       });
 
       if (pending.length === 0) return res.json({ ok: true, queued: 0 });
 
-      // Enqueue each unscored response through the scoring orchestrator if available
+      const { enqueueScoringJob, isScoringJobPending } = await import("./src/lib/scoring/scoring-queue.js");
       let queued = 0;
-      for (const r of pending as any[]) {
-        try {
-          const { ScoringOrchestrator } = await import("./src/lib/scoring/scoring-orchestrator.js");
-          const skill = r.item?.skill ?? "";
-          const content = r.value ?? r.artifactUrl ?? "";
-          if (skill === "WRITING" && content) {
-            await ScoringOrchestrator.scoreWriting(content, "Requeue scoring");
-          } else if (skill === "SPEAKING" && content) {
-            await ScoringOrchestrator.scoreSpeaking(content, "audio/webm", "Requeue scoring");
-          }
-          queued++;
-        } catch {
-          // scoring service unavailable — still count as acknowledged
-          queued++;
+      for (const r of pending) {
+        const skill = r.item?.skill;
+        if (skill !== "WRITING" && skill !== "SPEAKING") continue;
+        const metadata = (r.metadata as Record<string, unknown>) ?? {};
+        if (isScoringJobPending(r.id)) continue;
+        let value: string | { audio: string; mimeType: string } = r.value ?? "";
+        if (skill === "SPEAKING") {
+          try { value = JSON.parse(r.value ?? ""); } catch { continue; }
+          if (!value || typeof value !== "object" || !value.audio || !value.mimeType) continue;
         }
+        const content = (r.item.content as Record<string, unknown>) ?? {};
+        void enqueueScoringJob({sessionId, responseId:r.id, itemId:r.itemId, skill, value,
+          prompt: String(content.prompt ?? "Please respond to the task.")}).catch(() => undefined);
+        queued++;
       }
 
       return res.json({ ok: true, queued });

@@ -30,6 +30,7 @@
  */
 
 import crypto from "crypto";
+import { thetaToCefr as mapPlatformCefr } from "../cefr/cefr-framework.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -110,21 +111,8 @@ export interface PlacementResult {
 
 // ─── CEFR mapping ─────────────────────────────────────────────────────────────
 
-const CEFR_BANDS: Array<{ min: number; max: number; level: string }> = [
-  { min: 2.5, max: Infinity, level: "C2" },
-  { min: 1.5, max: 2.5, level: "C1" },
-  { min: 0.5, max: 1.5, level: "B2" },
-  { min: -0.5, max: 0.5, level: "B1" },
-  { min: -1.75, max: -0.5, level: "A2" },
-  { min: -3.0, max: -1.75, level: "A1" },
-  { min: -Infinity, max: -3.0, level: "PRE_A1" },
-];
-
 export function thetaToCefr(theta: number): string {
-  for (const band of CEFR_BANDS) {
-    if (theta >= band.min) return band.level;
-  }
-  return "PRE_A1";
+  return mapPlatformCefr(theta);
 }
 
 export function cefrConfidenceInterval(

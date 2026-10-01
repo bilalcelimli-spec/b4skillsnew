@@ -17,9 +17,15 @@
  *   • No time limit per item; overall 45-minute wall-clock limit
  */
 
-import { PrismaClient } from "@prisma/client";
+import { evaluateFreemiumResponse } from "../product-lines/freemium-productive-scoring.js";
+import { stripAnswerKeys } from "../security/answer-sanitizer.js";
+import { estimateTheta } from "./estimator.js";
+import { thetaToCefr } from "../cefr/cefr-framework.js";
+import type { Item, SkillType } from "./types.js";
+import { RatingQueueService } from "../scoring/rating-queue.js";
+import { shouldExcludeResponseFromAbility } from "../scoring/score-evidence.js";
+import { prisma } from "../prisma.js";
 
-const prisma = new PrismaClient();
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -30,78 +36,19 @@ export const DIAGNOSTIC_ITEMS_PER_SKILL = 5;
 export const DIAGNOSTIC_TOTAL_ITEMS     = SKILLS.length * DIAGNOSTIC_ITEMS_PER_SKILL; // 30
 export const DIAGNOSTIC_WALL_CLOCK_MS   = 45 * 60 * 1_000; // 45 min
 
-const CEFR_THETA_MAP: Array<{ band: string; lo: number; hi: number }> = [
-  { band: "A1", lo: -4.0, hi: -2.5 },
-  { band: "A2", lo: -2.5, hi: -1.0 },
-  { band: "B1", lo: -1.0, hi:  0.5 },
-  { band: "B2", lo:  0.5, hi:  1.5 },
-  { band: "C1", lo:  1.5, hi:  2.5 },
-  { band: "C2", lo:  2.5, hi:  4.0 },
-];
-
-function thetaToCefr(theta: number): string {
-  for (const { band, lo, hi } of CEFR_THETA_MAP) {
-    if (theta >= lo && theta < hi) return band;
-  }
-  return theta < -4 ? "A1" : "C2";
-}
-
-// ── IRT 3PL helpers ───────────────────────────────────────────────────────────
-
-/** 3PL item characteristic curve */
-function p3pl(theta: number, a: number, b: number, c: number): number {
-  return c + (1 - c) / (1 + Math.exp(-1.702 * a * (theta - b)));
-}
-
-/** Expected Fisher information */
-function itemInfo(theta: number, a: number, b: number, c: number): number {
-  const P = p3pl(theta, a, b, c);
-  const Q = 1 - P;
-  const num = (1.702 * a) ** 2 * (P - c) ** 2 * Q;
-  const den = (1 - c) ** 2 * P;
-  return num / (den || 1e-9);
-}
-
-/** EAP theta update after a single binary response */
-function updateThetaEAP(
-  prevTheta: number,
-  prevSem:   number,
-  isCorrect: boolean,
-  a: number, b: number, c: number
-): { theta: number; sem: number } {
-  const GRID_POINTS = 41;
-  const gridStep    = 8 / (GRID_POINTS - 1);
-  let numerator = 0, denominator = 0;
-
-  for (let i = 0; i < GRID_POINTS; i++) {
-    const th  = -4 + i * gridStep;
-    const P   = p3pl(th, a, b, c);
-    const lik = isCorrect ? P : 1 - P;
-    // Prior: N(prevTheta, prevSem²)
-    const prior = Math.exp(-0.5 * ((th - prevTheta) / prevSem) ** 2);
-    const w = lik * prior;
-    numerator   += th * w;
-    denominator += w;
-  }
-
-  const newTheta = denominator > 0 ? numerator / denominator : prevTheta;
-  const info     = itemInfo(newTheta, a, b, c);
-  const newSem   = Math.min(prevSem, 1 / Math.sqrt(info || 1));
-  return { theta: Math.max(-4, Math.min(4, newTheta)), sem: Math.max(0.01, newSem) };
-}
-
 // ── DiagnosticSession state ───────────────────────────────────────────────────
 
 export interface DiagnosticItemRecord {
   itemId:       string;
   skill:        Skill;
+  type?:        string;
   irtA:         number;
   irtB:         number;
   irtC:         number;
   cefrLevel:    string;
   answered:     boolean;
   isCorrect?:   boolean;
-  score?:       number;
+  score?:       number | null;
   answeredAt?:  string;
   latencyMs?:   number;
 }
@@ -146,18 +93,20 @@ async function saveState(sessionId: string, state: DiagnosticSessionState): Prom
 // ── Item selection ────────────────────────────────────────────────────────────
 
 async function selectItemsForSkill(skill: Skill, usedIds: Set<string>, count: number): Promise<DiagnosticItemRecord[]> {
-  const items = await prisma.item.findMany({
+  const candidates = await prisma.item.findMany({
     where: {
       skill:      skill as any,
       status:     "ACTIVE",
+      isPretest: false,
       id:         { notIn: [...usedIds] },
       // spread across difficulty
     },
-    select: { id: true, skill: true, cefrLevel: true, discrimination: true, difficulty: true, guessing: true },
+    select: { id: true, skill: true, type: true, cefrLevel: true, discrimination: true, difficulty: true, guessing: true, content: true, assets: {select:{type:true,url:true}} },
     orderBy: { difficulty: "asc" },
     take: count * 4,
   });
 
+  const items = candidates.filter(item => skill !== "LISTENING" || (item.content as any)?.audioUrl || item.assets.some(asset=>asset.type === "AUDIO"));
   if (items.length === 0) return [];
 
   // Pick items spread across CEFR bands (A2, B1, B2 as the diagnostic core)
@@ -169,6 +118,7 @@ async function selectItemsForSkill(skill: Skill, usedIds: Set<string>, count: nu
     if (!pick) continue;
     selected.push({
       itemId:    pick.id,
+      type:      pick.type,
       skill:     pick.skill as Skill,
       irtA:      pick.discrimination ?? 1.0,
       irtB:      pick.difficulty     ?? 0.0,
@@ -191,6 +141,17 @@ export class DiagnosticService {
     totalItems: number;
     expiresAt: string;
   }> {
+    // Select items for all skills
+    const usedIds = new Set<string>();
+    const skillStates: Record<string, DiagnosticSkillState> = {};
+
+    for (const skill of SKILLS) {
+      const items = await selectItemsForSkill(skill, usedIds, DIAGNOSTIC_ITEMS_PER_SKILL);
+      if (items.length < DIAGNOSTIC_ITEMS_PER_SKILL) throw new Error(`Diagnostic requires ${DIAGNOSTIC_ITEMS_PER_SKILL} valid items for ${skill}`);
+      items.forEach((it) => usedIds.add(it.itemId));
+      skillStates[skill] = { theta: 0, sem: 1, answered: 0, items };
+    }
+
     // Create Session row
     const session = await prisma.session.create({
       data: {
@@ -202,16 +163,6 @@ export class DiagnosticService {
         metadata: { sessionType: "DIAGNOSTIC" },
       },
     });
-
-    // Select items for all skills
-    const usedIds = new Set<string>();
-    const skillStates: Record<string, DiagnosticSkillState> = {};
-
-    for (const skill of SKILLS) {
-      const items = await selectItemsForSkill(skill, usedIds, DIAGNOSTIC_ITEMS_PER_SKILL);
-      items.forEach((it) => usedIds.add(it.itemId));
-      skillStates[skill] = { theta: 0, sem: 1, answered: 0, items };
-    }
 
     const now       = new Date();
     const expiresAt = new Date(now.getTime() + DIAGNOSTIC_WALL_CLOCK_MS).toISOString();
@@ -233,7 +184,7 @@ export class DiagnosticService {
     if (!first) throw new Error("No items available for diagnostic");
 
     const itemRow = await prisma.item.findUnique({ where: { id: first.itemId }, include: { assets: true } });
-    return { sessionId: session.id, firstItem: { ...first, content: itemRow?.content ?? {} }, totalItems: DIAGNOSTIC_TOTAL_ITEMS, expiresAt };
+    return { sessionId: session.id, firstItem: { ...first, content: stripAnswerKeys({...((itemRow?.content ?? {}) as Record<string, unknown>),audioUrl:(itemRow?.content as any)?.audioUrl ?? itemRow?.assets.find(asset=>asset.type === "AUDIO")?.url}) }, totalItems: DIAGNOSTIC_TOTAL_ITEMS, expiresAt };
   }
 
   /** Return the next unanswered item (cycles through skills in round-robin) */
@@ -251,7 +202,7 @@ export class DiagnosticService {
   static async respond(
     sessionId: string,
     itemId:    string,
-    value:     string,
+    value:     unknown,
     latencyMs: number,
   ): Promise<{
     complete:      boolean;
@@ -275,55 +226,35 @@ export class DiagnosticService {
     }
     if (!foundItem || !foundSkill) throw new Error("Item not found in session");
     if (foundItem.answered) throw new Error("Item already answered");
+    if (DiagnosticService._nextItem(state)?.itemId !== itemId) throw new Error("Response must match the current unanswered item");
 
     // Score — fetch item to get correct answer
     const itemRow = await prisma.item.findUnique({ where: { id: itemId } });
     const content  = (itemRow?.content ?? {}) as any;
-    let isCorrect  = false;
-    let score      = 0;
-
-    if (content.correctIndex !== undefined) {
-      const idx = parseInt(value, 10);
-      isCorrect = idx === content.correctIndex;
-      score     = isCorrect ? 1 : 0;
-    } else if (typeof value === "string" && value.length > 0) {
-      // Open-response: mark as 0.5 pending human/AI scoring
-      score     = 0.5;
-      isCorrect = true;
-    }
-
-    // Update item
-    foundItem.answered   = true;
-    foundItem.isCorrect  = isCorrect;
-    foundItem.score      = score;
-    foundItem.latencyMs  = latencyMs;
+    if (!itemRow) throw new Error("Item not found");
+    const input = itemRow.type === "MULTIPLE_CHOICE" && typeof value === "string" && /^[A-Z]$/i.test(value.trim())
+      ? value.trim().toUpperCase().charCodeAt(0) - 65 : value;
+    const options = Array.isArray(content.options) ? content.options.map((option: any) => typeof option === "string" ? option : option.text) : undefined;
+    const flaggedIndex = Array.isArray(content.options) ? content.options.findIndex((option: any) => option?.isCorrect === true) : -1;
+    const evaluation = await evaluateFreemiumResponse({skill:foundSkill,type:itemRow.type,content:{...content, options,
+      correctIndex:content.correctIndex ?? (flaggedIndex >= 0 ? flaggedIndex : undefined)}}, input);
+    const score = evaluation.score;
+    const isCorrect = score === null ? null : score >= .5;
+    foundItem.answered = true;
+    foundItem.isCorrect = isCorrect ?? undefined;
+    foundItem.score = score;
+    foundItem.latencyMs = latencyMs;
     foundItem.answeredAt = new Date().toISOString();
-
-    // IRT update for the skill
     const skillState = state.skills[foundSkill];
-    const { theta: newTheta, sem: newSem } = updateThetaEAP(
-      skillState.theta, skillState.sem, isCorrect,
-      foundItem.irtA, foundItem.irtB, foundItem.irtC,
-    );
-    skillState.theta   = newTheta;
-    skillState.sem     = newSem;
+    const evidence = skillState.items.filter(item => item.answered && item.score != null);
+    const itemDict: Record<string, Item> = Object.fromEntries(evidence.map(item => [item.itemId, {
+      id:item.itemId,skill:foundSkill as SkillType,type:item.type,params:{a:item.irtA,b:item.irtB,c:item.irtC},isPretest:false,status:"ACTIVE",
+    }]));
+    const estimate = estimateTheta(evidence.map(item => ({itemId:item.itemId,score:item.score!})),itemDict,0,1,{useGrmProductive:true});
+    skillState.theta = estimate.theta;
+    skillState.sem = estimate.sem;
     skillState.answered++;
     state.totalAnswered++;
-
-    // Persist Response row
-    await prisma.response.create({
-      data: {
-        sessionId,
-        itemId,
-        value,
-        isCorrect,
-        score,
-        isPretest: false,
-        latencyMs,
-        order: state.totalAnswered,
-        metadata: { diagnosticSkill: foundSkill },
-      },
-    });
 
     // Check completion
     const allDone = SKILLS.every((s) => state.skills[s].answered >= DIAGNOSTIC_ITEMS_PER_SKILL);
@@ -340,25 +271,43 @@ export class DiagnosticService {
     }
     const overallTheta = wTheta / wSum;
 
-    if (state.complete) {
-      await prisma.session.update({
-        where: { id: sessionId },
-        data: {
-          status:      "COMPLETED",
-          theta:       overallTheta,
-          cefrLevel:   thetaToCefr(overallTheta) as any,
-          completedAt: new Date(),
-        },
-      });
-    }
+    await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+      const current = await tx.session.findUnique({where:{id:sessionId}});
+      const currentState = (current?.metadata as any)?.diagnosticState as DiagnosticSessionState | undefined;
+      if (!currentState || currentState.complete || DiagnosticService._nextItem(currentState)?.itemId !== itemId ||
+          await tx.response.count({where:{sessionId,itemId}}) > 0) throw new Error("Response must match the current unanswered item");
+    // Persist Response row
+    await tx.response.create({
+      data: {
+        sessionId,
+        itemId,
+        value: typeof value === "string" ? value : JSON.stringify(value),
+        isCorrect,
+        score,
+        isPretest: false,
+        latencyMs,
+        order: state.totalAnswered,
+        metadata: { diagnosticSkill: foundSkill, requiresHumanReview: score === null,
+          scoreSource: score === null ? "ai_flagged" : evaluation.kind === "rubric" ? "ai_auto" : "objective",
+          aiFeedback: evaluation.feedback, },
+      },
+    });
 
-    await saveState(sessionId, state);
+      await tx.session.update({where:{id:sessionId},data:{
+        metadata:{...((current?.metadata as any) ?? {}),diagnosticState:state},
+        theta:overallTheta,sem:Math.max(...SKILLS.map(skill=>state.skills[skill].sem)),
+        ...(state.complete ? {status:"COMPLETED",cefrLevel:thetaToCefr(overallTheta) as any,completedAt:new Date()} : {}),
+      }});
+    });
+    if (score === null) await RatingQueueService.enqueue({sessionId,itemId,type:foundSkill === "SPEAKING" ? "SPEAKING" : "WRITING",content:typeof value === "string" ? value : JSON.stringify(value)});
+
 
     const skillThetas = Object.fromEntries(
       SKILLS.map((s) => [s, {
         theta:    state.skills[s].theta,
         sem:      state.skills[s].sem,
-        cefrBand: thetaToCefr(state.skills[s].theta),
+        cefrBand: state.skills[s].items.some(item => item.answered && item.score != null) ? thetaToCefr(state.skills[s].theta) : "UNKNOWN",
       }])
     ) as Record<Skill, { theta: number; sem: number; cefrBand: string }>;
 
@@ -366,7 +315,7 @@ export class DiagnosticService {
     let nextItem: (DiagnosticItemRecord & { content: any }) | undefined;
     if (nextRaw) {
       const nextRow = await prisma.item.findUnique({ where: { id: nextRaw.itemId }, include: { assets: true } });
-      nextItem = { ...nextRaw, content: nextRow?.content ?? {} };
+      nextItem = { ...nextRaw, content: stripAnswerKeys({...((nextRow?.content ?? {}) as Record<string, unknown>),audioUrl:(nextRow?.content as any)?.audioUrl ?? nextRow?.assets.find(asset=>asset.type === "AUDIO")?.url}) };
     }
 
     return {
@@ -395,9 +344,22 @@ export class DiagnosticService {
     const state = await loadState(sessionId);
     if (!state) throw new Error("Session not found");
 
-    const session = await prisma.session.findUnique({ where: { id: sessionId } });
+    const session = await prisma.session.findUnique({ where: { id: sessionId }, include:{responses:{include:{item:true}}} });
     if (!session?.completedAt) throw new Error("Session not yet complete");
 
+    if (session.responses.some(response => shouldExcludeResponseFromAbility(response) && !response.isPretest)) {
+      throw new Error("Diagnostic scoring is incomplete; unresolved responses require review");
+    }
+    for (const skill of SKILLS) {
+      const responses = session.responses.filter(response => response.item.skill === skill && !shouldExcludeResponseFromAbility(response));
+      if (!responses.length) throw new Error("Diagnostic scoring lacks evidence for a required skill");
+      const items: Record<string, Item> = Object.fromEntries(responses.map(response => [response.itemId, {
+        id:response.itemId, skill:skill as SkillType, type:response.item.type,
+        params:{a:response.item.discrimination,b:response.item.difficulty,c:response.item.guessing},isPretest:false,status:"ACTIVE",
+      }]));
+      const estimate = estimateTheta(responses.map(response => ({itemId:response.itemId,score:response.score!})),items,0,1,{useGrmProductive:true});
+      state.skills[skill].theta=estimate.theta; state.skills[skill].sem=estimate.sem;
+    }
     const skillResults = SKILLS.map((s) => {
       const st = state.skills[s];
       // Rough percentile from theta (normal distribution approximation)

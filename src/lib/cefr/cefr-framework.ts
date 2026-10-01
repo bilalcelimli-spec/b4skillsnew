@@ -162,13 +162,15 @@ export const CEFR_META: Record<CefrLevel, CefrLevelMeta> = Object.fromEntries(
 // 2. THETA ↔ CEFR MAPPING (canonical — shared by engine, frontend, server)
 // Cambridge Research Notes 2012 cut-scores on [-4, 4] IRT scale
 // ─────────────────────────────────────────────────────────────────────────────
+// Upper boundaries of the platform's displayed bands. These are provisional
+// platform defaults, not a substitute for empirical CEFR standard setting.
 export const CEFR_THETA_THRESHOLDS: Record<string, number> = {
-  PRE_A1: -4.0,
-  A1:     -2.5,
-  A2:     -1.0,
-  B1:      0.5,
-  B2:      2.0,
-  C1:      3.5,
+  PRE_A1: CEFR_META.PRE_A1.theta.max,
+  A1: CEFR_META.A1.theta.max,
+  A2: CEFR_META.A2.theta.max,
+  B1: CEFR_META.B1.theta.max,
+  B2: CEFR_META.B2.theta.max,
+  C1: CEFR_META.C1.theta.max,
 };
 
 export function thetaToCefr(theta: number): CefrLevel {

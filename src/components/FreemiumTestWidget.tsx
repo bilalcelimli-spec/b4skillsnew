@@ -57,7 +57,10 @@ interface PlacementResult {
   cefrRange?: string;
   itemsAdministered: number;
   completionMs: number;
-  skillBreakdown?: Record<string, { total: number; correct: number }>;
+  skillBreakdown?: Record<string, { total: number; correct: number; scored?: number; unassessed?: number; scoreSum?: number; scoringKind?: "objective" | "rubric"; reviewRequired?: number }>;
+  assessmentScope?: "OBJECTIVE_ITEMS_ONLY" | "SCORED_EVIDENCE";
+  scoringComplete?: boolean;
+  scoredItems?: number;
   upgradePrompt: {
     message: string;
     skills: string[];
@@ -315,6 +318,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
   const [isRecording, setIsRecording] = useState(false);
   const [hasRecording, setHasRecording] = useState(false);
   const [speakingAudioUrl, setSpeakingAudioUrl] = useState<string | null>(null);
+  const speakingBlobRef = useRef<Blob | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const speakingChunksRef = useRef<Blob[]>([]);
   const currentItemRef = useRef<any>(null);
@@ -331,6 +335,8 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
         onClose();
         return;
       }
+      if (e.target instanceof HTMLElement && (e.target.matches("textarea, input") || e.target.isContentEditable) &&
+          !(e.key === "Enter" && (e.ctrlKey || e.metaKey))) return;
       if (step === "question" && !loading) {
         const isFIB = currentItem?.type === "FILL_IN_BLANKS" || !!currentItem?.content.scaffold;
         if (!isFIB && currentItem?.content.options) {
@@ -371,7 +377,8 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
     setAutoAdvancing(false);
     setIsRecording(false);
     setHasRecording(false);
-    setSpeakingAudioUrl(null);
+    speakingBlobRef.current = null;
+    setSpeakingAudioUrl(previous => { if (previous) URL.revokeObjectURL(previous); return null; });
     speakingChunksRef.current = [];
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       try {
@@ -389,7 +396,13 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
   // Lock body scroll
   useEffect(() => {
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+      currentItemRef.current = null;
+      const recorder = mediaRecorderRef.current;
+      recorder?.stream.getTracks().forEach(track => track.stop());
+      if (recorder && recorder.state !== "inactive") recorder.stop();
+    };
   }, []);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -445,7 +458,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
     const isSpeaking = currentItem.skill === "SPEAKING" && !isFIB && (currentItem.content.options ?? []).length === 0;
     const isWriting = currentItem.skill === "WRITING" && !isFIB && (currentItem.content.options ?? []).length === 0;
     if (isFIB && !inputAnswer.trim()) return;
-    if (isSpeaking && !hasRecording) return;
+    if (isSpeaking && (!hasRecording || !speakingBlobRef.current)) return;
     if (isWriting && !inputAnswer.trim()) return;
     const answer = isFIB
       ? inputAnswer.trim()
@@ -459,11 +472,22 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
     setLoading(true);
     setError(null);
     try {
+      let submittedAnswer: unknown = answer;
+      if (isSpeaking && speakingBlobRef.current) {
+        const blob = speakingBlobRef.current;
+        const audio = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+          reader.onerror = () => reject(new Error("Could not read the recording"));
+          reader.readAsDataURL(blob);
+        });
+        submittedAnswer = { audio, mimeType: blob.type };
+      }
       const res = await fetch(`/api/assessment/placement/${placementId}/respond`, {
         credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId: currentItem.id, selectedOption: answer, latencyMs }),
+        body: JSON.stringify({ itemId: currentItem.id, selectedOption: submittedAnswer, latencyMs }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to submit response");
@@ -677,7 +701,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                 icon: <Star size={22} className="text-amber-500" />,
                 bg: "bg-amber-50 border-amber-200",
                 title: `Covers ${sectionOrder.length} Skills`,
-                body: `${sectionOrder.map(s => s.charAt(0) + s.slice(1).toLowerCase()).join(", ")}. Give each question your best effort.`,
+                body: `${sectionOrder.map(s => s.charAt(0) + s.slice(1).toLowerCase()).join(", ")}. The level estimate uses answer keys and rubric-scored writing and audio. Unavailable or disputed evaluations are shown explicitly.`,
               },
               {
                 icon: <Shield size={22} className="text-green-600" />,
@@ -915,8 +939,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                           if (isRecording) {
                             mediaRecorderRef.current?.stop();
                             setIsRecording(false);
-                            // Mark recording as ready immediately — don't wait for async onstop
-                            setHasRecording(true);
+                            // onstop marks the recording ready after the final audio chunk arrives.
                           } else {
                             try {
                               const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -927,22 +950,26 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                                   ? 'audio/webm' 
                                   : 'audio/mp4';
 
+                              if (currentItemRef.current?.id !== currentItemId) { stream.getTracks().forEach(track => track.stop()); return; }
                               const mr = new MediaRecorder(stream, { mimeType });
+                              const recordingChunks: Blob[] = [];
                               mediaRecorderRef.current = mr;
                               speakingChunksRef.current = [];
                               
                               mr.ondataavailable = (e) => { 
-                                if (e.data.size > 0) speakingChunksRef.current.push(e.data); 
+                                if (e.data.size > 0) recordingChunks.push(e.data);
                               };
                               
                               mr.onstop = () => {
                                 stream.getTracks().forEach(t => t.stop());
-                                const blob = new Blob(speakingChunksRef.current, { type: mimeType });
-                                // Update audio URL regardless of item guard so playback works;
-                                // hasRecording is already set synchronously by the stop-button click.
+                                const blob = new Blob(recordingChunks, { type: mimeType });
+                                if (currentItemRef.current?.id !== currentItemId) return;
                                 if (blob.size > 0) {
-                                  setSpeakingAudioUrl(URL.createObjectURL(blob));
-                                }
+                                  speakingBlobRef.current = blob;
+                                  setSpeakingAudioUrl(previous => { if (previous) URL.revokeObjectURL(previous); return URL.createObjectURL(blob); });
+                                  setHasRecording(true);
+                                } else { setError("The recording was empty. Please record again."); }
+
                               };
 
                               mr.onerror = (e: any) => {
@@ -954,7 +981,8 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                               mr.start(100); // 100 ms timeslice ensures ondataavailable fires for short recordings
                               setIsRecording(true);
                               setHasRecording(false);
-                              setSpeakingAudioUrl(null);
+                              speakingBlobRef.current = null;
+                              setSpeakingAudioUrl(previous => { if (previous) URL.revokeObjectURL(previous); return null; });
                             } catch (err: any) {
                               console.error("Recording error:", err);
                               setError(err.name === "NotAllowedError" 
@@ -1140,6 +1168,12 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
 
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
               <h2 className="text-2xl font-black text-slate-900">Your estimated level</h2>
+              {result.assessmentScope === "SCORED_EVIDENCE" && (
+                <p className="text-sm text-slate-500 mt-2">Provisional estimate from scored responses.{result.scoringComplete === false ? " Some responses could not be evaluated or require review; this is not a complete six-skill result." : ""}</p>
+              )}
+              {result.assessmentScope === "OBJECTIVE_ITEMS_ONLY" && (
+                <p className="text-sm text-slate-500 mt-2">Provisional estimate from objectively scored questions. Open writing and speaking responses were not evaluated and do not contribute to this level.</p>
+              )}
               <p className="text-slate-500 mt-1 text-sm leading-relaxed max-w-xs">{meta.tagline}</p>
             </motion.div>
 
@@ -1239,7 +1273,8 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
             {/* Can-do statements */}
             {CEFR_CAN_DO[cefrKey] && (
               <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 space-y-3">
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">What You Can Do at This Level</div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Typical Skills at This Level</div>
+                <p className="text-xs text-slate-500">These are general level descriptors, not verified abilities. Skill scores are estimates from the responses evaluated in this test.</p>
                 <ul className="space-y-2">
                   {CEFR_CAN_DO[cefrKey].map((stmt, i) => (
                     <motion.li
@@ -1263,7 +1298,10 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                 <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Performance by Skill</div>
                 <div className="space-y-3">
                   {Object.entries(result.skillBreakdown).map(([skill, data]) => {
-                    const pct = data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0;
+                    const scored = data.scored ?? data.total;
+                    const unassessed = data.unassessed ?? 0;
+                    const rubric = data.scoringKind === "rubric";
+                    const pct = scored > 0 ? Math.round(((rubric ? data.scoreSum ?? 0 : data.correct) / scored) * 100) : 0;
                     const m = SKILL_META[skill] ?? { color: "text-slate-600", bg: "bg-slate-100", icon: null };
                     return (
                       <div key={skill}>
@@ -1271,9 +1309,9 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                           <div className={cn("flex items-center gap-1.5 text-xs font-bold", m.color)}>
                             {m.icon} {skill.charAt(0) + skill.slice(1).toLowerCase()}
                           </div>
-                          <span className="text-xs font-mono font-bold text-slate-500">{data.correct}/{data.total} correct</span>
+                          <span className="text-xs font-mono font-bold text-slate-500">{scored > 0 ? rubric ? `${pct}/100 rubric score` : `${data.correct}/${scored} correct` : (data.reviewRequired ? "Review required" : "Not assessed")}{unassessed > 0 && scored > 0 ? ` · ${unassessed} not assessed` : ""}</span>
                         </div>
-                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                        {scored > 0 && <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
                           <motion.div
                             initial={{ width: 0 }}
                             animate={{ width: `${pct}%` }}
@@ -1281,7 +1319,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                             className="h-full rounded-full"
                             style={{ backgroundColor: colors.accent }}
                           />
-                        </div>
+                        </div>}
                       </div>
                     );
                   })}

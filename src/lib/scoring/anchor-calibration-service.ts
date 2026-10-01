@@ -115,7 +115,7 @@ export const AnchorCalibrationService = {
     if (anchorSet.length === 0) {
       return {
         totalItems: 0, scoredItems: 0, mae: 0, rmse: 0, pearsonR: 0,
-        biasDirection: "neutral", meetsThreshold: true,
+        biasDirection: "neutral", meetsThreshold: false,
         details: [], runAt: new Date().toISOString(),
       };
     }
@@ -130,16 +130,19 @@ export const AnchorCalibrationService = {
           let aiScore: number;
           if (item.skill === "WRITING") {
             const result = await ScoringOrchestrator.scoreWriting(item.content, item.prompt);
+            if (result.scoreSource === "ai_unavailable" || !Number.isFinite(result.score)) throw new Error("Anchor scoring unavailable");
             aiScore = result.score;
           } else {
             if (item.mimeType && item.content.length > 100) {
               const result = await ScoringOrchestrator.scoreSpeaking(
                 item.content, item.mimeType, item.prompt);
-              aiScore = result.score;
+              if (result.scoreSource === "ai_unavailable" || !Number.isFinite(result.score)) throw new Error("Anchor scoring unavailable");
+            aiScore = result.score;
             } else {
               const result = await ScoringOrchestrator.scoreSpeakingFromText(
                 item.content, item.prompt);
-              aiScore = result.score;
+              if (result.scoreSource === "ai_unavailable" || !Number.isFinite(result.score)) throw new Error("Anchor scoring unavailable");
+            aiScore = result.score;
             }
           }
           return { id: item.id, expertScore: item.expertScore, aiScore };
@@ -170,7 +173,7 @@ export const AnchorCalibrationService = {
     const biasDirection = Math.abs(meanDelta) < 0.02 ? "neutral"
       : meanDelta > 0 ? "overscoring" : "underscoring";
 
-    const meetsThreshold = mae <= DRIFT_ALARM_THRESHOLD_MAE
+    const meetsThreshold = details.length === anchorSet.length && mae <= DRIFT_ALARM_THRESHOLD_MAE
       && rmse <= DRIFT_ALARM_THRESHOLD_RMSE;
 
     const result: AnchorCalibrationResult = {

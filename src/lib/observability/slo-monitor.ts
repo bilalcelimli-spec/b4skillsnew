@@ -25,9 +25,8 @@
  * See docs/slo-definitions.md for full SLO targets and error budget rules.
  */
 
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../prisma.js";
 
-const prisma = new PrismaClient();
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

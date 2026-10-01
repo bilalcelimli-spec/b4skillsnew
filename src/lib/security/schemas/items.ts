@@ -153,8 +153,8 @@ export const RatingClaimBody = z.object({
 }).partial().strict();
 
 export const RatingSubmitBody = z.object({
-  score: z.number().min(0).max(100),
-  rubricScores: z.record(z.string(), z.number().min(0).max(100)).optional(),
+  score: z.number().min(0).max(1),
+  rubricScores: z.record(z.string(), z.number().min(0).max(10)).optional(),
   /** Free-text reviewer feedback (also exposed as `comments` in some clients). */
   feedback: LongText.optional(),
   flags: z.array(z.string().max(100)).max(20).optional(),
