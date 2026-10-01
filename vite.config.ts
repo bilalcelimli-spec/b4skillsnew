@@ -72,13 +72,9 @@ export default defineConfig(({ isSsrBuild }) => {
       chunkSizeWarningLimit: 600,
       rollupOptions: {
         output: {
-          // Manual chunk splitting — keeps vendor code separate for long-term caching
-          manualChunks(id: string) {
-            if (id.includes("node_modules/react") || id.includes("node_modules/react-dom") || id.includes("node_modules/@radix-ui") || id.includes("node_modules/recharts")) return "react";
-            if (id.includes("node_modules/motion"))          return "motion";
-            if (id.includes("node_modules/i18next"))         return "i18n";
-            if (id.includes("node_modules/prisma") || id.includes("node_modules/@prisma")) return "prisma";
-          },
+          // Let Rollup split shared dependencies around the lazy route imports.
+          // Manually separating React consumers and CommonJS wrappers can create
+          // chunk cycles that access React before it initializes (e.g. forwardRef).
           // Deterministic filenames for CDN caching
           // SSR build: deterministic filename so server.ts can import it directly
           chunkFileNames:  isSsrBuild ? "[name].js"              : "assets/[name]-[hash].js",
