@@ -36,3 +36,4 @@ reports/item-evidence/
 .idea/
 *.swp
 Thumbs.db
+scripts/jobs/.out/
