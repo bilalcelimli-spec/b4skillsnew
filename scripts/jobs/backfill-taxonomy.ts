@@ -6,6 +6,7 @@
  *
  *   npx tsx scripts/jobs/backfill-taxonomy.ts                 # dry-run, 20 items
  *   npx tsx scripts/jobs/backfill-taxonomy.ts --limit 200     # dry-run, 200 items
+ *   npx tsx scripts/jobs/backfill-taxonomy.ts --per-skill 25  # dry-run, stratified by skill
  *   npx tsx scripts/jobs/backfill-taxonomy.ts --all --apply   # write to DB
  *
  * Dry-run writes proposals to scripts/jobs/.out/taxonomy-proposals.json.
@@ -34,6 +35,8 @@ const APPLY = args.includes("--apply");
 const ALL = args.includes("--all");
 const limitIdx = args.indexOf("--limit");
 const LIMIT = ALL ? undefined : limitIdx >= 0 ? Number(args[limitIdx + 1]) : 20;
+const perSkillIdx = args.indexOf("--per-skill");
+const PER_SKILL = perSkillIdx >= 0 ? Number(args[perSkillIdx + 1]) : undefined;
 const CONCURRENCY = 4;
 
 interface Proposal {
@@ -107,12 +110,21 @@ async function main() {
     process.exit(1);
   }
 
-  const items = await prisma.item.findMany({
-    where: { status: "ACTIVE" as any, OR: [{ subskill: null }, { construct: null }] },
-    select: { id: true, itemCode: true, skill: true, cefrLevel: true, type: true, content: true, subskill: true, construct: true, evidenceStatement: true, metadata: true },
-    orderBy: { id: "asc" },
-    take: LIMIT,
-  });
+  const select = { id: true, itemCode: true, skill: true, cefrLevel: true, type: true, content: true, subskill: true, construct: true, evidenceStatement: true, metadata: true } as const;
+  const where = { status: "ACTIVE" as any, OR: [{ subskill: null }, { construct: null }] };
+  let items;
+  if (PER_SKILL) {
+    // Stratified: PER_SKILL items per skill, spread across CEFR levels via random-ish id offset.
+    const skills = Object.keys(SUBSKILLS_BY_SKILL);
+    const groups = await Promise.all(skills.map(async (skill) => {
+      const ids = await prisma.item.findMany({ where: { ...where, skill: skill as any }, select: { id: true } });
+      const picked = ids.map((r) => r.id).sort(() => Math.random() - 0.5).slice(0, PER_SKILL);
+      return prisma.item.findMany({ where: { id: { in: picked } }, select });
+    }));
+    items = groups.flat();
+  } else {
+    items = await prisma.item.findMany({ where, select, orderBy: { id: "asc" }, take: LIMIT });
+  }
   console.log(`${APPLY ? "APPLY" : "DRY-RUN"}: ${items.length} items to classify`);
 
   const proposals: Array<{ id: string; itemCode: string | null; skill: string; cefr: string; proposal: Proposal }> = [];
