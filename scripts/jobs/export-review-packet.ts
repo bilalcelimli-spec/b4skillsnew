@@ -49,13 +49,13 @@ function renderItem(it: any, label: string): string {
   if (isHeadings && positionalHeadings(c.draggableItems ?? []).length) flags.push("POSITIONAL_HEADINGS");
   const blind = typeof td.blindExact === "boolean" ? td.blindExact : td.blindOk;
   const guided = typeof td.guidedExact === "boolean" ? td.guidedExact : td.guidedOk;
-  return `<details class="item"><summary><b>${esc(it.itemCode ?? it.id)}</b> · ${esc(it.cefrLevel)} · ${esc(it.subskill ?? "")} · demand: ${esc(it.metadata?.cognitiveDemand ?? "?")}
+  return `<details class="item" data-id="${esc(it.id)}" data-code="${esc(it.itemCode ?? "")}"><summary><b>${esc(it.itemCode ?? it.id)}</b> · ${esc(it.cefrLevel)} · ${esc(it.subskill ?? "")} · demand: ${esc(it.metadata?.cognitiveDemand ?? "?")}
       <span class="tag ${blind ? "warn" : "ok"}">${blind ? "solvable without source" : "needs source"}</span>${guided === false ? '<span class="tag bad">key unconfirmed</span>' : ""}${flags.length ? `<span class="tag warn">${esc(flags.join(", "))}</span>` : ""}</summary>
     <p><b>Prompt:</b> ${esc(c.question ?? c.stem ?? c.prompt)}</p>
     ${body}
     <details><summary>${label.startsWith("Listening") ? "Recording script" : "Passage"}</summary><pre>${esc(source)}</pre></details>
-    <p class="muted">Review: ${CHECKLIST.map((q) => `<label><input type="checkbox"> ${esc(q)}</label>`).join(" ")}</p>
-    <p><label>Decision: <select><option>—</option><option>Approve</option><option>Revise</option><option>Reject</option></select></label> <input type="text" placeholder="Notes" size="60"></p>
+    <p class="muted">Review: ${CHECKLIST.map((q) => `<label><input type="checkbox" data-check> ${esc(q)}</label>`).join(" ")}</p>
+    <p><label>Decision: <select data-decision><option>—</option><option>Approve</option><option>Revise</option><option>Reject</option></select></label> <input type="text" data-notes placeholder="Notes (required for Reject)" size="60"></p>
   </details>`;
 }
 
@@ -78,9 +78,37 @@ async function main() {
 h1{margin-bottom:0}h2{margin-top:32px;border-bottom:1px solid #ddd;padding-bottom:4px}.muted{color:#586069;font-size:13px}
 details.item{border:1px solid #ddd;border-radius:6px;padding:8px 12px;margin:8px 0}summary{cursor:pointer}pre{white-space:pre-wrap;background:#f6f8fa;padding:10px;border-radius:4px}
 .tag{font-size:12px;border-radius:10px;padding:1px 8px;margin-left:6px;border:1px solid}.ok{color:#116329;border-color:#116329}.warn{color:#9a6700;border-color:#9a6700}.bad{color:#cf222e;border-color:#cf222e}
-table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:4px 8px;text-align:left}li.key{font-weight:600}label{display:block}
+table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:4px 8px;text-align:left}li.key{font-weight:600}label{display:block}.bar{position:sticky;top:0;background:inherit;padding:8px 0;border-bottom:1px solid #ddd;display:flex;gap:12px;align-items:center}button{padding:4px 10px}
 @media(prefers-color-scheme:dark){body{background:#0d1117;color:#e6edf3}pre{background:#161b22}details.item,td,th{border-color:#30363d}.muted{color:#8b949e}}</style></head><body>
-<h1>Item review packet</h1><p class="muted">${total} DRAFT items · generated ${new Date().toISOString().slice(0, 10)} · "solvable without source" is an LLM solver result, not proof for human candidates.</p>${sections}</body></html>`;
+<h1>Item review packet</h1><p class="muted">${total} DRAFT items · generated ${new Date().toISOString().slice(0, 10)} · "solvable without source" is an LLM solver result, not proof for human candidates.</p><div class="bar"><span id="count">0 decided</span> <button id="download" type="button">Download decisions (JSON)</button> <button id="clear" type="button">Clear saved</button></div>${sections}
+<script>
+(function () {
+  var KEY = "item-review:" + document.title;
+  var store = {};
+  try { store = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) {}
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} }
+  function read(d) {
+    return { id: d.dataset.id, code: d.dataset.code, decision: d.querySelector("[data-decision]").value, notes: d.querySelector("[data-notes]").value,
+      checks: Array.prototype.map.call(d.querySelectorAll("[data-check]"), function (c) { return c.checked; }) };
+  }
+  function count() { document.getElementById("count").textContent = Object.keys(store).filter(function (k) { return store[k].decision !== "—"; }).length + " decided"; }
+  document.querySelectorAll("details.item").forEach(function (d) {
+    var s = store[d.dataset.id];
+    if (s) {
+      d.querySelector("[data-decision]").value = s.decision; d.querySelector("[data-notes]").value = s.notes || "";
+      d.querySelectorAll("[data-check]").forEach(function (c, i) { c.checked = !!(s.checks && s.checks[i]); });
+    }
+    d.addEventListener("input", function () { store[d.dataset.id] = read(d); save(); count(); });
+  });
+  count();
+  document.getElementById("download").onclick = function () {
+    var rows = Object.keys(store).map(function (k) { return store[k]; }).filter(function (r) { return r.decision !== "—"; });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" }));
+    a.download = "review-decisions.json"; a.click();
+  };
+  document.getElementById("clear").onclick = function () { if (confirm("Clear all saved decisions?")) { store = {}; save(); location.reload(); } };
+})();
+</script></body></html>`;
   mkdirSync(out, { recursive: true });
   writeFileSync(`${out}/review-packet.html`, html);
   console.log(`wrote ${out}/review-packet.html with ${total} items (${(html.length / 1024).toFixed(0)} KB)`);
