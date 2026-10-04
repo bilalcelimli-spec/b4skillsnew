@@ -33,6 +33,7 @@ interface ReviewItem {
   construct: string | null;
   evidenceStatement: string | null;
   content: Record<string, unknown>;
+  metadata?: Record<string, any> | null;
   tags: string[];
   difficulty: number;
   discrimination: number;
@@ -73,6 +74,8 @@ const STAGE_CONFIG = Object.fromEntries(PIPELINE_STAGES.map((s) => [s.stage, s])
 
 const CEFR_FIT_LABELS = ["BELOW_TARGET", "TARGET_FIT", "ABOVE_TARGET", "UNCERTAIN"];
 
+import { describeStructuredKey, generationSignals } from "./review-preview-model";
+
 // ── Skill icons ───────────────────────────────────────────────────────────────
 
 const SKILL_ICON: Record<string, React.ReactNode> = {
@@ -83,10 +86,13 @@ const SKILL_ICON: Record<string, React.ReactNode> = {
 
 // ── Item preview (§175 Preview exactly as candidate sees it) ─────────────────
 
-function ItemPreview({ item, device }: { item: ReviewItem; device: DeviceSize }) {
+export function ItemPreview({ item, device }: { item: ReviewItem; device: DeviceSize }) {
   const c = item.content;
   const opts = Array.isArray(c.options) ? c.options as Array<{ id: string; text: string; isCorrect: boolean; rationale?: string; distractorRationale?: string }> : [];
   const isMCQ = ["MULTIPLE_CHOICE", "FILL_IN_BLANKS", "DRAG_DROP"].includes(item.type);
+  const structured = describeStructuredKey(c);
+  const signals = generationSignals(item.metadata);
+  const toneCls = { ok: "bg-emerald-100 text-emerald-700", warn: "bg-amber-100 text-amber-700", bad: "bg-red-100 text-red-700", info: "bg-slate-100 text-slate-600" } as const;
   const passage = (c.passage ?? c.readingText ?? c.text ?? "") as string;
   const ttsScript = (c.ttsScript ?? c.transcript ?? "") as string;
   const question = (c.question ?? c.stem ?? c.prompt ?? "") as string;
@@ -121,6 +127,47 @@ function ItemPreview({ item, device }: { item: ReviewItem; device: DeviceSize })
         <div className="rounded-lg border border-[var(--border)] p-3 bg-[var(--card)]">
           <p className="text-xs font-medium text-[var(--foreground)] leading-relaxed">{question}</p>
         </div>
+      )}
+
+      {/* Automated generation checks (reviewer only) */}
+      {signals.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 text-[10px]" aria-label="Automated checks">
+          {signals.map((sg) => (
+            <span key={sg.label} className={`px-1.5 py-0.5 rounded font-medium ${toneCls[sg.tone]}`}>{sg.label}</span>
+          ))}
+        </div>
+      )}
+
+      {/* Structured items: matching / selection / ordering key */}
+      {structured?.kind === "matching" && (
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3" aria-label="Matching key">
+          <p className="text-[10px] font-semibold text-[var(--muted)] mb-2 uppercase tracking-wide">Matching key</p>
+          {structured.rows.map((r) => (
+            <div key={r.zone} className="flex gap-2 text-xs mb-1.5 last:mb-0">
+              <span className="font-medium text-[var(--foreground)] w-32 shrink-0">{r.zone}</span>
+              <span className="text-emerald-700 dark:text-emerald-400 flex-1 min-w-0">{r.answer}</span>
+            </div>
+          ))}
+          {structured.unused.length > 0 && (
+            <p className="text-[10px] text-[var(--muted)] mt-2">Unused answers (distractors): {structured.unused.join(" | ")}</p>
+          )}
+        </div>
+      )}
+      {structured?.kind === "selection" && (
+        <div className="space-y-1.5" aria-label="Selection key">
+          <p className="text-[10px] font-semibold text-[var(--muted)] uppercase tracking-wide">Choose {structured.selectCount}</p>
+          {structured.items.map((it) => (
+            <div key={it.text} className={`flex items-start gap-2 p-2.5 rounded-lg border text-xs ${it.correct ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20" : "border-[var(--border)] bg-[var(--card)]"}`}>
+              <span className="flex-1 min-w-0">{it.text}</span>
+              {it.correct && <CheckCircle2 size={12} className="text-emerald-500 shrink-0 mt-0.5" aria-label="correct" />}
+            </div>
+          ))}
+        </div>
+      )}
+      {structured?.kind === "ordering" && (
+        <ol className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-xs list-decimal list-inside space-y-1" aria-label="Correct order">
+          {structured.order.map((t) => <li key={t}>{t}</li>)}
+        </ol>
       )}
 
       {/* MCQ options */}
