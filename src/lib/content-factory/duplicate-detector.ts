@@ -18,6 +18,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
+import { scriptToText } from "./script-text.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -48,12 +49,9 @@ export function extractFingerprint(content: Record<string, unknown>): string {
   const parts: string[] = [];
 
   // Reading passage / Listening script (primary context)
-  const context =
-    (content.passage as string) ??
-    (content.readingText as string) ??
-    (content.ttsScript as string) ??
-    (content.transcript as string) ??
-    "";
+  const context = scriptToText(
+    content.passage ?? content.readingText ?? content.ttsScript ?? content.transcript ?? ""
+  );
   if (context) parts.push(context.slice(0, 500)); // truncate long passages
 
   // Question stem

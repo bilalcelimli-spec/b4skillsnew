@@ -27,6 +27,7 @@ import {
 import { screenItemForDuplicates, DUP_THRESHOLD, NEAR_THRESHOLD } from "./duplicate-detector.js";
 import { nextItemCode } from "./item-codes.js";
 import { buildQualityBlock, isDemandAllowed, matchingRules } from "./generation-guidelines.js";
+import { normalizeSourceFields, unusableSourceFields } from "./script-text.js";
 import { assembleMatching, validateRawMatching, guessingForMatching, type RawMatching } from "./matching-items.js";
 import { runMatchingDependencyGate } from "../ai/validation/gates/matching-dependency.js";
 import { runContentIntegrityGate } from "../ai/validation/gates/content-integrity.js";
@@ -363,8 +364,13 @@ export async function generateDrafts(
     }
     const { items, parseError } = parseAIOutput(rawText);
     if (parseError) skippedReasons.push(parseError);
-    for (const raw of items) {
+    for (const parsed of items) {
+      const raw = parsed && typeof parsed.content === "object" && parsed.content
+        ? { ...parsed, content: normalizeSourceFields(parsed.content as Record<string, unknown>) }
+        : parsed;
       const errs = validateRawItem(raw, cell);
+      const bad = raw && typeof raw.content === "object" && raw.content ? unusableSourceFields(raw.content as Record<string, unknown>) : [];
+      if (bad.length) errs.push(`Source text not usable as plain text: ${bad.join(", ")}`);
       if (errs.length) skippedReasons.push(`Item skipped — ${errs.join("; ")}`);
       else valid.push(raw);
     }
