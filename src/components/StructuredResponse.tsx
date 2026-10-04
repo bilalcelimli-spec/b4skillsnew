@@ -15,10 +15,13 @@ export function StructuredResponse({ content, disabled, onResponse }: Props) {
   const placement = !content.dropZones?.length && slotCount > 0;
   const zones: string[] = content.dropZones?.length ? content.dropZones : (placement ? Array.from({ length: slotCount }, (_, i) => `Blank ${i + 1}`) : []);
   const matching = zones.length > 0;
+  const selectCount: number = Number.isInteger(content.selectCount) ? content.selectCount : 0;
+  const selection = selectCount > 0 && !content.dropZones?.length;
+  const [selected, setSelected] = useState<number[]>([]);
   const [mapping, setMapping] = useState<Record<string, number>>({});
   const [order, setOrder] = useState(() => items.map((_, i) => i).reverse());
   if (!items.length) return <p role="alert">This question could not be loaded. Please contact support.</p>;
-  const complete = !matching || zones.every((_, i) => mapping[String(i)] !== undefined);
+  const complete = selection ? selected.length === selectCount : !matching || zones.every((_, i) => mapping[String(i)] !== undefined);
   const move = (position: number, delta: number) => {
     setOrder(previous => {
       const next = [...previous];
@@ -26,6 +29,32 @@ export function StructuredResponse({ content, disabled, onResponse }: Props) {
       return next;
     });
   };
+  if (selection) {
+    const toggle = (index: number) => setSelected(previous =>
+      previous.includes(index) ? previous.filter(i => i !== index) : previous.length < selectCount ? [...previous, index] : previous);
+    return (
+      <section className="space-y-5" aria-label="Selection task">
+        <fieldset className="space-y-3">
+          <legend className="text-xl font-bold whitespace-pre-line">{content.prompt}</legend>
+          <p className="text-sm text-slate-600" id="selection-hint">Choose exactly {selectCount} answers. {selected.length} of {selectCount} chosen.</p>
+          {scaffold && <div className="p-4 rounded-xl bg-slate-50 whitespace-pre-line break-words">{scaffold}</div>}
+          {items.map((text, index) => {
+            const checked = selected.includes(index);
+            const blocked = !checked && selected.length >= selectCount;
+            return (
+              <label key={index} className={`flex items-start gap-3 p-4 border rounded-xl min-h-11 ${checked ? "border-indigo-600 bg-indigo-50" : "border-slate-200"} ${blocked ? "opacity-60" : ""}`}>
+                <input type="checkbox" className="mt-1 h-5 w-5" aria-describedby="selection-hint" checked={checked} disabled={disabled || blocked} onChange={() => toggle(index)} />
+                <span className="flex-1 min-w-0">{text}</span>
+              </label>
+            );
+          })}
+        </fieldset>
+        <button type="button" disabled={disabled || !complete} className="w-full min-h-12 p-3 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-50" onClick={() => onResponse({ kind: "selection", selected: [...selected].sort((a, b) => a - b) })}>
+          Confirm Answer
+        </button>
+      </section>
+    );
+  }
   return (
     <section className="space-y-5" aria-label={placement ? "Word placement task" : matching ? "Matching task" : "Ordering task"}>
       <h3 className="text-xl font-bold whitespace-pre-line">{content.prompt}</h3>

@@ -40,6 +40,38 @@ Return "mapping": an array with one answer index per row, in row order.`,
   return r.mapping;
 }
 
+const SELECTION_SCHEMA = {
+  type: JudgeType.OBJECT,
+  properties: { selected: { type: JudgeType.ARRAY, items: { type: JudgeType.INTEGER } } },
+  required: ["selected"],
+};
+
+export async function solveSelection(
+  prompt: string,
+  items: string[],
+  k: number,
+  source: string | null,
+  kind: string
+): Promise<number[] | null> {
+  const r = await runJudge<{ selected: number[] }>({
+    prompt: `${source ? `SOURCE ${kind.toUpperCase()}:\n${source}\n\n` : `The ${kind} is NOT available to you. Use only general knowledge, logic and the wording of the statements.\n\n`}TASK: ${prompt}
+STATEMENTS:
+${items.map((t, i) => `${i}. ${t}`).join("\n")}
+
+Return "selected": exactly ${k} statement indexes.`,
+    responseSchema: SELECTION_SCHEMA,
+    options: { temperature: 0, timeoutMs: 40_000 },
+  });
+  if (!r || !Array.isArray(r.selected) || r.selected.length !== k) return null;
+  return r.selected;
+}
+
+export function scoreSelection(guess: number[], key: number[]): { exact: boolean; fraction: number } {
+  const k = new Set(key);
+  const hits = new Set(guess).size === guess.length ? guess.filter((g) => k.has(g)).length : 0;
+  return { exact: hits === key.length && guess.length === key.length, fraction: key.length ? hits / key.length : 0 };
+}
+
 export function scoreMapping(guess: number[], key: Record<string, number>, nZones: number): { exact: boolean; fraction: number } {
   let right = 0;
   for (let i = 0; i < nZones; i++) if (guess[i] === key[String(i)]) right++;
@@ -55,25 +87,31 @@ export async function runMatchingDependencyGate(
     gate: GATE_NAME, verdict: "SKIPPED", score: 100, durationMs: Date.now() - startedAt, issues: [], metrics: { reason },
   });
   const c = item.content as Record<string, any>;
-  if (item.type !== "DRAG_DROP" || !c.correctMapping || !Array.isArray(c.dropZones)) return skipped("not-a-matching-item");
+  const isSelection = Array.isArray(c.correctAnswers) && Number.isInteger(c.selectCount);
+  if (item.type !== "DRAG_DROP" || (!isSelection && (!c.correctMapping || !Array.isArray(c.dropZones)))) return skipped("not-a-structured-item");
   if (item.skill !== "READING" && item.skill !== "LISTENING") return skipped("not-receptive-skill");
   if (options.allowLlmJudge === false || !isJudgeAvailable()) return skipped("judge-unavailable");
 
   const source = String(c.passage ?? c.ttsScript ?? c.transcript ?? c.audioScript ?? "").trim();
   if (!source) return skipped("missing-source");
   const kind = item.skill === "LISTENING" ? "recording transcript" : "passage";
-  const zones: string[] = c.dropZones;
+  const zones: string[] = c.dropZones ?? [];
   const items: string[] = c.draggableItems;
 
-  const [blind, guided] = await Promise.all([
-    solveMatching(String(c.prompt ?? ""), zones, items, null, kind),
-    solveMatching(String(c.prompt ?? ""), zones, items, source.slice(0, 6000), kind),
-  ]);
+  const [blind, guided] = isSelection
+    ? await Promise.all([
+        solveSelection(String(c.prompt ?? ""), items, c.selectCount, null, kind),
+        solveSelection(String(c.prompt ?? ""), items, c.selectCount, source.slice(0, 6000), kind),
+      ])
+    : await Promise.all([
+        solveMatching(String(c.prompt ?? ""), zones, items, null, kind),
+        solveMatching(String(c.prompt ?? ""), zones, items, source.slice(0, 6000), kind),
+      ]);
   if (!blind || !guided) {
-    return { gate: GATE_NAME, verdict: "ERROR", score: 0, durationMs: Date.now() - startedAt, issues: [], error: "solver returned no mapping" };
+    return { gate: GATE_NAME, verdict: "ERROR", score: 0, durationMs: Date.now() - startedAt, issues: [], error: "solver returned no answer" };
   }
-  const b = scoreMapping(blind, c.correctMapping, zones.length);
-  const g = scoreMapping(guided, c.correctMapping, zones.length);
+  const b = isSelection ? scoreSelection(blind, c.correctAnswers) : scoreMapping(blind, c.correctMapping, zones.length);
+  const g = isSelection ? scoreSelection(guided, c.correctAnswers) : scoreMapping(guided, c.correctMapping, zones.length);
 
   const issues: GateIssue[] = [];
   if (!g.exact) {

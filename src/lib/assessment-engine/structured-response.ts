@@ -31,5 +31,13 @@ export function scoreStructuredResponse(content: Record<string, any>, value: unk
         !order.every(validIndex) || new Set(order).size !== count) throw new Error("Invalid ordering response");
     return order.every((index, position) => index === content.correctOrder[position]) ? 1 : 0;
   }
+  if (Array.isArray(content.correctAnswers) && Number.isInteger(content.selectCount)) {
+    const selected = response.selected;
+    const k = content.selectCount as number;
+    if (response.kind !== "selection" || !Array.isArray(selected) || selected.length !== k ||
+        !selected.every(validIndex) || new Set(selected).size !== k) throw new Error("Invalid selection response");
+    const key = new Set<number>(content.correctAnswers);
+    return selected.every((index: number) => key.has(index)) ? 1 : 0;
+  }
   throw new Error("Unsupported structured item configuration");
 }

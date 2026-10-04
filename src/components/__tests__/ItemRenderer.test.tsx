@@ -62,6 +62,31 @@ describe("ItemRenderer response recovery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm Answer" }));
     expect(scoreStructuredResponse(content, onResponse.mock.calls[0][0])).toBe(1);
   });
+  it("renders a choose-N selection task, caps the choices and scores the submitted set", () => {
+    const content = {
+      prompt: "Choose the TWO statements the speaker would agree with.",
+      ttsScript: "SECRET-TRANSCRIPT",
+      audioUrl: "/audio/test.mp3",
+      selectCount: 2,
+      correctAnswers: [1, 3],
+      draggableItems: ["Alpha statement", "Bravo statement", "Charlie statement", "Delta statement", "Echo statement"],
+    };
+    const onResponse = vi.fn();
+    const { container } = render(<ItemRenderer item={{ ...baseItem, skill: "LISTENING", type: "DRAG_DROP", content: stripAnswerKeys(content) as any }} onResponse={onResponse} />);
+    expect(container.textContent).not.toContain("SECRET-TRANSCRIPT");
+    const boxes = screen.getAllByRole("checkbox") as HTMLInputElement[];
+    expect(boxes).toHaveLength(5);
+    const confirm = screen.getByRole("button", { name: "Confirm Answer" }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(boxes[3]);
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(boxes[1]);
+    expect(confirm.disabled).toBe(false);
+    expect(boxes[0].disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(onResponse).toHaveBeenCalledWith({ kind: "selection", selected: [1, 3] });
+    expect(scoreStructuredResponse(content, onResponse.mock.calls[0][0])).toBe(1);
+  });
   it("renders only the required word-placement slots, leaving distractors unused", () => {
     const content = { prompt: "Choose the words", stimulus: "She [___] [___].", draggableItems: ["walks", "home", "decoy"], correctSequence: ["walks", "home"] };
     const onResponse = vi.fn();

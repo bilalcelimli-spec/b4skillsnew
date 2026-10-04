@@ -26,7 +26,8 @@ import {
 } from "./blueprint.js";
 import { screenItemForDuplicates, DUP_THRESHOLD, NEAR_THRESHOLD } from "./duplicate-detector.js";
 import { nextItemCode } from "./item-codes.js";
-import { buildQualityBlock, isDemandAllowed, matchingRules } from "./generation-guidelines.js";
+import { buildQualityBlock, isDemandAllowed, matchingRules, headingRules, selectionRules } from "./generation-guidelines.js";
+import { assembleSelection, validateRawSelection, guessingForSelection, type RawSelection } from "./selection-items.js";
 import { normalizeSourceFields, unusableSourceFields } from "./script-text.js";
 import { assembleMatching, validateRawMatching, guessingForMatching, type RawMatching } from "./matching-items.js";
 import { runMatchingDependencyGate } from "../ai/validation/gates/matching-dependency.js";
@@ -157,7 +158,7 @@ JSON ARRAY OUTPUT — exactly ${batchSize} items, each object:
   "itemType":      "DRAG_DROP",
   "cognitiveDemand": "...", // one of the demands allowed in COGNITIVE DEMAND
   "content": {
-    ${cell.skill === "READING" ? `"passage":       "...", // ${wc?.label ?? "appropriate length"}` : `"ttsScript":     "...", // natural multi-speaker discourse, speakers named`}
+    ${cell.skill === "READING" ? `"passage":       "...", // ${wc?.label ?? "appropriate length"}` : `"ttsScript":     "...", // natural multi-speaker discourse as ONE string, speakers named`}
     "prompt":        "...", // e.g. "Match each speaker with the view they express."
     "pairs":         [{"zone": "...", "answer": "..."}],
     "extraItems":    ["..."]
@@ -167,7 +168,31 @@ JSON ARRAY OUTPUT — exactly ${batchSize} items, each object:
   "fairnessConcerns":   "none"
 }`;
 
-  const outputSpec = isMatching ? matchingSpec : isMCQ ? `
+  const selectionSpec = `
+JSON ARRAY OUTPUT — exactly ${batchSize} items, each object:
+{
+  "skill":         "${cell.skill}",
+  "cefrLevel":     "${cell.cefr}",
+  "subskill":      "${cell.subskill}",
+  "genre":         "${cell.genre ?? ""}",
+  "topic":         "${cell.topic ?? ""}",
+  "construct":     "...",
+  "evidenceStatement": "...",
+  "itemType":      "DRAG_DROP",
+  "cognitiveDemand": "...", // one of the demands allowed in COGNITIVE DEMAND
+  "content": {
+    ${cell.skill === "READING" ? `"passage":       "...", // ${wc?.label ?? "appropriate length"}` : `"ttsScript":     "...", // natural spoken discourse as ONE string, speakers named`}
+    "prompt":        "...", // e.g. "Choose the TWO statements the speaker would agree with."
+    "correct":       ["...", "..."],
+    "distractors":   ["...", "...", "..."]
+  },
+  "estimatedDifficulty": ${CEFR_THETA_SEED[cell.cefr] ?? 0},
+  "cefrJustification":  "...",
+  "fairnessConcerns":   "none"
+}`;
+  const isSelection = isMatching && cell.format === "SELECTION";
+
+  const outputSpec = isSelection ? selectionSpec : isMatching ? matchingSpec : isMCQ ? `
 JSON ARRAY OUTPUT — exactly ${batchSize} items, each object:
 {
   "skill":         "${cell.skill}",
@@ -259,7 +284,7 @@ QUALITY GATES (must pass before output):
 - §32 Keyword matching — item must not be answerable by spotting a repeated word from the passage
 - §91 Copyright — content must be 100% original, not adapted from Cambridge/IELTS/TOEFL/Pearson
 ${distractorSpec}
-${legacy ? "" : `\n${itemType === "DRAG_DROP" && isReceptive ? matchingRules(cell.skill) + "\n\n" + buildQualityBlock(cell.skill, cell.cefr, "NONE") : buildQualityBlock(cell.skill, cell.cefr, itemType)}\n`}
+${legacy ? "" : `\n${itemType === "DRAG_DROP" && isReceptive ? (cell.format === "SELECTION" ? selectionRules(cell.skill) : matchingRules(cell.skill) + (cell.format === "HEADINGS" ? "\n\n" + headingRules() : "")) + "\n\n" + buildQualityBlock(cell.skill, cell.cefr, "NONE") : buildQualityBlock(cell.skill, cell.cefr, itemType)}\n`}
 ${outputSpec}
 
 Output ONLY valid JSON array. No markdown, no commentary, no \`\`\`json fences.`;
@@ -302,8 +327,22 @@ function validateRawItem(item: RawGeneratedItem, cell: BlueprintCell): string[] 
   if (!item.skill) errs.push("Missing skill");
   if (!item.cefrLevel) errs.push("Missing cefrLevel");
 
+  if ((item.itemType ?? "").includes("DRAG") && Array.isArray((c as any).correct)) {
+    errs.push(...validateRawSelection(c as unknown as RawSelection));
+    if (cell.skill === "READING" && !(c.passage || c.text)) errs.push("READING item missing passage");
+    if (cell.skill === "LISTENING" && !(c.ttsScript || c.transcript)) errs.push("LISTENING item missing ttsScript/transcript");
+    return errs;
+  }
   if ((item.itemType ?? "").includes("DRAG") && Array.isArray((c as any).pairs)) {
     errs.push(...validateRawMatching(c as unknown as RawMatching));
+    if (cell.format === "HEADINGS") {
+      const passage = String(c.passage ?? "");
+      for (const p of (c as any).pairs as Array<{ zone?: string }>) {
+        const m = /^paragraph\s+(\d+)$/i.exec(String(p?.zone ?? "").trim());
+        if (!m) errs.push(`Heading row "${p?.zone}" must be "Paragraph N"`);
+        else if (!passage.includes(`[${m[1]}]`)) errs.push(`Passage lacks the [${m[1]}] paragraph marker`);
+      }
+    }
     if (cell.skill === "READING" && !(c.passage || c.text)) errs.push("READING item missing passage");
     if (cell.skill === "LISTENING" && !(c.ttsScript || c.transcript)) errs.push("LISTENING item missing ttsScript/transcript");
     return errs;
@@ -416,7 +455,13 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
     // Normalize content: ensure options have rationale field
     const content: Record<string, unknown> = { ...raw.content };
     let guessingParam = ["WRITING", "SPEAKING"].includes(cell.skill) ? 0.0 : 0.25;
-    if (Array.isArray((content as any).pairs)) {
+    if (Array.isArray((content as any).correct)) {
+      const { correct, distractors, ...rest } = content as any;
+      const assembled = assembleSelection({ prompt: String(rest.prompt ?? ""), correct, distractors }, `${batchId}:${storedIds.length}:${skippedReasons.length}`);
+      for (const k of Object.keys(content)) delete (content as any)[k];
+      Object.assign(content, rest, assembled);
+      guessingParam = guessingForSelection(assembled.draggableItems.length, assembled.selectCount);
+    } else if (Array.isArray((content as any).pairs)) {
       const { pairs, extraItems, ...rest } = content as any;
       const assembled = assembleMatching({ prompt: String(rest.prompt ?? ""), pairs, extraItems }, `${batchId}:${storedIds.length}:${skippedReasons.length}`);
       for (const k of Object.keys(content)) delete (content as any)[k];

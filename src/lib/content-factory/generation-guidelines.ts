@@ -114,3 +114,27 @@ export function matchingRules(skill: string): string {
     `- The task must be impossible to complete well without the ${skill === "LISTENING" ? "recording" : "passage"}.`,
   ].join("\n");
 }
+
+/** Extra rules when matching headings to paragraphs of a reading passage. */
+export function headingRules(): string {
+  return [
+    `HEADING MATCHING RULES:`,
+    `- Number the passage paragraphs with a leading marker: "[1] …", "[2] …", "[3] …" (3–5 paragraphs).`,
+    `- Rows ("zone") must be exactly "Paragraph 1", "Paragraph 2", … matching those markers; each "answer" is the heading for that paragraph.`,
+    `- A heading must summarise the MAIN point of its paragraph, not a detail. Add 1–2 extra headings that fit the passage as a whole or a detail from one paragraph but are not the main point of any paragraph.`,
+    `- Headings must not reuse the paragraph's own key words; paraphrase them.`,
+  ].join("\n");
+}
+
+/** Rules for "choose the N statements" items. */
+export function selectionRules(skill: string): string {
+  return [
+    `SELECTION RULES (choose exactly N statements):`,
+    `- Provide "correct" (2 or 3 statements the ${skill === "LISTENING" ? "speaker(s) would agree with / that are supported by the recording" : "writer would agree with / that the passage supports"}) and "distractors" (2–4 statements that are NOT supported).`,
+    `- All statements must have the same register, length (within 25%) and degree of hedging. A correct statement must not be the most balanced or academic-sounding one.`,
+    `- No absolutes (only, always, never, entirely, exclusively, completely, impossible) in distractors unless a correct statement also contains one.`,
+    `- Each distractor is a plausible distortion (wrong speaker, reversed cause, mentioned but not endorsed, true but unrelated to the question). Each correct statement is a PARAPHRASE, never a copied phrase of 4+ words.`,
+    `- The prompt must state the number to choose, e.g. "Choose the TWO statements …".`,
+    `- The task must be impossible to complete well without the ${skill === "LISTENING" ? "recording" : "passage"}.`,
+  ].join("\n");
+}

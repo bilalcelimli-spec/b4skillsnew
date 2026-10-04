@@ -29,6 +29,8 @@ export interface BlueprintCell {
 
   // Item design
   itemType?: string;    // MULTIPLE_CHOICE | FILL_IN_BLANKS | WRITING_PROMPT | SPEAKING_PROMPT | DRAG_DROP
+  /** DRAG_DROP sub-format for reading/listening: MATCHING (default), HEADINGS (paragraph headings), SELECTION (choose N). */
+  format?: "MATCHING" | "HEADINGS" | "SELECTION";
   distractorStrategy?: string; // What each distractor targets (free text spec)
   wordCountMin?: number;
   wordCountMax?: number;
