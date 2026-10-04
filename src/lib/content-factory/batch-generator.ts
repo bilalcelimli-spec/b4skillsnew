@@ -29,7 +29,7 @@ import { nextItemCode } from "./item-codes.js";
 import { buildQualityBlock, isDemandAllowed, matchingRules, headingRules, selectionRules } from "./generation-guidelines.js";
 import { assembleSelection, validateRawSelection, guessingForSelection, type RawSelection } from "./selection-items.js";
 import { normalizeSourceFields, unusableSourceFields } from "./script-text.js";
-import { assembleMatching, validateRawMatching, guessingForMatching, type RawMatching } from "./matching-items.js";
+import { assembleMatching, validateRawMatching, guessingForMatching, positionalHeadings, type RawMatching } from "./matching-items.js";
 import { runMatchingDependencyGate } from "../ai/validation/gates/matching-dependency.js";
 import { runContentIntegrityGate } from "../ai/validation/gates/content-integrity.js";
 import { runTextDependencyGate } from "../ai/validation/gates/text-dependency.js";
@@ -336,6 +336,9 @@ function validateRawItem(item: RawGeneratedItem, cell: BlueprintCell): string[] 
   if ((item.itemType ?? "").includes("DRAG") && Array.isArray((c as any).pairs)) {
     errs.push(...validateRawMatching(c as unknown as RawMatching));
     if (cell.format === "HEADINGS") {
+      const answers = [...((c as any).pairs ?? []).map((p: { answer?: string }) => String(p?.answer ?? "")), ...(((c as any).extraItems ?? []) as string[]).map(String)];
+      const pos = positionalHeadings(answers);
+      if (pos.length) errs.push(`Position-revealing headings: ${pos.map((h) => `"${h.slice(0, 40)}"`).join(", ")}`);
       const passage = String(c.passage ?? "");
       for (const p of (c as any).pairs as Array<{ zone?: string }>) {
         const m = /^paragraph\s+(\d+)$/i.exec(String(p?.zone ?? "").trim());

@@ -95,3 +95,10 @@ export function chanceOfExactMatch(nZones: number, nItems: number): number {
 export function guessingForMatching(nZones: number, nItems: number): number {
   return Math.max(0.02, Math.min(0.25, chanceOfExactMatch(nZones, nItems)));
 }
+
+const POSITIONAL = /\b(introduc\w*|overview|background|beginning|begins?|origins?|first(ly)?|last(ly)?|final(ly)?|next|then|eventually|ultimately|conclusion|conclud\w*|summary|summar\w*|outlook|future|looking ahead|moving forward|in the end|to begin)\b/i;
+
+/** Headings that reveal their paragraph's position in the text (a guessing cue). */
+export function positionalHeadings(answers: string[]): string[] {
+  return answers.filter((a) => POSITIONAL.test(a));
+}

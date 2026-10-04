@@ -65,3 +65,20 @@ describe("matching items", () => {
     expect(scoreMapping([2, 1, 3], key, 3).fraction).toBeCloseTo(2 / 3);
   });
 });
+
+import { positionalHeadings } from "../src/lib/content-factory/matching-items";
+
+describe("positionalHeadings", () => {
+  it("flags headings that reveal paragraph position", () => {
+    const flagged = positionalHeadings([
+      "An introduction to the centre's aims",
+      "Future expansion plans for outreach",
+      "Concluding thoughts on funding",
+      "How volunteers were first recruited",
+    ]);
+    expect(flagged).toHaveLength(4);
+  });
+  it("leaves topic-specific headings alone", () => {
+    expect(positionalHeadings(["Skill-building courses for adults", "Why digital access matters", "Cost pressures on local services"])).toEqual([]);
+  });
+});

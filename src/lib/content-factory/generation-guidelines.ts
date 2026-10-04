@@ -123,6 +123,8 @@ export function headingRules(): string {
     `- Rows ("zone") must be exactly "Paragraph 1", "Paragraph 2", … matching those markers; each "answer" is the heading for that paragraph.`,
     `- A heading must summarise the MAIN point of its paragraph, not a detail. Add 1–2 extra headings that fit the passage as a whole or a detail from one paragraph but are not the main point of any paragraph.`,
     `- Headings must not reuse the paragraph's own key words; paraphrase them.`,
+    `- A heading must NOT reveal where a paragraph sits in the text. Do not write headings about introductions, overviews, background, "how it began", future plans, outlook, conclusions or summaries, and do not use first/last/finally/next/eventually. Each heading names a specific TOPIC that could belong to any position.`,
+    `- Make at least two headings about related sub-topics so a paragraph cannot be matched by a single topic word.`,
   ].join("\n");
 }
 

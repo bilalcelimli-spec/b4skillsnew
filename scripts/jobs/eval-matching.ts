@@ -23,7 +23,12 @@ const CELLS: BlueprintCell[] = [
   { cefr: "B2", skill: "READING", subskill: "INFERENCE", genre: "article", topic: "technology", itemType: "DRAG_DROP", format: "SELECTION" },
   { cefr: "B2", skill: "READING", subskill: "PARAGRAPH_RELATIONSHIPS", genre: "article", topic: "education", itemType: "DRAG_DROP", format: "HEADINGS" },
   { cefr: "C1", skill: "READING", subskill: "PARAGRAPH_RELATIONSHIPS", genre: "opinion_column", topic: "society", itemType: "DRAG_DROP", format: "HEADINGS" },
+  { cefr: "C2", skill: "READING", subskill: "PARAGRAPH_RELATIONSHIPS", genre: "report", topic: "science", itemType: "DRAG_DROP", format: "HEADINGS" },
 ];
+
+const only = process.argv.indexOf("--only");
+const ONLY = only >= 0 ? process.argv[only + 1].toUpperCase() : null;
+const ACTIVE_CELLS = ONLY ? CELLS.filter((c) => c.format === ONLY) : CELLS;
 
 async function runCell(cell: BlueprintCell) {
   const { items, skippedReasons } = await generateDrafts(cell, N);
@@ -69,7 +74,7 @@ async function runCell(cell: BlueprintCell) {
 }
 
 async function main() {
-  const all = (await Promise.all(CELLS.map(runCell))).flat();
+  const all = (await Promise.all(ACTIVE_CELLS.map(runCell))).flat();
   mkdirSync("scripts/jobs/.out", { recursive: true });
   writeFileSync("scripts/jobs/.out/eval-matching.json", JSON.stringify(all, null, 2));
   const pct = (n: number, d: number) => (d ? `${n}/${d} (${Math.round((100 * n) / d)}%)` : "n/a");
@@ -78,7 +83,7 @@ async function main() {
   console.log("blind partial (mean):", all.length ? (all.reduce((s, r) => s + r.blindFraction, 0) / all.length).toFixed(2) : "n/a", " (random ≈ 1/items)");
   console.log("guided exact match:  ", pct(all.filter((r) => r.guidedExact).length, all.length), " (key confirmed with source)");
   console.log("mean chance of exact guess:", all.length ? (all.reduce((s, r) => s + r.chance, 0) / all.length).toFixed(3) : "n/a");
-  for (const c of CELLS) {
+  for (const c of ACTIVE_CELLS) {
     const rs = all.filter((r) => r.cell === `${c.format}:${c.skill}/${c.cefr}`);
     console.log(`  ${c.format}:${c.skill}/${c.cefr}`.padEnd(28), "blind exact", pct(rs.filter((r) => r.blindExact).length, rs.length), "| blind frac", rs.length ? (rs.reduce((s, r) => s + r.blindFraction, 0) / rs.length).toFixed(2) : "n/a", "| guided exact", pct(rs.filter((r) => r.guidedExact).length, rs.length));
   }
