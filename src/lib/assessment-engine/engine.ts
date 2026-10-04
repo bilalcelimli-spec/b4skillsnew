@@ -1,4 +1,5 @@
 import { estimateTheta } from "./estimator";
+import { selectPretestItem } from "./pretest-selection.js";
 import { selectNextItem } from "./selector";
 import { SessionState, Response, Item, EngineConfig, CefrLevel, SkillType, SkillProfile, MirtAbilityVector, BlueprintConstraint } from "./types";
 import { thetaToCefr, CEFR_THETA_THRESHOLDS } from "../cefr/cefr-framework.js";
@@ -246,15 +247,8 @@ export class AssessmentEngine {
 
     if (shouldAdministerPretest) {
       const pretestPool = pool.filter(item => item.isPretest && !state.usedItemIds.has(item.id));
-      if (pretestPool.length > 0) {
-        let bestPretestItem = pretestPool[0];
-        let minDiff = Math.abs(pretestPool[0].params.b - state.theta);
-        for (let i = 1; i < pretestPool.length; i++) {
-          const diff = Math.abs(pretestPool[i].params.b - state.theta);
-          if (diff < minDiff) { minDiff = diff; bestPretestItem = pretestPool[i]; }
-        }
-        return bestPretestItem;
-      }
+      const bestPretestItem = selectPretestItem(pretestPool, state.theta);
+      if (bestPretestItem) return bestPretestItem;
     }
 
     // 2. Build current skill-count map for blueprint enforcement

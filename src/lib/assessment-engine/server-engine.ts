@@ -1073,6 +1073,9 @@ export const AssessmentService = {
           } : undefined
         } as any
       });
+              if (dbItem.status === "PRETEST") {
+                await tx.item.update({ where: { id: itemId }, data: { exposureCount: { increment: 1 } } });
+              }
       await tx.session.update({
         where: { id: sessionId },
         data: {
