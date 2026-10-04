@@ -214,7 +214,7 @@ export function ContentFactoryOpsPanel() {
       id: "embeddings",
       icon: <Brain size={16} />,
       title: "Embedding Backfill",
-      description: "Generate Gemini text-embedding-004 vectors for items that predate the duplicate detector. Required for accurate near-clone screening in future batches.",
+      description: "Generate Gemini gemini-embedding-001 (768-dim) vectors for items that predate the duplicate detector. Required for accurate near-clone screening in future batches.",
       warning: "Makes one Gemini API call per item — may take several minutes for large backlogs.",
       actionLabel: "Run embedding backfill (max 200)",
       statKey: "missingEmbeddings",

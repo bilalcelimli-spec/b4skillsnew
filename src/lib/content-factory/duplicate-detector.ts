@@ -6,7 +6,7 @@
  *
  * Implementation:
  *  1. Extract a canonical fingerprint from the item (question stem + answer key).
- *  2. Call Gemini text-embedding-004 (768-dim) to embed it — server-side only.
+ *  2. Call Gemini gemini-embedding-001 (768-dim) to embed it — server-side only.
  *  3. Load existing embeddings for items in the same CEFR × Skill cell from DB.
  *  4. Compute cosine similarity.  threshold: 0.92 → duplicate, 0.85-0.92 → near-match warning.
  *  5. Store the new embedding on the saved item so future runs can compare against it.
@@ -77,11 +77,14 @@ export function extractFingerprint(content: Record<string, unknown>): string {
 
 // ── Embedding ─────────────────────────────────────────────────────────────────
 
-/** Embed a single text using Gemini text-embedding-004 (768 dims). */
+export const EMBEDDING_DIMS = 768;
+
+/** Embed a single text with gemini-embedding-001, truncated to 768 dims (text-embedding-004 was retired). */
 export async function embedText(text: string): Promise<number[]> {
   const resp = await ai.models.embedContent({
-    model: "text-embedding-004",
+    model: "gemini-embedding-001",
     contents: text,
+    config: { outputDimensionality: EMBEDDING_DIMS },
   } as any);
 
   const vec =
