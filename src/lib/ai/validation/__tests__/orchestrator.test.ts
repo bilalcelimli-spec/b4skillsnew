@@ -74,17 +74,19 @@ describe("orchestrator", () => {
     expect(r.score).toBeLessThanOrEqual(100);
   });
 
-  it("runs all 7 gates", async () => {
+  it("runs all 9 gates", async () => {
     const r = await validateDraftItem(goodMcq, opts);
     const gateNames = r.gates.map((g) => g.gate).sort();
     expect(gateNames).toEqual([
       "bias-fairness",
+      "content-integrity",
       "distractor-quality",
       "duplicate",
       "key-uniqueness",
       "plagiarism",
       "readability",
       "structural",
+      "text-dependency",
     ]);
   });
 

@@ -16,6 +16,19 @@
 
 import type { DraftItem, GateIssue, GateResult } from "../types.js";
 import { isJudgeAvailable, runJudge, JudgeType } from "../prompt-judge.js";
+import { keyIndex } from "../../../psychometrics/content-iqs.js";
+
+/** Option text for both plain-string options and {text, isCorrect} objects. */
+export function optionToText(o: unknown): string {
+  if (typeof o === "string") return o.trim();
+  if (o && typeof o === "object") return String((o as { text?: unknown }).text ?? "").trim();
+  return "";
+}
+
+/** Passage / transcript under any of the field names used by the bank and the generator. */
+export function sourceText(c: Record<string, any>): string {
+  return String(c.stimulus ?? c.passage ?? c.ttsScript ?? c.transcript ?? c.audioScript ?? "").trim();
+}
 
 const GATE_NAME = "key-uniqueness";
 
@@ -69,7 +82,7 @@ export async function runKeyUniquenessGate(
       return skip("judge-unavailable", startedAt);
     }
 
-    const optionsList = (item.content?.options ?? []).map((o) => String(o ?? "").trim());
+    const optionsList = ((item.content?.options ?? []) as unknown[]).map(optionToText);
     if (optionsList.length < 2) {
       return skip("insufficient-options", startedAt);
     }
@@ -151,10 +164,11 @@ export async function runKeyUniquenessGate(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildPrompt(item: DraftItem, opts: string[]): string {
+export function buildPrompt(item: DraftItem, opts: string[]): string {
   const c = item.content ?? {};
   const stem = String(c.question ?? c.stem ?? c.prompt ?? "");
-  const stimulus = c.stimulus ? `\n\nPassage / context:\n${String(c.stimulus)}` : "";
+  const src = sourceText(c as Record<string, any>);
+  const stimulus = src ? `\n\nPassage / context:\n${src.slice(0, 6000)}` : "";
   const optionsBlock = opts.map((o, i) => `  ${String.fromCharCode(65 + i)}. ${o}`).join("\n");
 
   return `You are an expert assessment editor reviewing a multiple-choice item for the LinguAdapt CEFR-aligned English test bank.
@@ -181,6 +195,8 @@ Return JSON only.`;
 }
 
 function formatMarkedKey(c: DraftItem["content"]): string {
+  const ki = keyIndex(c as Record<string, any>);
+  if (ki >= 0) return `option ${String.fromCharCode(65 + ki)} (index ${ki})`;
   if (typeof c.correctAnswer === "number") return `index ${c.correctAnswer}`;
   if (typeof c.correctAnswer === "string") return c.correctAnswer;
   if (Array.isArray(c.acceptableAnswers) && c.acceptableAnswers.length > 0) {
@@ -190,6 +206,8 @@ function formatMarkedKey(c: DraftItem["content"]): string {
 }
 
 function resolveMarkedKey(item: DraftItem, options: string[]): number {
+  const resolved = keyIndex(item.content as Record<string, any>);
+  if (resolved >= 0 && resolved < options.length) return resolved;
   const raw = item.content.correctAnswer;
   if (typeof raw === "number" && raw >= 0 && raw < options.length) return raw;
   if (typeof raw === "string") {

@@ -235,5 +235,32 @@ export function flattenItemText(c: ItemContent): string {
   return parts.filter(Boolean).join("\n\n");
 }
 
+/**
+ * Bank items and generator output store options as {id, text, isCorrect}
+ * objects and the passage under `passage` / `ttsScript`; the gates were written
+ * for string options, `stimulus` and `correctAnswer`. Normalise once at the
+ * pipeline entry so every gate sees the shape it expects.
+ */
+export function normalizeDraftForGates(item: DraftItem): DraftItem {
+  const c = { ...(item.content as Record<string, any>) };
+  const rawOptions: unknown[] = Array.isArray(c.options) ? c.options : [];
+  const isObj = (o: unknown) => !!o && typeof o === "object";
+
+  if (rawOptions.some(isObj)) {
+    const keyIdx = rawOptions.findIndex((o) => isObj(o) && (o as any).isCorrect === true);
+    c.options = rawOptions.map((o) => (isObj(o) ? String((o as any).text ?? "") : String(o ?? "")));
+    if (c.correctAnswer == null && keyIdx >= 0) c.correctAnswer = keyIdx;
+    if (c.distractorRationale == null) {
+      const rationale = rawOptions.map((o) => (isObj(o) ? String((o as any).distractorRationale ?? (o as any).rationale ?? "") : ""));
+      if (rationale.some(Boolean)) c.distractorRationale = rationale;
+    }
+  }
+  if (!c.stimulus) {
+    const src = c.passage ?? c.ttsScript ?? c.transcript ?? c.audioScript;
+    if (src) c.stimulus = String(src);
+  }
+  return { ...item, content: c as ItemContent };
+}
+
 /** Pipeline version — bump when adding/removing gates or changing thresholds. */
-export const PIPELINE_VERSION = "1.0.0";
+export const PIPELINE_VERSION = "1.1.0";

@@ -34,7 +34,7 @@ import type {
   ValidationOptions,
   ValidationReport,
 } from "./types.js";
-import { sortIssuesBySeverity, PIPELINE_VERSION } from "./types.js";
+import { sortIssuesBySeverity, PIPELINE_VERSION, normalizeDraftForGates } from "./types.js";
 
 import { runStructuralGate } from "./gates/structural.js";
 import { runReadabilityGate } from "./gates/readability.js";
@@ -43,19 +43,23 @@ import { runKeyUniquenessGate } from "./gates/key-uniqueness.js";
 import { runDuplicateGate } from "./gates/duplicate.js";
 import { runBiasFairnessGate } from "./gates/bias-fairness.js";
 import { runPlagiarismGate } from "./gates/plagiarism.js";
+import { runContentIntegrityGate } from "./gates/content-integrity.js";
+import { runTextDependencyGate } from "./gates/text-dependency.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GATE_WEIGHTS: Record<string, number> = {
-  structural: 0.20,
-  readability: 0.15,
-  "distractor-quality": 0.20,
+  structural: 0.15,
+  readability: 0.10,
+  "distractor-quality": 0.15,
   "key-uniqueness": 0.15,
-  duplicate: 0.15,
+  duplicate: 0.10,
   "bias-fairness": 0.10,
   plagiarism: 0.05,
+  "content-integrity": 0.10,
+  "text-dependency": 0.10,
 };
 
 const DEFAULT_GATE_TIMEOUT_MS = 30_000;
@@ -69,9 +73,10 @@ const DEFAULT_GATE_TIMEOUT_MS = 30_000;
  * Pure function — no side effects beyond logging.
  */
 export async function validateDraftItem(
-  item: DraftItem,
+  rawItem: DraftItem,
   options: ValidationOptions = {}
 ): Promise<ValidationReport> {
+  const item = normalizeDraftForGates(rawItem);
   const startedAt = Date.now();
   const startedAtIso = new Date(startedAt).toISOString();
   const disabled = new Set(options.disabledGates ?? []);
@@ -100,9 +105,10 @@ export async function validateDraftItem(
       runDistractorQualityGate(item, { allowEmbeddings: options.allowEmbeddings })
     ),
     runWithGuard("duplicate", disabled, timeoutMs, () =>
-      runDuplicateGate(item, options.bankItems ?? [], { allowEmbeddings: options.allowEmbeddings })
+      runDuplicateGate(item, (options.bankItems ?? []).map(normalizeDraftForGates), { allowEmbeddings: options.allowEmbeddings })
     ),
     runWithGuard("plagiarism", disabled, timeoutMs, () => runPlagiarismGate(item)),
+    runWithGuard("content-integrity", disabled, timeoutMs, () => runContentIntegrityGate(item)),
   ]);
 
   const llmGates = await Promise.all([
@@ -111,6 +117,9 @@ export async function validateDraftItem(
     ),
     runWithGuard("bias-fairness", disabled, timeoutMs, () =>
       runBiasFairnessGate(item, { allowLlmJudge: options.allowLlmJudge })
+    ),
+    runWithGuard("text-dependency", disabled, timeoutMs, () =>
+      runTextDependencyGate(item, { allowLlmJudge: options.allowLlmJudge })
     ),
   ]);
 

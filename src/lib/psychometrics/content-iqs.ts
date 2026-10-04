@@ -30,7 +30,7 @@ const STOPWORDS = new Set(
   "about above after again against because before being below between could doing during each from have having here into just more most other over same should some such than that their them then there these they this those through under until very were what when where which while with would your".split(" ")
 );
 
-const ABSOLUTES = /\b(only|always|never|all|none|completely|entirely|every|must|impossible|exclusively)\b/i;
+const ABSOLUTES = /\b(only|always|never|all|none|completely|entirely|every|must|impossible|exclusively|merely|solely|purely|utterly|totally|inevitabl[ey]|nothing|no one|nobody)\b/i;
 
 const LOW_DEMAND = new Set(["RECOGNITION", "EXPLICIT_DETAIL"]);
 const HIGH_DEMAND = new Set(["INFERENCE", "WRITER_STANCE_OR_IMPLICATION", "SYNTHESIS_OR_EVALUATION"]);
@@ -66,7 +66,13 @@ export function overlapRatio(option: string, source: string): number {
   return words.filter((w) => src.includes(w)).length / words.length;
 }
 
-export function calculateContentIqs(item: ContentIqsInput): ContentIqsResult {
+export interface ContentIqsOptions {
+  /** Distractors containing absolutes (while the key has none) needed to flag test-wiseness. Default 2. */
+  absolutesThreshold?: number;
+}
+
+export function calculateContentIqs(item: ContentIqsInput, options: ContentIqsOptions = {}): ContentIqsResult {
+  const absThreshold = options.absolutesThreshold ?? 2;
   const flags: ContentFlag[] = [];
   const c = item.content ?? {};
   const opts: unknown[] = Array.isArray(c.options) ? c.options : [];
@@ -95,7 +101,7 @@ export function calculateContentIqs(item: ContentIqsInput): ContentIqsResult {
 
       const absInDistractors = distractors.filter((d) => ABSOLUTES.test(d)).length;
       const wise: string[] = [];
-      if (absInDistractors >= 2 && !ABSOLUTES.test(texts[ki])) wise.push("absolutes appear only in distractors");
+      if (absInDistractors >= absThreshold && !ABSOLUTES.test(texts[ki])) wise.push("absolutes appear only in distractors");
       const avgDist = distractors.reduce((s, d) => s + d.length, 0) / distractors.length;
       if (avgDist > 0 && texts[ki].length >= avgDist * 1.4 && texts[ki].length === Math.max(...texts.map((t) => t.length))) {
         wise.push("key is markedly the longest option");

@@ -26,6 +26,10 @@ import {
 } from "./blueprint.js";
 import { screenItemForDuplicates, DUP_THRESHOLD, NEAR_THRESHOLD } from "./duplicate-detector.js";
 import { nextItemCode } from "./item-codes.js";
+import { buildQualityBlock, isDemandAllowed } from "./generation-guidelines.js";
+import { runContentIntegrityGate } from "../ai/validation/gates/content-integrity.js";
+import { runTextDependencyGate } from "../ai/validation/gates/text-dependency.js";
+import { hardenDistractors, type HardenResult } from "./distractor-hardening.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -82,7 +86,13 @@ function pickDistinct<T>(arr: T[], n: number, used: Set<number>): T[] {
 
 // ── System prompt builder (§132 Blueprint-aware generation) ───────────────────
 
-function buildSystemPrompt(cell: BlueprintCell, batchSize: number, batchIndex: number): string {
+export function buildSystemPrompt(
+  cell: BlueprintCell,
+  batchSize: number,
+  batchIndex: number,
+  opts: { legacy?: boolean } = {}
+): string {
+  const legacy = !!opts.legacy;
   const wc = WORD_COUNT_GUIDANCE[cell.cefr];
   const usedNames = new Set<number>();
   const usedSettings = new Set<number>();
@@ -125,7 +135,7 @@ DISTRACTOR ENGINEERING (§30):
 ${cell.distractorStrategy ?? `
 - Distractor A: misreads or partially misunderstands explicit detail — plausible to a non-proficient candidate
 - Distractor B: confuses an example or sub-point in the text with the main answer
-- Distractor C: overgeneralises or extends a statement beyond what the text supports
+- Distractor C: ${legacy ? "overgeneralises or extends a statement beyond what the text supports" : "attributes a true detail to the wrong person, time or cause (a distortion of what the text says, NOT an extreme claim)"}
 - All distractors must be grammatically parallel with the correct option
 - No distractor should be absurdly wrong — all must attract genuine non-proficient candidates
 - Include "distractorRationale" for each option explaining the error it represents`}` : "";
@@ -140,8 +150,10 @@ JSON ARRAY OUTPUT — exactly ${batchSize} items, each object:
   "topic":         "${cell.topic ?? ""}",
   "construct":     "...",
   "evidenceStatement": "...",
-  "itemType":      "${itemType}",
+  "itemType":      "${itemType}",${legacy ? "" : `
+  "cognitiveDemand": "...", // one of the demands allowed in COGNITIVE DEMAND, if given`}
   "content": {
+    ${!legacy && ["GRAMMAR", "VOCABULARY"].includes(cell.skill) && ["B2", "C1", "C2"].includes(cell.cefr) ? `"context":       "...", // 2-4 sentence discourse context containing the gap` : ""}
     ${cell.skill === "READING" ? `"passage":       "...", // ${wc?.label ?? "appropriate length"}` : ""}
     ${cell.skill === "LISTENING" ? `"ttsScript":     "...", // natural spoken discourse, NOT a written essay read aloud` : ""}
     "question":      "...",
@@ -220,7 +232,7 @@ QUALITY GATES (must pass before output):
 - §32 Keyword matching — item must not be answerable by spotting a repeated word from the passage
 - §91 Copyright — content must be 100% original, not adapted from Cambridge/IELTS/TOEFL/Pearson
 ${distractorSpec}
-
+${legacy ? "" : `\n${buildQualityBlock(cell.skill, cell.cefr, itemType)}\n`}
 ${outputSpec}
 
 Output ONLY valid JSON array. No markdown, no commentary, no \`\`\`json fences.`;
@@ -241,6 +253,7 @@ interface RawGeneratedItem {
   estimatedDifficulty?: number;
   cefrJustification?: string;
   fairnessConcerns?: string;
+  cognitiveDemand?: string;
 }
 
 function parseAIOutput(raw: string): { items: RawGeneratedItem[]; parseError?: string } {
@@ -279,6 +292,54 @@ function validateRawItem(item: RawGeneratedItem, cell: BlueprintCell): string[] 
   return errs;
 }
 
+// ── Draft generation (no DB) ──────────────────────────────────────────────────
+
+export type RawDraft = RawGeneratedItem;
+
+/**
+ * Passage-based items are long and the model's reasoning tokens share the same
+ * output budget, so large requests silently truncate into invalid JSON.
+ * Generate in small chunks and merge.
+ */
+const CHUNK_SIZE: Record<string, number> = { READING: 3, LISTENING: 3 };
+const DEFAULT_CHUNK = 8;
+
+/** Calls the model and returns parsed, structurally valid drafts. Writes nothing. */
+export async function generateDrafts(
+  cell: BlueprintCell,
+  count: number,
+  opts: { legacy?: boolean } = {}
+): Promise<{ items: RawDraft[]; skippedReasons: string[] }> {
+  const skippedReasons: string[] = [];
+  const valid: RawDraft[] = [];
+  const total = Math.min(count, 20);
+  const chunk = CHUNK_SIZE[cell.skill] ?? DEFAULT_CHUNK;
+
+  for (let done = 0, idx = 0; done < total; done += chunk, idx++) {
+    const size = Math.min(chunk, total - done);
+    let rawText = "";
+    try {
+      const resp = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: buildSystemPrompt(cell, size, idx, opts),
+        config: { temperature: 0.85, maxOutputTokens: 24576 },
+      } as any);
+      rawText = (resp as any).text ?? (resp as any).candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    } catch (err) {
+      skippedReasons.push(`AI call failed: ${(err as Error).message}`);
+      continue;
+    }
+    const { items, parseError } = parseAIOutput(rawText);
+    if (parseError) skippedReasons.push(parseError);
+    for (const raw of items) {
+      const errs = validateRawItem(raw, cell);
+      if (errs.length) skippedReasons.push(`Item skipped — ${errs.join("; ")}`);
+      else valid.push(raw);
+    }
+  }
+  return { items: valid, skippedReasons };
+}
+
 // ── Core batch generator ──────────────────────────────────────────────────────
 
 export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> {
@@ -296,18 +357,9 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
   let duplicatesBlocked = 0;
   let nearMatchWarnings = 0;
 
-  // Single API call for the whole batch
-  let rawText = "";
-  try {
-    const prompt = buildSystemPrompt(cell, safeCount, 0);
-    const resp = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: { temperature: 0.85, maxOutputTokens: 8192 },
-    } as any);
-    rawText = (resp as any).text ?? (resp as any).candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-  } catch (err) {
-    skippedReasons.push(`AI call failed: ${(err as Error).message}`);
+  const generated = await generateDrafts(cell, safeCount);
+  skippedReasons.push(...generated.skippedReasons);
+  if (generated.items.length === 0) {
     return {
       batchId, cell,
       requested: safeCount, generated: 0,
@@ -317,13 +369,9 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
     };
   }
 
-  const { items: rawItems, parseError } = parseAIOutput(rawText);
-  if (parseError) skippedReasons.push(parseError);
-
-  for (const raw of rawItems) {
-    const validationErrors = validateRawItem(raw, cell);
-    if (validationErrors.length > 0) {
-      skippedReasons.push(`Item skipped — ${validationErrors.join("; ")}`);
+  for (const raw of generated.items) {
+    if (["READING", "LISTENING"].includes(cell.skill) && !isDemandAllowed(cell.cefr, raw.cognitiveDemand)) {
+      skippedReasons.push(`Item skipped — cognitiveDemand "${raw.cognitiveDemand ?? "missing"}" not allowed at ${cell.cefr}`);
       continue;
     }
 
@@ -338,6 +386,25 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
         distractorRationale: o.distractorRationale ?? "",
       }));
     }
+
+    // ── Content gates (integrity heuristics + blind-solve) ────────────────────
+    let hardening: Pick<HardenResult, "status" | "rounds"> | null = null;
+    if (itemType === "MULTIPLE_CHOICE" && ["READING", "LISTENING"].includes(cell.skill)) {
+      const h = await hardenDistractors({ skill: cell.skill, cefr: cell.cefr, content });
+      Object.assign(content, h.content);
+      hardening = { status: h.status, rounds: h.rounds };
+    }
+    const draft = { type: itemType as any, skill: cell.skill as any, cefrLevel: cell.cefr as any, content: content as any };
+    const integrity = await runContentIntegrityGate(draft);
+    if (integrity.verdict === "FAIL") {
+      skippedReasons.push(`Item skipped — content-integrity: ${integrity.issues.map((i) => i.message).join("; ")}`);
+      continue;
+    }
+    const textDep = await runTextDependencyGate(draft).catch(() => null);
+    const gateFlags = [
+      ...integrity.issues.map((i) => i.code),
+      ...(textDep?.issues.map((i) => i.code) ?? []),
+    ];
 
     // ── Semantic duplicate screening (§195) ───────────────────────────────────
     let embeddingVec: number[] | null = null;
@@ -403,6 +470,8 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
             fairnessConcerns: raw.fairnessConcerns,
             notes: spec.notes,
             generatedAt: new Date().toISOString(),
+            ...(raw.cognitiveDemand ? { cognitiveDemand: raw.cognitiveDemand } : {}),
+            generationGates: { flags: gateFlags, textDependency: textDep?.metrics ?? null, hardening, promptVersion: "v2" },
             ...(nearMatchNote ? { nearMatchWarning: nearMatchNote } : {}),
           } as any,
         },
