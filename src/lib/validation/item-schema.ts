@@ -188,6 +188,34 @@ export async function validateItemBeforeSave(
 /**
  * Quick structural check (no async operations)
  */
+const validIndexSet = (values: unknown[], count: number) =>
+  values.every((v) => Number.isInteger(v) && (v as number) >= 0 && (v as number) < count) && new Set(values).size === values.length;
+
+/** Checks that the answer key of a structured item points at real draggable items. */
+export function validateStructuredKey(content: any): string[] {
+  const items: unknown[] = content.draggableItems ?? [];
+  const n = items.length;
+  const errors: string[] = [];
+  if (n < 2) errors.push("Structured item needs at least 2 draggable items");
+  if (new Set(items.map((i) => String(i).trim().toLowerCase())).size !== n) errors.push("Duplicate draggable items");
+
+  if (content.correctMapping) {
+    const zones = Array.isArray(content.dropZones) ? content.dropZones.length : 0;
+    const values = Array.from({ length: zones }, (_, i) => content.correctMapping[String(i)]);
+    if (zones < 1) errors.push("Matching item has no dropZones");
+    else if (!validIndexSet(values, n)) errors.push("correctMapping has invalid or repeated indexes");
+    if (zones >= n) errors.push("Matching item needs more answers than rows");
+  } else if (content.correctAnswers) {
+    const k = content.selectCount;
+    if (!Number.isInteger(k) || k < 1) errors.push("Selection item needs a selectCount");
+    else if (!Array.isArray(content.correctAnswers) || content.correctAnswers.length !== k || !validIndexSet(content.correctAnswers, n)) errors.push("correctAnswers invalid for selectCount");
+    if (Number.isInteger(k) && n <= k) errors.push("Selection item needs more statements than selections");
+  } else if (Array.isArray(content.correctOrder)) {
+    if (content.correctOrder.length !== n || !validIndexSet(content.correctOrder, n)) errors.push("correctOrder must be a permutation of the items");
+  }
+  return errors;
+}
+
 export function validateItemStructure(skill: string, content: any): string[] {
   const errors: string[] = [];
 
@@ -196,8 +224,13 @@ export function validateItemStructure(skill: string, content: any): string[] {
     errors.push("Missing prompt/stem/question");
   }
 
-  // Skill-specific checks
-  if (["GRAMMAR", "VOCABULARY", "READING"].includes(skill)) {
+  // Structured items (matching / ordering / choose-N) carry their key as indexes into
+  // draggableItems instead of options + isCorrect, and are validated on that shape.
+  const structured = Array.isArray(content.draggableItems) &&
+    (content.correctMapping || content.correctOrder || content.correctSequence || content.correctAnswers);
+  if (structured) {
+    errors.push(...validateStructuredKey(content));
+  } else if (["GRAMMAR", "VOCABULARY", "READING"].includes(skill)) {
     const opts = Array.isArray(content.options) ? content.options : [];
     if (opts.length < 4) {
       errors.push(`Only ${opts.length} options (need 4+)`);
