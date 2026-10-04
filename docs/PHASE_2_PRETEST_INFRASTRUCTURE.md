@@ -42,20 +42,9 @@ The pretest infrastructure is a 3-stage system for collecting live calibration d
 
 ### 1. Pretest Manager (`src/lib/assessment-engine/pretest-manager.ts`)
 
-Core module managing the full pretest lifecycle.
+Calibration and promotion side of the pretest lifecycle. Delivery is done by the engine itself (`engine.ts` slot logic + `pretest-selection.ts`: least-exposed item within |b − θ| ≤ 1), not by this module.
 
 **Key exports:**
-
-- `injectPretestItems(sessionId)` — called at session launch
-  - Filters PRETEST items by session skill (if specified)
-  - Prefers lower-exposure items (fair distribution)
-  - Stores injected item IDs in session metadata
-  - Returns array of injected item IDs
-
-- `markPretestResponse(responseId, itemId)` — called on response submit
-  - Checks if item is PRETEST status
-  - Sets Response.isPretest = true if so
-  - Used by `submitResponse()` in server-engine
 
 - `autoCalibratePretestItems()` — nightly job
   - Finds all PRETEST items
@@ -83,13 +72,7 @@ MIN_ACTIVATION_RESPONSES = 50
 
 Two integration points:
 
-**In `launchSession()`:**
-```typescript
-const { injectPretestItems } = await import("./pretest-manager.js");
-await injectPretestItems(session.id).catch((err) => {
-  logger.warn({ err }, "pretest injection failed — non-blocking");
-});
-```
+**In `launchSession()`:** no pretest step. Pretest items are part of the normal item pool (status ACTIVE or PRETEST) and are served at the engine's pretest slots.
 
 **In `submitResponse()`:**
 ```typescript
@@ -129,22 +112,16 @@ Detailed results:
 
 ## Workflow Examples
 
-### Example 1: Session Launch with Pretest Injection
+### Example 1: Session Launch
 
 ```
 1. POST /api/sessions/launch { candidateId, organizationId }
    ↓
 2. Server creates Session (status=IN_PROGRESS, theta=0.0)
    ↓
-3. injectPretestItems(sessionId) is called
+3. Pool is built from ACTIVE + PRETEST items for the session's skills
    ↓
-4. Query: SELECT * FROM Item WHERE status='PRETEST' AND skill=productLine
-   ↓
-5. Sort by exposureCount, take top 2-3
-   ↓
-6. Update session.metadata.injectedPretestItemIds = [id1, id2, id3]
-   ↓
-7. Return { sessionId, status: "IN_PROGRESS" }
+4. Return { sessionId, status: "IN_PROGRESS" }
    ↓
 8. Client calls GET /api/sessions/:id/next
    ↓

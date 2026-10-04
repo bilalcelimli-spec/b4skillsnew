@@ -1,127 +1,28 @@
 /**
  * Pretest Infrastructure Manager
  *
- * Manages the full pretest lifecycle for Phase 2:
- *  1. Injection — when a session launches, add 2-3 PRETEST items to its pool
- *  2. Response marking — when a PRETEST item is answered, flag it
- *  3. Auto-calibration trigger — when an item reaches 30+ PRETEST responses, calibrate it
- *  4. Auto-promotion — if calibration fit is acceptable, promote PRETEST → ACTIVE
- *
- * The design keeps pretest items "invisible" to the adaptive engine (they flow through
- * the normal pool) so they don't distort theta estimates. Responses are tagged with
- * isPretest=true for later analysis.
+ * Pretest items reach candidates through the engine's own slot logic
+ * (engine.ts + pretest-selection.ts); responses are tagged isPretest and the
+ * item's exposureCount is incremented in server-engine.ts when it is answered.
+ * This module only holds the calibration and promotion side:
+ *  1. Auto-calibration trigger — when an item reaches 30+ PRETEST responses, calibrate it
+ *  2. Auto-promotion — if calibration fit is acceptable, promote PRETEST → ACTIVE
  */
 
 import { prisma } from "../prisma.js";
 import { CalibrationService } from "./calibration-service.js";
 import { logger } from "../observability/logger.js";
-import type { CefrLevel, SkillType } from "@prisma/client";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIGURATION
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PRETEST_INJECTION_COUNT = 2; // How many PRETEST items to inject per session
 const PRETEST_CALIBRATION_THRESHOLD = 30; // Minimum responses to trigger calibration
 const PRETEST_ACTIVATION_THRESHOLD = 50; // Minimum responses before auto-promotion
 const ACTIVATION_MIN_DISCRIMINATION = 0.5;
 const ACTIVATION_MAX_DISCRIMINATION = 3.0;
 const ACTIVATION_MIN_P = 0.1; // Minimum difficulty (% correct)
 const ACTIVATION_MAX_P = 0.95; // Maximum difficulty
-
-// ─────────────────────────────────────────────────────────────────────────────
-// INJECTION
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * After a session is launched, inject 2-3 PRETEST items to its pool.
- *
- * Strategy:
- *  — Filter PRETEST items by the session's skill (if specified in metadata.productLine)
- *  — Prefer items in the target CEFR band (start at B1, adjust based on intent)
- *  — Use exposure-aware selection (prefer items with lower exposure)
- *  — Store injected item IDs in session metadata for tracking
- */
-export async function injectPretestItems(sessionId: string): Promise<string[]> {
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-  });
-  if (!session) throw new Error(`Session ${sessionId} not found`);
-
-  const pLine = (session.metadata as any)?.productLine;
-  const targetSkill = isSkillType(pLine) ? pLine : undefined;
-
-  // Find PRETEST items — filter by skill if specified
-  const pretestItems = await prisma.item.findMany({
-    where: {
-      status: "PRETEST",
-      ...(targetSkill && { skill: targetSkill }),
-    },
-    select: {
-      id: true,
-      skill: true,
-      cefrLevel: true,
-      exposureCount: true,
-    },
-    take: PRETEST_INJECTION_COUNT * 3, // Pull extras for selection
-  });
-
-  if (pretestItems.length === 0) {
-    logger.warn({ sessionId }, "No PRETEST items available for injection");
-    return [];
-  }
-
-  // Prefer lower-exposure items (round-robin for fairness)
-  const selected = pretestItems
-    .sort((a, b) => a.exposureCount - b.exposureCount)
-    .slice(0, PRETEST_INJECTION_COUNT)
-    .map((item) => item.id);
-
-  // Record in session metadata for tracking
-  const meta: Record<string, unknown> = (session.metadata as Record<string, unknown>) || {};
-  meta.injectedPretestItemIds = selected;
-  meta.pretestInjectedAt = new Date().toISOString();
-
-  await prisma.session.update({
-    where: { id: sessionId },
-    data: { metadata: meta as any },
-  });
-
-  logger.info(
-    { sessionId, count: selected.length, itemIds: selected },
-    "pretest.items.injected"
-  );
-
-  return selected;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// RESPONSE MARKING
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * When a response is submitted, check if the item is PRETEST and mark the response.
- * Called from submitResponse in server-engine.ts.
- */
-export async function markPretestResponse(
-  responseId: string,
-  itemId: string
-): Promise<boolean> {
-  const item = await prisma.item.findUnique({
-    where: { id: itemId },
-    select: { status: true },
-  });
-
-  if (item?.status === "PRETEST") {
-    await prisma.response.update({
-      where: { id: responseId },
-      data: { isPretest: true },
-    });
-    return true;
-  }
-
-  return false;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTO-CALIBRATION JOB (nightly)
@@ -280,12 +181,6 @@ export async function autoCalibratePretestItems(): Promise<{
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-function isSkillType(value: unknown): value is SkillType {
-  return (
-    typeof value === "string" &&
-    ["READING", "LISTENING", "WRITING", "SPEAKING", "GRAMMAR", "VOCABULARY"].includes(value)
-  );
-}
 
 export function checkActivationCriteria(
   item: { discrimination: number; difficulty: number; guessing: number },

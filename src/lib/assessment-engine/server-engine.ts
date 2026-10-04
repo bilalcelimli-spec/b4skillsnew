@@ -413,13 +413,6 @@ export const AssessmentService = {
       .then((store) => store.recordTestStart())
       .catch(() => {});
 
-    // --- PRETEST INJECTION (Phase 2) ---
-    // Inject 2-3 PRETEST items to collect calibration data during live testing
-    const { injectPretestItems } = await import("./pretest-manager.js");
-    await injectPretestItems(session.id).catch((err) => {
-      logger.warn({ err, sessionId: session.id }, "pretest injection failed — non-blocking");
-    });
-
     // --- CONSUME CREDIT ---
     await BillingService.consumeCredit(organizationId);
 
