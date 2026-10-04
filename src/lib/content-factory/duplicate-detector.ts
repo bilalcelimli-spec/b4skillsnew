@@ -16,6 +16,7 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -210,45 +211,50 @@ export async function backfillEmbeddings(
   skill?: string,
   cefrLevel?: string,
   maxItems = 500,
-): Promise<{ processed: number; failed: number }> {
+  concurrency = 4,
+): Promise<{ processed: number; failed: number; skippedEmpty: number }> {
   const where = {
-    embeddingVec: null,
+    OR: [{ embeddingVec: { equals: Prisma.DbNull } }, { embeddingVec: { equals: Prisma.JsonNull } }],
     ...(skill ? { skill: skill as any } : {}),
     ...(cefrLevel ? { cefrLevel: cefrLevel as any } : {}),
   };
 
   let processed = 0;
   let failed = 0;
-  let skip = 0;
+  let skippedEmpty = 0;
+  let cursor: string | undefined;
   const pageSize = 50;
 
-  while (processed + failed < maxItems) {
+  // Keyset pagination: updated rows leave the filter, so offset paging would skip unprocessed rows.
+  while (processed + failed + skippedEmpty < maxItems) {
     const items = await prisma.item.findMany({
-      where,
-      select: { id: true, content: true, skill: true, cefrLevel: true },
-      take: pageSize,
-      skip,
+      // `id > cursor` (not Prisma cursor/skip): the cursor row stops matching the filter once updated,
+      // and skip:1 would then drop a legitimate row at every page boundary.
+      where: { AND: [where, ...(cursor ? [{ id: { gt: cursor } }] : [])] },
+      select: { id: true, content: true },
+      take: Math.min(pageSize, maxItems - processed - failed - skippedEmpty),
       orderBy: { id: "asc" },
     });
     if (items.length === 0) break;
+    cursor = items[items.length - 1].id;
 
-    for (const item of items) {
-      try {
-        const content = (item.content ?? {}) as Record<string, unknown>;
-        const fp = extractFingerprint(content);
-        if (!fp) { processed++; continue; }
-        const vec = await embedText(fp);
-        await prisma.item.update({
-          where: { id: item.id },
-          data: { embeddingVec: vec as any },
-        });
-        processed++;
-      } catch {
-        failed++;
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const item = items[next++];
+        try {
+          const fp = extractFingerprint((item.content ?? {}) as Record<string, unknown>);
+          if (!fp) { skippedEmpty++; continue; }
+          const vec = await embedText(fp);
+          await prisma.item.update({ where: { id: item.id }, data: { embeddingVec: vec as any } });
+          processed++;
+        } catch {
+          failed++;
+        }
       }
-    }
-    skip += pageSize;
+    };
+    await Promise.all(Array.from({ length: concurrency }, worker));
   }
 
-  return { processed, failed };
+  return { processed, failed, skippedEmpty };
 }
