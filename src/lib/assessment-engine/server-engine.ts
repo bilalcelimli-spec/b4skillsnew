@@ -10,6 +10,7 @@ import { resolveMstPhase, buildMstTagFilter } from "../selection/mst-router.js";
 import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint, IrtParameters } from "./types";
 import { prisma } from "../prisma";
 import { stripAnswerKeys } from "../security/answer-sanitizer.js";
+import { capItemsPerPassage } from "./passage-cap.js";
 import { shuffleMcqOptions, seededFisherYates } from "./mcq-options.js";
 import { scoreFreemiumResponse } from "../product-lines/freemium-response-scoring.js";
 import { scoreStructuredResponse } from "./structured-response.js";
@@ -805,9 +806,12 @@ export const AssessmentService = {
       profile,
     };
 
+    // Cap items per reading passage / listening recording (local dependence; see passage-cap.ts).
+    const catPool = capItemsPerPassage(shuffledSelectionPool, administeredItems);
+
     const catSelector = getCATSelector(profile);
     const catResult = await catSelector.selectNext(
-      shuffledSelectionPool as ShadowItem[],
+      catPool as ShadowItem[],
       state,
       seqCtx,
       profile.blueprint,
