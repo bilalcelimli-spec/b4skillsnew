@@ -26,7 +26,9 @@ import {
 } from "./blueprint.js";
 import { screenItemForDuplicates, DUP_THRESHOLD, NEAR_THRESHOLD } from "./duplicate-detector.js";
 import { nextItemCode } from "./item-codes.js";
-import { buildQualityBlock, isDemandAllowed } from "./generation-guidelines.js";
+import { buildQualityBlock, isDemandAllowed, matchingRules } from "./generation-guidelines.js";
+import { assembleMatching, validateRawMatching, guessingForMatching, type RawMatching } from "./matching-items.js";
+import { runMatchingDependencyGate } from "../ai/validation/gates/matching-dependency.js";
 import { runContentIntegrityGate } from "../ai/validation/gates/content-integrity.js";
 import { runTextDependencyGate } from "../ai/validation/gates/text-dependency.js";
 import { hardenDistractors, type HardenResult } from "./distractor-hardening.js";
@@ -130,7 +132,7 @@ DIVERSITY CONTROLS (§133):
 - Vary topic facets across items — batch ${batchIndex + 1}
 - Correct-answer positions must not cluster (do not put all keys in option A or B)`;
 
-  const distractorSpec = isMCQ ? `
+  const distractorSpec = isMCQ && !(itemType === "DRAG_DROP" && isReceptive && !legacy) ? `
 DISTRACTOR ENGINEERING (§30):
 ${cell.distractorStrategy ?? `
 - Distractor A: misreads or partially misunderstands explicit detail — plausible to a non-proficient candidate
@@ -140,7 +142,31 @@ ${cell.distractorStrategy ?? `
 - No distractor should be absurdly wrong — all must attract genuine non-proficient candidates
 - Include "distractorRationale" for each option explaining the error it represents`}` : "";
 
-  const outputSpec = isMCQ ? `
+  const isMatching = itemType === "DRAG_DROP" && isReceptive && !legacy;
+  const matchingSpec = `
+JSON ARRAY OUTPUT — exactly ${batchSize} items, each object:
+{
+  "skill":         "${cell.skill}",
+  "cefrLevel":     "${cell.cefr}",
+  "subskill":      "${cell.subskill}",
+  "genre":         "${cell.genre ?? ""}",
+  "topic":         "${cell.topic ?? ""}",
+  "construct":     "...",
+  "evidenceStatement": "...",
+  "itemType":      "DRAG_DROP",
+  "cognitiveDemand": "...", // one of the demands allowed in COGNITIVE DEMAND
+  "content": {
+    ${cell.skill === "READING" ? `"passage":       "...", // ${wc?.label ?? "appropriate length"}` : `"ttsScript":     "...", // natural multi-speaker discourse, speakers named`}
+    "prompt":        "...", // e.g. "Match each speaker with the view they express."
+    "pairs":         [{"zone": "...", "answer": "..."}],
+    "extraItems":    ["..."]
+  },
+  "estimatedDifficulty": ${CEFR_THETA_SEED[cell.cefr] ?? 0},
+  "cefrJustification":  "...",
+  "fairnessConcerns":   "none"
+}`;
+
+  const outputSpec = isMatching ? matchingSpec : isMCQ ? `
 JSON ARRAY OUTPUT — exactly ${batchSize} items, each object:
 {
   "skill":         "${cell.skill}",
@@ -232,7 +258,7 @@ QUALITY GATES (must pass before output):
 - §32 Keyword matching — item must not be answerable by spotting a repeated word from the passage
 - §91 Copyright — content must be 100% original, not adapted from Cambridge/IELTS/TOEFL/Pearson
 ${distractorSpec}
-${legacy ? "" : `\n${buildQualityBlock(cell.skill, cell.cefr, itemType)}\n`}
+${legacy ? "" : `\n${itemType === "DRAG_DROP" && isReceptive ? matchingRules(cell.skill) + "\n\n" + buildQualityBlock(cell.skill, cell.cefr, "NONE") : buildQualityBlock(cell.skill, cell.cefr, itemType)}\n`}
 ${outputSpec}
 
 Output ONLY valid JSON array. No markdown, no commentary, no \`\`\`json fences.`;
@@ -275,6 +301,12 @@ function validateRawItem(item: RawGeneratedItem, cell: BlueprintCell): string[] 
   if (!item.skill) errs.push("Missing skill");
   if (!item.cefrLevel) errs.push("Missing cefrLevel");
 
+  if ((item.itemType ?? "").includes("DRAG") && Array.isArray((c as any).pairs)) {
+    errs.push(...validateRawMatching(c as unknown as RawMatching));
+    if (cell.skill === "READING" && !(c.passage || c.text)) errs.push("READING item missing passage");
+    if (cell.skill === "LISTENING" && !(c.ttsScript || c.transcript)) errs.push("LISTENING item missing ttsScript/transcript");
+    return errs;
+  }
   const isMCQ = (item.itemType ?? "").includes("CHOICE") || (item.itemType ?? "").includes("FILL") || (item.itemType ?? "").includes("DRAG");
   if (isMCQ) {
     const opts: any[] = Array.isArray(c.options) ? c.options : [];
@@ -377,6 +409,14 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
 
     // Normalize content: ensure options have rationale field
     const content: Record<string, unknown> = { ...raw.content };
+    let guessingParam = ["WRITING", "SPEAKING"].includes(cell.skill) ? 0.0 : 0.25;
+    if (Array.isArray((content as any).pairs)) {
+      const { pairs, extraItems, ...rest } = content as any;
+      const assembled = assembleMatching({ prompt: String(rest.prompt ?? ""), pairs, extraItems }, `${batchId}:${storedIds.length}:${skippedReasons.length}`);
+      for (const k of Object.keys(content)) delete (content as any)[k];
+      Object.assign(content, rest, assembled);
+      guessingParam = guessingForMatching(assembled.dropZones.length, assembled.draggableItems.length);
+    }
     if (Array.isArray(content.options)) {
       content.options = (content.options as any[]).map((o) => ({
         id: o.id ?? o.label,
@@ -400,7 +440,9 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
       skippedReasons.push(`Item skipped — content-integrity: ${integrity.issues.map((i) => i.message).join("; ")}`);
       continue;
     }
-    const textDep = await runTextDependencyGate(draft).catch(() => null);
+    const textDep = draft.type === "DRAG_DROP"
+      ? await runMatchingDependencyGate(draft).catch(() => null)
+      : await runTextDependencyGate(draft).catch(() => null);
     const gateFlags = [
       ...integrity.issues.map((i) => i.code),
       ...(textDep?.issues.map((i) => i.code) ?? []),
@@ -445,7 +487,7 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
           cefrLevel: cell.cefr as any,
           difficulty: raw.estimatedDifficulty ?? theta,
           discrimination: 1.0,
-          guessing: ["WRITING", "SPEAKING"].includes(cell.skill) ? 0.0 : 0.25,
+          guessing: guessingParam,
           content: content as any,
           tags: [cell.skill, cell.cefr, cell.subskill, cell.genre, cell.topic].filter(Boolean) as string[],
           status: "DRAFT",

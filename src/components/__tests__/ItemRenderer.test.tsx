@@ -42,6 +42,26 @@ describe("ItemRenderer response recovery", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Write your answer" }));
     expect((screen.getByRole("textbox", { name: "Writing response" }) as HTMLTextAreaElement).value).toBe("My saved summary");
   });
+  it("renders listening matching with audio, never the transcript, and scores the submitted mapping", () => {
+    const content = {
+      prompt: "Match each speaker with the view they express.",
+      ttsScript: "Maria: SECRET-TRANSCRIPT remote work hurts team spirit. Tom: ...",
+      audioUrl: "/audio/test.mp3",
+      dropZones: ["Maria", "Tom", "Aisha"],
+      draggableItems: ["Focus is better with flexible hours", "Remote work weakens the team", "Training matters most", "Offices should close"],
+      correctMapping: { "0": 1, "1": 0, "2": 2 },
+    };
+    const onResponse = vi.fn();
+    const { container } = render(<ItemRenderer item={{ ...baseItem, skill: "LISTENING", type: "DRAG_DROP", content: stripAnswerKeys(content) as any }} onResponse={onResponse} />);
+    expect(container.textContent).not.toContain("SECRET-TRANSCRIPT");
+    expect(screen.getAllByRole("combobox")).toHaveLength(3);
+    expect(container.querySelector("audio")).not.toBeNull();
+    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "1" } });
+    fireEvent.change(screen.getAllByRole("combobox")[1], { target: { value: "0" } });
+    fireEvent.change(screen.getAllByRole("combobox")[2], { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Answer" }));
+    expect(scoreStructuredResponse(content, onResponse.mock.calls[0][0])).toBe(1);
+  });
   it("renders only the required word-placement slots, leaving distractors unused", () => {
     const content = { prompt: "Choose the words", stimulus: "She [___] [___].", draggableItems: ["walks", "home", "decoy"], correctSequence: ["walks", "home"] };
     const onResponse = vi.fn();

@@ -2,8 +2,8 @@
  * Pretest Infrastructure Manager
  *
  * Pretest items reach candidates through the engine's own slot logic
- * (engine.ts + pretest-selection.ts); responses are tagged isPretest and the
- * item's exposureCount is incremented in server-engine.ts when it is answered.
+ * (engine.ts + pretest-selection.ts); responses are tagged isPretest, and
+ * exposureCount is incremented in server-engine.ts each time an item is served.
  * This module only holds the calibration and promotion side:
  *  1. Auto-calibration trigger — when an item reaches 30+ PRETEST responses, calibrate it
  *  2. Auto-promotion — if calibration fit is acceptable, promote PRETEST → ACTIVE

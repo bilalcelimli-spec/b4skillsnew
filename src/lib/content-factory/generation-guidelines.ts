@@ -96,3 +96,21 @@ export function isDemandAllowed(cefr: string, demand: string | undefined): boole
   const allowed = ALLOWED_DEMAND_BY_CEFR[cefr];
   return !allowed || (allowed as readonly string[]).includes(demand);
 }
+
+/** Rules for matching items (match speakers / paragraphs to statements). */
+export function matchingRules(skill: string): string {
+  const zoneHint = skill === "LISTENING"
+    ? `Rows are the speakers, named exactly as they appear in the recording (e.g. "Maria").`
+    : `Rows are labelled parts of the passage (e.g. "Paragraph 2") or named people in it.`;
+  return [
+    `MATCHING RULES:`,
+    `- ${zoneHint}`,
+    `- Provide 3–4 "pairs" (row + the answer that belongs to it) and 1–2 "extraItems" (plausible answers that belong to NO row).`,
+    `- Every answer must be a PARAPHRASE of something said/written, never a copied phrase of 4+ words.`,
+    `- All answers (including extras) must be similar in length (within 25%), register and level of detail. No answer may be identifiable by length or tone.`,
+    `- Each answer must be true of exactly one row. At least two answers must be on the same sub-topic, so a row cannot be matched by topic words alone.`,
+    `- Extras should be distortions of what is actually said (wrong speaker, reversed, or a point mentioned but not endorsed) — never absurd.`,
+    `- Do not use absolutes (only, always, never, entirely, exclusively) in any answer.`,
+    `- The task must be impossible to complete well without the ${skill === "LISTENING" ? "recording" : "passage"}.`,
+  ].join("\n");
+}

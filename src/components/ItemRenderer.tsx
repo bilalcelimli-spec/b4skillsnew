@@ -279,6 +279,22 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     </div>;
   }
   if (item.type === "DRAG_DROP") {
+    if (itemSkill === "LISTENING") {
+      // Never show the transcript: StructuredResponse prints stimulus/scaffold/passage as context.
+      const { stimulus: _s, scaffold: _sc, passage: _p, transcript: _t, ttsScript: _tts, ...listeningContent } = content;
+      return (
+        <div className="space-y-6">
+          {content.audioUrl ? (
+            <AudioPlayer key={itemId} src={content.audioUrl} maxPlays={2} autoPlay={true} countdownSeconds={3} showWaveform={true} onAllPlaysUsed={() => {}} />
+          ) : (
+            <div className="p-6 bg-indigo-50 border border-indigo-200 rounded-2xl text-sm text-indigo-700" role="status">
+              Listening Task — audio will be available in the live assessment.
+            </div>
+          )}
+          <StructuredResponse key={itemId} content={listeningContent} disabled={disabled} onResponse={onResponse} />
+        </div>
+      );
+    }
     return <StructuredResponse key={itemId} content={content} disabled={disabled} onResponse={onResponse} />;
   }
   switch (itemSkill) {
