@@ -14,6 +14,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 
 const i = process.argv.indexOf("--per-cell");
 const PER_CELL = i >= 0 ? Number(process.argv[i + 1]) : 5;
+const o = process.argv.indexOf("--ids-file");
+const IDS_FILE = o >= 0 ? process.argv[o + 1] : "reading-headings-ids.json";
 
 const CELLS: BlueprintCell[] = [
   { cefr: "B2", skill: "READING", subskill: "PARAGRAPH_RELATIONSHIPS", genre: "article", topic: "education", itemType: "DRAG_DROP", format: "HEADINGS" },
@@ -43,7 +45,7 @@ async function main() {
   console.log(`full mapping found WITHOUT recording: ${blind}/${scored} | key confirmed WITH recording: ${guided}/${scored}`);
   console.log("gate flags:", JSON.stringify(flags));
   mkdirSync("scripts/jobs/.out", { recursive: true });
-  writeFileSync("scripts/jobs/.out/reading-headings-ids.json", JSON.stringify(items.map((x) => ({ id: x.id, code: x.itemCode, cefr: x.cefrLevel })), null, 1));
+  writeFileSync(`scripts/jobs/.out/${IDS_FILE}`, JSON.stringify(items.map((x) => ({ id: x.id, code: x.itemCode, cefr: x.cefrLevel })), null, 1));
   await prisma.$disconnect();
 }
 

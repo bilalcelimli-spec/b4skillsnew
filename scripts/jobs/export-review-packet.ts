@@ -20,6 +20,7 @@ const readIds = (f: string): string[] => (existsSync(`${out}/${f}`) ? JSON.parse
 const SOURCES: Array<{ file: string; label: string }> = [
   { file: "matching-listening-ids.json", label: "Listening — matching" },
   { file: "reading-headings-ids.json", label: "Reading — paragraph headings" },
+  { file: "reading-headings-v2-ids.json", label: "Reading — paragraph headings (v2, position-neutral rules)" },
   { file: "listening-expansion-ids.json", label: "Listening — MCQ (inference / attitude / synthesis)" },
 ];
 
