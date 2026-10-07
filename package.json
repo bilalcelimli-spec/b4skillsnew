@@ -75,7 +75,8 @@
     "db:seed:anchors": "tsx scripts/seed-anchor-items.ts",
     "db:seed:anchors:dry": "tsx scripts/seed-anchor-items.ts --dry-run",
     "db:seed:diverse-types": "tsx scripts/seed-diverse-item-types.ts",
-    "db:seed:diverse-types:dry": "tsx scripts/seed-diverse-item-types.ts --dry-run"
+    "db:seed:diverse-types:dry": "tsx scripts/seed-diverse-item-types.ts --dry-run",
+    "audit:routes": "node scripts/audit-platform-routes.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

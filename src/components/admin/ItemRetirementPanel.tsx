@@ -89,6 +89,7 @@ function ScoreBar({ value, className = "" }: { value: number; className?: string
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ItemRetirementPanel() {
+  const [error, setError] = useState<string | null>(null);
   const [data, setData]       = useState<BatchSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
@@ -98,10 +99,12 @@ export function ItemRetirementPanel() {
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/items/retirement-scores", { credentials: "include" });
-      if (res.ok) setData(await res.json());
-    } finally {
+      if (!res.ok) throw new Error("Could not load retirement analysis");
+      setData(await res.json());
+    } catch (err) { setError((err as Error).message); } finally {
       setLoading(false);
     }
   };
@@ -109,9 +112,10 @@ export function ItemRetirementPanel() {
   const runBatch = async () => {
     setRunning(true);
     try {
-      await fetch("/api/items/retirement-batch-run", { method: "POST", credentials: "include" });
+      const result = await fetch("/api/items/retirement-batch-run", { method: "POST", credentials: "include" });
+      if (!result.ok) throw new Error("Batch retirement failed");
       await load();
-    } finally {
+    } catch (err) { setError((err as Error).message); } finally {
       setRunning(false);
     }
   };
@@ -119,9 +123,10 @@ export function ItemRetirementPanel() {
   const retireItem = async (itemId: string) => {
     setRetiring(itemId);
     try {
-      await fetch(`/api/items/${itemId}/retire`, { method: "POST", credentials: "include" });
+      const result = await fetch(`/api/items/${encodeURIComponent(itemId)}/retire`, { method: "POST", credentials: "include" });
+      if (!result.ok) throw new Error("Item retirement failed");
       await load();
-    } finally {
+    } catch (err) { setError((err as Error).message); } finally {
       setRetiring(null);
     }
   };
@@ -155,11 +160,12 @@ export function ItemRetirementPanel() {
             className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
           >
             {running ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            Run Batch Analysis
+            Analyze and Retire Eligible Items
           </button>
         </div>
       </div>
 
+      {error && <p role="alert" className="text-red-700">{error}</p>}
       {/* Summary cards */}
       {data && (
         <div className="grid grid-cols-4 gap-3">

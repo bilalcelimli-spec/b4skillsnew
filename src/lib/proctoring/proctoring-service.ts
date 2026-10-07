@@ -58,7 +58,7 @@ export const ProctoringService = {
 
   async getTrustReport(sessionId: string): Promise<SessionTrustReport> {
     try {
-      const res = await fetch(`/api/proctoring/report?sessionId=${sessionId}`);
+      const res = await fetch(`/api/proctoring/report/${encodeURIComponent(sessionId)}`, { credentials: "include" });
       if (!res.ok) throw new Error('API error getTrustReport');
       const report = await res.json();
       return report;

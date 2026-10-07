@@ -27,7 +27,9 @@ import { logger } from "../observability/index.js";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const MAX_CONCURRENT_AI = Number(process.env.AI_SCORE_CONCURRENCY ?? "8");
+const configuredConcurrency = Number(process.env.AI_SCORE_CONCURRENCY ?? "8");
+const MAX_CONCURRENT_AI = Number.isFinite(configuredConcurrency) && configuredConcurrency >= 1
+  ? Math.floor(configuredConcurrency) : 8;
 const QUEUE_WARN_SIZE = 200;
 const AI_TIMEOUT_MS = 30_000;
 
@@ -64,6 +66,23 @@ const pendingResponseIds = new Set<string>();
 
 export function isScoringJobPending(responseId: string): boolean { return pendingResponseIds.has(responseId); }
 
+/** Preserve task evidence and atomically keep finalized human grades authoritative. */
+async function persistScoringResult(responseId: string, data: Record<string, any>): Promise<boolean> {
+  const current = await prisma.response.findUnique({where:{id:responseId},select:{metadata:true,humanScore:true}});
+  if (!current) throw new Error("Scoring response no longer exists");
+  if (current.humanScore != null) return false;
+  const result = await prisma.response.updateMany({
+    where:{id:responseId,humanScore:null},
+    data:{...data,metadata:{...((current.metadata as Record<string,unknown>) ?? {}),...data.metadata}},
+  });
+  return result.count === 1;
+}
+async function resolveHumanGrade(job: ScoringJobWithResolve): Promise<void> {
+  const current = await prisma.response.findUnique({where:{id:job.responseId},select:{humanScore:true}});
+  if (current?.humanScore == null) throw new Error("Scoring response changed before persistence");
+  job.resolve({score:current.humanScore,aiResult:null,requiresHumanReview:false,scoreSource:'human'});
+}
+
 // ─── Core processor ───────────────────────────────────────────────────────────
 
 async function processJob(job: ScoringJobWithResolve): Promise<void> {
@@ -99,9 +118,7 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
     const requiresHumanReview = scoringDecision?.requiresHumanReview === true;
 
     // Persist the AI result to the existing response row
-    await prisma.response.update({
-      where: { id: job.responseId },
-      data: {
+    const persisted = await persistScoringResult(job.responseId, {
         score: requiresHumanReview ? null : score,
         adjustedScore: null,
         isCorrect: requiresHumanReview ? null : score >= 0.5,
@@ -128,8 +145,8 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
               scoreFailed: scoringDecision?.scoreSource === "ai_unavailable",
             }
           : { asyncScored: true, scoreFailed: true },
-      } as any,
-    });
+      });
+    if (!persisted) { await resolveHumanGrade(job); return; }
 
     // Enqueue for human review if needed
     if (requiresHumanReview || !aiResult) {
@@ -161,13 +178,11 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
 
     // Persist failure marker and send to human review
     try {
-      await prisma.response.update({
-        where: { id: job.responseId },
-        data: {
+      const persisted = await persistScoringResult(job.responseId, {
           score: null, adjustedScore: null, isCorrect: null,
           metadata: { asyncScored: true, pendingAsyncScore: false, requiresHumanReview: true, scoreFailed: true, failureReason: (err as Error).message } as any,
-        } as any,
       });
+      if (!persisted) { await resolveHumanGrade(job); return; }
       await RatingQueueService.enqueue({
         sessionId: job.sessionId,
         itemId: job.itemId,
@@ -240,6 +255,7 @@ export function drainScoringQueue(timeoutMs = 25_000): Promise<void> {
     if (activeCount === 0 && queue.length === 0) return resolve();
 
     const deadline = setTimeout(() => {
+      clearInterval(check);
       logger.warn(
         { activeCount, queueDepth: queue.length },
         "async-scoring: drain timed out — some jobs may be lost"
@@ -261,7 +277,7 @@ export function drainScoringQueue(timeoutMs = 25_000): Promise<void> {
 /** Recover persisted submissions after a worker restart; old numeric placeholders stay withheld. */
 export async function recoverPendingScoringJobs(): Promise<number> {
   const responses = await prisma.response.findMany({
-    where:{metadata:{path:["pendingAsyncScore"],equals:true}},
+    where:{isPretest:false,humanScore:null,metadata:{path:["pendingAsyncScore"],equals:true}},
     include:{item:true},orderBy:{createdAt:"asc"},take:100,
   });
   let recovered=0;
@@ -269,9 +285,16 @@ export async function recoverPendingScoringJobs(): Promise<number> {
     const metadata=(response.metadata as Record<string,unknown>) ?? {};
     if (metadata.asyncScored === true || isScoringJobPending(response.id)) continue;
     let value: any=response.value ?? "";
-    if (typeof value === "string" && value.startsWith("{")) { try { value=JSON.parse(value); } catch { /* Keep literal writing text. */ } }
+    if (typeof value === "string" && value.startsWith("{")) {
+      try {
+        const parsed=JSON.parse(value);
+        if (parsed && typeof parsed.audio === "string" && typeof parsed.mimeType === "string") value=parsed;
+      } catch { /* Keep literal writing text. */ }
+    }
     const content=(response.item.content as Record<string,any>) ?? {};
-    const mode=productiveScoringMode(response.item.skill,response.item.type,content,value);
+    let mode;
+    try { mode=productiveScoringMode(response.item.skill,response.item.type,content,value); }
+    catch { logger.warn({responseId:response.id}, "async-scoring: invalid recovery submission"); continue; }
     if (!mode) continue;
     void enqueueScoringJob({sessionId:response.sessionId,responseId:response.id,itemId:response.itemId,
       skill:mode,value,prompt:buildScoringPrompt(content)}).catch(() => undefined);

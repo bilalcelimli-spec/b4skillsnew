@@ -1,3 +1,5 @@
+import { useScoringStatus } from "../hooks/useScoringStatus";
+import { CEFR_LEVELS } from "../lib/cefr/cefr-framework";
 /**
  * Candidate Adaptive Report
  *
@@ -12,7 +14,7 @@
  * reviewing a completed session (linked from SessionReview).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useToast } from "../hooks/useToast.js";
 import { motion } from "motion/react";
 import { RefreshCw, CheckCircle2, XCircle, ChevronRight, TrendingUp, BarChart2, ListChecks, Lightbulb, Printer, Share2, Check } from "lucide-react";
@@ -89,14 +91,8 @@ const SKILL_LABELS: Record<string, string> = {
 };
 
 // CEFR theta thresholds for reference lines on trajectory chart
-const CEFR_LINES = [
-  { theta: -2.5, label: "A1", color: "#64748b" },
-  { theta: -1.5, label: "A2", color: "#0284c7" },
-  { theta: -0.5, label: "B1", color: "#0891b2" },
-  { theta:  0.5, label: "B2", color: "#059669" },
-  { theta:  1.5, label: "C1", color: "#7c3aed" },
-  { theta:  2.5, label: "C2", color: "#db2777" },
-];
+const CEFR_LINES = CEFR_LEVELS.filter(level => Number.isFinite(level.theta.min))
+  .map(level => ({ theta: level.theta.min, label: level.level, color: level.hex }));
 
 // CEFR ↔ exam concordance (based on ALTE/Cambridge published tables)
 const CONCORDANCE: Record<string, { ielts: string; toefl: string; cambridge: string; toeic: string }> = {
@@ -167,6 +163,23 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
+  const scoringStatus = useScoringStatus(report?.hasPendingAI ? sessionId : null);
+  const scoringWasActive = useRef(false);
+  useEffect(() => {
+    if (scoringStatus.state === "connecting" || scoringStatus.state === "streaming") {
+      scoringWasActive.current = true;
+      return;
+    }
+    if (!scoringWasActive.current) return;
+    scoringWasActive.current = false;
+    let cancelled = false;
+    fetch(`/api/sessions/${sessionId}/adaptive-report`, { credentials: "include" })
+      .then(r => { if (!r.ok) throw new Error("Report refresh failed"); return r.json(); })
+      .then(data => { if (!cancelled) setReport(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [sessionId, scoringStatus.state]);
+
 
   useEffect(() => {
     setLoading(true);
@@ -184,6 +197,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
           }
         }
       })
+      .catch(() => { setReport(null); })
       .finally(() => setLoading(false));
   }, [sessionId]);
 
@@ -773,7 +787,11 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
                       `/api/candidates/${report.candidateId}/growth?fromSession=${growthFromId}&toSession=${sessionId}`,
                       { credentials: "include" }
                     );
-                    if (res.ok) setGrowthData(await res.json());
+                    const result = await res.json();
+                    if (!res.ok) throw new Error(result.error ?? "Comparison failed");
+                    setGrowthData(result);
+                  } catch (err) {
+                    toast({ title: "Comparison unavailable", description: (err as Error).message, variant: "error" });
                   } finally {
                     setGrowthLoading(false);
                   }
@@ -795,10 +813,10 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
                     {growthData.significantGrowth
                       ? "Statistically Significant Growth"
                       : growthData.thetaDelta > 0
-                      ? "Positive Growth (CIs Overlap)"
+                      ? "Positive Change (Within Measurement Uncertainty)"
                       : growthData.thetaDelta === 0
                       ? "No Change"
-                      : "Regression"}
+                      : growthData.significantDecline ? "Reliable Decline" : "Negative Change (Within Measurement Uncertainty)"}
                   </div>
                   <div className="text-xs text-slate-500 mt-0.5">
                     {new Date(growthData.fromDate).toLocaleDateString("en-GB")} →{" "}
@@ -819,23 +837,23 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
                   <div className="text-sm font-black mt-1 text-slate-800">
                     {growthData.cefrFrom} → {growthData.cefrTo}
                   </div>
-                  {growthData.cefrChange && <div className="text-[9px] text-emerald-600 font-bold">Level Up 🎉</div>}
+                  {growthData.cefrChange && growthData.thetaDelta > 0 && <div className="text-[9px] text-emerald-600 font-bold">Level Up 🎉</div>}
                 </div>
                 <div className="bg-white rounded-xl p-3 border border-slate-100 text-center">
                   <div className="text-[9px] font-black uppercase tracking-widest text-slate-400">CI Overlap</div>
                   <div className={`text-sm font-black mt-1 ${growthData.ciOverlap ? "text-amber-600" : "text-emerald-600"}`}>
                     {growthData.ciOverlap ? "Yes" : "No"}
                   </div>
-                  <div className="text-[9px] text-slate-400">{growthData.ciOverlap ? "Uncertain" : "Significant Growth"}</div>
+                  <div className="text-[9px] text-slate-400">{growthData.ciOverlap ? "Intervals overlap" : "Intervals do not overlap"}</div>
                 </div>
               </div>
 
               <p className="text-xs text-slate-500 leading-relaxed">
                 {growthData.significantGrowth
-                  ? "95% confidence intervals do not overlap — growth is statistically significant."
+                  ? "The increase exceeds measurement uncertainty (reliable change index > 1.96)."
                   : growthData.ciOverlap
-                  ? "95% confidence intervals overlap; growth is real but within measurement uncertainty."
-                  : "Regression observed; review motivation and study consistency."}
+                  ? "The observed change does not establish reliable improvement beyond measurement uncertainty."
+                  : growthData.significantDecline ? "The decrease exceeds measurement uncertainty (reliable change index < -1.96)." : "The observed change is within measurement uncertainty."}
               </p>
             </div>
           )}

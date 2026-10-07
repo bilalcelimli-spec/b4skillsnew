@@ -107,6 +107,7 @@ export default function App() {
   const location = useLocation();
   const verifyMatch = location.pathname.match(/^\/verify(?:\/([^/]+))?\/?$/);
   const isCertificateVerification = verifyMatch !== null;
+  const isPublicShare = /^\/share\/[a-f0-9]{32}\/?$/.test(location.pathname);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showLanding, setShowLanding] = useState(true);
@@ -130,14 +131,21 @@ export default function App() {
     const examMatch = path.match(/^\/exam\/(.+)/);
     const reportMatch = path.match(/^\/report\/(.+)/);
     if (examMatch) {
-      // exam deep-link — session resumed after auth
+      if (examMatch[1] !== "new") {
+        setActiveSession(prev => prev?.sessionId === examMatch[1] ? prev : {
+          orgId: "", sessionId: examMatch[1],
+        });
+        setPreTestReady(true);
+      }
     } else if (reportMatch) {
       setActiveTab("results");
+      setSelectedHistorySessionId(reportMatch[1]);
     } else {
       // Leaving a report/exam URL: clear transient session state so the
       // state→URL effect doesn't fight the browser back button and push
       // the user back to /report/… or /exam/…
       setTestCompleted(null);
+      setSelectedHistorySessionId(null);
       setActiveSession(null);
       if (path === "/admin") setActiveTab("admin");
       else if (path === "/rating") setActiveTab("rating");
@@ -155,20 +163,22 @@ export default function App() {
   // Sync state → URL
   useEffect(() => {
     // Public verification must stay accessible even after authentication resolves.
-    if (isCertificateVerification) return;
+    if (isCertificateVerification || isPublicShare) return;
     if (activeSession?.sessionId) {
       navigate(`/exam/${activeSession.sessionId}`, { replace: true });
     } else if (testCompleted?.sessionId) {
       navigate(`/report/${testCompleted.sessionId}`, { replace: true });
+    } else if (selectedHistorySessionId) {
+      navigate(`/report/${selectedHistorySessionId}`, { replace: true });
     } else if (!showLanding && user) {
       const tabPath: Record<string, string> = {
         admin: "/admin", dashboard: "/dashboard", rating: "/rating",
         institutional: "/institutional", teacher: "/teacher", results: "/results",
-        profile: "/profile", settings: "/settings",
+        profile: "/profile", settings: "/settings", content: "/content",
       };
       navigate(tabPath[activeTab] ?? "/dashboard", { replace: true });
     }
-  }, [activeTab, activeSession, testCompleted, user, isCertificateVerification]);
+  }, [activeTab, activeSession, testCompleted, selectedHistorySessionId, user, isCertificateVerification, isPublicShare]);
 
   useEffect(() => {
     const fetchUser = async (retryRefresh = true) => {
@@ -189,7 +199,12 @@ export default function App() {
           setShowLanding(false);
           
           const role = data.user.role?.toUpperCase();
-          if (role === "RATER") setActiveTab("rating");
+          const explicitTab = { "/admin": "admin", "/rating": "rating", "/institutional": "institutional",
+            "/teacher": "teacher", "/content": "content", "/profile": "profile", "/settings": "settings",
+            "/dashboard": "dashboard", "/results": "results" }[window.location.pathname];
+          if (window.location.pathname.startsWith("/report/")) setActiveTab("results");
+          else if (explicitTab) setActiveTab(explicitTab as typeof activeTab);
+          else if (role === "RATER") setActiveTab("rating");
           else if (["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"].includes(role)) setActiveTab("admin");
           else if (["ORG_ADMIN", "INST_ADMIN"].includes(role)) setActiveTab("institutional");
           else if (role === "TEACHER") setActiveTab("teacher");
@@ -432,6 +447,8 @@ export default function App() {
           candidateId={user.uid}
           productLine={activeSession.productLine}
           startingSkill={activeSession.startingSkill}
+          initialSessionId={activeSession.sessionId === "new" ? undefined : activeSession.sessionId}
+          onSessionStarted={(sessionId) => setActiveSession(prev => prev ? { ...prev, sessionId } : prev)}
           onComplete={handleTestComplete}
           onCancel={() => { setActiveSession(null); setPreTestReady(false); }}
         />
@@ -608,7 +625,7 @@ export default function App() {
           </Suspense>
         ) : activeTab === "rating" && isRater ? (
           <Suspense fallback={<PageLoader />}>
-            <RatingDashboard />
+            <RatingDashboard raterId={user?.uid} />
           </Suspense>
         ) : activeTab === "institutional" && isOrgAdmin ? (
           <Suspense fallback={<PageLoader />}>
@@ -651,7 +668,7 @@ export default function App() {
             sessions={recentSessions}
             onSelectSession={(id) => setSelectedHistorySessionId(id)}
           />
-        ) : activeTab === "profile" ? (
+        ) : activeTab === "profile" || activeTab === "settings" ? (
           <Suspense fallback={<PageLoader />}>
             <CandidateProfile user={userProfile} onLogout={() => signOut()} />
           </Suspense>

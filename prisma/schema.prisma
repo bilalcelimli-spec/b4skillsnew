@@ -760,6 +760,10 @@ model RatingTask {
   qwk             Float?
   /** True when |score - secondRaterScore| > 0.20, requiring a third arbitration rater. */
   requiresArbitration Boolean @default(false)
+  // Independent third rating; final score is the mean of all three ratings.
+  arbitratorId      String?
+  arbitrationScore  Float?
+  arbitrationFeedback String?
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -767,6 +771,7 @@ model RatingTask {
   @@index([status])
   @@index([raterId])
   @@index([requiresArbitration])
+  @@index([arbitratorId])
 }
 
 enum RatingStatus {

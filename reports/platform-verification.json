@@ -1,0 +1,138 @@
+{
+  "scope": "Repository audit of API contracts, reachable UI, assessment resume and reporting, proctoring, analytics, dependencies and available tests.",
+  "verification": {
+    "typescript": "passed",
+    "tests": {
+      "passed": 1909,
+      "skipped": 30,
+      "todo": 2,
+      "suitesPassed": 149,
+      "suitesSkipped": 2
+    },
+    "builds": {
+      "client": "passed",
+      "ssr": "passed",
+      "server": "passed"
+    },
+    "staticApiAudit": {
+      "routes": 289,
+      "fetchCalls": 224,
+      "reachableMissing": 0,
+      "duplicate": 0
+    },
+    "browser": {
+      "publicPages": 13,
+      "adminFlows": [
+        "item retirement",
+        "analytics",
+        "score evidence menu and missing-data state (mock API fixtures)",
+        "scoring queue counts, review/failure indicators and requeue feedback (mock API fixtures)"
+      ],
+      "candidateFlows": [
+        "report deep link",
+        "growth comparison"
+      ],
+      "javascriptErrors": 0,
+      "apiResponses": "Mocked browser fixtures; not a production end-to-end assertion.",
+      "raterFlows": [
+        "authenticated task claim sends one request and opens candidate response and source (mock API fixtures)",
+        "third independent review through real local Express + disposable PostgreSQL, with actual grade persistence and report refresh; authentication identity supplied by test harness"
+      ]
+    },
+    "productionDependencies": {
+      "info": 0,
+      "low": 0,
+      "moderate": 3,
+      "high": 0,
+      "critical": 0,
+      "total": 3
+    },
+    "scoreEvidence": {
+      "focusedTests": 13,
+      "authorization": "403 before database access verified",
+      "missingData": "Null measurements and explicit insufficient-data states",
+      "browserJavaScriptErrors": 0,
+      "typeCheck": "passed",
+      "clientBuild": "passed",
+      "ssrBuild": "passed",
+      "serverBuild": "passed"
+    },
+    "scoringQueue": {
+      "apiContracts": "authentication, database outage, tenant scope, ownership, productive task retry policy passed",
+      "worker": "human-grade race guard and metadata preservation passed",
+      "rating": "second-rater privacy, claimed task resume, audio and missing-recording states passed",
+      "javascriptErrors": 0
+    },
+    "arbitration": {
+      "focusedServiceApiUiTests": 28,
+      "isolatedPostgreSqlTests": {
+        "passed": 5,
+        "covers": [
+          "three independent rating stages and actual report refresh",
+          "concurrent claim exclusion",
+          "concurrent submission exclusion in all three slots",
+          "identical retry without grade overwrite",
+          "real PostgreSQL transaction rollback on forced response-write failure"
+        ]
+      },
+      "migration": "All migrations applied successfully to a fresh disposable localhost database; schema diff found no difference.",
+      "productionMigration": "Applied 009_rating_arbitration using configured MIGRATION_DATABASE_URL; migration checksum, all three columns and arbitrator index verified.",
+      "browser": "Real local Express rating router and PostgreSQL, with a test-only authenticated identity; claim, third rating, committed grade and refreshed report verified.",
+      "browserJavaScriptErrors": 0,
+      "aggregationPolicy": "Mean of three independent normalized human ratings. Previous human and AI grades withheld from the third reviewer."
+    },
+    "productionMigration": {
+      "name": "009_rating_arbitration",
+      "applied": true,
+      "checksumMatches": true,
+      "columnsVerified": 3,
+      "indexVerified": true,
+      "verifiedAt": "2026-10-07T11:42:52.716478+00:00"
+    }
+  },
+  "fixed": [
+    "Authenticated report/exam deep links, content workspace URL and account settings routing.",
+    "Exam resume uses the existing attempt and server timing; StrictMode cannot duplicate launch.",
+    "Unanswered served task is reused on reconnect without rerolling selection or incrementing exposure.",
+    "Candidate growth comparison API with ownership checks, scored evidence, product consistency and reliable change.",
+    "Scoring SSE distinguishes zero, pending, review and unavailable; integrated tasks included, timeouts terminate.",
+    "Candidate report reloads when async scoring reaches a terminal status.",
+    "Shared refresh-token rotation for concurrent API requests; unrelated external 401 cannot log a user out.",
+    "Organization radar chart schema/percentage scale, actual monthly growth and cross-year chronological trends.",
+    "Real recent candidate data, measured admin health and sample CEFR distribution replace fictional displays.",
+    "Proctoring trust report reads persisted events instead of calling the same server recursively; detail button works.",
+    "Conditional SEM curve alias and actual chart payload supplied.",
+    "Unknown API routes return JSON 404 before the SPA fallback; readiness bypasses demo interception.",
+    "Activated item retirement panel with actual multi-factor service, scored evidence filtering, batched evidence and protected manual retirement.",
+    "Patched compression, proxy-addr, source-map-js and fast-copy; route audit included in CI.",
+    "Activated Score Evidence panel after replacing fabricated alpha/omega, rescaled theta and criterion-accuracy claims with scored-session IRT marginal reliability, real theta/SEM distributions and descriptive repeat agreement; Cohen kappa uses observed marginals.",
+    "Admin scoring queue includes unresolved numeric placeholders and integrated productive tasks; ignores pretests and completed human grades, counts responses instead of session-skill rows.",
+    "Requeue uses the actual productive response format and server-held source prompt, skips active jobs, human disputes and claimed or partly rated human tasks; API authorization, organization scope and ownership verified with contract tests.",
+    "AI persistence preserves response metadata and atomically refuses to overwrite finalized human scores, on both provider success and failure. Recovery preserves literal JSON writing and isolates malformed task formats; invalid concurrency settings fall back safely; shutdown timeout clears polling interval.",
+    "Rating workspace receives the authenticated rater ID from App, surfaces API errors, resumes assigned claimed tasks and plays actual speaking recordings. Missing recordings block UI submission; task source material is visible.",
+    "Second-rater claim and reload responses hide first-rater score and feedback; claimed lists are restricted to the currently assigned rating slot. Rating stats include actual pending/claimed/completed/flagged counts without invented QWK.",
+    "Completed third-rater arbitration with distinct reviewer identity, atomic claim, blind task presentation, assigned-task resume and validated submit API.",
+    "Human rating finalization and response grade commit in one transaction; conditional writes reject duplicate or racing submissions. Identical retries can repair report refresh without changing an already committed grade.",
+    "Added additive nullable arbitration columns/index and migration 009_rating_arbitration; validated full migration deployment and zero schema drift in disposable PostgreSQL.",
+    "Enabled FLAGGED tasks for eligible third reviewers in RatingDashboard; third review submits through protected API and refreshes the actual candidate report."
+  ],
+  "inactiveCodeDecisions": {
+    "dormantComponents": 64,
+    "unmatchedDormantFetchCalls": 38,
+    "unmountedDuplicateRouters": [
+      "src/routes/items.ts",
+      "src/routes/billing.ts",
+      "src/routes/proctoring.ts"
+    ],
+    "reason": "Incomplete analytics/offline panels require backend and payload work; duplicate legacy routers would overlap existing routes and weaken current authorization or webhook verification. They were catalogued rather than exposed as finished features."
+  },
+  "remainingLimitations": [
+    "Three moderate dependency advisories remain in the TensorFlow/argparse/sprintf-js chain; audit proposes an incompatible TensorFlow downgrade, which was not applied.",
+    "Production Render configuration, payment callbacks, real AI scoring and every external integration were not exercised in this pass.",
+    "Psychometric/CEFR validity requires empirical evidence beyond software tests.",
+    "Static route matching does not verify computed URLs, every payload contract or every authorization branch.",
+    "Score Evidence is descriptive; repeat agreement is affected by learning and practice, and is limited to known product configurations within 30 days. Alpha, omega and external criterion accuracy are unavailable without appropriate studies.",
+    "The ordinary suite skips 30 tests and has 2 TODOs; 5 of those skipped tests were separately enabled and passed against disposable PostgreSQL. The remaining 25 skipped tests are not passing evidence."
+  ],
+  "changes": "Platform audit changes and migration are ready for Git publication; migration 009_rating_arbitration has been applied and verified in the configured deployment database."
+}

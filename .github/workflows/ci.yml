@@ -21,6 +21,8 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm run type-check
+      - name: Check active UI API routes
+        run: npm run audit:routes
 
   # ─────────────────────────────────────────────────────────────────────────────
   test:

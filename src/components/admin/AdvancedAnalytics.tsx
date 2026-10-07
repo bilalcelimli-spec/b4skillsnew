@@ -45,7 +45,7 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
   const { toast } = useToast();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [compareMode, setCompareMode] = useState(false);
+
 
   useEffect(() => {
     fetchAnalytics();
@@ -81,6 +81,11 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
 
   if (loading) return <div className="p-12 text-center text-slate-400 font-black uppercase tracking-widest animate-pulse">Loading Analytics...</div>;
 
+  if (!data) return <div role="alert" className="p-8 text-center text-slate-600">
+    <p>Analytics could not be loaded.</p>
+    <Button onClick={fetchAnalytics}>Try again</Button>
+  </div>;
+
   const COLORS = ["#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899", "#f43f5e"];
 
   return (
@@ -91,17 +96,6 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
           Institutional Insights
         </h2>
         <div className="flex gap-2">
-          <Button 
-            variant={compareMode ? "primary" : "outline"} 
-            size="sm" 
-            onClick={() => setCompareMode(!compareMode)} 
-            className={cn(
-              "rounded-xl h-10 px-4 text-[10px] font-black uppercase tracking-widest transition-all",
-              compareMode ? "bg-indigo-600 text-white" : ""
-            )}
-          >
-            <Users size={14} className="mr-2" /> {compareMode ? "Hide Comparison" : "Compare Cohorts"}
-          </Button>
           <Button variant="outline" size="sm" onClick={exportData} className="rounded-xl h-10 px-4 text-[10px] font-black uppercase tracking-widest">
             <Download size={14} className="mr-2" /> Export CSV
           </Button>
@@ -140,7 +134,7 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
               <TrendingUp size={24} />
             </div>
             <div>
-              <div className="text-2xl font-black text-slate-900">+12%</div>
+              <div className="text-2xl font-black text-slate-900">{data.monthlyGrowthPercent == null ? "—" : `${data.monthlyGrowthPercent > 0 ? "+" : ""}${data.monthlyGrowthPercent}%`}</div>
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Growth Month-over-Month</div>
             </div>
           </CardContent>
@@ -186,9 +180,7 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
                   cursor={{ fill: "#f8fafc" }}
                 />
                 <Bar dataKey="value" name="Current" fill="#6366f1" radius={[6, 6, 0, 0]} />
-                {compareMode && (
-                  <Bar dataKey={(d) => d.value * 0.8} name="Global Avg" fill="#cbd5e1" radius={[6, 6, 0, 0]} />
-                )}
+
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -211,7 +203,7 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
                 />
                 <PolarRadiusAxis 
                   angle={30} 
-                  domain={[0, 150]} 
+                  domain={[0, 100]}
                   tick={{ fontSize: 8, fill: "#cbd5e1" }} 
                 />
                 <RadarComponent
@@ -221,15 +213,7 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
                   fill="#6366f1"
                   fillOpacity={0.6}
                 />
-                {compareMode && (
-                  <RadarComponent
-                    name="Global Average"
-                    dataKey="B"
-                    stroke="#94a3b8"
-                    fill="#94a3b8"
-                    fillOpacity={0.2}
-                  />
-                )}
+
                 <Tooltip />
               </RadarChart>
             </ResponsiveContainer>

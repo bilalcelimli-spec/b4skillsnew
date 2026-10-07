@@ -38,11 +38,13 @@ interface TestPlayerProps {
   candidateId: string;
   productLine?: string;
   startingSkill?: string;
+  initialSessionId?: string;
+  onSessionStarted?: (sessionId: string) => void;
   onComplete: (finalTheta: number | null, sessionId: string) => void;
   onCancel?: () => void;
 }
 
-export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidateId, productLine, startingSkill, onComplete, onCancel }) => {
+export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidateId, productLine, startingSkill, initialSessionId, onSessionStarted, onComplete, onCancel }) => {
   const { t } = useTranslation();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentItem, setCurrentItem] = useState<Item | null>(null);
@@ -118,10 +120,28 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     SPEAKING: 'bg-amber-500',
   };
 
-  // Launch Session
+  const launchStarted = React.useRef(false);
+  // StrictMode replays effects in development; a launch must create one attempt.
   useEffect(() => {
+    if (launchStarted.current) return;
+    launchStarted.current = true;
     const launch = async () => {
       try {
+        if (initialSessionId) {
+          const statusRes = await fetch(`/api/sessions/${encodeURIComponent(initialSessionId)}/status`, { credentials: "include" });
+          const existing = await statusRes.json();
+          if (!statusRes.ok) throw new Error(existing.error ?? "Could not resume assessment");
+          if (existing.status === "COMPLETED") { onComplete(existing.theta ?? null, initialSessionId); return; }
+          if (existing.status !== "IN_PROGRESS") throw new Error("This assessment cannot be resumed in its current state");
+          setSessionId(initialSessionId);
+          setSessionReady(true);
+          setShowPractice(false);
+          if (typeof existing.maxDurationMs === "number") setMaxDurationMs(existing.maxDurationMs);
+          if (Array.isArray(existing.sectionOrder)) setSectionOrder(existing.sectionOrder);
+          sessionStartRef.current = existing.startedAt ? new Date(existing.startedAt).getTime() : Date.now();
+          fetchNextItem(initialSessionId);
+          return;
+        }
         const res = await fetch("/api/sessions/launch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -135,6 +155,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         }
         
         setSessionId(data.sessionId);
+        onSessionStarted?.(data.sessionId);
         setSessionReady(true);
         if (typeof data.maxDurationMs === "number") {
           setMaxDurationMs(data.maxDurationMs);

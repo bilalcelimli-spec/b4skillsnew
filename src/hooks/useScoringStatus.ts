@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 
 export type ScoringItemStatus = {
   responseId: string;
-  status: "pending" | "scored";
+  status: "pending" | "scored" | "unavailable" | "review_required";
   cefrLevel?: string;
   score?: number;
 };
@@ -19,6 +19,7 @@ export type ScoringSessionStatus =
   | { state: "streaming"; items: ScoringItemStatus[] }
   | { state: "complete" }
   | { state: "timeout"; message: string }
+  | { state: "review_required"; message: string }
   | { state: "error" };
 
 export function useScoringStatus(sessionId: string | null): ScoringSessionStatus {
@@ -38,6 +39,7 @@ export function useScoringStatus(sessionId: string | null): ScoringSessionStatus
       setStatus({ state: "error" });
       return;
     }
+    itemsRef.current.clear();
     setStatus({ state: "connecting" });
 
     const es = new EventSource(`/api/sessions/${sessionId}/scoring-status`, {
@@ -55,6 +57,12 @@ export function useScoringStatus(sessionId: string | null): ScoringSessionStatus
 
     es.addEventListener("complete", () => {
       setStatus({ state: "complete" });
+      es.close();
+    });
+
+    es.addEventListener("review_required", (e: MessageEvent) => {
+      try { setStatus({ state: "review_required", message: JSON.parse(e.data).message }); }
+      catch { setStatus({ state: "review_required", message: "Some responses require review." }); }
       es.close();
     });
 

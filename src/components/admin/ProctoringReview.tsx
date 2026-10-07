@@ -163,7 +163,7 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
                           </div>
                         </td>
                         <td className="px-8 py-6 text-right">
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 group-hover:text-indigo-600">
+                          <Button onClick={() => setSelectedAlert(alert)} aria-label="View violation details" variant="ghost" size="icon" className="h-8 w-8 text-slate-400 group-hover:text-indigo-600">
                             <Eye size={16} />
                           </Button>
                         </td>
@@ -216,7 +216,7 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <div className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Trust Score</div>
+                        <div className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Event Severity</div>
                         <div className="text-lg font-black text-red-600">{selectedAlert.severity}/5</div>
                       </div>
                       <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">

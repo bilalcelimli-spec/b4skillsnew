@@ -60,6 +60,22 @@ interface AnalyticsData {
 export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ organizationId }) => {
   const { toast } = useToast();
   const [data, setData] = useState<AnalyticsData | null>(null);
+  const [recentCandidates, setRecentCandidates] = useState<Array<{ name: string; score: string; date: string; avatar: string }>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    setRecentCandidates([]);
+    fetch(`/api/organizations/${organizationId}/sessions?limit=20`, { credentials: "include" })
+      .then(r => { if (!r.ok) throw new Error("Could not load recent results"); return r.json(); })
+      .then(sessions => {
+        if (cancelled || !Array.isArray(sessions)) return;
+        setRecentCandidates(sessions.filter(s => s.status === "COMPLETED").slice(0, 5).map(s => ({
+          name: s.candidate?.name ?? "Candidate", score: s.scoreReport?.overallCefr ?? s.cefrLevel ?? "Pending",
+          date: s.completedAt ? new Date(s.completedAt).toLocaleDateString() : "—",
+          avatar: (s.candidate?.name ?? "?").split(" ").map((part: string) => part[0]).slice(0, 2).join(""),
+        })));
+      }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [organizationId]);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<"analytics" | "benchmark" | "onboarding" | "ecosystem">("analytics");
   const [benchmark, setBenchmark] = useState<any | null>(null);
@@ -433,16 +449,11 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
 
             {/* Recent High Performers */}
             <Card className="rounded-[32px] border-slate-100 shadow-sm overflow-hidden">
-              <CardHeader className="p-6 font-black uppercase tracking-widest text-xs text-slate-400 border-b border-slate-50">Top Performing Candidates</CardHeader>
+              <CardHeader className="p-6 font-black uppercase tracking-widest text-xs text-slate-400 border-b border-slate-50">Recent Completed Assessments</CardHeader>
               <CardContent className="p-0">
                 <div className="divide-y divide-slate-50">
-                  {[
-                    { name: "Alice Johnson", score: "C2", date: "2 hours ago", avatar: "AJ", trust: 98 },
-                    { name: "Robert Smith", score: "C1", date: "5 hours ago", avatar: "RS", trust: 95 },
-                    { name: "Elena Rodriguez", score: "C1", date: "Yesterday", avatar: "ER", trust: 92 },
-                    { name: "David Kim", score: "B2+", date: "Yesterday", avatar: "DK", trust: 88 },
-                    { name: "Sarah Miller", score: "B2", date: "2 days ago", avatar: "SM", trust: 94 }
-                  ].map((candidate, i) => (
+                  {!recentCandidates.length && <p className="p-5 text-sm text-slate-500">No completed assessments available.</p>}
+                  {recentCandidates.map((candidate, i) => (
                     <div key={i} className="flex items-center justify-between p-5 hover:bg-slate-50 transition-colors">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 font-black text-xs uppercase tracking-widest border border-slate-100">
@@ -452,10 +463,7 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
                           <div className="font-black text-slate-900 text-sm uppercase tracking-tight">{candidate.name}</div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{candidate.date}</div>
-                            <div className="w-1 h-1 rounded-full bg-slate-200" />
-                            <div className="flex items-center gap-1 text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-                              <ShieldCheck size={10} /> {candidate.trust}% Trust
-                            </div>
+
                           </div>
                         </div>
                       </div>

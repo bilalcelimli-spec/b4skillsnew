@@ -810,7 +810,11 @@ export const AssessmentService = {
     const catPool = capItemsPerPassage(shuffledSelectionPool, administeredItems);
 
     const catSelector = getCATSelector(profile);
-    const catResult = await catSelector.selectNext(
+    // Reconnecting must return the already served unanswered task rather than
+    // rerolling CAT selection and incrementing exposure for every refresh.
+    const outstandingItem = typeof meta.currentItemId === "string" && !state.usedItemIds.has(meta.currentItemId)
+      ? itemPool.find(item => item.id === meta.currentItemId) : undefined;
+    const catResult = outstandingItem ? { item: outstandingItem } : await catSelector.selectNext(
       catPool as ShadowItem[],
       state,
       seqCtx,
@@ -859,7 +863,7 @@ export const AssessmentService = {
     // bootstrapped from DB on the next server restart. This prevents the D-P
     // α-weights from resetting to 1.0 (open gate) after every process restart,
     // which is the primary cause of same-item-same-order exams.
-    prisma.item
+    if (!outstandingItem) prisma.item
       .update({ where: { id: nextItem.id }, data: { exposureCount: { increment: 1 } } })
       .catch(() => {}); // fire-and-forget: non-critical, calibration-service also tracks this
 
@@ -1712,8 +1716,12 @@ export const AssessmentService = {
     });
 
     if (!session) throw new Error("Session not found");
-    
+    const profile = getProfile((session.metadata as any)?.productLine);
     return {
+      startedAt: session.startedAt,
+      organizationId: session.organizationId,
+      maxDurationMs: profile.maxDurationMs,
+      sectionOrder: profile.sectionOrder,
       status: session.status,
       theta: session.theta,
       progress: session.responses.length,

@@ -15,13 +15,17 @@ import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { Resend } from "resend";
 import { prisma } from "./src/lib/prisma.js";
+import { buildTrustReport } from "./src/lib/proctoring/trust-report.js";
+import { summarizeOrganizationSkills } from "./src/lib/analytics/organization-summary.js";
+import { buildScoringStatus } from "./src/lib/scoring/scoring-status.js";
+import { compareSessionGrowth } from "./src/lib/analytics/session-growth.js";
 import { createDatabaseProbe } from "./src/lib/database/availability.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
 import { SecretsManager } from "./src/lib/secrets/secrets-manager.js";
 import { buildCorsMiddleware, buildHelmetMiddleware } from "./src/lib/security/http-security.js";
 import { RegisterBody, LoginBody, ForgotPasswordBody, ResetPasswordBody } from "./src/lib/security/schemas/auth.js";
 import { SessionLaunchBody, SessionRespondBody, SessionCompleteBody, SessionFeedbackBody } from "./src/lib/security/schemas/sessions.js";
-import { CreateItemBody, UpdateItemBody, ItemPipelineBody, ItemReviewBody, ItemContentPatchBody, RatingClaimBody, RatingSubmitBody } from "./src/lib/security/schemas/items.js";
+import { CreateItemBody, UpdateItemBody, ItemPipelineBody, ItemReviewBody, ItemContentPatchBody } from "./src/lib/security/schemas/items.js";
 import { SystemConfigBody } from "./src/lib/security/schemas/calibration.js";
 import { CreateWebhookBody, BrandingPatchBody, UpdateSettingsBody, SsoConfigBody } from "./src/lib/security/schemas/organizations.js";
 import { ProctoringAuditBody, ProctoringEventBody } from "./src/lib/security/schemas/proctoring.js";
@@ -313,7 +317,7 @@ async function startServer() {
    * Must be used after authMiddleware. Passes for demo sessions (no DB).
    */
   const assertSessionOwnership = async (req: any, res: any, sessionId: string): Promise<boolean> => {
-    if (sessionId.startsWith("demo-session-") || !dbAvailable) return true;
+    if (process.env.NODE_ENV !== "production" && (sessionId.startsWith("demo-session-") || !dbAvailable)) return true;
     const userId: string | undefined = req.user?.id;
     const role: string | undefined = req.user?.role;
     const superRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"];
@@ -324,7 +328,7 @@ async function startServer() {
     // Org-scoped admin roles: verify the session belongs to their org
     const orgScopedRoles = ["INST_ADMIN", "PROCTOR", "TEACHER"];
     if (role && orgScopedRoles.includes(role)) {
-      if (session.organizationId && session.organizationId !== req.user?.organizationId) {
+      if (!req.user?.organizationId || session.organizationId !== req.user.organizationId) {
         res.status(403).json({ error: "Forbidden" }); return false;
       }
       return true;
@@ -801,6 +805,7 @@ async function startServer() {
 
   // If no database is available, we intercept admin routes and serve mock data
   app.use("/api", (req, res, next) => {
+    if (req.path === "/health" || req.path === "/healthz/live" || req.path === "/healthz/ready") return next();
     if (!dbAvailable) {
       // In production, never fall back to a permissive demo mode.
       // Return 503 so operators know the DB is down.
@@ -1802,39 +1807,33 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // GET /api/items/retirement-scores — items scored for retirement eligibility
   app.get("/api/items/retirement-scores", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (_req, res) => {
     try {
-      if (!dbAvailable) return res.json([]);
+      if (!dbAvailable) return res.json({ items: [], total: 0, retire: 0, review: 0, keep: 0 });
       const items = await prisma.item.findMany({
         where: { status: { in: ["ACTIVE", "PRETEST"] as any } },
-        select: { id: true, skill: true, cefrLevel: true, discrimination: true, difficulty: true, status: true },
+        select: { id: true, skill: true, cefrLevel: true, discrimination: true, difficulty: true, guessing: true, status: true,
+          responses: { where: { isPretest: false, score: { not: null }, session: { status: "COMPLETED" } },
+            orderBy: { createdAt: "desc" }, take: 100,
+            select: { score: true, isCorrect: true, isPretest: true, metadata: true, session: { select: { theta: true } } } },
+        },
         take: 200,
       });
       const responseCounts = await prisma.response.groupBy({ by: ["itemId"], _count: { itemId: true } });
       const rMap: Record<string, number> = {};
       for (const r of responseCounts) rMap[r.itemId] = r._count.itemId;
 
-      const scored = items.map((item) => {
-        const n = rMap[item.id] ?? 0;
-        const a = item.discrimination ?? 0;
-        const b = item.difficulty ?? 0;
-        // Heuristic retirement score: low discrimination + extreme difficulty + high usage → retire
-        const discrimScore  = a < 0.4 ? 0.4 : a < 0.8 ? 0.2 : 0;
-        const difficultyScore = (Math.abs(b) > 3.0) ? 0.3 : 0;
-        const exposureScore = n > 500 ? 0.3 : n > 200 ? 0.1 : 0;
-        const retirementScore = parseFloat((discrimScore + difficultyScore + exposureScore).toFixed(2));
-        const recommendation: "RETIRE" | "REVIEW" | "KEEP" = retirementScore >= 0.5 ? "RETIRE" : retirementScore >= 0.2 ? "REVIEW" : "KEEP";
-        const reasoning = [
-          discrimScore > 0 ? `Low discrimination (a=${a.toFixed(2)})` : null,
-          difficultyScore > 0 ? `Extreme difficulty (b=${b.toFixed(2)})` : null,
-          exposureScore > 0.1 ? `Over-exposed (n=${n})` : null,
-        ].filter(Boolean).join("; ") || "No issues";
-        return {
-          id: item.id, skill: item.skill, cefrLevel: item.cefrLevel,
-          discrimination: parseFloat((a).toFixed(3)), difficulty: parseFloat((b).toFixed(3)),
-          responseCount: n, retirementScore, recommendation, reasoning,
-          factors: { discrim: discrimScore, fit: 0, difficulty: difficultyScore, correlation: exposureScore },
-        };
-      });
-      res.json(scored.sort((a, b) => b.retirementScore - a.retirementScore));
+      const { ItemRetirementService } = await import("./src/lib/assessment-engine/item-retirement-service.js");
+      const scored = [];
+      for (const item of items) {
+        const result = await ItemRetirementService.computeRetirementScore(item.id, { item, responses: item.responses });
+        const { responses: _responses, ...itemSummary } = item;
+        scored.push({ ...itemSummary, responseCount: rMap[item.id] ?? 0, retirementScore: result.score,
+          recommendation: result.recommendation, reasoning: result.reasoning, factors: result.factors });
+      }
+      scored.sort((a, b) => b.retirementScore - a.retirementScore);
+      res.json({ items: scored, total: scored.length,
+        retire: scored.filter(item => item.recommendation === "RETIRE").length,
+        review: scored.filter(item => item.recommendation === "REVIEW").length,
+        keep: scored.filter(item => item.recommendation === "KEEP").length });
     } catch (err) {
       res.status(500).json({ error: "Failed to score items for retirement" });
     }
@@ -1849,12 +1848,27 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         select: { id: true },
         take: 50,
       });
-      if (items.length === 0) return res.json({ retired: 0, items: [] });
-      await prisma.item.updateMany({ where: { id: { in: items.map((i) => i.id) } }, data: { status: "RETIRED" as any } });
-      res.json({ retired: items.length, items: items.map((i) => i.id) });
+      const { ItemRetirementService } = await import("./src/lib/assessment-engine/item-retirement-service.js");
+      const ids: string[] = [];
+      for (const item of items) {
+        if ((await ItemRetirementService.computeRetirementScore(item.id)).recommendation === "RETIRE") ids.push(item.id);
+      }
+      const result = await prisma.item.updateMany({
+        where: { id: { in: ids }, status: { in: ["ACTIVE", "PRETEST"] } },
+        data: { status: "RETIRED" },
+      });
+      res.json({ retired: result.count, items: ids });
     } catch (err) {
       res.status(500).json({ error: "Retirement batch run failed" });
     }
+  });
+
+  app.post("/api/items/:id/retire", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
+    try {
+      const result = await prisma.item.updateMany({ where: { id: req.params.id }, data: { status: "RETIRED" } });
+      if (!result.count) return res.status(404).json({ error: "Item not found" });
+      res.json({ retired: true, itemId: req.params.id });
+    } catch { res.status(500).json({ error: "Failed to retire item" }); }
   });
 
   // GET /api/items/distractor-audit/summary + /flagged — classical distractor analysis
@@ -3283,80 +3297,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   // --- RATING QUEUE API ---
   const { RatingQueueService } = await import("./src/lib/scoring/rating-queue.js");
-
-  // GET /api/rating/stats — aggregate stats for RatingDashboard header
-  app.get("/api/rating/stats", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (_req, res) => {
-    try {
-      if (!dbAvailable) return res.json({ pending: 0, completed: 0, avgTurnaround: null });
-      const [pending, completed, recentCompleted] = await Promise.all([
-        (prisma as any).ratingTask?.count?.({ where: { status: "PENDING" } }) ?? 0,
-        (prisma as any).ratingTask?.count?.({ where: { status: "COMPLETED" } }) ?? 0,
-        (prisma as any).ratingTask?.findMany?.({
-          where: { status: "COMPLETED" },
-          select: { createdAt: true, updatedAt: true },
-          orderBy: { updatedAt: "desc" },
-          take: 50,
-        }) ?? [],
-      ]);
-      const avgMs = recentCompleted.length
-        ? recentCompleted.reduce((sum: number, t: any) => sum + (new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime()), 0) / recentCompleted.length
-        : null;
-      res.json({ pending, completed, avgTurnaroundMs: avgMs ? Math.round(avgMs) : null });
-    } catch (err) {
-      res.json({ pending: 0, completed: 0, avgTurnaroundMs: null });
-    }
-  });
-
-  app.get("/api/rating/tasks", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
-    try {
-      const { status } = req.query;
-      const tasks = await RatingQueueService.getTasks(status as any, (req as any).user.id);
-      res.json(tasks);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch rating tasks" });
-    }
-  });
-
-  app.post("/api/rating/tasks/:id/claim", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
-    try {
-      const body = validate(RatingClaimBody, req.body, res);
-      if (!body) return;
-      const { id } = req.params;
-      const { raterId } = body;
-      const task = await RatingQueueService.claimTask(id, (req as any).user.id);
-      res.json(task);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to claim task" });
-    }
-  });
-
-  app.post("/api/rating/tasks/:id/submit", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
-    try {
-      const body = validate(RatingSubmitBody, req.body, res);
-      if (!body) return;
-      const { id } = req.params;
-      const { score, feedback } = body;
-      const task = await RatingQueueService.submitRating(id, score, feedback, (req as any).user.id);
-      res.json(task);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to submit rating" });
-    }
-  });
-
-  app.post("/api/rating/tasks/:id/claim-second", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
-    try {
-      const task = await RatingQueueService.claimSecondRating(req.params.id, (req as any).user.id);
-      res.json(task);
-    } catch (error) { res.status(409).json({error:"The task requires a different available second rater"}); }
-  });
-  app.post("/api/rating/tasks/:id/submit-second", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"]), async (req, res) => {
-    try {
-      const body = validate(RatingSubmitBody, req.body, res);
-      if (!body) return;
-      const task = await RatingQueueService.submitSecondRating(req.params.id, body.score, body.feedback, (req as any).user.id);
-      res.json(task);
-    } catch (error) { res.status(409).json({error:"Could not finalize the second rating"}); }
-  });
+  const { createRatingRouter } = await import("./src/routes/rating.js");
+  app.use("/api/rating",createRatingRouter({prisma,service:RatingQueueService,checkRole,
+    databaseAvailable:()=>dbAvailable}));
 
   // --- BRANDING API ---
   const { BrandingService } = await import("./src/lib/tenant/branding-service.js");
@@ -4057,7 +4000,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       res.status(500).json({ error: "Failed to update system config" });
     }
   });
-  const { ProctoringService } = await import("./src/lib/proctoring/proctoring-service.js");
+
 
   app.post("/api/proctoring/event", authMiddleware, async (req: any, res) => {
     try {
@@ -4146,8 +4089,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           return res.status(403).json({ error: "Forbidden" });
         }
       }
-      const report = await ProctoringService.getTrustReport(sessionId);
-      res.json(report);
+      const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true } });
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      const events = await prisma.proctoringEvent.findMany({ where: { sessionId }, orderBy: { timestamp: "asc" } });
+      res.json(buildTrustReport(sessionId, events));
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch trust report" });
     }
@@ -4975,28 +4920,18 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       elapsed += POLL_INTERVAL_MS;
       try {
         const responses = await prisma.response.findMany({
-          where: { sessionId: id, item: { skill: { in: ["WRITING", "SPEAKING"] } } },
-          select: { id: true, metadata: true },
+          where: { sessionId: id },
+          select: { id: true, score: true, isPretest: true, metadata: true },
           take: 100,
         });
 
-        const pending = responses.filter(r => !(r.metadata as any)?.aiScore && !(r.metadata as any)?.pendingAsyncScore === false);
-        const scored  = responses.filter(r => (r.metadata as any)?.aiScore != null);
-
-        for (const r of scored) {
-          const meta = r.metadata as any;
-          writeEvent("status", {
-            responseId: r.id,
-            status: "scored",
-            cefrLevel: meta.cefrLevel,
-            score: meta.aiScore,
-          });
-        }
-
-        const allScored = responses.length > 0 && pending.length === 0;
-        if (allScored || elapsed >= SSE_TIMEOUT_MS) {
-          if (elapsed >= SSE_TIMEOUT_MS && pending.length > 0) {
-            writeEvent("timeout", { message: "Scoring is taking longer than expected. Results will be sent by email." });
+        const state = buildScoringStatus(responses);
+        for (const item of state.items) writeEvent("status", item);
+        if (state.complete || state.needsReview || elapsed >= SSE_TIMEOUT_MS) {
+          if (state.needsReview) {
+            writeEvent("review_required", { sessionId: id, message: "Some responses require review or scoring is unavailable. Your report remains provisional." });
+          } else if (!state.complete) {
+            writeEvent("timeout", { message: "Scoring is taking longer than expected. Reopen your report to check for updates." });
           } else {
             writeEvent("complete", { sessionId: id });
           }
@@ -5004,7 +4939,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           res.end();
         }
       } catch {
-        // DB error — keep trying until timeout
+        if (elapsed >= SSE_TIMEOUT_MS) {
+          writeEvent("timeout", { message: "Scoring status is temporarily unavailable. Reopen your report to try again." });
+          clearInterval(timer);
+          res.end();
+        }
       }
     }, POLL_INTERVAL_MS);
 
@@ -5290,21 +5229,7 @@ ${codeSection}
         where: { session: { organizationId: id } },
         select: { readingScore: true, listeningScore: true, writingScore: true, speakingScore: true, grammarScore: true, vocabularyScore: true },
       });
-      const skillTotals: Record<string, number[]> = { Reading: [], Listening: [], Writing: [], Speaking: [], Grammar: [], Vocabulary: [] };
-      for (const r of scoreReports) {
-        if (r.readingScore != null)    skillTotals.Reading.push(r.readingScore);
-        if (r.listeningScore != null)  skillTotals.Listening.push(r.listeningScore);
-        if (r.writingScore != null)    skillTotals.Writing.push(r.writingScore);
-        if (r.speakingScore != null)   skillTotals.Speaking.push(r.speakingScore);
-        if (r.grammarScore != null)    skillTotals.Grammar.push(r.grammarScore);
-        if (r.vocabularyScore != null) skillTotals.Vocabulary.push(r.vocabularyScore);
-      }
-      const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 100) : 0;
-      const skillBreakdown = Object.entries(skillTotals).map(([skill, arr]) => ({
-        skill,
-        avg: avg(arr),
-        count: arr.length,
-      }));
+      const skillBreakdown = summarizeOrganizationSkills(scoreReports);
 
       // Monthly trend
       const monthlyRaw = await prisma.session.groupBy({
@@ -5314,12 +5239,18 @@ ${codeSection}
       });
       const monthMap: Record<string, number> = {};
       for (const r of monthlyRaw) {
-        const key = new Date(r.createdAt).toLocaleString("en", { month: "short" });
+        const key = new Date(r.createdAt).toISOString().slice(0, 7);
         monthMap[key] = (monthMap[key] || 0) + r._count.id;
       }
-      const monthlyTrend = Object.entries(monthMap).slice(-6).map(([month, count]) => ({ month, count }));
+      const monthlyTrend = Object.entries(monthMap).sort(([a], [b]) => a.localeCompare(b)).slice(-6).map(([month, count]) => ({ month, count }));
 
+      const now = new Date();
+      const currentMonth = now.toISOString().slice(0, 7);
+      const previousMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
+      const previousCount = monthMap[previousMonth] ?? 0;
+      const monthlyGrowthPercent = previousCount > 0 ? Math.round(((monthMap[currentMonth] ?? 0) - previousCount) / previousCount * 100) : null;
       res.json({
+        monthlyGrowthPercent,
         sessionsCount,
         feedbacksCount,
         avgRating,
@@ -5437,6 +5368,25 @@ ${codeSection}
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch candidate history" });
     }
+  });
+
+  app.get("/api/candidates/:id/growth", authMiddleware, async (req, res) => {
+    const { fromSession, toSession } = req.query;
+    if (typeof fromSession !== "string" || typeof toSession !== "string" || !fromSession || !toSession) {
+      return res.status(400).json({ error: "fromSession and toSession are required" });
+    }
+    try {
+      if (!(await assertSessionOwnership(req, res, fromSession)) || !(await assertSessionOwnership(req, res, toSession))) return;
+      const sessions = await prisma.session.findMany({
+        where: { id: { in: [fromSession, toSession] }, candidateId: req.params.id },
+        include: { scoreReport: true, responses: { select: { score: true, isPretest: true, metadata: true } } },
+      });
+      const from = sessions.find(s => s.id === fromSession);
+      const to = sessions.find(s => s.id === toSession);
+      if (!from || !to) return res.status(404).json({ error: "Assessment not found for this candidate" });
+      try { return res.json(compareSessionGrowth(from, to)); }
+      catch (err) { return res.status(409).json({ error: (err as Error).message }); }
+    } catch { return res.status(500).json({ error: "Failed to compare assessments" }); }
   });
 
   // GET /api/candidates/:id/progress-history — theta time series for trend chart
@@ -7573,124 +7523,11 @@ ${codeSection}
 
   // ── Admin — Scoring Queue / 48-hour SLA Tracker ─────────────────────────
 
-  app.get("/api/admin/scoring-queue", checkRole(["SUPER_ADMIN", "INST_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req: any, res) => {
-    try {
-      if (!prisma) return res.json({ items: [], stats: { totalPending: 0, overdueCount: 0, soonCount: 0 } });
-
-      const tenantFilter = req.user?.role === "INST_ADMIN"
-        ? { organizationId: req.user.organizationId }
-        : {};
-      const pending = await prisma.response.findMany({
-        where: {
-          score: null,
-          item: { skill: { in: ["SPEAKING", "WRITING"] } },
-          session: { ...tenantFilter, status: { in: ["COMPLETED", "IN_PROGRESS"] } },
-        },
-        include: {
-          item: { select: { skill: true } },
-          session: {
-            include: { candidate: { select: { name: true, email: true } } },
-          },
-        },
-        orderBy: { createdAt: "asc" },
-      });
-
-      const now = Date.now();
-      const bySession = new Map<string, {
-        sessionId: string;
-        candidateName: string;
-        candidateEmail: string;
-        skill: string;
-        pendingCount: number;
-        submittedAt: Date;
-        hoursElapsed: number;
-      }>();
-
-      for (const r of pending as any[]) {
-        const skill = r.item?.skill ?? "UNKNOWN";
-        const existingKey = `${r.sessionId}-${skill}`;
-        if (!bySession.has(existingKey)) {
-          const submittedAt = new Date(r.createdAt);
-          const hoursElapsed = (now - submittedAt.getTime()) / 3_600_000;
-          bySession.set(existingKey, {
-            sessionId: r.sessionId,
-            candidateName: r.session?.candidate?.name ?? "Unknown",
-            candidateEmail: r.session?.candidate?.email ?? "",
-            skill,
-            pendingCount: 1,
-            submittedAt,
-            hoursElapsed,
-          });
-        } else {
-          const entry = bySession.get(existingKey)!;
-          entry.pendingCount += 1;
-        }
-      }
-
-      const items = Array.from(bySession.values()).map((e) => ({
-        sessionId: e.sessionId,
-        candidateName: e.candidateName,
-        candidateEmail: e.candidateEmail,
-        skill: e.skill,
-        pendingCount: e.pendingCount,
-        submittedAt: e.submittedAt.toISOString(),
-        hoursElapsed: Math.round(e.hoursElapsed * 10) / 10,
-        overdue: e.hoursElapsed >= 48,
-      }));
-
-      const totalPending = items.length;
-      const overdueCount = items.filter((i) => i.overdue).length;
-      const soonCount = items.filter((i) => !i.overdue && i.hoursElapsed >= 36).length;
-
-      return res.json({ items, stats: { totalPending, overdueCount, soonCount } });
-    } catch (err: any) {
-      console.error("[scoring-queue]", err);
-      return res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  app.post("/api/admin/scoring-queue/:sessionId/requeue", checkRole(["SUPER_ADMIN", "INST_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
-    try {
-      if (!prisma) return res.json({ ok: true, queued: 0 });
-      const { sessionId } = req.params;
-      if (!(await assertSessionOwnership(req, res, sessionId))) return;
-
-      // Fetch pending speaking/writing responses for this session and trigger scoring
-      const pending = await prisma.response.findMany({
-        where: {
-          sessionId,
-          score: null,
-          item: { skill: { in: ["SPEAKING", "WRITING"] } },
-        },
-        include: { item: { select: { skill: true, content: true } }, session: true },
-      });
-
-      if (pending.length === 0) return res.json({ ok: true, queued: 0 });
-
-      const { enqueueScoringJob, isScoringJobPending } = await import("./src/lib/scoring/scoring-queue.js");
-      let queued = 0;
-      for (const r of pending) {
-        const skill = r.item?.skill;
-        if (skill !== "WRITING" && skill !== "SPEAKING") continue;
-        const metadata = (r.metadata as Record<string, unknown>) ?? {};
-        if (isScoringJobPending(r.id)) continue;
-        let value: string | { audio: string; mimeType: string } = r.value ?? "";
-        if (skill === "SPEAKING") {
-          try { value = JSON.parse(r.value ?? ""); } catch { continue; }
-          if (!value || typeof value !== "object" || !value.audio || !value.mimeType) continue;
-        }
-        const content = (r.item.content as Record<string, unknown>) ?? {};
-        void enqueueScoringJob({sessionId, responseId:r.id, itemId:r.itemId, skill, value,
-          prompt: String(content.prompt ?? "Please respond to the task.")}).catch(() => undefined);
-        queued++;
-      }
-
-      return res.json({ ok: true, queued });
-    } catch (err: any) {
-      console.error("[scoring-queue requeue]", err);
-      return res.status(500).json({ error: "Internal server error" });
-    }
-  });
+  const { createAdminScoringRouter } = await import("./src/routes/admin-scoring.js");
+  app.use("/api/admin/scoring-queue", createAdminScoringRouter({
+    prisma, checkRole, assertSessionOwnership, databaseAvailable: () => dbAvailable,
+    loadQueue: () => import("./src/lib/scoring/scoring-queue.js"),
+  }));
 
   // ── Teacher / Class / Assignment API ────────────────────────────────────
 
@@ -8510,6 +8347,10 @@ ${entries}
   httpServer.listen(parseInt(process.env.PORT || "3001", 10), "0.0.0.0", () => {
     console.log(`LinguAdapt Server running on http://localhost:${process.env.PORT || "3001"}`);
     console.log(`[WS] Realtime dashboard WebSocket attached at /ws/dashboard`);
+  });
+
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ error: "API endpoint not found" });
   });
 
   // ── SSR render helper (marketing routes only) ────────────────────────────

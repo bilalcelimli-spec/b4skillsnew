@@ -103,4 +103,26 @@ describe("TestPlayer response persistence", () => {
     expect(attempts).toBe(2);
     expect(fetchMock.mock.calls.every(([url]) => !url.startsWith("/api/ai/"))).toBe(true);
   });
+  it('launches only one assessment when StrictMode replays effects', async () => {
+    const started = vi.fn();
+    const fetchMock = vi.fn(async (url: string) => ({ ok: true, json: async () => url.endsWith('/launch')
+      ? { sessionId: 'one-session' } : url.endsWith('/status') ? { progress: 0 } : { item: { id: 'item', skill: 'READING' } } }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<React.StrictMode><TestPlayer organizationId="org" candidateId="candidate" onComplete={vi.fn()} onSessionStarted={started} /></React.StrictMode>);
+    await waitFor(() => expect(started).toHaveBeenCalledWith('one-session'));
+    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/launch'))).toHaveLength(1);
+  });
+  it('resumes the existing attempt without launching or repeating practice', async () => {
+    const fetchMock = vi.fn(async (url: string) => ({ ok: true, json: async () => url.endsWith('/status')
+      ? { status: 'IN_PROGRESS', startedAt: new Date().toISOString(), progress: 4 }
+      : { item: { id: 'resumed-reading', skill: 'READING' } } }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="original-session" onComplete={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Verify' }));
+    expect(await screen.findByText('resumed-reading')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Finish practice' })).toBeNull();
+    expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/launch'))).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith('/api/sessions/original-session/next', expect.anything());
+  });
+
 });

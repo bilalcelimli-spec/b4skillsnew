@@ -1,0 +1,309 @@
+{
+  "generatedAt": "2026-10-07T11:35:53.966Z",
+  "scope": "Literal/template fetch calls and Express method/path coverage. Computed URLs, runtime responses, authorization, and payload schemas require separate verification.",
+  "routeCount": 289,
+  "callCount": 224,
+  "reachableMissing": [],
+  "dormantMissing": [
+    {
+      "file": "src/components/OfflineAssessment.tsx",
+      "line": 141,
+      "method": "POST",
+      "url": "/api/sessions/:dynamic/responses"
+    },
+    {
+      "file": "src/components/OfflineAssessment.tsx",
+      "line": 213,
+      "method": "GET",
+      "url": "/api/sessions/:dynamic"
+    },
+    {
+      "file": "src/components/admin/AdaptiveStoppingRulePanel.tsx",
+      "line": 134,
+      "method": "GET",
+      "url": "/api/psychometrics/stopping-rule-sim"
+    },
+    {
+      "file": "src/components/admin/AnchorItemMonitorPanel.tsx",
+      "line": 136,
+      "method": "GET",
+      "url": "/api/psychometrics/anchor-monitor"
+    },
+    {
+      "file": "src/components/admin/BayesianCalibrationPanel.tsx",
+      "line": 89,
+      "method": "GET",
+      "url": "/api/psychometrics/bayesian-calibration"
+    },
+    {
+      "file": "src/components/admin/BayesianNetworkDependencePanel.tsx",
+      "line": 152,
+      "method": "GET",
+      "url": "/api/psychometrics/bayes-net-dep"
+    },
+    {
+      "file": "src/components/admin/CATItemSelectionPanel.tsx",
+      "line": 142,
+      "method": "GET",
+      "url": "/api/psychometrics/cat-sim"
+    },
+    {
+      "file": "src/components/admin/CognitiveDiagnosticPanel.tsx",
+      "line": 103,
+      "method": "GET",
+      "url": "/api/psychometrics/cognitive-diagnostic"
+    },
+    {
+      "file": "src/components/admin/DifDashboard.tsx",
+      "line": 111,
+      "method": "PATCH",
+      "url": "/api/psychometrics/dif/flagged/:dynamic"
+    },
+    {
+      "file": "src/components/admin/DifferentialBundleFunctioningPanel.tsx",
+      "line": 73,
+      "method": "GET",
+      "url": "/api/psychometrics/dbf?groupVar=:dynamic"
+    },
+    {
+      "file": "src/components/admin/DifferentialStepFunctioningPanel.tsx",
+      "line": 141,
+      "method": "GET",
+      "url": "/api/psychometrics/dsf-analysis"
+    },
+    {
+      "file": "src/components/admin/EquatingPanel.tsx",
+      "line": 88,
+      "method": "POST",
+      "url": "/api/psychometrics/equating/run"
+    },
+    {
+      "file": "src/components/admin/EquatingPanel.tsx",
+      "line": 107,
+      "method": "POST",
+      "url": "/api/psychometrics/equating/apply"
+    },
+    {
+      "file": "src/components/admin/IRTResponseTimePanel.tsx",
+      "line": 144,
+      "method": "GET",
+      "url": "/api/psychometrics/irt-rt-model"
+    },
+    {
+      "file": "src/components/admin/ItemDriftPanel.tsx",
+      "line": 105,
+      "method": "GET",
+      "url": "/api/psychometrics/item-drift"
+    },
+    {
+      "file": "src/components/admin/ItemExposureControlPanel.tsx",
+      "line": 99,
+      "method": "GET",
+      "url": "/api/psychometrics/exposure-control"
+    },
+    {
+      "file": "src/components/admin/LocalItemDependencePanel.tsx",
+      "line": 121,
+      "method": "GET",
+      "url": "/api/psychometrics/local-dependence"
+    },
+    {
+      "file": "src/components/admin/LongitudinalDIFPanel.tsx",
+      "line": 157,
+      "method": "GET",
+      "url": "/api/psychometrics/longitudinal-dif"
+    },
+    {
+      "file": "src/components/admin/MSTRoutingPanel.tsx",
+      "line": 173,
+      "method": "GET",
+      "url": "/api/psychometrics/mst-routing"
+    },
+    {
+      "file": "src/components/admin/MirtDiagnosticsPanel.tsx",
+      "line": 82,
+      "method": "GET",
+      "url": "/api/psychometrics/mirt-snapshot"
+    },
+    {
+      "file": "src/components/admin/MultigroupInvariancePanel.tsx",
+      "line": 147,
+      "method": "GET",
+      "url": "/api/psychometrics/mg-invariance"
+    },
+    {
+      "file": "src/components/admin/OnlineCalibrationMonitorPanel.tsx",
+      "line": 156,
+      "method": "GET",
+      "url": "/api/psychometrics/online-calibration"
+    },
+    {
+      "file": "src/components/admin/PersonFitGrowthPanel.tsx",
+      "line": 122,
+      "method": "GET",
+      "url": "/api/psychometrics/person-fit-growth"
+    },
+    {
+      "file": "src/components/admin/PolytomousDIFPanel.tsx",
+      "line": 95,
+      "method": "GET",
+      "url": "/api/psychometrics/polytomous-dif?groupVar=:dynamic"
+    },
+    {
+      "file": "src/components/admin/PsychometricQualityPanel.tsx",
+      "line": 91,
+      "method": "GET",
+      "url": "/api/psychometrics/construct-validity"
+    },
+    {
+      "file": "src/components/admin/RaterCalibrationPanel.tsx",
+      "line": 117,
+      "method": "GET",
+      "url": "/api/psychometrics/rater-calibration"
+    },
+    {
+      "file": "src/components/admin/RaterReliabilityPanel.tsx",
+      "line": 96,
+      "method": "GET",
+      "url": "/api/psychometrics/rater-reliability"
+    },
+    {
+      "file": "src/components/admin/ResponseTimeDiagnosticsPanel.tsx",
+      "line": 87,
+      "method": "GET",
+      "url": "/api/psychometrics/rt-diagnostics"
+    },
+    {
+      "file": "src/components/admin/ScaleEquatingDiagnosticsPanel.tsx",
+      "line": 132,
+      "method": "GET",
+      "url": "/api/psychometrics/scale-equating"
+    },
+    {
+      "file": "src/components/admin/ScoreReliabilitySubgroupPanel.tsx",
+      "line": 143,
+      "method": "GET",
+      "url": "/api/psychometrics/reliability-subgroup"
+    },
+    {
+      "file": "src/components/admin/ShadowTestPanel.tsx",
+      "line": 90,
+      "method": "GET",
+      "url": "/api/psychometrics/shadow-test"
+    },
+    {
+      "file": "src/components/admin/StandardSettingPanel.tsx",
+      "line": 72,
+      "method": "GET",
+      "url": "/api/psychometrics/standard-setting/studies"
+    },
+    {
+      "file": "src/components/admin/StandardSettingPanel.tsx",
+      "line": 85,
+      "method": "POST",
+      "url": "/api/psychometrics/standard-setting/studies"
+    },
+    {
+      "file": "src/components/admin/StandardSettingPanel.tsx",
+      "line": 103,
+      "method": "POST",
+      "url": "/api/psychometrics/standard-setting/:dynamic/compute"
+    },
+    {
+      "file": "src/components/admin/StandardSettingPanel.tsx",
+      "line": 116,
+      "method": "POST",
+      "url": "/api/psychometrics/standard-setting/:dynamic/apply"
+    },
+    {
+      "file": "src/components/admin/SubscaleCompositeScoringPanel.tsx",
+      "line": 111,
+      "method": "GET",
+      "url": "/api/psychometrics/subscale-composite"
+    },
+    {
+      "file": "src/components/admin/TestCharacteristicCurvePanel.tsx",
+      "line": 130,
+      "method": "GET",
+      "url": "/api/psychometrics/tcc"
+    },
+    {
+      "file": "src/components/admin/ThetaDiagnosticsPanel.tsx",
+      "line": 66,
+      "method": "GET",
+      "url": "/api/psychometrics/theta-diagnostics"
+    }
+  ],
+  "duplicate": [],
+  "unmountedRouters": [
+    "src/routes/items.ts",
+    "src/routes/billing.ts",
+    "src/routes/proctoring.ts"
+  ],
+  "dormantComponents": [
+    "src/components/AccessibleAssessment.tsx",
+    "src/components/BrowserLockdown.tsx",
+    "src/components/CandidateDashboard.tsx",
+    "src/components/CandidatePlayer.tsx",
+    "src/components/DeviceCheck.tsx",
+    "src/components/DiagnosticReport.tsx",
+    "src/components/DynamicPage.tsx",
+    "src/components/MobileAssessment.tsx",
+    "src/components/OfflineAssessment.tsx",
+    "src/components/PsychometricManager.tsx",
+    "src/components/ScoreReportV2.tsx",
+    "src/components/SocialLoginButtons.tsx",
+    "src/components/admin/AdaptiveStoppingRulePanel.tsx",
+    "src/components/admin/AigQualityPanel.tsx",
+    "src/components/admin/AnchorItemMonitorPanel.tsx",
+    "src/components/admin/AssessmentStudio.tsx",
+    "src/components/admin/BayesianCalibrationPanel.tsx",
+    "src/components/admin/BayesianNetworkDependencePanel.tsx",
+    "src/components/admin/BiasReviewPanel.tsx",
+    "src/components/admin/CATItemSelectionPanel.tsx",
+    "src/components/admin/ClassificationAccuracyPanel.tsx",
+    "src/components/admin/CognitiveDiagnosticPanel.tsx",
+    "src/components/admin/ConditionalSEMPanel.tsx",
+    "src/components/admin/ContentBlueprintPanel.tsx",
+    "src/components/admin/ContentReviewDashboard.tsx",
+    "src/components/admin/DifDashboard.tsx",
+    "src/components/admin/DifferentialBundleFunctioningPanel.tsx",
+    "src/components/admin/DifferentialStepFunctioningPanel.tsx",
+    "src/components/admin/DistractorAudit.tsx",
+    "src/components/admin/EquatingPanel.tsx",
+    "src/components/admin/FraudDashboard.tsx",
+    "src/components/admin/GrmScoringPanel.tsx",
+    "src/components/admin/IRTResponseTimePanel.tsx",
+    "src/components/admin/ItemBankInventory.tsx",
+    "src/components/admin/ItemDriftPanel.tsx",
+    "src/components/admin/ItemExposureControlPanel.tsx",
+    "src/components/admin/ItemExposurePanel.tsx",
+    "src/components/admin/ItemFitPanel.tsx",
+    "src/components/admin/ItemGeneratorPanel.tsx",
+    "src/components/admin/LocalItemDependencePanel.tsx",
+    "src/components/admin/LongitudinalDIFPanel.tsx",
+    "src/components/admin/MSTRoutingPanel.tsx",
+    "src/components/admin/MirtDiagnosticsPanel.tsx",
+    "src/components/admin/MultigroupInvariancePanel.tsx",
+    "src/components/admin/OnlineCalibrationMonitorPanel.tsx",
+    "src/components/admin/PersonFitGrowthPanel.tsx",
+    "src/components/admin/PersonFitPanel.tsx",
+    "src/components/admin/Phase4AnalyticsDashboard.tsx",
+    "src/components/admin/PolytomousDIFPanel.tsx",
+    "src/components/admin/PsychometricQualityPanel.tsx",
+    "src/components/admin/RaterCalibrationPanel.tsx",
+    "src/components/admin/RaterReliabilityPanel.tsx",
+    "src/components/admin/ResponseTimeDiagnosticsPanel.tsx",
+    "src/components/admin/ScaleEquatingDiagnosticsPanel.tsx",
+    "src/components/admin/ScoreNormingPanel.tsx",
+    "src/components/admin/ScoreReliabilitySubgroupPanel.tsx",
+    "src/components/admin/ScoreReportingAnalyticsPanel.tsx",
+    "src/components/admin/ShadowTestPanel.tsx",
+    "src/components/admin/StandardSettingPanel.tsx",
+    "src/components/admin/SubscaleCompositeScoringPanel.tsx",
+    "src/components/admin/TestCharacteristicCurvePanel.tsx",
+    "src/components/admin/TestInformationPanel.tsx",
+    "src/components/admin/ThetaDiagnosticsPanel.tsx",
+    "src/components/enterprise/WhiteGloveOnboarding.tsx"
+  ]
+}

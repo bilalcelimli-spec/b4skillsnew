@@ -11,6 +11,7 @@
  * Retirement score ≥ 0.70 + declining trend → auto-retire
  */
 
+import { shouldExcludeResponseFromAbility } from "../scoring/score-evidence.js";
 import { prisma } from "../prisma.js";
 import { logger } from "../observability/logger.js";
 import type { Item, Response } from "@prisma/client";
@@ -31,6 +32,14 @@ export interface RetirementScoreResult {
   reasoning: string;
 }
 
+interface RetirementResponse {
+  score: number | null;
+  isCorrect: boolean | null;
+  isPretest?: boolean | null;
+  metadata?: unknown;
+  session: { theta: number };
+}
+
 interface IrtParameters {
   discrimination: number;
   difficulty: number;
@@ -46,8 +55,10 @@ export class ItemRetirementService {
    * Compute retirement score for a single item.
    * Uses latest 50-100 responses for metrics.
    */
-  static async computeRetirementScore(itemId: string): Promise<RetirementScoreResult> {
-    const item = await prisma.item.findUnique({
+  static async computeRetirementScore(itemId: string, evidence?: {
+    item: Pick<Item, "discrimination" | "difficulty" | "guessing">; responses: RetirementResponse[];
+  }): Promise<RetirementScoreResult> {
+    const item = evidence?.item ?? await prisma.item.findUnique({
       where: { id: itemId },
     });
 
@@ -56,19 +67,23 @@ export class ItemRetirementService {
     }
 
     // Get recent responses (last 100, or fewer if item is new)
-    const recentResponses = await prisma.response.findMany({
-      where: { itemId },
+    const rawRecentResponses = evidence?.responses ?? await prisma.response.findMany({
+      where: { itemId, isPretest: false, score: { not: null }, session: { status: "COMPLETED" } },
       orderBy: { createdAt: "desc" },
       take: 100,
       select: {
         id: true,
         isCorrect: true,
+        isPretest: true,
+        metadata: true,
         score: true,
         session: {
           select: { theta: true, id: true },
         },
       },
     });
+
+    const recentResponses = rawRecentResponses.filter(r => !shouldExcludeResponseFromAbility(r));
 
     if (recentResponses.length < 20) {
       return {
@@ -95,7 +110,7 @@ export class ItemRetirementService {
 
     const difficultyFactor = this.evaluateDifficulty(recentResponses);
 
-    const correlationFactor = await this.evaluateItemTotalCorrelation(itemId);
+    const correlationFactor = this.evaluateItemTotalCorrelation(recentResponses);
 
     // Weighted retirement score: 0-1, higher = worse
     const retirementScore =
@@ -243,20 +258,7 @@ export class ItemRetirementService {
    * Evaluate item-total correlation.
    * Negative correlation (item scores inversely with overall ability) is problematic.
    */
-  private static async evaluateItemTotalCorrelation(itemId: string): Promise<number> {
-    // Get item responses with session theta
-    const itemResponses = await prisma.response.findMany({
-      where: { itemId },
-      select: {
-        score: true,
-        isCorrect: true,
-        session: {
-          select: { theta: true },
-        },
-      },
-      take: 100,
-    });
-
+  private static evaluateItemTotalCorrelation(itemResponses: RetirementResponse[]): number {
     if (itemResponses.length < 30) return 0;
 
     // Compute Pearson correlation: itemScore vs sessionTheta

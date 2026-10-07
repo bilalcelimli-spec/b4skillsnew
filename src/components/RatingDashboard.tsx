@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useToast } from "../hooks/useToast.js";
 import { Card, CardContent, CardHeader } from "./ui/Card";
 import { Button } from "./ui/Button";
@@ -39,6 +39,10 @@ interface RatingTask {
     };
   };
   status: string;
+  raterId?: string | null;
+  secondRaterId?: string | null;
+  arbitratorId?: string | null;
+  needsArbitration?: boolean;
   /** True when the first rater already submitted; this task needs a second rater */
   needsSecondRater?: boolean;
   /** QWK after second rater — available on COMPLETED tasks */
@@ -47,7 +51,7 @@ interface RatingTask {
   response?: {
     id: string;
     session?: { id: string; candidate?: { name?: string } };
-    item?: { skill: string; cefrLevel: string };
+    item?: { skill: string; cefrLevel: string; content?: {prompt?:string; passage?:string; transcript?:string; script?:string} };
     metadata?: Record<string, any>;
   };
 }
@@ -86,6 +90,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
   const [tasks, setTasks]             = useState<RatingTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<RatingTask | null>(null);
   const [stats, setStats]             = useState<QueueStats | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading]         = useState(true);
   const [submitting, setSubmitting]   = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -97,6 +102,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
   });
   const [feedback, setFeedback] = useState("");
   const [isSecondRater, setIsSecondRater] = useState(false);
+  const [isArbitration, setIsArbitration] = useState(false);
 
   const overallScore = useCallback(() => {
     const dims = selectedTask?.type === "SPEAKING" ? RUBRIC_DIMS_SPEAKING : RUBRIC_DIMS_WRITING;
@@ -106,12 +112,14 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [tasksRes, statsRes] = await Promise.all([
         fetch(`/api/rating/tasks?status=${statusFilter}`, { credentials: "include" }),
         fetch("/api/rating/stats", { credentials: "include" }),
       ]);
-      const tasksData = tasksRes.ok ? await tasksRes.json() : [];
+      if (!tasksRes.ok || !statsRes.ok) throw new Error("Could not load rating queue");
+      const tasksData = await tasksRes.json();
       const statsData = statsRes.ok ? await statsRes.json() : null;
 
       // Normalise tasks — extract useful fields from nested response relation
@@ -128,6 +136,10 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
           content,
           aiResult,
           status:           t.status,
+          raterId:          t.raterId,
+          secondRaterId:    t.secondRaterId,
+          arbitratorId:     t.arbitratorId,
+          needsArbitration: t.needsArbitration === true,
           needsSecondRater: t.needsSecondRater ?? (t.status === "PENDING" && t.score != null),
           qwk:              t.qwk ?? null,
           createdAt:        t.createdAt,
@@ -138,18 +150,19 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
       setTasks(normalised);
       if (statsData) setStats(statsData);
     } catch (err) {
+      setLoadError("Could not load rating queue");
       toast({ title: "Couldn't load tasks", description: "Failed to fetch rating queue.", variant: "error" });
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, raterId]);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
   // Pre-fill rubric from AI suggestion when task is selected
   useEffect(() => {
     if (!selectedTask) return;
-    const ai = selectedTask.aiResult?.rubricScores;
+    const ai = selectedTask.needsArbitration ? undefined : selectedTask.aiResult?.rubricScores;
     if (ai) {
       setRubric({
         grammar:       ai.grammar      ?? 5,
@@ -159,7 +172,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
         fluency:       ai.fluency      ?? 5,
       });
     } else {
-      const suggested = cefrToScore(selectedTask.aiResult?.cefrLevel);
+      const suggested = selectedTask.needsArbitration ? 5 : cefrToScore(selectedTask.aiResult?.cefrLevel);
       setRubric({ grammar: suggested, vocabulary: suggested, coherence: suggested, taskRelevance: suggested, fluency: suggested });
     }
     setFeedback("");
@@ -167,7 +180,16 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
 
   const handleClaim = async (task: RatingTask) => {
     if (!raterId) return;
-    const endpoint = task.needsSecondRater
+    if (task.status === 'CLAIMED') {
+      if (task.needsArbitration ? task.arbitratorId === raterId : task.secondRaterId ? task.secondRaterId === raterId : task.raterId === raterId) {
+        setSelectedTask(task); setIsSecondRater(!task.needsArbitration && task.secondRaterId === raterId); setIsArbitration(task.needsArbitration === true); setSubmitError(null);
+      }
+      return;
+    }
+    if (task.status !== 'PENDING' && !(task.status === 'FLAGGED' && task.needsArbitration)) return;
+    const endpoint = task.needsArbitration
+      ? `/api/rating/tasks/${task.id}/claim-arbitration`
+      : task.needsSecondRater
       ? `/api/rating/tasks/${task.id}/claim-second`
       : `/api/rating/tasks/${task.id}/claim`;
     try {
@@ -177,9 +199,12 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
         credentials: "include",
         body: JSON.stringify({ raterId }),
       });
+      if (!res.ok) throw new Error("Task is no longer available");
       if (res.ok) {
+        setSubmitError(null);
         setSelectedTask(task);
         setIsSecondRater(task.needsSecondRater ?? false);
+        setIsArbitration(task.needsArbitration === true);
       }
     } catch (err) {
       toast({ title: "Claim failed", description: "Could not claim rating task.", variant: "error" });
@@ -190,7 +215,9 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
     if (!selectedTask || submitting) return;
     setSubmitting(true);
     const score    = overallScore();
-    const endpoint = isSecondRater
+    const endpoint = isArbitration
+      ? `/api/rating/tasks/${selectedTask.id}/submit-arbitration`
+      : isSecondRater
       ? `/api/rating/tasks/${selectedTask.id}/submit-second`
       : `/api/rating/tasks/${selectedTask.id}/submit`;
     try {
@@ -204,6 +231,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
         setSubmitError(null);
         setSelectedTask(null);
         setIsSecondRater(false);
+        setIsArbitration(false);
         fetchTasks();
       } else {
         const d = await res.json().catch(() => ({}));
@@ -218,18 +246,31 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
 
   const dims = selectedTask?.type === "SPEAKING" ? RUBRIC_DIMS_SPEAKING : RUBRIC_DIMS_WRITING;
 
+  const audioSource = useMemo(() => {
+    if (selectedTask?.type !== "SPEAKING") return null;
+    try {
+      const audio = JSON.parse(selectedTask.content);
+      return typeof audio.audio === "string" && /^[A-Za-z0-9+/]+={0,2}$/.test(audio.audio) &&
+        typeof audio.mimeType === "string" && /^audio\/[a-z0-9.+-]+(?:;codecs=[a-z0-9.+-]+)?$/i.test(audio.mimeType)
+        ? `data:${audio.mimeType};base64,${audio.audio}` : null;
+    } catch { return null; }
+  }, [selectedTask]);
+  const taskContent = selectedTask?.response?.item?.content;
+
   return (
     <div className="space-y-6">
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Rating Queue</h1>
-          <p className="text-slate-500 text-sm mt-0.5">Double-blind human evaluation for Speaking &amp; Writing responses.</p>
+          <p className="text-slate-500 text-sm mt-0.5">Independent human evaluation for Speaking &amp; Writing responses.</p>
         </div>
         <Button variant="ghost" size="sm" onClick={fetchTasks}>
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
         </Button>
       </div>
+
+      {loadError && <p role="alert" className="text-red-600">{loadError}</p>}
 
       {/* ── Stats bar ─────────────────────────────────────────────────── */}
       {stats && (
@@ -282,7 +323,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
                   <Clock className="animate-spin mx-auto mb-2" size={22} />
                   <p className="text-sm">Loading…</p>
                 </div>
-              ) : tasks.length === 0 ? (
+              ) : loadError ? null : tasks.length === 0 ? (
                 <div className="p-8 text-center text-slate-400">
                   <CheckCircle2 className="mx-auto mb-2 text-emerald-500" size={22} />
                   <p className="text-sm">Queue is empty</p>
@@ -293,7 +334,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
                     <button
                       key={task.id}
                       onClick={() => handleClaim(task)}
-                      disabled={statusFilter === "COMPLETED"}
+                      disabled={statusFilter === "COMPLETED" || (statusFilter === "FLAGGED" && !task.needsArbitration)}
                       className={cn(
                         "w-full text-left p-4 hover:bg-slate-50 transition-colors flex items-center justify-between group disabled:opacity-60 disabled:cursor-default",
                         selectedTask?.id === task.id && "bg-indigo-50/60"
@@ -311,6 +352,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
                           <div className="text-[10px] text-slate-400 font-mono truncate">
                             {task.response?.item?.cefrLevel ?? ""} · {task.response?.session?.candidate?.name ?? task.sessionId?.slice(0, 8) ?? "—"}
                           </div>
+                          {task.needsArbitration && <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded font-bold">3RD RATER</span>}
                           {task.needsSecondRater && (
                             <span className="text-[9px] bg-violet-100 text-violet-700 px-1 rounded font-bold">2ND RATER</span>
                           )}
@@ -346,6 +388,7 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
                         <span className="px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-black uppercase tracking-widest">
                           {selectedTask.type}
                         </span>
+                        {isArbitration && <span className="text-xs font-bold text-amber-700">Independent third rating</span>}
                         {isSecondRater && (
                           <span className="px-2 py-0.5 bg-violet-600 text-white rounded text-[10px] font-black uppercase tracking-widest">
                             2nd Rater
@@ -360,16 +403,24 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
                   </CardHeader>
 
                   <CardContent className="p-6 space-y-6">
+                    {taskContent && <section className="text-sm text-slate-700 whitespace-pre-wrap">
+                      <h3 className="font-semibold">Task and source</h3>
+                      <p>{taskContent.prompt}</p><p>{taskContent.passage ?? taskContent.transcript ?? taskContent.script}</p>
+                    </section>}
                     {/* Response text */}
                     <section>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Candidate Response</p>
                       <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl leading-relaxed text-slate-700 text-sm whitespace-pre-wrap max-h-52 overflow-y-auto">
-                        {selectedTask.content || <em className="text-slate-400">No content available — check response metadata.</em>}
+                        {selectedTask.type === "SPEAKING"
+                          ? audioSource ? <audio controls src={audioSource} aria-label="Candidate recording" />
+                            : <p role="alert">Candidate recording unavailable. A speaking grade cannot be submitted.</p>
+                          : selectedTask.content || <em className="text-slate-400">No content available — check response metadata.</em>}
                       </div>
                     </section>
 
+                    {isArbitration && <p className="text-sm text-slate-600">Previous human and AI grades are hidden. Submit an independent score; the final grade is the mean of the three human ratings.</p>}
                     {/* AI provisional score */}
-                    {selectedTask.aiResult && (
+                    {!isArbitration && selectedTask.aiResult && (
                       <section className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
                         <div className="flex items-center gap-2 text-amber-700 font-bold text-xs uppercase tracking-widest">
                           <AlertCircle size={13} />
@@ -449,11 +500,11 @@ export const RatingDashboard: React.FC<{ raterId?: string }> = ({ raterId }) => 
                     <Button
                       className="w-full h-11 font-bold"
                       onClick={handleSubmit}
-                      disabled={submitting || feedback.trim().length < 10}
+                      disabled={submitting || feedback.trim().length < 10 || (selectedTask.type === "SPEAKING" && !audioSource)}
                     >
                       {submitting
                         ? <><RefreshCw size={14} className="animate-spin mr-2" />Submitting…</>
-                        : isSecondRater ? "Submit Second Rating" : "Submit Rating"}
+                        : isArbitration ? "Submit Third Rating" : isSecondRater ? "Submit Second Rating" : "Submit Rating"}
                     </Button>
                   </CardContent>
                 </Card>

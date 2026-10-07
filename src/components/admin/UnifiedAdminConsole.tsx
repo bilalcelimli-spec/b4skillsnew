@@ -14,7 +14,7 @@
  *  PLATFORM     Branding · Exam Codes · Import · Integrations · Audit · Settings
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   LayoutDashboard,
@@ -71,6 +71,9 @@ import { ContentFactoryBatchPanel } from "./ContentFactoryBatchPanel";
 import { ContentFactoryReviewQueue } from "./ContentFactoryReviewQueue";
 import { OrganizationManagement } from "./OrganizationManagement";
 
+const ScoreValidityEvidencePanel = lazy(() => import("./ScoreValidityEvidencePanel").then(m => ({ default: m.ScoreValidityEvidencePanel })));
+const ItemRetirementPanel = lazy(() => import("./ItemRetirementPanel").then(m => ({ default: m.ItemRetirementPanel })));
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,7 +98,9 @@ type Section =
   | "audit"
   | "settings"
   | "organizations"
-  | "scoring-queue";
+  | "scoring-queue"
+  | "item-retirement"
+  | "score-evidence";
 
 interface NavGroup {
   id: string;
@@ -158,6 +163,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "ai-generator",    label: "Generate",        icon: <Wand2 size={15} /> },
       { id: "content-review",  label: "Review Queue",    icon: <CheckCircle2 size={15} /> },
       { id: "item-bank",         label: "Item Bank",       icon: <Layers size={15} /> },
+      { id: "item-retirement", label: "Item Retirement", icon: <Layers size={15} /> },
       { id: "item-bank-health",  label: "Bank Health",     icon: <Activity size={15} /> },
       { id: "calibration",       label: "Calibration",     icon: <Calculator size={15} /> },
     ],
@@ -167,6 +173,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Analytics & Science",
     items: [
       { id: "analytics",     label: "Analytics",     icon: <TrendingUp size={15} /> },
+      { id: "score-evidence", label: "Score Evidence", icon: <BarChart3 size={15} /> },
       { id: "engine-config", label: "Engine Config", icon: <Sliders size={15} /> },
     ],
   },
@@ -337,9 +344,11 @@ export const UnifiedAdminConsole: React.FC<{ orgId?: string; onLogout?: () => vo
               )}
               {activeSection === "ai-generator" && <ContentFactoryBatchPanel />}
               {activeSection === "item-bank" && <ItemBankPanel />}
+              {activeSection === "item-retirement" && <Suspense fallback={<p>Loading item analysis…</p>}><ItemRetirementPanel /></Suspense>}
               {activeSection === "item-bank-health" && <ItemBankHealthDashboard />}
               {activeSection === "content-factory" && <ContentFactoryDashboard />}
               {activeSection === "content-review" && <ContentFactoryReviewQueue />}
+              {activeSection === "score-evidence" && <Suspense fallback={<p>Loading score evidence…</p>}><ScoreValidityEvidencePanel /></Suspense>}
               {activeSection === "calibration" && <CalibrationStudy />}
               {activeSection === "engine-config" && <EngineConfigPanel />}
               {activeSection === "branding" && <BrandingSettings orgId={ORG_ID} />}
@@ -397,6 +406,8 @@ const NavButton: React.FC<{
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SECTION_META: Record<Section, { label: string; desc: string; group: string }> = {
+  "score-evidence": { label: "Score Evidence", desc: "Observed scoring precision and repeat agreement", group: "Analytics & Science" },
+  "item-retirement": { label: "Item Retirement", desc: "Review item quality and retire eligible items", group: "Content Pipeline" },
   candidates:        { label: "Candidates",     desc: "Manage candidates and access",          group: "People" },
   proctoring:        { label: "Proctoring",     desc: "Review flagged sessions",               group: "Monitor" },
   billing:           { label: "Billing",        desc: "Subscription & usage",                  group: "Platform" },
@@ -453,6 +464,14 @@ const OverviewPanel: React.FC<{
   onClearSession: () => void;
 }> = ({ orgId, selectedSessionId, onSelectSession, onClearSession }) => {
   const [sessions, setSessions] = useState<SessionData[]>([]);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [health, setHealth] = useState<Record<string, { status: string }> | null>(null);
+  useEffect(() => {
+    fetch("/api/status", { credentials: "include" }).then(r => r.json())
+      .then(result => setHealth(result.checks ?? null)).catch(() => setHealth(null));
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ total: 0, completed: 0, inProgress: 0, avgTheta: 0 });
 
@@ -482,7 +501,7 @@ const OverviewPanel: React.FC<{
           const inProg = list.filter((s) => s.status === "in_progress").length;
           const avgTheta =
             list.length > 0
-              ? list.reduce((a, s) => a + (s.abilityEstimate ?? 0), 0) / list.length
+              ? list.filter(s => s.status === "completed").reduce((a, s) => a + (s.abilityEstimate ?? 0), 0) / Math.max(completed, 1)
               : 0;
           setStats({ total: list.length, completed, inProgress: inProg, avgTheta });
           return;
@@ -510,14 +529,22 @@ const OverviewPanel: React.FC<{
     return <SessionReview sessionId={selectedSessionId} onBack={onClearSession} />;
   }
 
+  const completedSessions = sessions.filter(s => s.status === "completed");
+  const visibleSessions = sessions.filter(s => (statusFilter === "all" || s.status === statusFilter) &&
+    `${s.candidateName ?? ""} ${s.candidateEmail ?? ""} ${s.id}`.toLowerCase().includes(query.toLowerCase()));
+  const distribution = completedSessions.reduce((counts, s) => {
+    if (s.cefrLevel) counts[s.cefrLevel] = (counts[s.cefrLevel] ?? 0) + 1;
+    return counts;
+  }, {} as Record<string, number>);
+  const classified = Object.values(distribution).reduce((sum, n) => sum + n, 0);
   return (
     <div className="space-y-8">
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={<Activity className="text-indigo-600" size={18} />} label="Total Sessions" value={stats.total.toString()} sub="All time" />
+        <StatCard icon={<Activity className="text-indigo-600" size={18} />} label="Total Sessions" value={stats.total.toString()} sub="Recent session sample" />
         <StatCard icon={<CheckCircle2 className="text-emerald-600" size={18} />} label="Completed" value={stats.completed.toString()} sub={`${Math.round((stats.completed / Math.max(stats.total, 1)) * 100)}% rate`} />
         <StatCard icon={<Clock className="text-amber-600" size={18} />} label="In Progress" value={stats.inProgress.toString()} sub="Active now" />
-        <StatCard icon={<BarChart3 className="text-purple-600" size={18} />} label="Avg. Ability (θ)" value={stats.avgTheta.toFixed(2)} sub="CEFR B2 avg" />
+        <StatCard icon={<BarChart3 className="text-purple-600" size={18} />} label="Avg. Ability (θ)" value={stats.completed ? stats.avgTheta.toFixed(2) : "—"} sub="Completed session sample" />
       </div>
 
       {/* Sessions table + health sidebar */}
@@ -527,12 +554,13 @@ const OverviewPanel: React.FC<{
           <CardHeader className="flex flex-row items-center justify-between bg-slate-50/60 border-b border-slate-100 py-3 px-5">
             <span className="text-xs font-black uppercase tracking-widest text-slate-700">Recent Sessions</span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="h-7 text-[10px] font-black uppercase tracking-widest rounded-lg">
-                <Filter size={11} className="mr-1" /> Filter
-              </Button>
-              <Button variant="outline" size="sm" className="h-7 text-[10px] font-black uppercase tracking-widest rounded-lg">
-                <Search size={11} className="mr-1" /> Search
-              </Button>
+              <input aria-label="Search recent sessions" value={query} onChange={e => setQuery(e.target.value)}
+                placeholder="Name, email or session ID" className="w-40 rounded border border-slate-200 px-2 text-xs" />
+              <select aria-label="Filter session status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+                className="rounded border border-slate-200 text-xs">
+                <option value="all">All statuses</option><option value="completed">Completed</option>
+                <option value="in_progress">In progress</option><option value="flagged">Flagged</option>
+              </select>
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -548,7 +576,7 @@ const OverviewPanel: React.FC<{
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {sessions.map((s) => (
+                  {visibleSessions.map((s) => (
                     <tr
                       key={s.id}
                       onClick={() => onSelectSession(s.id)}
@@ -601,20 +629,18 @@ const OverviewPanel: React.FC<{
           <Card className="rounded-2xl border-indigo-100 bg-indigo-50/30 shadow-sm">
             <CardHeader className="text-xs font-black uppercase tracking-widest text-indigo-900 pb-2">System Health</CardHeader>
             <CardContent className="space-y-3 pt-0">
-              <HealthItem label="AI Scoring Engine" ok />
-              <HealthItem label="Adaptive Logic" ok />
-              <HealthItem label="Storage API" ok />
-              <HealthItem label="Proctoring Service" ok />
+              {health ? Object.entries(health).map(([name, check]) => <div key={name} className="flex justify-between text-xs">
+                <span>{name}</span><span className={check.status === "up" ? "text-emerald-700" : "text-amber-700"}>{check.status}</span>
+              </div>) : <p className="text-xs text-slate-500">Health status unavailable</p>}
             </CardContent>
           </Card>
 
           <Card className="rounded-2xl border-slate-200 shadow-sm">
             <CardHeader className="text-xs font-black uppercase tracking-widest text-slate-700 pb-2">CEFR Distribution</CardHeader>
             <CardContent className="space-y-3 pt-0">
-              <DistBar label="C1 / C2" pct={15} color="bg-purple-500" />
-              <DistBar label="B2"       pct={35} color="bg-indigo-500" />
-              <DistBar label="B1"       pct={30} color="bg-blue-400" />
-              <DistBar label="A1 / A2"  pct={20} color="bg-slate-400" />
+              {classified ? Object.entries(distribution).map(([level, count]) => <DistBar key={level} label={level}
+                pct={Math.round(count / classified * 100)} color="bg-indigo-500" />)
+                : <p className="text-xs text-slate-500">No classified completed sessions in this sample.</p>}
             </CardContent>
           </Card>
         </div>
@@ -792,15 +818,6 @@ function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: s
   );
 }
 
-function HealthItem({ label, ok }: { label: string; ok: boolean }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-xs font-medium text-indigo-800">{label}</span>
-      <span className={cn("w-2 h-2 rounded-full", ok ? "bg-emerald-500" : "bg-rose-500")} />
-    </div>
-  );
-}
-
 function DistBar({ label, pct, color }: { label: string; pct: number; color: string }) {
   return (
     <div className="space-y-1">
@@ -899,6 +916,9 @@ interface ScoringQueueItem {
   candidateEmail: string;
   skill: string;
   pendingCount: number;
+  reviewCount: number;
+  failedCount: number;
+  retryableCount: number;
   submittedAt: string;
   hoursElapsed: number;
   overdue: boolean;
@@ -910,22 +930,27 @@ interface ScoringQueueStats {
   soonCount: number;
 }
 
-const ScoringQueuePanel: React.FC = () => {
+export const ScoringQueuePanel: React.FC = () => {
   const [items, setItems] = useState<ScoringQueueItem[]>([]);
   const [stats, setStats] = useState<ScoringQueueStats>({ totalPending: 0, overdueCount: 0, soonCount: 0 });
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "overdue" | "ok">("all");
   const [requeueing, setRequeueing] = useState<string | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/admin/scoring-queue", { credentials: "include" });
-      if (res.ok) {
-        const data = await res.json();
-        setItems(data.items ?? []);
-        setStats(data.stats ?? { totalPending: 0, overdueCount: 0, soonCount: 0 });
-      }
+      if (!res.ok) throw new Error("Could not load scoring queue");
+      const data = await res.json();
+      setItems(data.items);
+      setStats(data.stats);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load scoring queue");
     } finally {
       setLoading(false);
     }
@@ -936,11 +961,17 @@ const ScoringQueuePanel: React.FC = () => {
   const handleRequeue = async (sessionId: string) => {
     setRequeueing(sessionId);
     try {
-      await fetch(`/api/admin/scoring-queue/${sessionId}/requeue`, {
+      setError(null); setNotice(null);
+      const response = await fetch(`/api/admin/scoring-queue/${encodeURIComponent(sessionId)}/requeue`, {
         method: "POST",
         credentials: "include",
       });
+      if (!response.ok) throw new Error("Could not requeue scoring");
+      const result = await response.json();
+      setNotice(`${result.queued} responses queued; ${result.skipped} skipped (already scoring, human review, or invalid submission).`);
       await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not requeue scoring");
     } finally {
       setRequeueing(null);
     }
@@ -957,6 +988,8 @@ const ScoringQueuePanel: React.FC = () => {
 
   return (
     <div className="p-6 space-y-5">
+      {error && <p role="alert" className="text-rose-700">{error}</p>}
+      {notice && <p role="status" className="text-slate-600">{notice}</p>}
       {/* Stat bar */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 text-center">
@@ -1000,10 +1033,10 @@ const ScoringQueuePanel: React.FC = () => {
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center h-40 text-slate-400 text-sm">Loading…</div>
-      ) : visible.length === 0 ? (
+      ) : error ? null : visible.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-40 gap-2 text-slate-400">
           <CheckCircle2 size={32} className="text-emerald-400" />
-          <span className="text-sm font-medium">No pending responses — all clear!</span>
+          <span className="text-sm font-medium">{items.length ? "No responses match this filter." : "No unresolved productive responses."}</span>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
@@ -1038,6 +1071,7 @@ const ScoringQueuePanel: React.FC = () => {
                     }`}>
                       {item.skill}
                     </span>
+                    {(item.reviewCount > 0 || item.failedCount > 0) && <div className="text-[10px] text-slate-500">Review: {item.reviewCount} · Failed: {item.failedCount}</div>}
                     {item.pendingCount > 1 && (
                       <span className="ml-1 text-[10px] text-slate-400">×{item.pendingCount}</span>
                     )}
@@ -1066,7 +1100,7 @@ const ScoringQueuePanel: React.FC = () => {
                   <td className="px-4 py-3">
                     <button
                       onClick={() => handleRequeue(item.sessionId)}
-                      disabled={requeueing === item.sessionId}
+                      disabled={requeueing === item.sessionId || item.retryableCount === 0}
                       className="px-2 py-1 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 transition-colors"
                     >
                       {requeueing === item.sessionId ? "…" : "Requeue"}
@@ -1083,8 +1117,8 @@ const ScoringQueuePanel: React.FC = () => {
         <div className="flex items-start gap-3 p-4 rounded-xl bg-rose-50 border border-rose-200">
           <Clock size={16} className="text-rose-500 mt-0.5 shrink-0" />
           <div className="text-xs text-rose-700">
-            <span className="font-bold">{stats.overdueCount} session{stats.overdueCount > 1 ? "s" : ""} exceeded the 48-hour SLA.</span>{" "}
-            Use "Requeue" to trigger re-scoring, or follow up with the AI scoring service.
+            <span className="font-bold">{stats.overdueCount} response{stats.overdueCount > 1 ? "s" : ""} exceeded the 48-hour SLA.</span>{" "}
+            Requeue retries eligible submissions. Disputed grades and active human reviews require a rater.
           </div>
         </div>
       )}

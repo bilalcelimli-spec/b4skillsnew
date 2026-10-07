@@ -1,3 +1,4 @@
+import { createAuthenticatedFetch } from "./lib/http/api-fetch";
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
@@ -24,35 +25,11 @@ if (import.meta.env.VITE_SENTRY_DSN) {
   });
 }
 
-// Global API Fetch Interceptor — adds credentials and handles 401 globally
-const originalFetch = window.fetch;
-window.fetch = async (input, init) => {
-  if (typeof input === 'string' && input.startsWith('/api/')) {
-    init = init || {};
-    init.credentials = 'include';
-  }
-  const response = await originalFetch(input, init);
-  // On 401 outside of auth endpoints, try a token refresh then reload.
-  // Prevents silent failures when the access token expires mid-session.
-  if (
-    response.status === 401 &&
-    typeof input === 'string' &&
-    !input.includes('/api/auth/')
-  ) {
-    try {
-      const refreshRes = await originalFetch('/api/auth/refresh', { method: 'POST', credentials: 'include' });
-      if (refreshRes.ok) {
-        // Retry the original request once with the new token cookie
-        return originalFetch(input, init);
-      }
-    } catch {
-      // Refresh failed — fall through to redirect
-    }
-    // Redirect to login if refresh also fails
-    window.location.href = '/';
-  }
-  return response;
-};
+// Refresh once for concurrent requests so rotating cookies do not invalidate
+// each other. An unrelated external 401 must not log the user out.
+window.fetch = createAuthenticatedFetch(window.fetch.bind(window), () => {
+  window.location.href = '/login';
+});
 
 const rootEl = document.getElementById('root')!;
 const app = (
