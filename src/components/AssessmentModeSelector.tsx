@@ -1,4 +1,4 @@
-import { OZGUN_PRODUCT } from "../lib/fixed-forms/ozgun-kids";
+import { OZGUN_PRODUCT, OZGUN_TITLE } from "../lib/fixed-forms/ozgun-kids";
 /**
  * AssessmentModeSelector
  *
@@ -26,7 +26,7 @@ export interface AssessmentMode {
 }
 
 const MODES: AssessmentMode[] = [
-  {id:'ozgun-kids-form-a',label:'Özgün Kids · Form A',tagline:'96 soruluk sabit sınav',time:'105 dakika',skills:['Grammar','Vocabulary','Reading','Listening'],purpose:'Kitapçıktaki soru sırası, bölüm süreleri ve dinleme kayıtlarıyla uygulanır.',icon:<BookOpen size={22}/>,accent:'bg-pink-600',productLine:OZGUN_PRODUCT},
+  {id:'ozgun-kids-form-a',label:OZGUN_TITLE,tagline:'96 soruluk sabit sınav',time:'105 dakika',skills:['Grammar','Vocabulary','Reading','Listening'],purpose:'Kitapçıktaki soru sırası, bölüm süreleri ve dinleme kayıtlarıyla uygulanır.',icon:<BookOpen size={22}/>,accent:'bg-pink-600',productLine:OZGUN_PRODUCT},
   {
     id: "quick-check",
     label: "Rapid Diagnostic",

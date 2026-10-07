@@ -43,7 +43,7 @@ export function createOzgunKidsService(prisma: PrismaClient) {
       await db.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
       const session:any=await db.session.findUnique({where:{id:sessionId}});
       if(!session || session.metadata?.sessionType!=='FIXED_FORM' || session.metadata?.fixedForm?.formId!==OZGUN_FORM_ID)
-        throw new FixedFormError('Özgün Kids sınavı bulunamadı.',404);
+        throw new FixedFormError('Özgün Placement sınavı bulunamadı.',404);
       if(!['SCHEDULED','IN_PROGRESS','COMPLETED','FLAGGED'].includes(session.status)) throw new FixedFormError('Sınav bu durumda kullanılamaz.',409);
       const now=new Date(), original=structuredClone(session.metadata.fixedForm) as FixedFormState;
       const state=advanceExpiredSections(original,now);
@@ -86,7 +86,7 @@ export function createOzgunKidsService(prisma: PrismaClient) {
         let codeId:string|null=null;
         if(role==='CANDIDATE') {
           const code=await db.examCode.findFirst({where:{organizationId,usedByEmail:email,isUsed:true,productLine:OZGUN_PRODUCT},orderBy:{usedAt:'desc'}});
-          if(!code) throw new FixedFormError('Bu sınav için Özgün Kids sınav kodu gerekir.',403);
+          if(!code) throw new FixedFormError('Bu sınav için Özgün Placement sınav kodu gerekir.',403);
           codeId=code.id;
           await db.$queryRaw`SELECT id FROM "ExamCode" WHERE id = ${code.id} FOR UPDATE`;
           const existing=await db.session.findFirst({where:{candidateId,organizationId,metadata:{path:['fixedFormCodeId'],equals:code.id}}});

@@ -1,4 +1,4 @@
-import { OZGUN_PRODUCT, OZGUN_MEDIA } from "../../lib/fixed-forms/ozgun-kids";
+import { OZGUN_PRODUCT, OZGUN_MEDIA, OZGUN_TITLE } from "../../lib/fixed-forms/ozgun-kids";
 import React, { useState, useEffect } from "react";
 import { useToast } from "../../hooks/useToast.js";
 import { Card, CardHeader, CardContent } from "../ui/Card";
@@ -108,7 +108,7 @@ export const ExamCodeManager: React.FC<{ orgId?: string }> = ({ orgId }) => {
                 onChange={(e) => setProductLine(e.target.value)}
                 className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
               >
-                <option value={OZGUN_PRODUCT}>{OZGUN_PRODUCT}</option>
+                <option value={OZGUN_PRODUCT}>{OZGUN_TITLE}</option>
                 <option value="General English">General English</option>
                 <option value="Primary (7-10)">Primary (7-10)</option>
                 <option value="Junior Suite (11-14)">Junior Suite (11-14)</option>
@@ -122,7 +122,7 @@ export const ExamCodeManager: React.FC<{ orgId?: string }> = ({ orgId }) => {
             </div>
 
             {productLine===OZGUN_PRODUCT&&<section className="space-y-3 rounded-xl bg-pink-50 border border-pink-100 p-4">
-              <h4 className="font-bold">Özgün Kids · Form A</h4>
+              <h4 className="font-bold">{OZGUN_TITLE}</h4>
               <p className="text-sm">96 sabit soru · Grammar 20 dk, Vocabulary 15 dk, Reading 35 dk, Listening 32 dk. Toplam 105 dk (3 dk açıklama dahil). Writing/Speaking yoktur; rapor doğru/yanlış/boş sayılarını gösterir.</p>
               <p className="text-xs">Soru sırasına uygun paylaşılan cevap anahtarı yüklüdür. Kurumunuz için düzenleyebilirsiniz. Geçici kur önerileri ve 16 soruluk düzey kümeleri raporda gösterilir; bunlar doğrulanmış CEFR sınırları değildir. Otomatik yerleştirme veya yeterlilik sertifikası üretilmez.</p>
               <a className="text-sm underline text-indigo-700" href={`${OZGUN_MEDIA}/booklet.pdf`} target="_blank" rel="noreferrer">Öğrenci kitapçığını incele</a>

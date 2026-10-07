@@ -14,7 +14,7 @@ test('admin selects the fixed form, saves its key and generates the matching cod
     await route.fulfill({json:{codes:['OZGUN-FIXTURE-1']}});
   });
   await page.goto('/test/e2e/fixtures/ozgun-kids.html?mode=admin');
-  await page.getByLabel('Product Line',{exact:true}).selectOption(OZGUN_PRODUCT);
+  await page.getByLabel('Product Line',{exact:true}).selectOption({label:'Özgün Placement'});
   await expect(page.getByLabel('Cevap anahtarı (1–96, A/B/C/D)')).toHaveValue(OZGUN_ANSWER_KEY);
   await page.getByRole('checkbox').check();
   await expect(page.getByRole('button',{name:/Generate Codes/})).toBeDisabled();
@@ -100,22 +100,64 @@ for(const width of [320,1280])test(`candidate completes four sections and sees r
     await page.getByRole('button',{name:i===3?'Sınavı bitir':'Bölümü bitir ve devam et',exact:true}).click();
     if(i<3)await page.getByRole('button',{name:'Continue manually →',exact:true}).click();
   }
-  await expect(page.getByRole('heading',{name:'Özgün Kids · Form A sonuçları'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Özgün Placement sonuçları'})).toBeVisible();
   await expect(page.getByText('4 / 96',{exact:true})).toBeVisible();
   await expect(page.getByText('0 yanlış · 92 boş · %4',{exact:true})).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('anahtarı doğrulanmamış');
   await expect(page.getByRole('heading',{name:'Geçici kur önerisi'})).toBeVisible();
-  await expect(page.getByText('Başlangıç / A1',{exact:true})).toBeVisible();
+  await expect(page.getByRole('region',{name:'Geçici kur önerisi'}).getByText('Başlangıç / A1',{exact:true})).toBeVisible();
   await expect(page.getByRole('heading',{name:'Hedef düzey kümeleri'})).toBeVisible();
   await expect(page.getByText('Otomatik yerleştirme yapılmaz.',{exact:false})).toBeVisible();
   await expect(page.getByRole('button',{name:/certificate|sertifika/i})).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Beceri profili',exact:true})).toBeVisible();
+  await expect(page.getByRole('article',{name:'A1 kümesi'})).toContainText('4 / 16');
+  await expect(page.getByRole('heading',{name:'Kur kararından önce',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Öğrenci için çalışma önerileri',exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:`/tmp/b4skills-ozgun-report-${width}.png`,fullPage:true});
   if(width===1280){
     await page.emulateMedia({media:'print'});
     await page.setViewportSize({width:794,height:1123});
     await expect(page.getByRole('button',{name:'Yazdır'})).toBeHidden();
-    expect(await page.locator('table').evaluateAll(tables=>tables.every(table=>table.scrollWidth<=table.clientWidth))).toBe(true);
+    await expect(page.getByRole('heading',{name:'Özgün Placement sonuçları'})).toBeVisible();
+    await expect(page.getByText('Bu raporun kapsamı',{exact:true})).toBeVisible();
+    await expect(page.locator('.cluster-grid article')).toHaveCount(6);
+    expect(await page.locator('.report-card').evaluateAll(cards=>cards.every(card=>card.scrollWidth<=card.clientWidth))).toBe(true);
     await page.pdf({path:'/tmp/b4skills-ozgun-course-report.pdf',format:'A4',printBackground:true});
   }
+  expect(errors).toEqual([]);
+});
+
+for(const width of [320,1280])for(const scenario of ['balanced','advanced','hold'])test(`report ${scenario} is readable and provisional at ${width}px`,async({page})=>{
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await page.setViewportSize({width,height:850});
+  await page.goto(`/test/e2e/fixtures/ozgun-kids.html?mode=report&scenario=${scenario}`);
+  await expect(page.getByRole('heading',{name:'Özgün Placement sonuçları'})).toBeVisible();
+  await expect(page.locator('.cluster-grid article')).toHaveCount(6);
+  const suggestion=page.getByRole('region',{name:'Geçici kur önerisi'});
+  if(scenario==='balanced') {
+    await expect(suggestion).toContainText('B2 kur adayı');
+    await expect(page.getByRole('article',{name:'A1 kümesi'})).toContainText('Güçlü kanıt');
+    await expect(page.getByRole('article',{name:'B2 kümesi'})).toContainText('Kısmi kanıt');
+  }else if(scenario==='advanced') {
+    await expect(suggestion).toContainText('C2 için ileri değerlendirme adayı');
+    await expect(page.getByText(/Konuşma, yazma ve daha kapsamlı okuma/)).toBeVisible();
+  }else {
+    await expect(page.getByRole('alert')).toContainText('güvenlik incelemesinde');
+    await expect(page.getByRole('alert')).toContainText('anahtarı doğrulanmamış');
+    await expect(page.getByText(/Hiçbir soru cevaplanmadı/)).toBeVisible();
+  }
+  await expect(page.getByRole('button',{name:/certificate|sertifika/i})).toHaveCount(0);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:`/tmp/b4skills-ozgun-report-${scenario}-${width}.png`,fullPage:true});
+  if(width===1280 && scenario==='balanced')await page.screenshot({path:'/tmp/b4skills-ozgun-report-preview.png'});
+  await page.emulateMedia({media:'print'});
+  await expect(page.getByRole('button',{name:'Yazdır'})).toBeHidden();
+  await expect(page.getByRole('heading',{name:'Özgün Placement sonuçları'})).toBeVisible();
+  await expect(page.getByText('Bu raporun kapsamı',{exact:true})).toBeVisible();
+  expect(await page.locator('.report-card').evaluateAll(cards=>cards.every(card=>card.scrollWidth<=card.clientWidth))).toBe(true);
+  await page.emulateMedia({media:'screen'});
+  await page.getByRole('button',{name:'Geri dön'}).click();
+  await expect(page.getByText('Dashboard',{exact:true})).toBeVisible();
   expect(errors).toEqual([]);
 });

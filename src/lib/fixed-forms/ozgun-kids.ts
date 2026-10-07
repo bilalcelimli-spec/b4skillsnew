@@ -1,7 +1,11 @@
 import {buildOzgunPlacement} from './ozgun-kids-placement';
+// Stable persisted identity: keep existing exam codes and sessions compatible.
 export const OZGUN_PRODUCT = 'Özgün Kids — Form A (96 soru)';
 export const OZGUN_FORM_ID = 'ozgun-kids-form-a-v1';
-export const OZGUN_TITLE = 'Özgün Kids İngilizce Seviye Belirleme Sınavı — Form A';
+export const OZGUN_TITLE = 'Özgün Placement';
+export function assessmentDisplayName(productLine: string): string {
+  return productLine === OZGUN_PRODUCT ? OZGUN_TITLE : productLine;
+}
 export const OZGUN_MEDIA = '/assessments/ozgun-kids/form-a-v1';
 export const OZGUN_SECTIONS = [
   {skill:'GRAMMAR',label:'Grammar',first:1,last:24,minutes:20},

@@ -1,3 +1,4 @@
+import { assessmentDisplayName } from '../lib/fixed-forms/ozgun-kids';
 import React, { useEffect, useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -38,7 +39,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       <p className="font-black text-slate-800 mb-1">{d.displayDate}</p>
       <p className="text-indigo-600 font-bold">θ = {d.theta.toFixed(2)}</p>
       <p className="text-slate-600">CEFR: <span className="font-black">{d.cefrLevel}</span></p>
-      <p className="text-slate-400 mt-1">{d.productLine}</p>
+      <p className="text-slate-400 mt-1">{assessmentDisplayName(d.productLine)}</p>
     </div>
   );
 };

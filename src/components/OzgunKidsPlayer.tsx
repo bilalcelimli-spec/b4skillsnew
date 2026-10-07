@@ -1,5 +1,5 @@
 import React, {useEffect,useRef,useState} from 'react';
-import {OZGUN_MEDIA,OZGUN_SECTIONS,type FixedAnswers} from '../lib/fixed-forms/ozgun-kids';
+import {OZGUN_TITLE,OZGUN_MEDIA,OZGUN_SECTIONS,type FixedAnswers} from '../lib/fixed-forms/ozgun-kids';
 import {ExitAssessmentControl} from './ExitAssessmentControl';
 import { MultipleChoiceOptions } from './MultipleChoiceOptions';
 import {Button} from './ui/Button';
@@ -176,6 +176,6 @@ export function OzgunKidsPlayer(props:Props) {
       {data?.report&&<p>Sonuçlar açılıyor…</p>}
       </div>
     </main>
-    <AssessmentFooter sessionId={data?.sessionId} connection={pending ? "Cevap kaydediliyor…" : Object.keys(saveErrors).length ? "Cevap kaydedilemedi" : "Gönderilen cevaplar kaydedildi."} detail="Özgün Kids · Form A"/>
+    <AssessmentFooter sessionId={data?.sessionId} connection={pending ? "Cevap kaydediliyor…" : Object.keys(saveErrors).length ? "Cevap kaydedilemedi" : "Gönderilen cevaplar kaydedildi."} detail={OZGUN_TITLE}/>
   </div>;
 }

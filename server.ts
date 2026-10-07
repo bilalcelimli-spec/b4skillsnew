@@ -1,7 +1,7 @@
 import "dotenv/config";
 import {AppError} from "./src/lib/errors/app-error.js";
 import {productForRedeemedCode} from "./src/lib/security/exam-code-product.js";
-import { OZGUN_PRODUCT } from "./src/lib/fixed-forms/ozgun-kids.js";
+import { OZGUN_PRODUCT, assessmentDisplayName } from "./src/lib/fixed-forms/ozgun-kids.js";
 import { createOzgunKidsService } from "./src/lib/fixed-forms/ozgun-kids-service.js";
 import { ensureReportShareToken } from "./src/lib/reporting/report-sharing.js";
 import { hasFinalResult } from "./src/lib/reporting/candidate-history.js";
@@ -3843,9 +3843,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const testUrl = `${APP_BASE_URL}/?code=${encodeURIComponent(code)}`;
       await sendEmail(
         email,
-        `Your B4Skills Assessment Invitation — ${productLine}`,
+        `Your B4Skills Assessment Invitation — ${assessmentDisplayName(productLine)}`,
         emailTemplate({
-          heading: `You've been invited to take the B4Skills ${productLine} assessment`,
+          heading: `You've been invited to take the B4Skills ${assessmentDisplayName(productLine)} assessment`,
           body: `<p style="font-size:15px;color:#334155;line-height:1.6">Hello ${candidateName},</p>
                  <p style="font-size:15px;color:#334155;line-height:1.6">Your unique access code is:</p>
                  <p style="font-size:28px;font-weight:800;color:#4f46e5;text-align:center;letter-spacing:0.12em;margin:24px 0;font-family:monospace">${code}</p>
@@ -4601,7 +4601,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         },
       });
       if (!session) return res.status(404).json({ error: "Session not found" });
-      if ((session.metadata as any)?.sessionType==='FIXED_FORM') return res.status(409).json({error:'Özgün Kids ham puan raporunu sonuç sayfasındaki Yazdır seçeneğinden alın.'});
+      if ((session.metadata as any)?.sessionType==='FIXED_FORM') return res.status(409).json({error:'Özgün Placement ham puan raporunu sonuç sayfasındaki Yazdır seçeneğinden alın.'});
       const report = buildAssessmentReport(session, APP_BASE_URL);
       // Build before sending headers so a font/rendering failure returns JSON,
       // never a partially streamed, corrupt PDF.

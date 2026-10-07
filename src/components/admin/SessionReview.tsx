@@ -53,7 +53,7 @@ export const SessionReview: React.FC<SessionReviewProps> = ({ sessionId, onBack 
     }
   };
 
-  if(fixed) return fixed.report ? <OzgunKidsReport report={fixed.report} completedAt={fixed.completedAt} onClose={onBack}/> : <div className="p-6 space-y-4"><h2 className="font-bold">Özgün Kids · Sınav devam ediyor</h2><p>{Object.values(fixed.answers??{}).filter(Boolean).length}/96 cevap kaydedildi.</p><Button onClick={onBack}>Geri dön</Button></div>;
+  if(fixed) return fixed.report ? <OzgunKidsReport report={fixed.report} completedAt={fixed.completedAt} onClose={onBack}/> : <div className="p-6 space-y-4"><h2 className="font-bold">Özgün Placement · Sınav devam ediyor</h2><p>{Object.values(fixed.answers??{}).filter(Boolean).length}/96 cevap kaydedildi.</p><Button onClick={onBack}>Geri dön</Button></div>;
 
   return (
     <div className="space-y-8">

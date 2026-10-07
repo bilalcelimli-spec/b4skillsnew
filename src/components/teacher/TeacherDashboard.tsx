@@ -1,3 +1,4 @@
+import { assessmentDisplayName } from '../../lib/fixed-forms/ozgun-kids';
 import React, { useCallback, useEffect, useState } from "react";
 import { useToast } from "../../hooks/useToast.js";
 
@@ -590,7 +591,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 {assignments.map(a => (
                   <div key={a.id} style={{ border: "1px solid #e2e8f0", borderRadius: "10px", padding: "14px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <div style={{ fontWeight: 600, fontSize: "14px", color: "#0f172a", marginBottom: "4px" }}>{a.productLine}</div>
+                      <div style={{ fontWeight: 600, fontSize: "14px", color: "#0f172a", marginBottom: "4px" }}>{assessmentDisplayName(a.productLine)}</div>
                       <span style={{
                         fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "999px",
                         background: a.windowStatus === "OPEN" ? "#dcfce7" : a.windowStatus === "PENDING" ? "#fef9c3" : "#f1f5f9",

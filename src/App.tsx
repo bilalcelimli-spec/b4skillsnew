@@ -1,4 +1,4 @@
-import { OZGUN_PRODUCT } from "./lib/fixed-forms/ozgun-kids";
+import { OZGUN_PRODUCT, assessmentDisplayName } from "./lib/fixed-forms/ozgun-kids";
 import { hasFinalResult, historyStatus, historySkills } from "./lib/reporting/candidate-history";
 import { useTranslation } from "react-i18next";
 import React, { useState, useEffect, lazy, Suspense } from "react";
@@ -722,7 +722,7 @@ export default function App() {
             {recentSessions.filter(session => session.status === 'IN_PROGRESS' || (session.status === 'SCHEDULED' && session.metadata?.sessionType === 'FIXED_FORM')).map(session => (
               <Card key={session.id} className="mb-4 border-indigo-200">
                 <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
-                  <div><p className="font-bold text-slate-800">{session.metadata?.productLine ?? 'Assessment'}</p><p className="text-xs text-slate-500">{t('exam.exitTimerNotice', {defaultValue:'Your exam timer continues while you are away.'})}</p></div>
+                  <div><p className="font-bold text-slate-800">{assessmentDisplayName(session.metadata?.productLine ?? 'Assessment')}</p><p className="text-xs text-slate-500">{t('exam.exitTimerNotice', {defaultValue:'Your exam timer continues while you are away.'})}</p></div>
                   <Button onClick={() => {
                     setPreTestReady(true);
                     setActiveSession({sessionId:session.id,orgId:session.organizationId ?? userProfile?.organizationId,productLine:session.metadata?.productLine});
@@ -824,7 +824,7 @@ export default function App() {
                     ) : recentSessions.slice(0, 5).map((s: any) => (
                       <ActivityItem
                         key={s.id}
-                        title={s.metadata?.productLine || "Assessment"}
+                        title={assessmentDisplayName(s.metadata?.productLine || "Assessment")}
                         date={s.completedAt ? new Date(s.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "In progress"}
                         score={s.metadata?.fixedForm?.report ? `${s.metadata.fixedForm.report.correct}/96` : hasFinalResult(s) ? s.scoreReport.overallCefr : "—"}
                         status={historyStatus(s)}
@@ -932,7 +932,7 @@ function ResultsHistory({ sessions, onSelectSession }: { sessions: any[]; onSele
             const cefr = s.metadata?.fixedForm?.report ? `${s.metadata.fixedForm.report.correct}/96` : hasFinalResult(s) ? s.scoreReport.overallCefr : historyStatus(s);
             const beps = hasFinalResult(s) ? s.scoreReport?.bepsScore ?? (s.finalTheta != null ? thetaToBeps(s.finalTheta) : null) : null;
             const date = s.completedAt ? new Date(s.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
-            const product = s.metadata?.productLine ?? "Assessment";
+            const product = assessmentDisplayName(s.metadata?.productLine ?? "Assessment");
             return (
               <button
                 data-testid="session-row"

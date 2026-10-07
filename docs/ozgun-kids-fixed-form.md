@@ -1,10 +1,10 @@
-# Özgün Kids Form A
+# Özgün Placement
 
 Bu sınav, verilen 20 sayfalık öğrenci kitapçığındaki 96 soruyu sabit sırayla uygular. Adaptif soru bankasına veya IRT kalibrasyonuna eklenmez. Kaynak kitapçık ve yedi ses dosyası `public/assessments/ozgun-kids/form-a-v1` altında özgün baytlarıyla saklanır. Dosya özetleri ve süreleri `src/lib/fixed-forms/ozgun-kids-provenance.json` içindedir.
 
 ## Yönetici akışı
 
-1. Kurumun **Exam Code Manager** ekranında **Özgün Kids — Form A (96 soru)** ürününü seçin.
+1. Kurumun **Exam Code Manager** ekranında **Özgün Placement** ürününü seçin.
 2. Öğrenci kitapçığını ve 1–96 sıralı cevap anahtarını inceleyin. Anahtar 96 adet A/B/C/D olmalıdır. Gerekli düzeltmeleri yapın, doğrulama durumunu seçin ve kaydedin.
 3. Kod adedini belirleyip **Generate Codes** ile tek kullanımlık sınav kodlarını üretin.
 4. Aday, mevcut kodla kayıt/giriş akışında kodu kullanır. Kendisine bu sınav atanır. Aynı kodla tekrar açma veya eşzamanlı istek yeni bir deneme oluşturmaz; mevcut deneme açılır.
@@ -73,3 +73,15 @@ Her doğru 1, yanlış/boş 0 puandır. Toplam /96 ve dört ayrı /24 sonuç; do
 - İçerik/puanlama, API yetkileri ve cevap kayıt testleri normal Vitest kapsamındadır. PostgreSQL testleri yalnız açıkça seçilen yerel test veritabanında `B4SKILLS_ARBITRATION_DB_TEST=1 npx vitest run test/ozgun-kids-db.test.ts` ile çalışır; üretim `DATABASE_URL` kullanılmaz. Bağlantı adresi test dosyasındadır.
 - `npm run test:item-renderer -- ozgun-kids-renderer.spec.ts` yönetici kod üretimini, dört bölümün aday akışını ve 320/1280 px görünümünü kontrollü API yanıtlarıyla doğrular. Gerçek PostgreSQL testleri kod/oturum kilitlerini, anahtar sürümünü ve puanlamayı ayrıca sınar.
 - Üretim derlemesi de geçici yerel PostgreSQL ile çalıştırılarak gerçek JWT/kod üretimi/kod kullanımı, aday yetkileri, oturum sürdürme, dört bölümün tamamlanması ve ham rapor uçtan uca doğrulandı. Kitapçık yetkileri ve MP3 byte-range yanıtı bu gerçek sunucu üzerinde kontrol edildi; üretim veritabanında işlem yapılmadı.
+
+## Sonuç raporunun okunması
+
+Rapor, ham puan ile geçici kur önerisini ayrı kartlarda gösterir. Cevaplanan soru sayısı ve katılım oranı, toplam doğru oranından ayrı tutulur; yanlış ve boş cevaplar birleştirilmez. Cevap anahtarı doğrulanmamışsa veya oturum güvenlik incelemesindeyse raporun üstünde ilgili koşullar görünür.
+
+Dört beceri kartı bölüm başına /24 puan, doğru oranı, yanlış/boş sayıları ve soru aralıklarını gösterir. Bölüm karşılaştırması yalnız gözlenen doğru sayılarını açıklar; aynı puanları aynı beceri seviyesi olarak yorumlamaz. Hiç cevap bulunmadığında güçlü alan uydurulmaz ve sıfır puan bir düzey tanısı sayılmaz.
+
+A1–C2 kümeleri, dar ekranda yatay tablo yerine kartlarla sunulur. Her kart /16 toplamı, dört /4 bölüm puanını, soru aralıklarını ve kanıt sınıfının açıklamasını içerir. Kur kararından önceki kontrol listesi mevcut yerleştirme kurallarının çıktısını kullanır. Çalışma önerileri, daha az doğru bulunan bölümlere öncelik verir; tüm bölüm puanları eşitse dört alanı da kapsar. Öneriler yanlış cevabın nedenine dair tanı veya kişiye doğrulanmış öğrenme programı değildir.
+
+Rapor ekranı Yazdır ile tarayıcının yazdırma/PDF akışını açar. Yazdırmada eylem düğmeleri ve bölüm kısayolları gizlenir; küme kartları iki sütunda yerleşir. Kur önerileri hâlâ geçicidir; Writing/Speaking ölçülmediği için genel CEFR sertifikası verilmez.
+
+Görünen sınav adı **Özgün Placement** olarak kullanılır. Mevcut sınav kodları ve oturumlarla uyumluluk için saklanan ürün kimliği, form kimliği ve kaynak dosya yolları korunur.

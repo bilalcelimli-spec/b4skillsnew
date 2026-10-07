@@ -9,6 +9,7 @@ import { PreTestBriefing } from "../PreTestBriefing.js";
 describe("PreTestBriefing", () => {
   it("uses the shared briefing with the fixed exam's actual skills, timings and policies", () => {
     render(<PreTestBriefing productLine={OZGUN_PRODUCT} onStart={vi.fn()} onCancel={vi.fn()}/>);
+    expect(screen.getByRole('heading', {name:'Özgün Placement'})).toBeTruthy();
     expect(screen.getByText('105 min')).toBeTruthy();
     expect(screen.getByText('96 questions · 4 timed sections')).toBeTruthy();
     expect(screen.queryByText('Microphone required')).toBeNull();

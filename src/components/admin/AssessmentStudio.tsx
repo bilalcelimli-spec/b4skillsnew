@@ -1,3 +1,4 @@
+import { assessmentDisplayName } from '../../lib/fixed-forms/ozgun-kids';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -305,7 +306,7 @@ const ItemBankView: React.FC<{ onEdit: (id: string) => void }> = ({ onEdit }) =>
               <tr key={it.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                 <td className="p-4 font-bold text-slate-900 text-sm">
                   {it.id}
-                  <div className="text-[10px] uppercase text-slate-400 mt-1">{it.productLine}</div>
+                  <div className="text-[10px] uppercase text-slate-400 mt-1">{assessmentDisplayName(it.productLine)}</div>
                 </td>
                 <td className="p-4"><span className="px-2 py-1 bg-indigo-50 text-indigo-700 font-black text-xs rounded uppercase">{it.cefr}</span></td>
                 <td className="p-4 text-sm font-medium text-slate-700">
