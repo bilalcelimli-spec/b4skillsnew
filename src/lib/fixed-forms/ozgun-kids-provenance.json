@@ -1,0 +1,57 @@
+{
+  "source": "Supplied Özgün Kids student booklet, Form A, 20 pages; supplied 2026-10-06 listening package",
+  "questions": 96,
+  "sections": 4,
+  "itemsPerSection": 24,
+  "answerKeyStatus": "User-supplied answer key, aligned to PDF questions 1–96. Matches all 96 content-derived draft answers. Default confirmed; institution overrides and existing attempt snapshots preserved.",
+  "levelThresholds": "User-supplied provisional course bands and 16-question target-level clusters; not pilot-validated CEFR cut scores. Human review required, no automatic placement or proficiency certificate.",
+  "assets": [
+    {
+      "file": "Listening_01_Sorular_73-76.mp3",
+      "bytes": 732431,
+      "sha256": "73242b8e72bd16a4c6abfbde1eb2fb3ed8f83cc20c3632fdf9b5e0007a90c144",
+      "durationSeconds": 30.433719
+    },
+    {
+      "file": "Listening_02_Sorular_77-80.mp3",
+      "bytes": 1136180,
+      "sha256": "8858474243815a81fd2c819725b4d92ad5b6c453c2e72d9eec4fbb950ba51699",
+      "durationSeconds": 47.26
+    },
+    {
+      "file": "Listening_03_Sorular_81-84.mp3",
+      "bytes": 1635223,
+      "sha256": "7f820dfe09dc48c938ec83d01cb84c2622c01dad769b061d50c5af2e8ebf5882",
+      "durationSeconds": 68.061224
+    },
+    {
+      "file": "Listening_04_Sorular_85-88.mp3",
+      "bytes": 2092261,
+      "sha256": "6bcfa8fa365dd0a331a620f4111cd5fc4d375959f635710063f64d847a91530e",
+      "durationSeconds": 87.1
+    },
+    {
+      "file": "Listening_05_Sorular_89-92.mp3",
+      "bytes": 2919194,
+      "sha256": "b1ecfef6af0ee01a0cdbce9bf4769c0315d43afe471cc13882c8bf0d3c4bb569",
+      "durationSeconds": 121.573855
+    },
+    {
+      "file": "Listening_06_Sorular_93-96.mp3",
+      "bytes": 3795027,
+      "sha256": "3e359b9686edc4c5be47a4bd8c9ce2c7302290006cb2a65fc75ee6476c24d385",
+      "durationSeconds": 158.06
+    },
+    {
+      "file": "Listening_Tam_Sinav.mp3",
+      "bytes": 42576237,
+      "sha256": "3cb66b9093c83bcf4c0a49396f5d035568957096b9d27c2939faca0ef586d28d",
+      "durationSeconds": 1773.925918
+    },
+    {
+      "file": "booklet.pdf",
+      "bytes": 910041,
+      "sha256": "15d56049bce480a05c04b2739bf424eb12243a7c0c3f02c0152b3e800f82933c"
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { OZGUN_PRODUCT } from "./lib/fixed-forms/ozgun-kids";
 import { hasFinalResult, historyStatus, historySkills } from "./lib/reporting/candidate-history";
 import { useTranslation } from "react-i18next";
 import React, { useState, useEffect, lazy, Suspense } from "react";
@@ -263,6 +264,15 @@ export default function App() {
   };
 
   const handleTestComplete = async (finalTheta: number | null, sessionId: string) => {
+    if (activeSession?.productLine === OZGUN_PRODUCT || finalTheta === null) {
+      setTestCompleted(null);
+      setCertificate(null);
+      setSelectedHistorySessionId(sessionId);
+      setActiveSession(null);
+      setPreTestReady(false);
+      setActiveTab('results');
+      return;
+    }
     const theta = finalTheta ?? 0;
     const cefr = thetaToCefr(theta);
     setTestCompleted({ theta, cefr, sessionId });
@@ -432,7 +442,7 @@ export default function App() {
   }
 
   if (activeSession) {
-    if (!preTestReady) {
+    if (!preTestReady && activeSession.productLine !== OZGUN_PRODUCT) {
       return (
         <Suspense fallback={<PageLoader />}>
           <PreTestBriefing
@@ -709,7 +719,7 @@ export default function App() {
               </div>
             </header>
 
-            {recentSessions.filter(session => session.status === 'IN_PROGRESS').map(session => (
+            {recentSessions.filter(session => session.status === 'IN_PROGRESS' || (session.status === 'SCHEDULED' && session.metadata?.sessionType === 'FIXED_FORM')).map(session => (
               <Card key={session.id} className="mb-4 border-indigo-200">
                 <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
                   <div><p className="font-bold text-slate-800">{session.metadata?.productLine ?? 'Assessment'}</p><p className="text-xs text-slate-500">{t('exam.exitTimerNotice', {defaultValue:'Your exam timer continues while you are away.'})}</p></div>
@@ -816,7 +826,7 @@ export default function App() {
                         key={s.id}
                         title={s.metadata?.productLine || "Assessment"}
                         date={s.completedAt ? new Date(s.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "In progress"}
-                        score={hasFinalResult(s) ? s.scoreReport.overallCefr : "—"}
+                        score={s.metadata?.fixedForm?.report ? `${s.metadata.fixedForm.report.correct}/96` : hasFinalResult(s) ? s.scoreReport.overallCefr : "—"}
                         status={historyStatus(s)}
                       />
                     ))}
@@ -919,7 +929,7 @@ function ResultsHistory({ sessions, onSelectSession }: { sessions: any[]; onSele
       ) : (
         <div className="space-y-3">
           {completed.map((s: any) => {
-            const cefr = hasFinalResult(s) ? s.scoreReport.overallCefr : historyStatus(s);
+            const cefr = s.metadata?.fixedForm?.report ? `${s.metadata.fixedForm.report.correct}/96` : hasFinalResult(s) ? s.scoreReport.overallCefr : historyStatus(s);
             const beps = hasFinalResult(s) ? s.scoreReport?.bepsScore ?? (s.finalTheta != null ? thetaToBeps(s.finalTheta) : null) : null;
             const date = s.completedAt ? new Date(s.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
             const product = s.metadata?.productLine ?? "Assessment";

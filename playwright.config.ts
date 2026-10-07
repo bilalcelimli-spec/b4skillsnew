@@ -20,7 +20,7 @@ export default defineConfig({
   testDir: "./test/e2e",
   testMatch: "**/*.spec.ts",
   // Renderer fixtures run on their own Vite origin with synthetic media devices.
-  testIgnore: ["**/item-renderer.spec.ts", "**/certificate-renderer.spec.ts"],
+  testIgnore: ["**/item-renderer.spec.ts", "**/certificate-renderer.spec.ts", "**/ozgun-kids-renderer.spec.ts"],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

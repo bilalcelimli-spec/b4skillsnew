@@ -79,6 +79,7 @@ const factories = {
   'src/routes/admin-scoring.ts': 'createAdminScoringRouter',
   'src/routes/operations.ts': 'createOperationsRouter',
   'src/routes/rating.ts': 'createRatingRouter',
+  'src/routes/ozgun-kids.ts': 'createOzgunKidsRouter',
 };
 const active = routes.flatMap(route => {
   if (route.file === 'server.ts') return route.url.startsWith('/api') ? [route] : [];

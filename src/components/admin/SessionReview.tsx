@@ -1,3 +1,4 @@
+import { OzgunKidsReport } from "../OzgunKidsReport";
 import React, { useState, useEffect } from "react";
 import { useToast } from "../../hooks/useToast.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/Card";
@@ -22,6 +23,7 @@ interface SessionReviewProps {
 
 export const SessionReview: React.FC<SessionReviewProps> = ({ sessionId, onBack }) => {
   const { toast } = useToast();
+  const [fixed,setFixed]=useState<any>(null);
   const [responses, setResponses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedResponse, setSelectedResponse] = useState<any>(null);
@@ -32,8 +34,13 @@ export const SessionReview: React.FC<SessionReviewProps> = ({ sessionId, onBack 
   }, [sessionId]);
 
   const fetchResponses = async () => {
-    setLoading(true);
+    setLoading(true);setFixed(null);
     try {
+      const statusResponse=await fetch(`/api/sessions/${sessionId}/status`,{credentials:'include'});
+      if(statusResponse.ok){
+        const status=await statusResponse.json();
+        if(status.sessionType==='FIXED_FORM'){setFixed(status);return;}
+      }
       const res = await fetch(`/api/sessions/${sessionId}/responses`, { credentials: "include" });
       const data = await res.json();
       const arr = Array.isArray(data) ? data : [];
@@ -45,6 +52,8 @@ export const SessionReview: React.FC<SessionReviewProps> = ({ sessionId, onBack 
       setLoading(false);
     }
   };
+
+  if(fixed) return fixed.report ? <OzgunKidsReport report={fixed.report} completedAt={fixed.completedAt} onClose={onBack}/> : <div className="p-6 space-y-4"><h2 className="font-bold">Özgün Kids · Sınav devam ediyor</h2><p>{Object.values(fixed.answers??{}).filter(Boolean).length}/96 cevap kaydedildi.</p><Button onClick={onBack}>Geri dön</Button></div>;
 
   return (
     <div className="space-y-8">

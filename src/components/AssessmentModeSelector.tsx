@@ -1,3 +1,4 @@
+import { OZGUN_PRODUCT } from "../lib/fixed-forms/ozgun-kids";
 /**
  * AssessmentModeSelector
  *
@@ -25,6 +26,7 @@ export interface AssessmentMode {
 }
 
 const MODES: AssessmentMode[] = [
+  {id:'ozgun-kids-form-a',label:'Özgün Kids · Form A',tagline:'96 soruluk sabit sınav',time:'105 dakika',skills:['Grammar','Vocabulary','Reading','Listening'],purpose:'Kitapçıktaki soru sırası, bölüm süreleri ve dinleme kayıtlarıyla uygulanır.',icon:<BookOpen size={22}/>,accent:'bg-pink-600',productLine:OZGUN_PRODUCT},
   {
     id: "quick-check",
     label: "Rapid Diagnostic",
@@ -96,7 +98,7 @@ export function AssessmentModeSelector({ onSelect, allowedProductLine, className
     : [];
   // If the code restricts to a specific product line that matches exactly one mode,
   // auto-start immediately so the candidate lands directly in the exam.
-  const visible = filtered.length > 0 ? filtered : MODES;
+  const visible = filtered.length > 0 ? filtered : MODES.filter(mode=>mode.productLine!==OZGUN_PRODUCT);
 
   // Auto-start when there is exactly one allowed mode (code-entry candidates)
   const autoStartRef = useRef(false);

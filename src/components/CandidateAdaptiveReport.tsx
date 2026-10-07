@@ -1,3 +1,4 @@
+import { OzgunKidsReport } from "./OzgunKidsReport";
 import { useScoringStatus } from "../hooks/useScoringStatus";
 import { CEFR_LEVELS } from "../lib/cefr/cefr-framework";
 /**
@@ -217,6 +218,8 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
       setShareLoading(false);
     }
   }
+
+  if ((report as any)?.sessionType === 'FIXED_FORM') return <OzgunKidsReport report={(report as any).fixedFormReport} candidateName={(report as any).candidateName} completedAt={(report as any).completedAt} onClose={onClose}/>;
 
   if (loading) {
     return (

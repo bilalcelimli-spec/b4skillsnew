@@ -1,3 +1,5 @@
+import { OzgunKidsPlayer } from "./OzgunKidsPlayer";
+import { OZGUN_PRODUCT } from "../lib/fixed-forms/ozgun-kids";
 import { ExitAssessmentControl } from "./ExitAssessmentControl";
 import React, { useState, useEffect } from "react";
 import { Item } from "../lib/assessment-engine/types";
@@ -38,8 +40,9 @@ interface TestPlayerProps {
   onCancel?: () => void;
 }
 
-export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidateId, productLine, startingSkill, initialSessionId, onSessionStarted, onComplete, onCancel }) => {
+const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidateId, productLine, startingSkill, initialSessionId, onSessionStarted, onComplete, onCancel }) => {
   const { t } = useTranslation();
+  const [fixedSession, setFixedSession] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentItem, setCurrentItem] = useState<Item | null>(null);
   const [loading, setLoading] = useState(true);
@@ -131,6 +134,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
           const existing = await statusRes.json();
           if (!activeRef.current) return;
           if (!statusRes.ok) throw new Error(existing.error ?? "Could not resume assessment");
+          if (existing.sessionType === 'FIXED_FORM') {setSessionId(initialSessionId);setFixedSession(true);setLoading(false);return;}
           if (existing.status === "COMPLETED") { onComplete(existing.theta ?? null, initialSessionId); return; }
           if (existing.status !== "IN_PROGRESS") throw new Error("This assessment cannot be resumed in its current state");
           setSessionId(initialSessionId);
@@ -412,6 +416,8 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     }
     return 0;
   };
+
+  if (fixedSession && sessionId) return <OzgunKidsPlayer organizationId={organizationId} initialSessionId={sessionId} onSessionStarted={onSessionStarted} onComplete={onComplete} onCancel={onCancel}/>;
 
   if (error) {
     const isCodeRequired = error.includes("exam code");
@@ -789,3 +795,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     </div>
   );
 };
+
+export const TestPlayer: React.FC<TestPlayerProps> = props => props.productLine === OZGUN_PRODUCT
+  ? <OzgunKidsPlayer {...props}/>
+  : <AdaptiveTestPlayer {...props}/>;

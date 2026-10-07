@@ -1,4 +1,6 @@
 import "dotenv/config";
+import { OZGUN_PRODUCT } from "./src/lib/fixed-forms/ozgun-kids.js";
+import { createOzgunKidsService } from "./src/lib/fixed-forms/ozgun-kids-service.js";
 import { ensureReportShareToken } from "./src/lib/reporting/report-sharing.js";
 import { hasFinalResult } from "./src/lib/reporting/candidate-history.js";
 // Observability bootstrap — Sentry + OpenTelemetry. Must run before any other import that might throw.
@@ -1290,7 +1292,7 @@ async function startServer() {
             }
             const jwtUser = await prisma.user.findUnique({
               where: { id: decoded.userId },
-              select: { id: true, role: true, organizationId: true }
+              select: { id: true, role: true, organizationId: true, email:true }
             });
             if (jwtUser) {
               if (roles.includes(jwtUser.role) || jwtUser.role === "SUPER_ADMIN") {
@@ -1406,7 +1408,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           const [claimedCode, orgLicense, payment] = await Promise.all([
             // (a) exam code redeemed by this email
             prisma.examCode.findFirst({
-              where: { usedByEmail: userEmail, isUsed: true },
+              where: { usedByEmail: userEmail, isUsed: true, ...(productLine === OZGUN_PRODUCT ? {productLine:OZGUN_PRODUCT} : {NOT:{productLine:OZGUN_PRODUCT}}) },
               select: { organizationId: true },
               orderBy: { usedAt: "desc" },
             }),
@@ -1457,6 +1459,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       }
       if (dbAvailable && !resolvedOrganizationId) {
         return res.status(400).json({ error: "organizationId is required" });
+      }
+      if (productLine === OZGUN_PRODUCT) {
+        if (!dbAvailable) return res.status(503).json({error:'Database unavailable'});
+        return res.json(await createOzgunKidsService(prisma).launch(candidateId,resolvedOrganizationId!,req.user.role,req.user.email));
       }
       let session;
       try {
@@ -3764,6 +3770,15 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  app.get('/assessments/ozgun-kids/form-a-v1/booklet.pdf',checkRole(['SUPER_ADMIN','ASSESSMENT_DIRECTOR','INST_ADMIN']),(_req,res)=>{
+    const root=process.env.NODE_ENV==='production'?'dist':'public';
+    res.setHeader('Cache-Control','private, no-store');
+    res.sendFile(path.join(process.cwd(),root,'assessments/ozgun-kids/form-a-v1/booklet.pdf'));
+  });
+
+  const { createOzgunKidsRouter } = await import("./src/routes/ozgun-kids.js");
+  app.use("/api",createOzgunKidsRouter({prisma,auth:authMiddleware,checkRole,databaseAvailable:()=>dbAvailable,assertOwnership:assertSessionOwnership}));
+
   // --- EXAM CODES API ---
   app.post("/api/codes/generate", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req, res) => {
     try {
@@ -4292,8 +4307,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (dbAvailable) {
         const [existingReport, session] = await Promise.all([
           prisma.scoreReport.findUnique({ where: { sessionId: id } }),
-          prisma.session.findUnique({ where: { id }, select: { currentTheta: true, status: true } }),
+          prisma.session.findUnique({ where: { id }, select: { currentTheta: true, status: true, metadata:true } }),
         ]);
+        if ((session?.metadata as any)?.sessionType==='FIXED_FORM') return res.status(409).json({error:'Use the fixed-form section completion endpoint'});
         if (!existingReport && session?.currentTheta != null && session.status !== "COMPLETED") {
           try {
             const { AssessmentService } = await import("./src/lib/assessment-engine/server-engine.js");
@@ -4490,6 +4506,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         },
       }) as any;
 
+      if (session?.metadata?.sessionType === 'FIXED_FORM') {
+        const fixed = await createOzgunKidsService(prisma).read(id);
+        if (!fixed.report) return res.status(409).json({error:'Sınav henüz tamamlanmadı.'});
+        return res.json({sessionType:'FIXED_FORM',sessionId:id,candidateName:session.candidate?.name,completedAt:fixed.completedAt,fixedFormReport:fixed.report});
+      }
       if (!session) return res.status(404).json({ error: "Session not found" });
 
       const sessionMeta = (session.metadata as Record<string, unknown> | null) ?? {};
@@ -4572,6 +4593,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         },
       });
       if (!session) return res.status(404).json({ error: "Session not found" });
+      if ((session.metadata as any)?.sessionType==='FIXED_FORM') return res.status(409).json({error:'Özgün Kids ham puan raporunu sonuç sayfasındaki Yazdır seçeneğinden alın.'});
       const report = buildAssessmentReport(session, APP_BASE_URL);
       // Build before sending headers so a font/rendering failure returns JSON,
       // never a partially streamed, corrupt PDF.

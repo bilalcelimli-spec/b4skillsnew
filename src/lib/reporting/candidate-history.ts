@@ -5,6 +5,8 @@ export function hasFinalResult(session: any): boolean {
     session.scoreReport.diagnosticReport?.securityFlag !== true && session.metadata?.securityFlag !== true;
 }
 export function historyStatus(session: any): string {
+  if (session.metadata?.sessionType==='FIXED_FORM' && session.metadata.fixedForm?.report && session.status==='COMPLETED')
+    return session.metadata.fixedForm.report.keyConfirmed ? 'Completed' : 'Provisional Result';
   if (hasFinalResult(session)) return 'Completed';
   if (session.status === 'FLAGGED' || session.metadata?.securityFlag === true || session.scoreReport?.diagnosticReport?.securityFlag === true) return 'Under Review';
   if (['COMPLETED', 'SCORING'].includes(session.status)) return 'Scoring Pending';

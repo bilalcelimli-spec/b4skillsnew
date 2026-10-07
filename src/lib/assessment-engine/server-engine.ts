@@ -1,3 +1,4 @@
+import { createOzgunKidsService } from "../fixed-forms/ozgun-kids-service";
 import { buildSessionProgress } from "./session-progress";
 import { buildScoringPrompt } from "../scoring/task-context.js";
 import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence } from "../scoring/score-evidence.js";
@@ -445,6 +446,7 @@ export const AssessmentService = {
       include: { responses: { include: { item: { select: { skill: true } } } } }
     });
 
+    if ((session?.metadata as any)?.sessionType === 'FIXED_FORM') throw AppError.conflict('Use the fixed-form assessment endpoint');
     if (!session || session.status !== SessionStatus.IN_PROGRESS) {
       throw new Error("Invalid session");
     }
@@ -925,6 +927,7 @@ export const AssessmentService = {
       include: { responses: true }
     });
 
+    if ((session?.metadata as any)?.sessionType === 'FIXED_FORM') throw AppError.conflict('Use the fixed-form assessment endpoint');
     if (!session || session.status !== SessionStatus.IN_PROGRESS) {
       throw new Error("Invalid session");
     }
@@ -1178,6 +1181,7 @@ export const AssessmentService = {
       include: { responses: { include: { item: true } }, scoreReport: true },
     });
 
+    if ((session?.metadata as any)?.sessionType==='FIXED_FORM') throw AppError.conflict('Fixed forms cannot be finalized as adaptive assessments');
     if (!session) throw new Error("Session not found");
     const itemDict = Object.fromEntries(session.responses.filter(r => r.item).map(r => [r.itemId, dbItemToEngineItem(r.item)]));
     const state = toEngineState(session);
@@ -1702,6 +1706,7 @@ export const AssessmentService = {
   async refreshSessionScoring(sessionId: string) {
     const session = await prisma.session.findUnique({ where: { id: sessionId }, include: { responses: { include: { item: true } } } });
     if (!session) return;
+    if ((session.metadata as any)?.sessionType==='FIXED_FORM') {await createOzgunKidsService(prisma).read(sessionId);return;}
     if ((session.metadata as any)?.sessionType === 'DIAGNOSTIC') {
       const { DiagnosticService } = await import('./diagnostic-service.js');
       await DiagnosticService.refreshScoring(sessionId);
@@ -1737,6 +1742,7 @@ export const AssessmentService = {
       include: { responses: { include: { item: { select: { skill: true } } } } }
     });
     if (!session) throw new Error("Session not found");
+    if ((session.metadata as any)?.sessionType === 'FIXED_FORM') return createOzgunKidsService(prisma).read(sessionId);
     return buildSessionProgress(session);
   },
 

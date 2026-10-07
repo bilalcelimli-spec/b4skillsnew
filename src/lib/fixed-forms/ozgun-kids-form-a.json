@@ -1,0 +1,1214 @@
+{
+  "id": "ozgun-kids-form-a-v1",
+  "title": "Özgün Kids İngilizce Seviye Belirleme Sınavı — Form A",
+  "questions": [
+    {
+      "number": 1,
+      "skill": "GRAMMAR",
+      "prompt": "This is my sister, Maya. ___ is a teacher.",
+      "options": {
+        "A": "He",
+        "B": "She",
+        "C": "They",
+        "D": "We"
+      },
+      "sourcePage": 2
+    },
+    {
+      "number": 2,
+      "skill": "GRAMMAR",
+      "prompt": "I have ___ orange in my bag.",
+      "options": {
+        "A": "a",
+        "B": "any",
+        "C": "two",
+        "D": "an"
+      },
+      "sourcePage": 2
+    },
+    {
+      "number": 3,
+      "skill": "GRAMMAR",
+      "prompt": "There ___ two chairs next to the window.",
+      "options": {
+        "A": "are",
+        "B": "is",
+        "C": "am",
+        "D": "be"
+      },
+      "sourcePage": 2
+    },
+    {
+      "number": 4,
+      "skill": "GRAMMAR",
+      "prompt": "Our lesson starts ___ nine o’clock.",
+      "options": {
+        "A": "in",
+        "B": "on",
+        "C": "at",
+        "D": "into"
+      },
+      "sourcePage": 2
+    },
+    {
+      "number": 5,
+      "skill": "GRAMMAR",
+      "prompt": "I ___ my new neighbour yesterday.",
+      "options": {
+        "A": "met",
+        "B": "meet",
+        "C": "am meeting",
+        "D": "have met"
+      },
+      "sourcePage": 2
+    },
+    {
+      "number": 6,
+      "skill": "GRAMMAR",
+      "prompt": "Please wait a moment. Sara ___ on the phone right now.",
+      "options": {
+        "A": "spoke",
+        "B": "is spoken",
+        "C": "is speaking",
+        "D": "has spoken"
+      },
+      "sourcePage": 2
+    },
+    {
+      "number": 7,
+      "skill": "GRAMMAR",
+      "prompt": "I’ll carry the small bag. Your bag is ___ than mine.",
+      "options": {
+        "A": "heavy",
+        "B": "heaviest",
+        "C": "as heavy",
+        "D": "heavier"
+      },
+      "sourcePage": 2
+    },
+    {
+      "number": 8,
+      "skill": "GRAMMAR",
+      "prompt": "How ___ apples do we need for the cake?",
+      "options": {
+        "A": "much",
+        "B": "many",
+        "C": "any",
+        "D": "some"
+      },
+      "sourcePage": 2
+    },
+    {
+      "number": 9,
+      "skill": "GRAMMAR",
+      "prompt": "I ___ at this shop since 2022, and I still enjoy the job.",
+      "options": {
+        "A": "work",
+        "B": "am working",
+        "C": "have worked",
+        "D": "worked"
+      },
+      "sourcePage": 2
+    },
+    {
+      "number": 10,
+      "skill": "GRAMMAR",
+      "prompt": "If we ___ before six, we’ll catch the early bus.",
+      "options": {
+        "A": "leave",
+        "B": "left",
+        "C": "had left",
+        "D": "would leave"
+      },
+      "sourcePage": 2
+    },
+    {
+      "number": 11,
+      "skill": "GRAMMAR",
+      "prompt": "Wearing a visitor badge is required in this building. You ___ wear one while you are inside.",
+      "options": {
+        "A": "may",
+        "B": "must",
+        "C": "might",
+        "D": "would"
+      },
+      "sourcePage": 2
+    },
+    {
+      "number": 12,
+      "skill": "GRAMMAR",
+      "prompt": "The bridge ___ in 2018, and thousands of people use it every day.",
+      "options": {
+        "A": "builds",
+        "B": "has built",
+        "C": "is building",
+        "D": "was built"
+      },
+      "sourcePage": 2
+    },
+    {
+      "number": 13,
+      "skill": "GRAMMAR",
+      "prompt": "On Monday, Eva said, “I will send the revised file tomorrow.” Reporting her promise on Wednesday, her colleague said, “Eva told me she ___ the revised file on Tuesday.”",
+      "options": {
+        "A": "will send",
+        "B": "would send",
+        "C": "has sent",
+        "D": "sends"
+      },
+      "sourcePage": 3
+    },
+    {
+      "number": 14,
+      "skill": "GRAMMAR",
+      "prompt": "The training centre, ___ opened last autumn, now offers evening courses.",
+      "options": {
+        "A": "that",
+        "B": "what",
+        "C": "where",
+        "D": "which"
+      },
+      "sourcePage": 3
+    },
+    {
+      "number": 15,
+      "skill": "GRAMMAR",
+      "prompt": "We missed the last train. If we ___ the timetable before leaving, we would have arrived at the station earlier.",
+      "options": {
+        "A": "checked",
+        "B": "would check",
+        "C": "had checked",
+        "D": "have checked"
+      },
+      "sourcePage": 3
+    },
+    {
+      "number": 16,
+      "skill": "GRAMMAR",
+      "prompt": "The office is locked, and all the lights are off. Everyone ___ already.",
+      "options": {
+        "A": "must have left",
+        "B": "must leave",
+        "C": "must be leaving",
+        "D": "must have been leaving"
+      },
+      "sourcePage": 3
+    },
+    {
+      "number": 17,
+      "skill": "GRAMMAR",
+      "prompt": "Not until we compared the two versions ___ that a whole paragraph was missing.",
+      "options": {
+        "A": "we realised",
+        "B": "had we realised",
+        "C": "we did realise",
+        "D": "did we realise"
+      },
+      "sourcePage": 3
+    },
+    {
+      "number": 18,
+      "skill": "GRAMMAR",
+      "prompt": "The reviewers had been asked to challenge the assumptions, and challenge them they ___, despite the chair’s obvious discomfort.",
+      "options": {
+        "A": "would",
+        "B": "did",
+        "C": "had",
+        "D": "should"
+      },
+      "sourcePage": 3
+    },
+    {
+      "number": 19,
+      "skill": "GRAMMAR",
+      "prompt": "___ I appreciate the need for a quick decision, I cannot recommend signing an agreement we have not read.",
+      "options": {
+        "A": "Much as",
+        "B": "Even",
+        "C": "Despite",
+        "D": "However"
+      },
+      "sourcePage": 3
+    },
+    {
+      "number": 20,
+      "skill": "GRAMMAR",
+      "prompt": "The evidence supports a possibility, not a firm conclusion. Which completion keeps that degree of certainty? “The decline ___ reflect a temporary change in demand.”",
+      "options": {
+        "A": "must inevitably",
+        "B": "cannot possibly",
+        "C": "may well",
+        "D": "will invariably"
+      },
+      "sourcePage": 3
+    },
+    {
+      "number": 21,
+      "skill": "GRAMMAR",
+      "prompt": "A reviewer accepts that a report identifies a problem, but criticises its failure to explain why the problem continues. Which sentence places that failure at the centre of the criticism?",
+      "options": {
+        "A": "What the report fails to identify is the problem whose persistence it explains.",
+        "B": "It is the identification of the problem, rather than its explanation, that the report lacks.",
+        "C": "What the report fails to explain is not what the problem is, but why it persists.",
+        "D": "It is because the report explains the problem’s persistence that its identification is unclear."
+      },
+      "sourcePage": 4
+    },
+    {
+      "number": 22,
+      "skill": "GRAMMAR",
+      "prompt": "Nina prepared a detailed summary. Later, she discovered that everyone had already received one. Which sentence explicitly presents her completed effort as unnecessary?",
+      "options": {
+        "A": "Nina needn’t have prepared the summary.",
+        "B": "Nina couldn’t have prepared the summary.",
+        "C": "Nina mustn’t have prepared the summary.",
+        "D": "Nina might not have prepared the summary."
+      },
+      "sourcePage": 4
+    },
+    {
+      "number": 23,
+      "skill": "GRAMMAR",
+      "prompt": "The missing figures were not the reason the board postponed its vote: the board would have postponed it anyway. Which sentence preserves this meaning?",
+      "options": {
+        "A": "Had the figures been available, the board would not have postponed the vote.",
+        "B": "Only if the figures had been unavailable would the board have postponed the vote.",
+        "C": "The board would have postponed the vote unless the figures had been available.",
+        "D": "Even had the figures been available, the board would still have postponed the vote."
+      },
+      "sourcePage": 4
+    },
+    {
+      "number": 24,
+      "skill": "GRAMMAR",
+      "prompt": "Which interpretation best preserves the distinction in this sentence? “The director did not so much reject the recommendation as decline to treat it as binding.”",
+      "options": {
+        "A": "The director judged the recommendation unsound and excluded it from further consideration.",
+        "B": "The director left the recommendation open for consideration without accepting an obligation to follow it.",
+        "C": "The director accepted an obligation to follow the recommendation but delayed putting it into practice.",
+        "D": "The director postponed judging the recommendation because its requirements were not yet understood."
+      },
+      "sourcePage": 4
+    },
+    {
+      "number": 25,
+      "skill": "VOCABULARY",
+      "prompt": "I’m thirsty. Can I have some ___, please?",
+      "options": {
+        "A": "bread",
+        "B": "rice",
+        "C": "cheese",
+        "D": "water"
+      },
+      "sourcePage": 5
+    },
+    {
+      "number": 26,
+      "skill": "VOCABULARY",
+      "prompt": "We bought a loaf of ___ from the bakery.",
+      "options": {
+        "A": "bread",
+        "B": "milk",
+        "C": "meat",
+        "D": "juice"
+      },
+      "sourcePage": 5
+    },
+    {
+      "number": 27,
+      "skill": "VOCABULARY",
+      "prompt": "Hurry! Our bus ___ at six, and it is five fifty-five now.",
+      "options": {
+        "A": "follows",
+        "B": "carries",
+        "C": "leaves",
+        "D": "keeps"
+      },
+      "sourcePage": 5
+    },
+    {
+      "number": 28,
+      "skill": "VOCABULARY",
+      "prompt": "My sister has a son. He is my ___.",
+      "options": {
+        "A": "uncle",
+        "B": "nephew",
+        "C": "father",
+        "D": "brother"
+      },
+      "sourcePage": 5
+    },
+    {
+      "number": 29,
+      "skill": "VOCABULARY",
+      "prompt": "I’ve finished reading these library books. I need to ___ them before Friday.",
+      "options": {
+        "A": "borrow",
+        "B": "return",
+        "C": "receive",
+        "D": "collect"
+      },
+      "sourcePage": 5
+    },
+    {
+      "number": 30,
+      "skill": "VOCABULARY",
+      "prompt": "We’ve ___ milk. Could you buy some on your way home?",
+      "options": {
+        "A": "looked after",
+        "B": "turned into",
+        "C": "got over",
+        "D": "run out of"
+      },
+      "sourcePage": 5
+    },
+    {
+      "number": 31,
+      "skill": "VOCABULARY",
+      "prompt": "This chair is very ___. I can sit in it for hours.",
+      "options": {
+        "A": "comfortable",
+        "B": "comfortably",
+        "C": "comfort",
+        "D": "comforting"
+      },
+      "sourcePage": 5
+    },
+    {
+      "number": 32,
+      "skill": "VOCABULARY",
+      "prompt": "We arrived at the station too late and ___ our train.",
+      "options": {
+        "A": "wasted",
+        "B": "failed",
+        "C": "missed",
+        "D": "dropped"
+      },
+      "sourcePage": 5
+    },
+    {
+      "number": 33,
+      "skill": "VOCABULARY",
+      "prompt": "We need to ___ a decision before we book the room.",
+      "options": {
+        "A": "make",
+        "B": "do",
+        "C": "set",
+        "D": "take over"
+      },
+      "sourcePage": 5
+    },
+    {
+      "number": 34,
+      "skill": "VOCABULARY",
+      "prompt": "Two team members are ill, so we have decided to ___ the meeting until next week.",
+      "options": {
+        "A": "carry out",
+        "B": "bring up",
+        "C": "put off",
+        "D": "take after"
+      },
+      "sourcePage": 5
+    },
+    {
+      "number": 35,
+      "skill": "VOCABULARY",
+      "prompt": "You can trust Amal to arrive on time and finish what she promises. She’s very ___.",
+      "options": {
+        "A": "rely",
+        "B": "reliably",
+        "C": "reliability",
+        "D": "reliable"
+      },
+      "sourcePage": 5
+    },
+    {
+      "number": 36,
+      "skill": "VOCABULARY",
+      "prompt": "Tomas understands new ideas quickly. His teachers describe him as a ___ student.",
+      "options": {
+        "A": "clear",
+        "B": "bright",
+        "C": "light",
+        "D": "plain"
+      },
+      "sourcePage": 5
+    },
+    {
+      "number": 37,
+      "skill": "VOCABULARY",
+      "prompt": "We have agreed on a ___ date for the launch, but it may change after the safety checks.",
+      "options": {
+        "A": "retrospective",
+        "B": "permanent",
+        "C": "tentative",
+        "D": "recurring"
+      },
+      "sourcePage": 6
+    },
+    {
+      "number": 38,
+      "skill": "VOCABULARY",
+      "prompt": "The new procedure should ___ the problem of orders being sent to the wrong address.",
+      "options": {
+        "A": "recover",
+        "B": "address",
+        "C": "deserve",
+        "D": "resemble"
+      },
+      "sourcePage": 6
+    },
+    {
+      "number": 39,
+      "skill": "VOCABULARY",
+      "prompt": "Before I send the proposal, could I ___ you? I’d value your opinion.",
+      "options": {
+        "A": "run it by",
+        "B": "put it through",
+        "C": "take it from",
+        "D": "make it into"
+      },
+      "sourcePage": 6
+    },
+    {
+      "number": 40,
+      "skill": "VOCABULARY",
+      "prompt": "Which sentence is most appropriate in a formal email informing an applicant that they have not been selected?",
+      "options": {
+        "A": "You didn’t get the job, but thanks for having a go.",
+        "B": "No luck this time, though we’re glad you gave it a shot.",
+        "C": "We won’t be taking you on, but it was nice to meet you.",
+        "D": "We regret to inform you that your application has been unsuccessful."
+      },
+      "sourcePage": 6
+    },
+    {
+      "number": 41,
+      "skill": "VOCABULARY",
+      "prompt": "Which word describes the limits placed on the committee’s support? It approved the main idea but required changes to the budget. Its support was ___.",
+      "options": {
+        "A": "qualified",
+        "B": "unconditional",
+        "C": "unanimous",
+        "D": "reluctant"
+      },
+      "sourcePage": 6
+    },
+    {
+      "number": 42,
+      "skill": "VOCABULARY",
+      "prompt": "Initial interviews suggested that users found the form confusing. The larger survey ___ that finding.",
+      "options": {
+        "A": "passed over",
+        "B": "set aside",
+        "C": "called off",
+        "D": "bore out"
+      },
+      "sourcePage": 6
+    },
+    {
+      "number": 43,
+      "skill": "VOCABULARY",
+      "prompt": "The report describes a fall in complaints, but it gives no evidence that the new policy caused it. Its claim of a causal link is therefore ___.",
+      "options": {
+        "A": "unavoidable",
+        "B": "unwarranted",
+        "C": "unremarkable",
+        "D": "unmistakable"
+      },
+      "sourcePage": 6
+    },
+    {
+      "number": 44,
+      "skill": "VOCABULARY",
+      "prompt": "After defending the schedule for an hour, the manager finally ___ that it left too little time for testing.",
+      "options": {
+        "A": "alleged",
+        "B": "predicted",
+        "C": "conceded",
+        "D": "stipulated"
+      },
+      "sourcePage": 6
+    },
+    {
+      "number": 45,
+      "skill": "VOCABULARY",
+      "prompt": "The meeting was ___ about choosing a venue, but most of the discussion concerned who would control the project. The stated purpose differed from the real focus.",
+      "options": {
+        "A": "exclusively",
+        "B": "incidentally",
+        "C": "retrospectively",
+        "D": "ostensibly"
+      },
+      "sourcePage": 7
+    },
+    {
+      "number": 46,
+      "skill": "VOCABULARY",
+      "prompt": "The panel needed an assessor who was ___: someone with enough expertise to judge the proposal and no personal stake in the outcome.",
+      "options": {
+        "A": "uninformed",
+        "B": "indifferent",
+        "C": "disinterested",
+        "D": "disengaged"
+      },
+      "sourcePage": 7
+    },
+    {
+      "number": 47,
+      "skill": "VOCABULARY",
+      "prompt": "The review praised the scheme’s aims but ___ recommending that it be expanded, citing gaps in the evidence.",
+      "options": {
+        "A": "made a point of",
+        "B": "stopped short of",
+        "C": "went so far as",
+        "D": "lost no time in"
+      },
+      "sourcePage": 7
+    },
+    {
+      "number": 48,
+      "skill": "VOCABULARY",
+      "prompt": "Calling the policy change “a minor adjustment” ___ its extent: it reverses the organisation’s position on every major issue.",
+      "options": {
+        "A": "understates",
+        "B": "overstates",
+        "C": "specifies",
+        "D": "restores"
+      },
+      "sourcePage": 7
+    },
+    {
+      "number": 49,
+      "skill": "READING",
+      "prompt": "Where is Alex now?",
+      "options": {
+        "A": "At a food shop",
+        "B": "At a new flat",
+        "C": "At Sam’s school",
+        "D": "At a restaurant"
+      },
+      "sourcePage": 8,
+      "passageId": "1"
+    },
+    {
+      "number": 50,
+      "skill": "READING",
+      "prompt": "When does Alex want Sam to visit?",
+      "options": {
+        "A": "On Monday morning",
+        "B": "On Monday afternoon",
+        "C": "On Sunday afternoon",
+        "D": "On Sunday morning"
+      },
+      "sourcePage": 8,
+      "passageId": "1"
+    },
+    {
+      "number": 51,
+      "skill": "READING",
+      "prompt": "What does Alex ask Sam to bring?",
+      "options": {
+        "A": "A bag",
+        "B": "Some bread",
+        "C": "Some books",
+        "D": "A table"
+      },
+      "sourcePage": 8,
+      "passageId": "1"
+    },
+    {
+      "number": 52,
+      "skill": "READING",
+      "prompt": "What is big in Alex’s flat?",
+      "options": {
+        "A": "The bedroom",
+        "B": "The table",
+        "C": "The window",
+        "D": "The kitchen"
+      },
+      "sourcePage": 8,
+      "passageId": "1"
+    },
+    {
+      "number": 53,
+      "skill": "READING",
+      "prompt": "Who is the new room for?",
+      "options": {
+        "A": "People buying books",
+        "B": "People having lunch",
+        "C": "People working alone",
+        "D": "People studying together"
+      },
+      "sourcePage": 8,
+      "passageId": "2"
+    },
+    {
+      "number": 54,
+      "skill": "READING",
+      "prompt": "What time does the new room close?",
+      "options": {
+        "A": "At four",
+        "B": "At six",
+        "C": "At eight",
+        "D": "At ten"
+      },
+      "sourcePage": 8,
+      "passageId": "2"
+    },
+    {
+      "number": 55,
+      "skill": "READING",
+      "prompt": "How can a group book the room?",
+      "options": {
+        "A": "By using the website",
+        "B": "By writing on the whiteboard",
+        "C": "By asking at the front desk",
+        "D": "By sending a letter"
+      },
+      "sourcePage": 8,
+      "passageId": "2"
+    },
+    {
+      "number": 56,
+      "skill": "READING",
+      "prompt": "Why should a group phone if it cannot come?",
+      "options": {
+        "A": "To let another group use the room",
+        "B": "To ask the library to open later",
+        "C": "To get its booking money back",
+        "D": "To order pens for its next visit"
+      },
+      "sourcePage": 8,
+      "passageId": "2"
+    },
+    {
+      "number": 57,
+      "skill": "READING",
+      "prompt": "What is the main point of the narrator’s experience?",
+      "options": {
+        "A": "Growing food is usually cheaper than buying it.",
+        "B": "Beginners learn best when they work entirely alone.",
+        "C": "Understanding a mistake can be an important part of learning.",
+        "D": "Written instructions are essential for every new activity."
+      },
+      "sourcePage": 9,
+      "passageId": "3"
+    },
+    {
+      "number": 58,
+      "skill": "READING",
+      "prompt": "Why were the plants growing slowly?",
+      "options": {
+        "A": "They were getting too much water.",
+        "B": "They were not getting enough water.",
+        "C": "The narrator had planted them too late.",
+        "D": "Ravi had moved them to another place."
+      },
+      "sourcePage": 9,
+      "passageId": "3"
+    },
+    {
+      "number": 59,
+      "skill": "READING",
+      "prompt": "What does “take over my patch” mean in this text?",
+      "options": {
+        "A": "Make the area larger",
+        "B": "Choose a different crop",
+        "C": "Move the plants indoors",
+        "D": "Do the gardening there instead of the narrator"
+      },
+      "sourcePage": 9,
+      "passageId": "3"
+    },
+    {
+      "number": 60,
+      "skill": "READING",
+      "prompt": "Why does the narrator mention taking a photo of the beans?",
+      "options": {
+        "A": "To show that the group required a record of every meal",
+        "B": "To show that even a small result felt like an achievement",
+        "C": "To explain how Ravi identified the problem with the plants",
+        "D": "To explain why the beans could not be used for cooking"
+      },
+      "sourcePage": 9,
+      "passageId": "3"
+    },
+    {
+      "number": 61,
+      "skill": "READING",
+      "prompt": "What was the manager’s main purpose in introducing written updates?",
+      "options": {
+        "A": "To save time while maintaining cooperation",
+        "B": "To reduce the number of people working in each team",
+        "C": "To make employees compete over their productivity",
+        "D": "To give customers direct access to internal decisions"
+      },
+      "sourcePage": 10,
+      "passageId": "4"
+    },
+    {
+      "number": 62,
+      "skill": "READING",
+      "prompt": "Which benefit was observed during the trial?",
+      "options": {
+        "A": "Customers began answering their own questions.",
+        "B": "New employees needed no further explanations.",
+        "C": "Staff stopped having disagreements about procedures.",
+        "D": "Some quieter employees contributed more ideas."
+      },
+      "sourcePage": 10,
+      "passageId": "4"
+    },
+    {
+      "number": 63,
+      "skill": "READING",
+      "prompt": "What difficulty did newer employees experience?",
+      "options": {
+        "A": "They could not find a record of earlier decisions.",
+        "B": "They had less opportunity to identify colleagues’ expertise.",
+        "C": "They were required to attend too many question sessions.",
+        "D": "They were unable to read the written updates."
+      },
+      "sourcePage": 10,
+      "passageId": "4"
+    },
+    {
+      "number": 64,
+      "skill": "READING",
+      "prompt": "Which statement best reflects the writer’s conclusion?",
+      "options": {
+        "A": "Written updates are preferable whenever staff request them.",
+        "B": "Optional meetings prevent a fair assessment of communication.",
+        "C": "Communication changes should account for several functions and be evaluated cautiously.",
+        "D": "Quiet periods provide enough evidence to predict performance under pressure."
+      },
+      "sourcePage": 10,
+      "passageId": "4"
+    },
+    {
+      "number": 65,
+      "skill": "READING",
+      "prompt": "Why does the writer question the phrase “a blank page”?",
+      "options": {
+        "A": "It suggests residents should submit drawings rather than discuss ideas.",
+        "B": "It implies the council has no experience of organising consultations.",
+        "C": "It understates the amount of work required to maintain the square.",
+        "D": "It suggests a freedom of choice that existing constraints did not allow."
+      },
+      "sourcePage": 12,
+      "passageId": "5"
+    },
+    {
+      "number": 66,
+      "skill": "READING",
+      "prompt": "What made the second workshop more productive?",
+      "options": {
+        "A": "Participants reached agreement on every important issue.",
+        "B": "The council removed the restrictions on the project.",
+        "C": "Participants could assess proposals against visible limits.",
+        "D": "More residents attended and offered a wider range of ideas."
+      },
+      "sourcePage": 12,
+      "passageId": "5"
+    },
+    {
+      "number": 67,
+      "skill": "READING",
+      "prompt": "Why does the writer mention boundaries presented as “technical”?",
+      "options": {
+        "A": "To show that apparently practical limits may contain contestable decisions",
+        "B": "To argue that residents generally lack the knowledge needed to participate",
+        "C": "To suggest that maintenance requirements should always override preferences",
+        "D": "To show that publishing technical details necessarily resolves disagreement"
+      },
+      "sourcePage": 12,
+      "passageId": "5"
+    },
+    {
+      "number": 68,
+      "skill": "READING",
+      "prompt": "What does “like a performance” suggest in the final sentence?",
+      "options": {
+        "A": "A consultation may entertain residents despite producing few proposals.",
+        "B": "A consultation may appear staged even when the invitation was sincere.",
+        "C": "A consultation should be judged mainly by the quality of its presentation.",
+        "D": "A consultation becomes effective when officials rehearse their explanations."
+      },
+      "sourcePage": 12,
+      "passageId": "5"
+    },
+    {
+      "number": 69,
+      "skill": "READING",
+      "prompt": "What is the writer’s central objection to the official account?",
+      "options": {
+        "A": "It exaggerates the quality of the engineering work completed.",
+        "B": "Its chosen starting point excludes effort and delay relevant to judging success.",
+        "C": "It gives residents more responsibility for the repair than they deserve.",
+        "D": "Its emphasis on speed implies that the bridge may be unsafe."
+      },
+      "sourcePage": 14,
+      "passageId": "6"
+    },
+    {
+      "number": 70,
+      "skill": "READING",
+      "prompt": "What is the effect of describing residents’ efforts as “merely the weather”?",
+      "options": {
+        "A": "It exposes how the official story reduces active contributions to background conditions.",
+        "B": "It suggests that unpredictable conditions made the campaign difficult to organise.",
+        "C": "It acknowledges that residents’ contributions were too varied to describe precisely.",
+        "D": "It indicates that the campaign’s effect depended primarily on favourable circumstances."
+      },
+      "sourcePage": 14,
+      "passageId": "6"
+    },
+    {
+      "number": 71,
+      "skill": "READING",
+      "prompt": "Why does the writer doubt that a plaque would resolve the problem?",
+      "options": {
+        "A": "The campaigners would probably disagree about whose names should appear.",
+        "B": "A public expression of gratitude would weaken appreciation of the engineers.",
+        "C": "Giving credit need not challenge an account that obscures institutional failure.",
+        "D": "The repair’s present usefulness makes further recognition unnecessary."
+      },
+      "sourcePage": 14,
+      "passageId": "6"
+    },
+    {
+      "number": 72,
+      "skill": "READING",
+      "prompt": "What is implied by the proposal to include two dates in future speeches?",
+      "options": {
+        "A": "Ceremonies should become complete factual records of public projects.",
+        "B": "Residents should accept responsibility for delays before construction begins.",
+        "C": "Institutions should avoid praising speed because it has little practical value.",
+        "D": "Broader accounts of elapsed time could encourage earlier institutional responses."
+      },
+      "sourcePage": 14,
+      "passageId": "6"
+    },
+    {
+      "number": 73,
+      "skill": "LISTENING",
+      "prompt": "Which room is the drawing class in?",
+      "options": {
+        "A": "Room ten",
+        "B": "Room eleven",
+        "C": "Room twelve",
+        "D": "Room thirteen"
+      },
+      "sourcePage": 15,
+      "recording": 1
+    },
+    {
+      "number": 74,
+      "skill": "LISTENING",
+      "prompt": "What time does the class start today?",
+      "options": {
+        "A": "At eleven thirty",
+        "B": "At eleven",
+        "C": "At twelve",
+        "D": "At twelve thirty"
+      },
+      "sourcePage": 15,
+      "recording": 1
+    },
+    {
+      "number": 75,
+      "skill": "LISTENING",
+      "prompt": "What does Rina need to bring?",
+      "options": {
+        "A": "A book",
+        "B": "Some paper",
+        "C": "A ruler",
+        "D": "A pencil"
+      },
+      "sourcePage": 15,
+      "recording": 1
+    },
+    {
+      "number": 76,
+      "skill": "LISTENING",
+      "prompt": "Where should Rina wait?",
+      "options": {
+        "A": "In the music room",
+        "B": "In the café",
+        "C": "In the classroom",
+        "D": "Outside the building"
+      },
+      "sourcePage": 15,
+      "recording": 1
+    },
+    {
+      "number": 77,
+      "skill": "LISTENING",
+      "prompt": "Why has the walking route changed?",
+      "options": {
+        "A": "The river path is too muddy.",
+        "B": "The park is closed for repairs.",
+        "C": "The original walk was too long.",
+        "D": "The club has too many members."
+      },
+      "sourcePage": 15,
+      "recording": 2
+    },
+    {
+      "number": 78,
+      "skill": "LISTENING",
+      "prompt": "Where should people meet?",
+      "options": {
+        "A": "At the park entrance",
+        "B": "Beside the river",
+        "C": "Outside the library",
+        "D": "Outside the sports centre"
+      },
+      "sourcePage": 15,
+      "recording": 2
+    },
+    {
+      "number": 79,
+      "skill": "LISTENING",
+      "prompt": "What should people do about lunch?",
+      "options": {
+        "A": "Order it on the bus",
+        "B": "Bring a sandwich",
+        "C": "Buy it at the sports centre",
+        "D": "Return home to eat"
+      },
+      "sourcePage": 15,
+      "recording": 2
+    },
+    {
+      "number": 80,
+      "skill": "LISTENING",
+      "prompt": "What should someone do if they cannot come?",
+      "options": {
+        "A": "Send a message on Saturday morning",
+        "B": "Give their ticket to the bus driver",
+        "C": "Phone before Friday evening",
+        "D": "Tell someone at the park"
+      },
+      "sourcePage": 15,
+      "recording": 2
+    },
+    {
+      "number": 81,
+      "skill": "LISTENING",
+      "prompt": "Why did Nadia organise the repair afternoon?",
+      "options": {
+        "A": "To raise money for a larger community centre",
+        "B": "To help volunteers sell their own products",
+        "C": "To provide formal training for electricians",
+        "D": "To prevent useful objects from being thrown away"
+      },
+      "sourcePage": 16,
+      "recording": 3
+    },
+    {
+      "number": 82,
+      "skill": "LISTENING",
+      "prompt": "What surprised Nadia most?",
+      "options": {
+        "A": "How few people brought electrical items",
+        "B": "How willing people were to wait",
+        "C": "How quickly the event ran out of space",
+        "D": "How many volunteers asked to be paid"
+      },
+      "sourcePage": 16,
+      "recording": 3
+    },
+    {
+      "number": 83,
+      "skill": "LISTENING",
+      "prompt": "What improved the organisation during the event?",
+      "options": {
+        "A": "Asking people to repair their own items",
+        "B": "Moving everyone to a larger room",
+        "C": "Grouping items by the skills needed",
+        "D": "Limiting each repair to ten minutes"
+      },
+      "sourcePage": 16,
+      "recording": 3
+    },
+    {
+      "number": 84,
+      "skill": "LISTENING",
+      "prompt": "What is planned for the next event?",
+      "options": {
+        "A": "Allowing people to reserve a time in advance",
+        "B": "Charging everyone a small entrance fee",
+        "C": "Accepting only furniture for repair",
+        "D": "Replacing volunteers with paid staff"
+      },
+      "sourcePage": 16,
+      "recording": 3
+    },
+    {
+      "number": 85,
+      "skill": "LISTENING",
+      "prompt": "What is the main purpose of Mei and Arun’s conversation?",
+      "options": {
+        "A": "To select a trainer for a new department",
+        "B": "To interpret feedback and revise a training plan",
+        "C": "To decide which employees should attend training",
+        "D": "To explain why the training budget has increased"
+      },
+      "sourcePage": 17,
+      "recording": 4
+    },
+    {
+      "number": 86,
+      "skill": "LISTENING",
+      "prompt": "What does Arun clarify about his original suggestion?",
+      "options": {
+        "A": "He wanted to remove topics that staff already understood.",
+        "B": "He wanted all training to take place on one morning.",
+        "C": "He wanted shorter sessions covering the same material.",
+        "D": "He wanted employees to study without a trainer."
+      },
+      "sourcePage": 17,
+      "recording": 4
+    },
+    {
+      "number": 87,
+      "skill": "LISTENING",
+      "prompt": "What changes Mei’s view of the demonstrations?",
+      "options": {
+        "A": "Staff understood them while watching but struggled to repeat the steps.",
+        "B": "Staff found them too long to follow from beginning to end.",
+        "C": "The trainer used examples that were unrelated to the work.",
+        "D": "The manager thought they were too expensive to repeat."
+      },
+      "sourcePage": 17,
+      "recording": 4
+    },
+    {
+      "number": 88,
+      "skill": "LISTENING",
+      "prompt": "What will the proposed trial compare?",
+      "options": {
+        "A": "Two trainers teaching different topics to the same group",
+        "B": "Individual practice and demonstrations without practice",
+        "C": "Morning training and evening training of different lengths",
+        "D": "One session and several sessions with equal content and total time"
+      },
+      "sourcePage": 17,
+      "recording": 4
+    },
+    {
+      "number": 89,
+      "skill": "LISTENING",
+      "prompt": "What is Lena’s main reservation about Owen’s initial claim?",
+      "options": {
+        "A": "The votes appear to have been counted incorrectly.",
+        "B": "The winning theme would be too expensive to develop.",
+        "C": "The claim gives the vote a broader meaning than it can support.",
+        "D": "The announcement would be published before voting had ended."
+      },
+      "sourcePage": 18,
+      "recording": 5
+    },
+    {
+      "number": 90,
+      "skill": "LISTENING",
+      "prompt": "What causes Owen to reconsider his position?",
+      "options": {
+        "A": "Learning that a different theme received more written comments",
+        "B": "Discovering that several people voted more than once",
+        "C": "Hearing that the mailing list included people outside the neighbourhood",
+        "D": "Recognising that a small number of comments can reveal an access problem"
+      },
+      "sourcePage": 18,
+      "recording": 5
+    },
+    {
+      "number": 91,
+      "skill": "LISTENING",
+      "prompt": "What does Lena imply with “Only if neatness is the achievement”?",
+      "options": {
+        "A": "The announcement needs a simpler explanation of the voting process.",
+        "B": "A tidy account of participation matters less than meaningful influence.",
+        "C": "The exhibition should be designed before further comments are invited.",
+        "D": "A successful vote requires every participant to agree with the result."
+      },
+      "sourcePage": 18,
+      "recording": 5
+    },
+    {
+      "number": 92,
+      "skill": "LISTENING",
+      "prompt": "What do the speakers agree to do?",
+      "options": {
+        "A": "Present the theme as provisional while reviewing access and comments",
+        "B": "Cancel the result and organise an unrestricted vote on new themes",
+        "C": "Confirm the theme and end consultation on the remaining decisions",
+        "D": "Postpone all announcements until the exhibition has been completed"
+      },
+      "sourcePage": 18,
+      "recording": 5
+    },
+    {
+      "number": 93,
+      "skill": "LISTENING",
+      "prompt": "How should the reviewer’s initial praise of the book’s detail be understood?",
+      "options": {
+        "A": "It acknowledges the reconstruction while questioning its explanatory value.",
+        "B": "It suggests that accurate description compensates for the book’s other weaknesses.",
+        "C": "It conceals a belief that the meetings themselves were inaccurately reported.",
+        "D": "It endorses the author’s decision to give every meeting equal attention."
+      },
+      "sourcePage": 19,
+      "recording": 6
+    },
+    {
+      "number": 94,
+      "skill": "LISTENING",
+      "prompt": "Why does the reviewer question the book’s conclusion about compromise?",
+      "options": {
+        "A": "It gives too little attention to differences in participants’ personalities.",
+        "B": "It treats concessions with very different consequences as though they were equivalent.",
+        "C": "It assumes that successful projects can avoid disagreement altogether.",
+        "D": "It suggests that participants should refuse to change their original preferences."
+      },
+      "sourcePage": 19,
+      "recording": 6
+    },
+    {
+      "number": 95,
+      "skill": "LISTENING",
+      "prompt": "What makes the episode involving the volunteer a valuable exception?",
+      "options": {
+        "A": "The author resolves the dispute by deciding which participant was right.",
+        "B": "The author avoids making a judgement until all uncertainty disappears.",
+        "C": "The author’s confession establishes her authority over the other participants.",
+        "D": "New information changes the author’s interpretation, and that revision remains visible."
+      },
+      "sourcePage": 19,
+      "recording": 6
+    },
+    {
+      "number": 96,
+      "skill": "LISTENING",
+      "prompt": "What does the reviewer ultimately want from the narrator?",
+      "options": {
+        "A": "Confidence strong enough to produce a single consistent explanation",
+        "B": "Neutrality that prevents her from judging participants’ actions",
+        "C": "Judgements that can be revised in response to what she learns",
+        "D": "Personal admissions that replace analysis of the project’s decisions"
+      },
+      "sourcePage": 19,
+      "recording": 6
+    }
+  ],
+  "passages": {
+    "1": "Hi Sam,\nI am at my new flat now. It is small, but the kitchen\nis big. There is a food shop next to the building. My\nclasses start on Monday. Can you visit me on\nSunday? Come at two o'clock. We can have lunch\nhere. Please bring your blue bag: your books are\non my table! You don't need to bring any food. I\nhave bread, cheese and fruit.\nSee you soon,\nAlex",
+    "2": "The West Street Library has a new room for people\nwho want to study together. It opens next Tuesday.\nYou can use it from ten in the morning until six in\nthe evening, Monday to Saturday. The rest of the\nlibrary closes at eight.\nGroups of two to six people can book the room for\none hour. Please book at the front desk, not on the\nlibrary website. There is no charge. You can bring\nwater, but please eat your snacks outside the\nroom. There are six chairs, a large table and a\nwhiteboard. Bring your own pens for the board. If\nyour group cannot come, phone the library so\nanother group can use your booking.",
+    "3": "When I joined a weekend gardening group, I expected someone to tell me exactly what to do. On my first\nmorning, however, the organiser, Jo, simply asked what I wanted to learn. I said I knew nothing about\ngrowing food. She gave me a small patch of ground and suggested starting with beans.\nFor the next month, I watered my plants whenever the surface looked dry. They grew slowly, and I began\nto think that gardening wasn't for me. Then another member, Ravi, showed me that the soil underneath\nwas still wet. I had been giving the plants too much water.\nRavi didn't take over my patch. Instead, he showed me how to check the soil with a finger. Soon the\nplants looked healthier. When I finally picked my first beans, there weren't enough for a whole meal, but I\ntook a photo anyway.\nI still ask plenty of questions. Now, though, I understand why Jo didn't give me a long list of instructions.\nMaking a small mistake, and getting help to understand it, taught me more than following a list would\nhave done.",
+    "4": "For three months, a small customer service company replaced its usual morning meeting with a written\nupdate. Staff posted what they were working on and identified anything that required help. The manager\nhoped to recover some of the time that meetings consumed without weakening cooperation.\nAt first, the change appeared successful. Most employees said that they could begin concentrated work\nearlier, and the updates created a searchable record of decisions. Several people who rarely spoke in\nmeetings contributed detailed suggestions in writing. However, after a few weeks, some newer employees\nreported that they were spending longer deciding whom to ask for help. They could read what colleagues\nwere doing but had fewer opportunities to discover what those colleagues knew.\nThe company responded by introducing two short, optional question sessions each week. It also asked\nexperienced staff to add a sentence explaining the reason behind any unfamiliar procedure mentioned in an\nupdate. The amount of written material increased slightly, but repeated questions became less common.\nAt the end of the trial, the manager resisted describing the change as a simple victory for written\ncommunication. The company had not measured whether customers received better service, and the trial had\ntaken place during a relatively quiet period. Still, staff wanted to keep the new arrangement.\nThe experience suggests that replacing meetings is not just a matter of transferring the same information to a\ndifferent channel. Meetings may perform several functions at once, including functions nobody notices until\nthey disappear. A useful redesign begins by identifying those functions, rather than assuming that the most\nvisible one is the only one that matters.",
+    "5": "When the town council invited residents to propose improvements to a public square, it described\nthe exercise as an opportunity to start with a blank page. This was a generous phrase, though not\nan entirely accurate one. The budget had already been fixed, maintenance vehicles needed\naccess, and a contract required the existing lighting to remain. None of these constraints was\nunreasonable. What was questionable was allowing participants to discover them only after\nbecoming attached to their proposals.\nThe first workshop produced ambitious designs, followed by predictable disappointment. Some\nresidents concluded that the council had never intended to listen. Officials, meanwhile, felt unfairly\naccused: they had genuinely hoped to receive useful ideas. Both reactions were understandable,\nbut neither addressed the design of the consultation itself.\nFor the second workshop, the organisers placed a large map at the entrance, marking what could\nchange, what could change only at additional cost, and what was fixed. Attendance was lower, yet\nthe discussion was more specific. Participants disagreed sharply about seating and shade, but\nthey could explain which trade-offs they preferred. One proposal, initially dismissed as\nimpractical, was revised into a cheaper version and eventually adopted.\nIt would be convenient to conclude that transparency automatically creates trust. It does not.\nStating a limit can reveal that the available choice is smaller than people consider acceptable. Nor\ndoes publishing constraints excuse authorities from explaining why those constraints exist. A\nboundary presented as technical may still reflect a decision that ought to be open to challenge.\nThe more modest lesson is that participation needs an honest account of its reach. Inviting people\nto influence a decision while concealing where influence ends risks turning enthusiasm into\nevidence against the process. A useful consultation need not promise that every proposal can\nsucceed. It should enable participants to distinguish between an idea rejected on its merits and an\nidea that was never eligible for consideration. Without that distinction, even a sincerely offered\ninvitation can sound, afterwards, like a performance.",
+    "6": "At the opening of our neighbourhood's repaired footbridge, the speeches dwelt on speed. The\nproject, we were told, had been completed in fourteen weeks. This was true in the carefully\ndelimited sense that fourteen weeks had passed between the arrival of the builders and the\nremoval of the barriers. The years during which residents had requested a repair belonged,\napparently, to another clock.\nIt is tempting to dismiss this as ordinary publicity, and perhaps that would be fair. An opening\nceremony is not an audit. Yet the choice of when a story begins does more than flatter the people\ntelling it. It determines which forms of effort become visible. In this version, the bridge emerged\nfrom a decisive intervention; the patient work of reporting damage, gathering signatures and\nattending meetings was merely the weather in which the intervention occurred.\nA neighbour suggested adding a plaque thanking the campaigners. I liked the proposal, although I\ndoubted that a longer list of names would resolve the problem. Recognition can be extended while\nthe underlying account remains intact: the public asks, the institution acts, and gratitude flows in\nthe expected direction. What disappears is the possibility that repeatedly having to ask was itself\npart of the failure.\nThis does not mean that the engineers deserve less credit. Their achievement is no smaller\nbecause it sits within a less comfortable story. Indeed, treating criticism of the process as criticism\nof the repair makes it unnecessarily difficult to appreciate either accurately. We should be able to\nadmire the bridge and still inquire why its necessity took so long to become an official fact.\nThe bridge is now busy, which is the strongest argument for having repaired it and no answer at\nall to the question of delay. People crossing with shopping bags are not obliged to carry a history\nlesson as well. Institutions, however, have a different responsibility. If they measure success only\nfrom the moment they authorise action, they may learn to become impressively efficient at solving\nproblems they have spent years declining to recognise.\nPerhaps the next opening speech could give two dates: when work began, and when the need\nwas first accepted as credible by those who lived with it. The resulting story would be less tidy. It\nmight also make the next repair happen sooner, which seems a more useful tribute to this one\nthan another adjective about speed."
+  }
+}
