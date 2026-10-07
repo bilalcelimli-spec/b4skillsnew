@@ -109,5 +109,19 @@
     "B2": "Orta-Üst",
     "C1": "İleri",
     "C2": "Üst Düzey"
+  },
+  "exam": {
+    "exit": "Sınavdan çık",
+    "exitTitle": "Sınavdan çıkılsın mı?",
+    "exitDescription": "Gönderilmiş cevaplarınız kaydedildi. Sınav süreniz işlemeye devam edecek. Süre dolmadığı sürece panelden aynı sınava dönebilirsiniz. Henüz göndermediğiniz cevaplar veya ses kayıtları kaybolabilir.",
+    "stay": "Sınavda kal",
+    "insightsTitle": "Sınav ilerlemesi",
+    "progressError": "İlerleme bilgileri yüklenemedi. Sınavınıza devam edebilirsiniz.",
+    "answered": "{{count}} cevap gönderildi",
+    "provisional": "Bu bilgiler geçicidir. Kesin sonuçlar tüm değerlendirmeler tamamlandığında hazır olur.",
+    "estimatedLevel": "Geçici seviye: {{level}}",
+    "scoringCounts": "{{scored}} değerlendirildi · {{pending}} değerlendirme bekliyor",
+    "resume": "Sınava devam et",
+    "exitTimerNotice": "Sınavdan uzaktayken süre işlemeye devam eder."
   }
 }

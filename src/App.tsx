@@ -1,4 +1,5 @@
 import { hasFinalResult, historyStatus, historySkills } from "./lib/reporting/candidate-history";
+import { useTranslation } from "react-i18next";
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useScoringStatus } from "./hooks/useScoringStatus";
@@ -104,6 +105,7 @@ import { cn } from "./lib/utils";
 import { getWorkspaceCapabilities, getWorkspaceNavigation, type WorkspaceTab } from "./lib/navigation/workspace-navigation";
 
 export default function App() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const verifyMatch = location.pathname.match(/^\/verify(?:\/([^/]+))?\/?$/);
@@ -451,7 +453,18 @@ export default function App() {
           initialSessionId={activeSession.sessionId === "new" ? undefined : activeSession.sessionId}
           onSessionStarted={(sessionId) => setActiveSession(prev => prev ? { ...prev, sessionId } : prev)}
           onComplete={handleTestComplete}
-          onCancel={() => { setActiveSession(null); setPreTestReady(false); }}
+          onCancel={() => {
+            setActiveSession(null);
+            setPreTestReady(false);
+            setActiveTab("dashboard");
+            void fetch(`/api/candidates/${user.uid}/history`, { credentials: "include" })
+              .then(async response => {
+                if (!response.ok) return;
+                const sessions = await response.json();
+                setRecentSessions(Array.isArray(sessions) ? sessions.slice(0, 20) : []);
+              })
+              .catch(() => {});
+          }}
         />
       </Suspense>
     );
@@ -695,6 +708,18 @@ export default function App() {
                 </div>
               </div>
             </header>
+
+            {recentSessions.filter(session => session.status === 'IN_PROGRESS').map(session => (
+              <Card key={session.id} className="mb-4 border-indigo-200">
+                <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+                  <div><p className="font-bold text-slate-800">{session.metadata?.productLine ?? 'Assessment'}</p><p className="text-xs text-slate-500">{t('exam.exitTimerNotice', {defaultValue:'Your exam timer continues while you are away.'})}</p></div>
+                  <Button onClick={() => {
+                    setPreTestReady(true);
+                    setActiveSession({sessionId:session.id,orgId:session.organizationId ?? userProfile?.organizationId,productLine:session.metadata?.productLine});
+                  }}>{t('exam.resume', {defaultValue:'Resume exam'})}</Button>
+                </CardContent>
+              </Card>
+            ))}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2 space-y-8">

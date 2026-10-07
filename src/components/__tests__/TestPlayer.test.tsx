@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TestPlayer } from "../TestPlayer";
 import { writingDraftKey } from "../../lib/assessment-engine/writing-draft";
 import { ProctoringEventBody } from '../../lib/security/schemas/proctoring';
 
 vi.mock("../../lib/i18n/config", () => ({}));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, options?: any) => options?.defaultValue?.replace(/{{(\w+)}}/g, (_: string, name: string) => String(options[name])) ?? key }) }));
 vi.mock("../ProctoringMonitor", () => ({ ProctoringMonitor: ({ onEvent }: any) => <button onClick={() => onEvent('TAB_SWITCH', 'MEDIUM', { count: 1 })}>Emit proctoring event</button> }));
 vi.mock("../LanguageSwitcher", () => ({ LanguageSwitcher: () => null }));
 vi.mock("../FaceCapture", () => ({ FaceCapture: ({ onCaptureDone }: any) => <button onClick={onCaptureDone}>Verify</button> }));
@@ -123,6 +123,62 @@ describe("TestPlayer response persistence", () => {
     expect(screen.queryByRole('button', { name: 'Finish practice' })).toBeNull();
     expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/launch'))).toBe(false);
     expect(fetchMock).toHaveBeenCalledWith('/api/sessions/original-session/next', expect.anything());
+  });
+
+  it('loads analytics on opening, restores six skill counts, and reports a retryable error', async () => {
+    let statusCalls = 0;
+    const status = {status:'IN_PROGRESS',progress:8,scoredCount:7,cefrLevel:'B1',sectionOrder:['READING','LISTENING','WRITING','SPEAKING','GRAMMAR','VOCABULARY'],sectionCounts:{READING:5,WRITING:3},skillProgress:{READING:{answered:5,scored:5,pending:0,maxItems:5},WRITING:{answered:3,scored:2,pending:1,maxItems:5}}};
+    vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
+      if(url.endsWith('/status')) {statusCalls++;return {ok:statusCalls!==3,json:async()=>status};}
+      return {ok:true,json:async()=>({item:{id:'reading-resume',skill:'READING'}})};
+    }));
+    render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="resume" onComplete={vi.fn()} onCancel={vi.fn()}/>);
+    fireEvent.click(await screen.findByRole('button',{name:'Verify'}));
+    await screen.findByText('reading-resume');
+    const analytics=screen.getByRole('button',{name:'admin.analytics'});
+    fireEvent.click(analytics);
+    expect(await screen.findByText('Progress could not be loaded. Your exam can continue.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'common.retry'}));
+    expect(await screen.findByText('8 answers submitted')).toBeTruthy();
+    expect(screen.getByText('5 / 5')).toBeTruthy();expect(screen.getByText('3 / 5')).toBeTruthy();
+    expect(screen.getByText('2 scored · 1 awaiting scoring')).toBeTruthy();
+    expect(screen.getByText('Provisional level: B1')).toBeTruthy();
+    expect(screen.getByRole('heading',{name:'Grammar'})).toBeTruthy();
+    expect(screen.getByRole('heading',{name:'Vocabulary'})).toBeTruthy();
+    expect(analytics.getAttribute('aria-expanded')).toBe('true');
+  });
+  it('confirms exit, supports cancellation and preserves the writing draft without finishing the exam', async () => {
+    const onExit=vi.fn(),onComplete=vi.fn();
+    const fetchMock=vi.fn(async(url:string)=>({ok:true,json:async()=>url.endsWith('/status')?{status:'IN_PROGRESS'}:{item:{id:'draft-item',skill:'WRITING'}}}));
+    vi.stubGlobal('fetch',fetchMock);
+    sessionStorage.setItem(writingDraftKey('existing','draft-item'),'Unsubmitted draft');
+    render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="existing" onComplete={onComplete} onCancel={onExit}/>);
+    await screen.findByRole('button',{name:'Verify'});
+    fireEvent.click(screen.getByRole('button',{name:'Exit exam'}));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Stay in exam'}));
+    expect(screen.queryByRole('dialog')).toBeNull();expect(onExit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:'Verify'}));
+    fireEvent.click(screen.getByRole('button',{name:'Exit exam'}));
+    fireEvent.click(screen.getAllByRole('button',{name:'Exit exam'})[1]);
+    expect(onExit).toHaveBeenCalledTimes(1);expect(onComplete).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(writingDraftKey('existing','draft-item'))).toBe('Unsubmitted draft');
+    expect(fetchMock.mock.calls.some(([url])=>url.endsWith('/complete')||url.endsWith('/launch'))).toBe(false);
+  });
+
+  it('ignores a late completion response after the user leaves', async()=>{
+    let resolveNext: (value:any)=>void = () => {};
+    const next = new Promise(resolve=>{resolveNext=resolve;});
+    const onComplete=vi.fn(),onExit=vi.fn();
+    vi.stubGlobal('fetch',vi.fn(async(url:string)=>url.endsWith('/status')
+      ? {ok:true,json:async()=>({status:'IN_PROGRESS'})} : next));
+    render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="existing" onComplete={onComplete} onCancel={onExit}/>);
+    await screen.findByRole('button',{name:'Verify'});
+    fireEvent.click(screen.getByRole('button',{name:'Exit exam'}));
+    fireEvent.click(screen.getAllByRole('button',{name:'Exit exam'})[1]);
+    await act(async()=>{resolveNext({ok:true,json:async()=>({stop:true,finalTheta:1})});});
+    await waitFor(()=>expect(onExit).toHaveBeenCalledOnce());
+    expect(onComplete).not.toHaveBeenCalled();
   });
 
 });

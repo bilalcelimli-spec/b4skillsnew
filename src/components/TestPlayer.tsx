@@ -1,5 +1,6 @@
+import { ExitAssessmentControl } from "./ExitAssessmentControl";
 import React, { useState, useEffect } from "react";
-import { Item, SessionState } from "../lib/assessment-engine/types";
+import { Item } from "../lib/assessment-engine/types";
 import { ItemRenderer } from "./ItemRenderer";
 import { writingDraftKey } from "../lib/assessment-engine/writing-draft";
 import { requestNextItem } from "../lib/assessment-engine/next-item-request";
@@ -15,14 +16,7 @@ import {
   CheckCircle2, 
   AlertCircle, 
   ChevronRight, 
-  GraduationCap,
   Activity,
-  BookOpen,
-  Headphones,
-  Pen,
-  Mic as MicIcon,
-  BookMarked,
-  TrendingUp
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
@@ -60,6 +54,9 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   const [maxDurationMs, setMaxDurationMs] = useState<number>(5_400_000); // 90 min default
   const sessionStartRef = React.useRef<number>(Date.now());
   const [showInsights, setShowInsights] = useState(false);
+  const [statusError, setStatusError] = useState(false);
+  const activeRef = React.useRef(true);
+  useEffect(() => { activeRef.current = true; return () => { activeRef.current = false; }; }, []);
   const [itemFeedback, setItemFeedback] = useState<any>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'analyzing' | 'success' | 'error'>('idle');
@@ -71,10 +68,12 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
   const [sectionTransition, setSectionTransition] = useState<{ completedSection: string; nextSection: string; sectionIndex: number; totalSections: number } | null>(null);
   const [currentSection, setCurrentSection] = useState<string>('VOCABULARY');
   const [sectionIndex, setSectionIndex] = useState<number>(0);
-  // Track how many items have been answered per section (local, resets on reload)
+  // Restore per-section answer counts from persisted server responses.
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({});
-  // Theta trajectory for the real-time adaptivity ladder
-  const [thetaHistory, setThetaHistory] = useState<Array<{ n: number; theta: number; cefr: string }>>([]);
+  const exitControl = onCancel ? <ExitAssessmentControl floating={showFaceCapture || showPractice || !!error} disabled={submitting || (!sessionReady && !error)} onExit={() => {
+    activeRef.current = false;
+    onCancel();
+  }} /> : null;
   const responseStartTime = React.useRef<number>(Date.now());
   // Prevent concurrent fetchNextItem calls (race condition from section-transition
   // "Continue manually" button being clicked while the loop is still in-flight).
@@ -130,6 +129,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         if (initialSessionId) {
           const statusRes = await fetch(`/api/sessions/${encodeURIComponent(initialSessionId)}/status`, { credentials: "include" });
           const existing = await statusRes.json();
+          if (!activeRef.current) return;
           if (!statusRes.ok) throw new Error(existing.error ?? "Could not resume assessment");
           if (existing.status === "COMPLETED") { onComplete(existing.theta ?? null, initialSessionId); return; }
           if (existing.status !== "IN_PROGRESS") throw new Error("This assessment cannot be resumed in its current state");
@@ -150,6 +150,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
         });
         const data = await res.json();
         
+        if (!activeRef.current) return;
         if (!res.ok || data.error) {
           throw new Error(data.error || "Launch failed");
         }
@@ -194,9 +195,10 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
 
   // Applies the result of a /next fetch to state (shared between normal flow and pre-fetched transition)
   const applyNextData = (data: any, sid: string) => {
+    if (!activeRef.current) return;
     if (data.stop) {
       setFinished(true);
-      onComplete(data.finalTheta, sid);
+      if (activeRef.current) onComplete(data.finalTheta, sid);
       return;
     }
     if (data.currentSection) {
@@ -223,10 +225,11 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     setUploadProgress(0);
     try {
       const data = await requestNextItem(sid);
+      if (!activeRef.current) return;
 
       if (data.stop) {
         setFinished(true);
-        onComplete(data.finalTheta, sid);
+        if (activeRef.current) onComplete(data.finalTheta, sid);
         return;
       }
 
@@ -255,6 +258,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
           const t0 = Date.now();
           try {
             const nextData = await requestNextItem(sid);
+            if (!activeRef.current) return;
             const elapsed = Date.now() - t0;
             if (elapsed < MIN_DISPLAY_MS) {
               await new Promise<void>(r => setTimeout(r, MIN_DISPLAY_MS - elapsed));
@@ -263,7 +267,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
 
             if (nextData.stop) {
               setFinished(true);
-              onComplete(nextData.finalTheta, sid);
+              if (activeRef.current) onComplete(nextData.finalTheta, sid);
               return;
             }
 
@@ -309,35 +313,28 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     }
   };
 
+  const statusRequestRef = React.useRef(0);
   const fetchStatus = async (sid: string) => {
+    const request = ++statusRequestRef.current;
+    setStatusError(false);
     try {
-      const res = await fetch(`/api/sessions/${sid}/status`, { credentials: "include" });
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/status`, { credentials: "include" });
+      if (!res.ok) throw new Error('Progress unavailable');
       const data = await res.json();
-      
-      // Fetch real-time insights if enabled
-      if (showInsights) {
-        const insightsRes = await fetch(`/api/sessions/${sid}/insights`, { credentials: "include" });
-        const insightsData = await insightsRes.json();
-        const merged = { ...data, ...insightsData };
-        setStatus(merged);
-        // Append theta snapshot to history for the adaptivity ladder
-        if (typeof merged.theta === "number" && merged.cefrLevel) {
-          setThetaHistory(prev => {
-            const n = prev.length + 1;
-            return [...prev, { n, theta: merged.theta, cefr: merged.cefrLevel }];
-          });
-        }
-      } else {
-        setStatus(data);
-        if (typeof data.theta === "number" && data.cefrLevel) {
-          setThetaHistory(prev => {
-            const n = prev.length + 1;
-            return [...prev, { n, theta: data.theta, cefr: data.cefrLevel }];
-          });
-        }
-      }
-    } catch (err) {}
+      if (!activeRef.current || request !== statusRequestRef.current) return;
+      setStatus(data);
+      if (data.sectionCounts) setSectionCounts(data.sectionCounts);
+    } catch {
+      if (activeRef.current && request === statusRequestRef.current) setStatusError(true);
+    }
   };
+
+  useEffect(() => {
+    if (!showInsights || !sessionId) return;
+    void fetchStatus(sessionId);
+    const timer = setInterval(() => void fetchStatus(sessionId), 10000);
+    return () => clearInterval(timer);
+  }, [showInsights, sessionId]);
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -420,6 +417,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     const isCodeRequired = error.includes("exam code");
     return (
       <div className="flex flex-col items-center justify-center h-screen p-8 text-center">
+        {exitControl}
         <div className="p-4 bg-red-50 text-red-600 rounded-2xl mb-6">
           <AlertCircle size={48} />
         </div>
@@ -458,6 +456,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
     if (!sessionReady) {
       return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+          {exitControl}
           <div className="flex flex-col items-center gap-4 text-slate-500">
             <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
             <span className="text-sm font-medium">Preparing exam…</span>
@@ -466,20 +465,20 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       );
     }
     return (
-      <FaceCapture
+      <>{exitControl}<FaceCapture
         sessionId={sessionId!}
         onCaptureDone={() => setShowFaceCapture(false)}
-      />
+      /></>
     );
   }
 
   // Show Practice/Tutorial Mode before the real test
   if (showPractice) {
     return (
-      <PracticeMode
+      <>{exitControl}<PracticeMode
         onComplete={() => setShowPractice(false)}
         onSkip={() => setShowPractice(false)}
-      />
+      /></>
     );
   }
 
@@ -494,7 +493,7 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       )}
 
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 sticky top-0 z-10">
+      <header className="bg-white border-b border-slate-200 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 flex-wrap sticky top-0 z-10">
         <div className="flex min-w-0 items-center gap-2 sm:gap-6">
           <div className="flex items-center gap-2">
             <div className="bg-[#9b276c] justify-center text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight flex items-center">
@@ -507,16 +506,20 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
           </div>
         </div>
         
-        <div className="flex min-w-0 items-center gap-2 sm:gap-6">
+        <div className="flex flex-wrap w-full sm:w-auto min-w-0 items-center justify-between gap-2 sm:gap-6">
           <Button 
             variant="ghost" 
             size="sm" 
-            className="hidden lg:flex items-center gap-2 text-slate-500 hover:text-indigo-600 font-bold text-xs uppercase tracking-widest"
+            className="flex items-center gap-1 text-slate-500 hover:text-indigo-600 font-bold text-xs"
+            aria-expanded={showInsights}
+            aria-controls="assessment-insights"
             onClick={() => setShowInsights(!showInsights)}
           >
             <Activity size={16} />
             {t("admin.analytics")}
           </Button>
+
+          {exitControl}
 
           {/* Adaptive timing display: remaining time + precision arc */}
           <div className="flex items-center gap-3">
@@ -623,87 +626,37 @@ export const TestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidat
       <main className="flex-1 flex flex-col items-center p-3 sm:p-6 md:p-12 overflow-y-auto" role="main">
         <div className="w-full max-w-3xl">
           <AnimatePresence>
-            {showInsights && status && (
+            {showInsights && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
+                id="assessment-insights"
                 className="mb-8 overflow-hidden"
               >
                 <Card className="bg-indigo-50 border-indigo-100 rounded-[32px] shadow-sm">
                   <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2 text-indigo-600 font-black text-xs uppercase tracking-widest">
-                        <Activity size={14} />
-                        Real-time Progress Insights
+                    <h2 className="text-sm font-bold text-indigo-700 mb-3">{t('exam.insightsTitle', { defaultValue: 'Exam progress' })}</h2>
+                    {statusError ? <div role="alert">
+                      <p>{t('exam.progressError', { defaultValue: 'Progress could not be loaded. Your exam can continue.' })}</p>
+                      <Button variant="outline" size="sm" onClick={() => sessionId && fetchStatus(sessionId)}>{t('common.retry')}</Button>
+                    </div> : !status ? <p role="status">{t('common.loading')}</p> : <>
+                      <p className="text-sm text-slate-700 mb-2">{t('exam.answered', { defaultValue: '{{count}} answers submitted', count: status.progress ?? 0 })}</p>
+                      <p className="text-xs text-slate-500 mb-4">{t('exam.provisional', { defaultValue: 'Progress is provisional. Final results are available after scoring is complete.' })}</p>
+                      {status.cefrLevel && <p className="text-sm text-indigo-700 mb-3">{t('exam.estimatedLevel', { defaultValue: 'Provisional level: {{level}}', level: status.cefrLevel })}</p>}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {sectionOrder.map(skill => {
+                          const progress = status.skillProgress?.[skill];
+                          const answered = progress?.answered ?? status.sectionCounts?.[skill] ?? 0;
+                          const limit = progress?.maxItems ?? status.sectionLimits?.[skill];
+                          return <div key={skill} className="bg-white p-3 rounded-xl border border-indigo-100">
+                            <h3 className="text-xs font-bold text-slate-700">{SECTION_LABELS[skill] ?? skill}</h3>
+                            <p className="text-sm text-indigo-700 mt-1">{answered}{typeof limit === 'number' && limit > 0 ? ` / ${limit}` : ''}</p>
+                            {progress && <p className="text-xs text-slate-500">{t('exam.scoringCounts', { defaultValue: '{{scored}} scored · {{pending}} awaiting scoring', scored: progress.scored, pending: progress.pending })}</p>}
+                          </div>;
+                        })}
                       </div>
-                      <div className="px-3 py-1 bg-white text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100">
-                        Estimated: {status.cefrLevel}
-                      </div>
-                    </div>
-
-                    {/* Theta Adaptivity Ladder */}
-                    {thetaHistory.length > 0 && (
-                      <div className="mb-4">
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-2">
-                          <TrendingUp size={11} />
-                          Ability Estimate (adapts after each response)
-                        </div>
-                        {/* CEFR ladder: columns = levels, dots = theta snapshots */}
-                        <div className="bg-white rounded-2xl p-3 border border-indigo-100">
-                          {(() => {
-                            const CEFR_LEVELS = ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"];
-                            const CEFR_LABELS: Record<string, string> = { PRE_A1: "Pre-A1", A1: "A1", A2: "A2", B1: "B1", B2: "B2", C1: "C1", C2: "C2" };
-                            const CEFR_COLORS: Record<string, string> = {
-                              PRE_A1: "bg-slate-300", A1: "bg-sky-400", A2: "bg-blue-400",
-                              B1: "bg-violet-400", B2: "bg-purple-500", C1: "bg-amber-500", C2: "bg-rose-500"
-                            };
-                            const currentLevel = thetaHistory[thetaHistory.length - 1]?.cefr ?? "";
-                            return (
-                              <div className="flex items-end gap-1">
-                                {CEFR_LEVELS.map((lvl) => {
-                                  const visits = thetaHistory.filter(h => h.cefr === lvl).length;
-                                  const isCurrent = lvl === currentLevel;
-                                  return (
-                                    <div key={lvl} className="flex-1 flex flex-col items-center gap-1">
-                                      {/* Bar height proportional to time spent at this level */}
-                                      <div className={cn(
-                                        "w-full rounded-t-lg transition-all duration-500",
-                                        CEFR_COLORS[lvl],
-                                        isCurrent ? "opacity-100 ring-2 ring-indigo-400 ring-offset-1" : "opacity-30"
-                                      )} style={{ height: `${Math.max(4, visits * 8)}px` }} />
-                                      <span className={cn(
-                                        "text-[9px] font-black",
-                                        isCurrent ? "text-indigo-600" : "text-slate-400"
-                                      )}>
-                                        {CEFR_LABELS[lvl]}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                        <p className="text-[9px] text-indigo-400 mt-1 text-center">
-                          The test adjusts difficulty based on your responses.
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {["Reading", "Listening", "Writing", "Speaking"].map((skill) => (
-                        <div key={skill} className="bg-white p-3 rounded-2xl border border-indigo-100/50">
-                          <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">{skill}</div>
-                          <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-indigo-500" 
-                              style={{ width: `${Math.round((sectionCounts[skill.toUpperCase()] ?? 0) / 10 * 100)}%` }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    </>}
                   </CardContent>
                 </Card>
               </motion.div>

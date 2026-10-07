@@ -310,8 +310,8 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
       </AnimatePresence>
 
       {/* Mini Monitor View (Draggable in a real app) */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
-        <div className="relative w-48 h-32 bg-slate-900 rounded-2xl overflow-hidden border-2 border-slate-800 shadow-2xl group">
+      <div className="fixed bottom-3 right-3 sm:bottom-6 sm:right-6 z-50 flex flex-col gap-3">
+        <div className="relative w-24 h-16 sm:w-48 sm:h-32 bg-slate-900 rounded-2xl overflow-hidden border-2 border-slate-800 shadow-2xl group">
           <video 
             ref={videoRef} 
             autoPlay 
@@ -328,7 +328,7 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
               "w-2 h-2 rounded-full animate-pulse",
               cameraActive ? "bg-emerald-500" : "bg-red-500"
             )} />
-            <span className="text-[10px] font-bold text-white uppercase tracking-widest">{cameraActive ? 'Live Proctoring' : 'Camera unavailable'}</span>
+            <span className="hidden sm:inline text-[10px] font-bold text-white uppercase tracking-widest">{cameraActive ? 'Live Proctoring' : 'Camera unavailable'}</span>
           </div>
 
           <div className="absolute top-2 right-2 flex gap-1">
@@ -341,12 +341,12 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
           </div>
         </div>
 
-        <p role="status" className="max-w-48 rounded-lg bg-white/90 px-3 py-2 text-xs text-slate-700">
+        <p role="status" className="sr-only sm:not-sr-only sm:max-w-48 rounded-lg bg-white/90 px-3 py-2 text-xs text-slate-700">
           {faceDetectionStatus === 'active' ? 'Face detection active' : faceDetectionStatus === 'loading'
             ? 'Loading face detection…' : 'Face detection unavailable — camera and browser checks continue where available.'}
         </p>
 
-        <div className="bg-white/90 backdrop-blur-md border border-slate-200 p-3 rounded-xl shadow-xl flex items-center gap-3">
+        <div className="hidden sm:flex bg-white/90 backdrop-blur-md border border-slate-200 p-3 rounded-xl shadow-xl items-center gap-3">
           <div className={cn(
             "p-2 rounded-lg",
             isFocused ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"

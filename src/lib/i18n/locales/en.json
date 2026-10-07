@@ -109,5 +109,19 @@
     "B2": "Upper Intermediate",
     "C1": "Advanced",
     "C2": "Proficient"
+  },
+  "exam": {
+    "exit": "Exit exam",
+    "exitTitle": "Leave this exam?",
+    "exitDescription": "Submitted answers are saved. Your exam timer will keep running. You can resume this attempt from the dashboard while time remains. Unsubmitted answers or recordings may be lost.",
+    "stay": "Stay in exam",
+    "insightsTitle": "Exam progress",
+    "progressError": "Progress could not be loaded. Your exam can continue.",
+    "answered": "{{count}} answers submitted",
+    "provisional": "Progress is provisional. Final results are available after scoring is complete.",
+    "estimatedLevel": "Provisional level: {{level}}",
+    "scoringCounts": "{{scored}} scored · {{pending}} awaiting scoring",
+    "resume": "Resume exam",
+    "exitTimerNotice": "Your exam timer continues while you are away."
   }
 }

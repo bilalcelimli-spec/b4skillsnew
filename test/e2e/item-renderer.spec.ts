@@ -66,3 +66,35 @@ for (const width of [320, 1280]) {
     });
   }
 }
+
+for (const width of [320, 1280]) {
+  test(`exam analytics and confirmed exit are usable at ${width}px`, async ({page}) => {
+    await page.setViewportSize({width,height:800});
+    await page.addInitScript(() => localStorage.setItem('i18nextLng','en'));
+    await page.route('**/api/**',async route => {
+      const url=route.request().url();
+      if(url.endsWith('/status')) return route.fulfill({json:{status:'IN_PROGRESS',startedAt:new Date().toISOString(),maxDurationMs:2700000,sectionOrder:['READING','LISTENING','WRITING','SPEAKING','GRAMMAR','VOCABULARY'],progress:8,cefrLevel:'B1',sem:.5,skillProgress:{READING:{answered:5,scored:5,pending:0,maxItems:5},WRITING:{answered:3,scored:2,pending:1,maxItems:5}}}});
+      if(url.endsWith('/next')) return route.fulfill({json:{currentSection:'READING',sectionIndex:0,item:{id:'fixture-question',skill:'READING',type:'MULTIPLE_CHOICE',content:{prompt:'Choose the answer',options:['A','B'],passage:'A short passage.'}}}});
+      return route.fulfill({json:{success:true,stored:true}});
+    });
+    await page.goto('/test/e2e/fixtures/item-renderer.html?mode=exam');
+    await page.getByRole('button',{name:'Take Photo',exact:true}).click();
+    const analytics=page.getByRole('button',{name:'Analytics',exact:true});
+    await expect(analytics).toBeVisible({timeout:20000});
+    await analytics.click();
+    await expect(page.getByRole('heading',{name:'Exam progress'})).toBeVisible();
+    await expect(page.getByText('8 answers submitted')).toBeVisible();
+    await expect(page.getByText('2 scored · 1 awaiting scoring')).toBeVisible();
+    await expect.poll(() => page.locator('#assessment-insights').evaluate(element => element.clientHeight >= element.scrollHeight)).toBe(true);
+    await page.screenshot({path:`/tmp/b4skills-exam-analytics-${width}.png`,fullPage:true});
+    await expect(page.getByRole('heading',{name:'Grammar',exact:true})).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await page.getByRole('button',{name:'Exit exam',exact:true}).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('button',{name:'Stay in exam'}).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button',{name:'Exit exam',exact:true}).click();
+    await page.getByRole('dialog').getByRole('button',{name:'Exit exam',exact:true}).click();
+    await expect(page.getByText('Back to dashboard')).toBeVisible();
+  });
+}

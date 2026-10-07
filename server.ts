@@ -4437,49 +4437,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const { id } = req.params;
     try {
       if (!(await assertSessionOwnership(req, res, id))) return;
-      const session = await prisma.session.findUnique({
-        where: { id },
-        include: { scoreReport: true }
-      }) as any;
-      if (!session) return res.status(404).json({ error: "Session not found" });
-      
-      // Calculate real-time insights based on current theta
-      const { getEngine } = await import("./src/lib/assessment-engine/server-engine.js");
-      const engine = await getEngine();
-      const cefrLevel = engine.mapToCefr(session.theta ?? 0);
-      
-      res.json({
-        cefrLevel,
-        theta: session.theta,
-        progress: session.responsesCount || 0,
-        skills: await (async () => {
-          // Compute skill scores from actual response data
-          const responses = await prisma.response.findMany({
-            where: { sessionId: id },
-            include: { item: { select: { skill: true, type: true } } },
-            take: 500,
-          });
-          const { shouldExcludeResponseFromAbility } = await import("./src/lib/scoring/score-evidence.js");
-          const skillBuckets: Record<string, { scoreSum: number; total: number }> = {};
-          for (const r of responses) {
-            if (shouldExcludeResponseFromAbility(r)) continue;
-            const skill = (r.item?.skill ?? "UNKNOWN").toLowerCase();
-            if (!skillBuckets[skill]) skillBuckets[skill] = { scoreSum: 0, total: 0 };
-            skillBuckets[skill].total++;
-            skillBuckets[skill].scoreSum += r.score ?? 0;
-          }
-          const pct = (sk: string) =>
-            skillBuckets[sk]
-              ? Math.round((skillBuckets[sk].scoreSum / skillBuckets[sk].total) * 100)
-              : null;
-          return {
-            reading: pct("reading"),
-            listening: pct("listening"),
-            writing: pct("writing"),
-            speaking: pct("speaking"),
-          };
-        })()
-      });
+      res.json(await AssessmentService.getSessionStatus(id));
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch session insights" });
     }

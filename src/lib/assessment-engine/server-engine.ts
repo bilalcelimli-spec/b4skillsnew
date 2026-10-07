@@ -1,3 +1,4 @@
+import { buildSessionProgress } from "./session-progress";
 import { buildScoringPrompt } from "../scoring/task-context.js";
 import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence } from "../scoring/score-evidence.js";
 import { estimateTheta } from "./estimator.js";
@@ -1731,24 +1732,12 @@ export const AssessmentService = {
    * Get session status
    */
   async getSessionStatus(sessionId: string) {
-    const engine = await getEngine();
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
-      include: { responses: true }
+      include: { responses: { include: { item: { select: { skill: true } } } } }
     });
-
     if (!session) throw new Error("Session not found");
-    const profile = getProfile((session.metadata as any)?.productLine);
-    return {
-      startedAt: session.startedAt,
-      organizationId: session.organizationId,
-      maxDurationMs: profile.maxDurationMs,
-      sectionOrder: profile.sectionOrder,
-      status: session.status,
-      theta: session.theta,
-      progress: session.responses.length,
-      cefr: engine.mapToCefr(session.theta)
-    };
+    return buildSessionProgress(session);
   },
 
   /**

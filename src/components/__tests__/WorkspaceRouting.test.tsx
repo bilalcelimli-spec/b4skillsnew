@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import App from '../../App';
 vi.mock('../../hooks/useScoringStatus',()=>({useScoringStatus:()=>({state:'complete'})}));
 vi.mock('../CandidateAdaptiveReport',()=>({CandidateAdaptiveReport:({sessionId}:any)=><h1>Report {sessionId}</h1>}));
-vi.mock('../TestPlayer',()=>({TestPlayer:({initialSessionId}:any)=><h1>Resume {initialSessionId}</h1>}));
+vi.mock('../TestPlayer',()=>({TestPlayer:({initialSessionId,onCancel}:any)=><><h1>Resume {initialSessionId}</h1><button onClick={onCancel}>Exit fixture exam</button></>}));
 vi.mock('../admin/ContentFactoryReviewQueue',()=>({ContentFactoryReviewQueue:()=><h1>Content review queue</h1>}));
 vi.mock('../RatingDashboard',()=>({RatingDashboard:({raterId}:any)=><h1>Rater workspace {raterId}</h1>}));
 vi.mock('../CandidateProfile',()=>({CandidateProfile:()=><h1>Account settings</h1>}));
@@ -47,4 +47,17 @@ it('preserves a public shared report when an authenticated session resolves',asy
 it('connects the authenticated rater identity to task actions',async()=>{
   open('/rating','RATER');
   expect(await screen.findByRole('heading',{name:'Rater workspace candidate'})).toBeTruthy();
+});
+
+it('returns to the dashboard after exit and resumes the same stored attempt', async()=>{
+  window.history.replaceState({},'', '/exam/existing-session');
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url==='/api/auth/me'
+    ? {user:{uid:'candidate',email:'user@example.test',role:'CANDIDATE',organizationId:'org'}}
+    : url.endsWith('/history') ? [{id:'existing-session',status:'IN_PROGRESS',organizationId:'org',metadata:{productLine:'15-Min Diagnostic'}}] : []})));
+  render(<MemoryRouter initialEntries={['/exam/existing-session']}><App/><LocationProbe/></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button',{name:'Exit fixture exam'}));
+  await waitFor(()=>expect(screen.getByTestId('path').textContent).toBe('/dashboard'));
+  fireEvent.click(await screen.findByRole('button',{name:/Resume exam|Sınava devam et/}));
+  expect(await screen.findByRole('heading',{name:'Resume existing-session'})).toBeTruthy();
+  await waitFor(()=>expect(screen.getByTestId('path').textContent).toBe('/exam/existing-session'));
 });

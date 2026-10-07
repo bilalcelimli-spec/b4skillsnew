@@ -1,3 +1,4 @@
+import { TestPlayer } from "../../../src/components/TestPlayer";
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ItemRenderer } from "../../../src/components/ItemRenderer";
@@ -20,6 +21,7 @@ const variants: Record<string, any> = {
 };
 function Fixture() {
   const [answer, setAnswer] = useState<unknown>();
+  if (mode === "exam") return answer ? <p>Back to dashboard</p> : <TestPlayer organizationId="fixture-org" candidateId="fixture-candidate" initialSessionId="fixture-session" onComplete={() => setAnswer('complete')} onCancel={() => setAnswer('exited')} />;
   if (mode === "face") return answer ? <p>Ready for practice</p> : <FaceCapture sessionId="fixture-session" onCaptureDone={() => setAnswer(true)} />;
   return <main className="mx-auto w-full max-w-4xl p-3">
     <ItemRenderer sessionId="fixture-session" item={{ id: `fixture-${mode}`, ...variants[mode] } as any} onResponse={setAnswer} />

@@ -3,10 +3,10 @@
   "verification": {
     "typescript": "passed",
     "tests": {
-      "passed": 2001,
+      "passed": 2008,
       "skipped": 32,
       "todo": 2,
-      "suitesPassed": 159,
+      "suitesPassed": 160,
       "suitesSkipped": 3
     },
     "builds": {
@@ -293,6 +293,31 @@
       "Population percentiles remain unavailable without validated norms.",
       "Stable CERT_SIGNING_KEY_PEM and signing-key rotation remain deployment responsibilities.",
       "External providers, production deployment and all skipped tests were not verified by these local checks."
+    ]
+  },
+  "inExamProgressFollowup": {
+    "verifiedAt": "2026-10-07T17:48:48.632115+00:00",
+    "published": false,
+    "migrationRequired": false,
+    "changes": [
+      "Shared persisted progress contract for status and insights; correct CEFR field, six-skill counts, per-product limits and pending-grade distinctions.",
+      "Analytics loads on opening, refreshes after task delivery and every ten seconds while open, and provides loading/error/retry states.",
+      "Responsive exit control with keyboard-accessible confirmation; exit preserves submitted responses and session ID, keeps the timer running, and ignores late completion callbacks.",
+      "Candidate dashboard refreshes history after exit and resumes the original attempt without a new launch.",
+      "Mobile proctor preview is compact so monitoring remains active without covering the analytics cards."
+    ],
+    "validation": {
+      "typescript": "passed",
+      "normalSuite": "2008 passed; 32 skipped; 2 TODO",
+      "build": "Client, SSR and server passed",
+      "browser": "24 existing renderer tests passed; 2 new analytics/confirmed-exit flows passed separately at 320px and 1280px with mocked API fixtures and Chromium synthetic camera. Final repeat passed after waiting for identity capture and animation settlement.",
+      "routes": "291 routes; 224 fetch calls; 0 reachable missing; 0 duplicate",
+      "focusedFollowup": "30 passed after final exit dialog, routing and mobile monitor changes"
+    },
+    "limitations": [
+      "No production deployment or real authenticated production exam was exercised.",
+      "Unsubmitted recordings or answers can be lost on exit; submitted responses remain persisted.",
+      "Browser tests use fixture API responses; backend progress aggregation is covered separately by unit tests."
     ]
   }
 }

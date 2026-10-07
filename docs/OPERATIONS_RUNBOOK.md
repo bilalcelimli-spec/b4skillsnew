@@ -92,3 +92,9 @@ Certificate generation requires a completed, verified report with complete evide
 Signed certificates require a stable `CERT_SIGNING_KEY_PEM` in production. Without it, signed issuance returns 503; ephemeral keys are limited to development/tests. Signed payloads are persisted with the score report and cover nested skill scores. An on-chain status remains unknown unless independently verified. Keep the signing key stable across restarts; key rotation requires a verification-key migration strategy.
 
 Population percentiles are unavailable without a validated reference population. The platform's default CEFR cut scores require empirical standard setting; passing software checks does not establish psychometric validity. Historical reports with incomplete evidence are withheld from certification and final progress displays rather than inferred or automatically backfilled.
+
+## 7) Leaving and resuming an assessment
+
+The in-exam exit control returns to the candidate dashboard after confirmation; it does not submit or complete the assessment, pause its timer, or create a new attempt. Submitted responses remain persisted. Unsubmitted answers/recordings may be lost; writing drafts use the existing per-session/per-item browser session storage. The dashboard refreshes history and links in-progress attempts back to their original session ID. The server still enforces the original deadline and current session status.
+
+In-exam Analytics and `/api/sessions/:id/insights` use the same persisted progress contract as session status: section order/limits, answered and eligible scored counts, and pending counts. The UI refreshes on opening, after task delivery, and every ten seconds while open. In-progress estimates are provisional; no CEFR level or precision is invented before graded evidence exists. A failed status request shows a retry action without blocking task delivery.
