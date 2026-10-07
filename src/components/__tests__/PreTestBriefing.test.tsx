@@ -3,9 +3,19 @@
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { OZGUN_PRODUCT } from "../../lib/fixed-forms/ozgun-kids";
 import { PreTestBriefing } from "../PreTestBriefing.js";
 
 describe("PreTestBriefing", () => {
+  it("uses the shared briefing with the fixed exam's actual skills, timings and policies", () => {
+    render(<PreTestBriefing productLine={OZGUN_PRODUCT} onStart={vi.fn()} onCancel={vi.fn()}/>);
+    expect(screen.getByText('105 min')).toBeTruthy();
+    expect(screen.getByText('96 questions · 4 timed sections')).toBeTruthy();
+    expect(screen.queryByText('Microphone required')).toBeNull();
+    expect(screen.queryByText('Adaptive — stops early when confident')).toBeNull();
+    expect(screen.getByText(/Writing and Speaking are not assessed/)).toBeTruthy();
+    expect(screen.getByText(/Preparation does not start the exam timer/)).toBeTruthy();
+  });
   it("keeps the dialog height bounded with a scrollable content region", () => {
     render(<PreTestBriefing onStart={vi.fn()} onCancel={vi.fn()} />);
 

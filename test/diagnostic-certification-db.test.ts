@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 const state=await vi.hoisted(async()=>{const {PrismaClient}=await import('@prisma/client');return{client:new PrismaClient({datasources:{db:{url:'postgresql://b4skills_test@127.0.0.1:59473/arbitration_test?connection_limit=3'}}})};});
 vi.mock('../src/lib/prisma',()=>({prisma:state.client}));
+import * as productiveScoring from '../src/lib/product-lines/freemium-productive-scoring';
 import {DiagnosticService,SKILLS} from '../src/lib/assessment-engine/diagnostic-service';
 import {RatingQueueService} from '../src/lib/scoring/rating-queue';
 import {ensureReportShareToken} from '../src/lib/reporting/report-sharing';
@@ -60,6 +61,22 @@ describe.runIf(process.env.B4SKILLS_ARBITRATION_DB_TEST==='1')('PostgreSQL diagn
   await DiagnosticService.refreshScoring(session.id);
   expect(await CertificateService.verifyCertificate(certificate.id)).toBeNull();
   expect(await lookupCertificate(certificate.id)).toBeNull();
+ });
+ it('rejects an answer when the deadline passes during grading',async()=>{
+  const session=await makeSession(true);
+  const meta=session.metadata as any;
+  await db.session.update({where:{id:session.id},data:{metadata:{...meta,diagnosticState:{...meta.diagnosticState,expiresAt:new Date(Date.now()+60000).toISOString()}}}});
+  const spy=vi.spyOn(productiveScoring,'evaluateFreemiumResponse').mockImplementationOnce(async()=>{
+   const current=await db.session.findUniqueOrThrow({where:{id:session.id}});const metadata=current.metadata as any;
+   await db.session.update({where:{id:session.id},data:{metadata:{...metadata,diagnosticState:{...metadata.diagnosticState,expiresAt:new Date(Date.now()-1).toISOString()}}}});
+   return {kind:'objective',score:1,scoreSource:'objective'} as any;
+  });
+  try {
+   await expect(DiagnosticService.respond(session.id,items[0].id,'A',100)).rejects.toThrow('time limit');
+   expect(await db.response.count({where:{sessionId:session.id}})).toBe(0);
+   const stored=await db.session.findUniqueOrThrow({where:{id:session.id}});
+   expect((stored.metadata as any).diagnosticState.complete).toBe(true);
+  } finally {spy.mockRestore();}
  });
  it('rejects a late answer before grading or persisting any response',async()=>{
   const session=await makeSession(true);

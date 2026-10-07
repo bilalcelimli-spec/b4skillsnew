@@ -1,4 +1,6 @@
 import "dotenv/config";
+import {AppError} from "./src/lib/errors/app-error.js";
+import {productForRedeemedCode} from "./src/lib/security/exam-code-product.js";
 import { OZGUN_PRODUCT } from "./src/lib/fixed-forms/ozgun-kids.js";
 import { createOzgunKidsService } from "./src/lib/fixed-forms/ozgun-kids-service.js";
 import { ensureReportShareToken } from "./src/lib/reporting/report-sharing.js";
@@ -1387,7 +1389,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     try {
       const body = validate(SessionLaunchBody, req.body, res);
       if (!body) return;
-      const { organizationId, productLine } = body;
+      let { organizationId, productLine } = body;
       // Always derive candidateId from the JWT — ignore body.candidateId to prevent IDOR
       const candidateId = req.user?.id || "demo-user";
       let resolvedOrganizationId = organizationId;
@@ -1408,8 +1410,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           const [claimedCode, orgLicense, payment] = await Promise.all([
             // (a) exam code redeemed by this email
             prisma.examCode.findFirst({
-              where: { usedByEmail: userEmail, isUsed: true, ...(productLine === OZGUN_PRODUCT ? {productLine:OZGUN_PRODUCT} : {NOT:{productLine:OZGUN_PRODUCT}}) },
-              select: { organizationId: true },
+              where: { usedByEmail: userEmail, isUsed: true, ...(userOrgId ? {organizationId:userOrgId} : {}) },
+              select: { organizationId: true, productLine:true, expiresAt:true },
               orderBy: { usedAt: "desc" },
             }),
             // (b) org has a non-expired license with credits
@@ -1425,6 +1427,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
               where: { userId: req.user.id, status: "COMPLETED" },
             }),
           ]);
+          productLine = productForRedeemedCode(productLine,claimedCode);
           gateAllowed = !!(claimedCode || orgLicense || payment);
           const authoritativeOrgId = userOrgId ?? claimedCode?.organizationId;
           if (!authoritativeOrgId) {
@@ -1438,6 +1441,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           }
           resolvedOrganizationId = authoritativeOrgId;
         } catch (gateErr) {
+          if(gateErr instanceof AppError)return res.status(gateErr.statusCode).json({error:gateErr.message,code:gateErr.code});
           console.error("[sessions/launch] access gate error:", gateErr);
           gateAllowed = false;
         }
@@ -1511,6 +1515,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       }
       res.json(session);
     } catch (error: any) {
+      if(error instanceof AppError)return res.status(error.statusCode).json({error:error.message,code:error.code});
       console.error("LAUNCH ERROR", error);
       // Surface configuration errors (item bank, billing) clearly — they are
       // operational issues the admin needs to act on, not security-sensitive info.
@@ -1668,6 +1673,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       }
       res.json(next);
     } catch (error) {
+      if (error instanceof AppError) return res.status(error.statusCode).json({ error: error.message, code: error.code });
+      console.error("[sessions/next] Failed to fetch next item", error);
       res.status(500).json({ error: "Failed to fetch next item" });
     }
   });
@@ -1692,6 +1699,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       }
       res.json(result);
     } catch (error) {
+      if(error instanceof AppError)return res.status(error.statusCode).json({error:error.message,code:error.code});
       res.status(500).json({ error: "Failed to submit response" });
     }
   });
@@ -7423,10 +7431,26 @@ ${codeSection}
         const userId = (req as any).user?.userId;
         const user   = await prisma.user.findUnique({ where: { id: userId } });
         if (!user) return res.status(404).json({ error: "User not found" });
-        const orgId = user.organizationId ?? "default";
+        let orgId = user.organizationId;
+        if (user.role === "CANDIDATE") {
+          const [code, license, payment] = await Promise.all([
+            prisma.examCode.findFirst({
+              where: { usedByEmail: user.email, isUsed: true, ...(orgId ? { organizationId: orgId } : {}) },
+              orderBy: { usedAt: "desc" }, select: { organizationId: true, productLine: true, expiresAt: true },
+            }),
+            orgId ? prisma.license.findFirst({ where: { organizationId: orgId, credits: { gt: 0 },
+              OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }] } }) : Promise.resolve(null),
+            prisma.paymentTransaction.findFirst({ where: { userId, status: "COMPLETED" } }),
+          ]);
+          productForRedeemedCode("15-Min Diagnostic", code);
+          if (!code && !license && !payment) return res.status(403).json({ error: "exam_code_required" });
+          orgId ??= code?.organizationId ?? null;
+        }
+        if (!orgId) return res.status(403).json({ error: "organization_required" });
         const result = await DiagnosticService.launch(userId, orgId);
         return res.status(201).json(result);
       } catch (err: any) {
+        if (err instanceof AppError) return res.status(err.statusCode).json({ error: err.message, code: err.code });
         return res.status(500).json({ error: "Internal server error" });
       }
     });

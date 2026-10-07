@@ -77,7 +77,8 @@
     "db:seed:diverse-types": "tsx scripts/seed-diverse-item-types.ts",
     "db:seed:diverse-types:dry": "tsx scripts/seed-diverse-item-types.ts --dry-run",
     "audit:routes": "node scripts/audit-platform-routes.mjs",
-    "test:item-renderer": "playwright test --config test/e2e/item-renderer.config.ts"
+    "test:item-renderer": "playwright test --config test/e2e/item-renderer.config.ts",
+    "audit:assessment-flows": "node scripts/audits/assessment-flows.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

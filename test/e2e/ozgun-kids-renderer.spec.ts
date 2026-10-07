@@ -28,7 +28,7 @@ test('admin selects the fixed form, saves its key and generates the matching cod
 for(const width of [320,1280])test(`candidate completes four sections and sees raw scores at ${width}px`,async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.setViewportSize({width,height:850});
-  let sectionIndex=0,started=false,launches=0,listeningStartedAt:string|null=null;
+  let sectionIndex=0,started=false,launches=0,photoSaved=false,listeningStartedAt:string|null=null;
   const answers:FixedAnswers={};
   function view(){const section=OZGUN_SECTIONS[sectionIndex];return {sessionId:'fixture-fixed',status:sectionIndex===4?'COMPLETED':started?'IN_PROGRESS':'SCHEDULED',serverNow:new Date().toISOString(),sectionIndex,section,sectionDeadline:started&&section?new Date(Date.now()+section.minutes*60000).toISOString():null,answers,listeningStartedAt,
     questions:started&&section?content.questions.filter(q=>q.skill===section.skill).map(q=>({...q,passage:'passageId' in q?content.passages[q.passageId as keyof typeof content.passages]:undefined})):[],report:sectionIndex===4?scoreFixedForm(answers,OZGUN_ANSWER_KEY,false):null};}
@@ -41,13 +41,44 @@ for(const width of [320,1280])test(`candidate completes four sections and sees r
     if(url.endsWith('/listen'))listeningStartedAt??=new Date().toISOString();
     await route.fulfill({json:view()});
   });
+  await page.route('**/api/sessions/fixture-fixed/identity-snapshot',async route=>{
+    expect(started).toBe(false);expect(route.request().postDataJSON().frame).toMatch(/^data:image\/jpeg;base64,/);photoSaved=true;
+    await route.fulfill({json:{success:true,stored:true}});
+  });
+  await page.route('**/api/proctoring/**',route=>route.fulfill({json:{success:true}}));
   page.on('dialog',dialog=>dialog.accept());
   await page.goto('/test/e2e/fixtures/ozgun-kids.html');
-  await page.getByRole('button',{name:'Sınavı başlat',exact:true}).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByText('96 questions · 4 timed sections')).toBeVisible();
+  expect(launches).toBe(0);
+  await page.getByRole('button',{name:/Start Test/}).click();
+  await page.getByRole('button',{name:'Take Photo',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Device Compatibility Check'})).toBeVisible({timeout:10000});
+  expect(photoSaved).toBe(true);expect(started).toBe(false);
+  await expect(page.getByText('Microphone',{exact:true})).toHaveCount(0);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  if(width===1280){
+    await page.getByRole('button',{name:/Continue to Practice/}).click();
+    await expect(page.getByText('Practice 1/2',{exact:true})).toBeVisible();
+    await page.getByRole('radio').nth(1).click();
+    await page.getByRole('button',{name:'Check Answer',exact:true}).click();
+    await page.getByRole('button',{name:'Next Practice',exact:true}).click();
+    await expect(page.getByText('Practice 2/2',{exact:true})).toBeVisible();
+    await expect(page.getByText(/The exam recording plays once/)).toBeVisible();
+    await page.getByRole('button',{name:'Next Practice',exact:true}).click();
+    await expect(page.getByRole('heading',{name:"You're All Set!"})).toBeVisible();
+    expect(started).toBe(false);
+    await page.getByRole('button',{name:/Start Assessment/}).click();
+  }else await page.getByRole('button',{name:'Skip Tutorial',exact:true}).click();
   expect(launches).toBe(1);
   for(let i=0;i<4;i++){
     const first=OZGUN_SECTIONS[i].first;
     await expect(page.getByRole('heading',{name:content.questions[first-1].prompt,exact:true})).toBeVisible();
+    if(i===0){
+      await page.getByRole('button',{name:'Analytics',exact:true}).click();
+      await expect(page.locator('#assessment-insights')).toContainText('0 / 96');
+      await page.getByRole('button',{name:'Analytics',exact:true}).click();
+    }
     if(i===2)await expect(page.getByRole('article')).toBeVisible();
     if(i===3){
       await expect.poll(()=>page.locator('audio').evaluate((element:HTMLAudioElement)=>element.duration)).toBeGreaterThan(1773);
@@ -57,10 +88,17 @@ for(const width of [320,1280])test(`candidate completes four sections and sees r
       await page.screenshot({path:`/tmp/b4skills-ozgun-listening-${width}.png`,fullPage:true});
       expect(listeningStartedAt).toBeTruthy();
     }
-    await page.locator(`input[value="${OZGUN_ANSWER_KEY[first-1]}"]`).check();
-    await expect(page.getByRole('status')).toContainText('Gönderilen cevaplar kaydedildi.');
+    await page.getByRole('radio').nth(OZGUN_ANSWER_KEY.charCodeAt(first-1)-65).click();
+    await expect(page.getByRole('status').filter({hasText:'Gönderilen cevaplar kaydedildi.'})).toContainText('Gönderilen cevaplar kaydedildi.');
+    if(i===0){
+      await page.getByRole('button',{name:'Sonraki',exact:true}).click();
+      await expect(page.getByRole('heading',{name:content.questions[1].prompt,exact:true})).toBeVisible();
+      await page.getByRole('button',{name:'Önceki',exact:true}).click();
+      await expect(page.getByRole('radio').nth(OZGUN_ANSWER_KEY.charCodeAt(0)-65)).toHaveAttribute('aria-checked','true');
+    }
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await page.getByRole('button',{name:i===3?'Sınavı bitir':'Bölümü bitir ve devam et',exact:true}).click();
+    if(i<3)await page.getByRole('button',{name:'Continue manually →',exact:true}).click();
   }
   await expect(page.getByRole('heading',{name:'Özgün Kids · Form A sonuçları'})).toBeVisible();
   await expect(page.getByText('4 / 96',{exact:true})).toBeVisible();

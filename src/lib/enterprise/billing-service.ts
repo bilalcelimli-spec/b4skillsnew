@@ -1,4 +1,6 @@
 import { prisma } from "../prisma";
+import { AppError } from '../errors/app-error';
+import type { Prisma } from "@prisma/client";
 
 /**
  * b4skills Billing & License Service
@@ -14,55 +16,26 @@ export const BillingService = {
     if (orgCount === 0) {
       await (prisma as any).organization.create({ data: { id: organizationId, name: organizationId, slug: organizationId }});
     }
-    let license = await (prisma as any).license.findFirst({
-
-      where: { organizationId, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: "desc" }
+    return prisma.$transaction(async db=>{
+      await db.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`;
+      let license=await db.license.findFirst({where:{organizationId,credits:{gt:0},OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]},orderBy:{createdAt:'desc'}});
+      // Preserve initial-trial behavior, but never renew an expired/exhausted license for free.
+      if(!license && await db.license.count({where:{organizationId}})===0) {
+        license=await db.license.create({data:{organizationId,type:'TRIAL',credits:99999,expiresAt:new Date(Date.now()+30*24*60*60*1000)}});
+      }
+      return !!license;
     });
-
-    // Auto-create trial license for new organizations
-    if (!license) {
-      license = await (prisma as any).license.create({
-        data: {
-          organizationId,
-          type: "TRIAL",
-          credits: 99999,
-          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
-        }
-      });
-    }
-
-    return (license?.credits || 0) > 0;
   },
 
-  /**
-   * Consume one credit from the organization's active license
-   */
-  async consumeCredit(organizationId: string): Promise<void> {
-    const license = await (prisma as any).license.findFirst({
-      where: { organizationId, credits: { gt: 0 }, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: "desc" }
-    });
-
-    if (!license) {
-      throw new Error("No active license with sufficient credits found.");
-    }
-
-    await (prisma as any).license.update({
-      where: { id: license.id },
-      data: { credits: { decrement: 1 } }
-    });
-
-    // Log the transaction (internal record)
-    await (prisma as any).paymentTransaction.create({
-      data: {
-        organizationId,
-        amount: 0, // Zero amount for consumption
-        status: "COMPLETED",
-        creditsAdded: -1,
-        createdAt: new Date()
-      }
-    });
+  /** Consume atomically; callers creating a session pass the same transaction. */
+  async consumeCredit(organizationId:string,transaction?:Prisma.TransactionClient):Promise<void> {
+    if(!transaction)return prisma.$transaction(db=>this.consumeCredit(organizationId,db));
+    await transaction.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`;
+    const license=await transaction.license.findFirst({where:{organizationId,credits:{gt:0},OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]},orderBy:{createdAt:'desc'}});
+    if(!license)throw new AppError(402, 'INSUFFICIENT_CREDITS', 'No active license with sufficient credits found.');
+    const claimed=await transaction.license.updateMany({where:{id:license.id,credits:{gt:0}},data:{credits:{decrement:1}}});
+    if(claimed.count!==1)throw new AppError(402, 'INSUFFICIENT_CREDITS', 'No active license with sufficient credits found.');
+    await transaction.paymentTransaction.create({data:{organizationId,amount:0,status:'COMPLETED',creditsAdded:-1,createdAt:new Date()}});
   },
 
   /**

@@ -442,7 +442,7 @@ export default function App() {
   }
 
   if (activeSession) {
-    if (!preTestReady && activeSession.productLine !== OZGUN_PRODUCT) {
+    if (!preTestReady) {
       return (
         <Suspense fallback={<PageLoader />}>
           <PreTestBriefing

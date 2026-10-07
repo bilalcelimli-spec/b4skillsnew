@@ -131,6 +131,36 @@ async function selectItemsForSkill(skill: Skill, usedIds: Set<string>, count: nu
 
 export class DiagnosticService {
 
+  /** Shared delivery contract for diagnostic resume through TestPlayer. */
+  static async delivery(sessionId:string):Promise<any> {
+    const session=await prisma.session.findUnique({where:{id:sessionId},include:{scoreReport:true}});
+    const state=(session?.metadata as any)?.diagnosticState as DiagnosticSessionState|undefined;
+    if(!session||!state)throw new Error('Diagnostic session not found');
+    if(!state.complete&&Date.now()>=new Date(state.expiresAt).getTime()) {
+      await prisma.$transaction(async tx=>{
+        await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+        const current=await tx.session.findUnique({where:{id:sessionId}}),meta=(current?.metadata??{}) as any;
+        if(current&&meta.diagnosticState&&!meta.diagnosticState.complete)await tx.session.update({where:{id:sessionId},data:{
+          status:current.status==='FLAGGED'?'FLAGGED':'SCORING',completedAt:new Date(meta.diagnosticState.expiresAt),
+          metadata:{...meta,diagnosticState:{...meta.diagnosticState,complete:true}},
+        }});
+      });
+      await this.refreshScoring(sessionId);
+      return this.delivery(sessionId);
+    }
+    if(state.complete)return {stop:true,reason:'DIAGNOSTIC_COMPLETE',finalTheta:session.scoreReport?.isVerified?session.theta:null};
+    if(session.status!=='IN_PROGRESS')throw new Error('Diagnostic session is not in progress');
+    const next=this._nextItem(state);
+    if(!next)throw new Error('Diagnostic item missing');
+    const row=await prisma.item.findUniqueOrThrow({where:{id:next.itemId},include:{assets:true}});
+    const content=stripAnswerKeys({...((row.content??{}) as Record<string,unknown>),audioUrl:(row.content as any)?.audioUrl??row.assets.find(asset=>asset.type==='AUDIO')?.url});
+    return {stop:false,sectionTransition:false,item:{id:next.itemId,skill:next.skill,type:row.type,metadata:content},
+      currentSection:next.skill,sectionIndex:SKILLS.indexOf(next.skill),totalSections:SKILLS.length,
+      sectionProgress:state.skills[next.skill].answered,maxDurationMs:DIAGNOSTIC_WALL_CLOCK_MS,
+      elapsedMs:Date.now()-new Date(state.startedAt).getTime(),productLine:'Fixed Diagnostic (30 items)'};
+  }
+
+
   /** Launch a new diagnostic session */
   static async launch(candidateId: string, orgId: string): Promise<{
     sessionId: string;
@@ -266,6 +296,9 @@ export class DiagnosticService {
       await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
       const current = await tx.session.findUnique({where:{id:sessionId}});
       const currentState = (current?.metadata as any)?.diagnosticState as DiagnosticSessionState | undefined;
+      if (currentState && Date.now() >= new Date(currentState.expiresAt).getTime()) {
+        throw new DiagnosticReportNotReadyError('Diagnostic time limit reached; the late answer was not saved');
+      }
       if (!currentState || currentState.complete || DiagnosticService._nextItem(currentState)?.itemId !== itemId ||
           await tx.response.count({where:{sessionId,itemId}}) > 0) throw new Error("Response must match the current unanswered item");
       // A rating may have completed while this answer was being graded. Keep
@@ -301,6 +334,9 @@ export class DiagnosticService {
         theta:overallTheta,sem:Math.max(...SKILLS.map(skill=>state.skills[skill].sem)),
         ...(state.complete ? {status:estimate.scoringComplete ? "COMPLETED" : "SCORING",cefrLevel:estimate.scoringComplete ? thetaToCefr(overallTheta) as any : null,completedAt:new Date()} : {}),
       }});
+    }).catch(async error => {
+      if (error instanceof DiagnosticReportNotReadyError) await this.delivery(sessionId);
+      throw error;
     });
     if (score === null) await RatingQueueService.enqueue({sessionId,itemId,type:foundSkill === "SPEAKING" ? "SPEAKING" : "WRITING",content:typeof value === "string" ? value : JSON.stringify(value)});
 

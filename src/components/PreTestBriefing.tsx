@@ -1,6 +1,7 @@
 import React from "react";
 import { Clock, Mic, Camera, BookOpen, Headphones, PenLine, MessageSquare, ShieldCheck, XCircle, Wifi } from "lucide-react";
 import { RubricPreview } from "./RubricPanel.js";
+import { OZGUN_PRODUCT, OZGUN_SECTIONS, OZGUN_TITLE } from "../lib/fixed-forms/ozgun-kids";
 import { getProfile } from "../lib/product-lines/profiles.js";
 
 interface PreTestBriefingProps {
@@ -20,9 +21,11 @@ const SKILL_ICONS: Record<string, React.ReactNode> = {
 
 export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, onStart, onCancel }) => {
   const profile = getProfile(productLine);
-  const duration = `${profile.estimatedDurationMin[0]}–${profile.estimatedDurationMin[1]} min`;
-  const skills = profile.sectionOrder.map((skill) => skill.charAt(0) + skill.slice(1).toLowerCase());
-  const needsMic = profile.sectionOrder.includes("SPEAKING" as any);
+  const fixed = productLine === OZGUN_PRODUCT;
+  const title = fixed ? OZGUN_TITLE : profile.displayName ?? profile.name;
+  const duration = fixed ? "105 min" : `${profile.estimatedDurationMin[0]}–${profile.estimatedDurationMin[1]} min`;
+  const skills = (fixed ? OZGUN_SECTIONS.map(section => section.skill) : profile.sectionOrder).map((skill) => skill.charAt(0) + skill.slice(1).toLowerCase());
+  const needsMic = skills.includes("Speaking");
   const needsCamera = true;
 
   return (
@@ -37,8 +40,8 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
         <div className="flex-shrink-0 bg-gradient-to-r from-indigo-600 to-indigo-500 px-5 sm:px-6 py-4 sm:py-5 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-indigo-200 mb-1">B4Skills Adaptive Assessment</p>
-              <h1 id="pre-test-briefing-title" className="text-xl font-black">{profile.displayName ?? profile.name}</h1>
+              <p className="text-xs font-bold uppercase tracking-widest text-indigo-200 mb-1">B4Skills Assessment</p>
+              <h1 id="pre-test-briefing-title" className="text-xl font-black">{title}</h1>
             </div>
             <button onClick={onCancel} className="text-indigo-200 hover:text-white transition-colors" aria-label="Cancel">
               <XCircle size={22} />
@@ -55,7 +58,7 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
                 <span className="text-xs font-bold text-indigo-600 uppercase tracking-wide">Duration</span>
               </div>
               <p className="text-2xl font-black text-indigo-700">{duration}</p>
-              <p className="text-xs text-indigo-400 mt-0.5">Adaptive — stops early when confident</p>
+              <p className="text-xs text-indigo-400 mt-0.5">{fixed ? "96 questions · 4 timed sections" : "Adaptive — stops early when confident"}</p>
             </div>
             <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-4">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Skills Tested</p>
@@ -75,7 +78,7 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
             <ul className="space-y-2 text-sm text-slate-700">
               <li className="flex items-start gap-2">
                 <span className="mt-0.5 text-indigo-400 font-bold">→</span>
-                Multiple-choice, gap-fill, ordering and matching tasks for reading and listening
+                {fixed ? "Choose A, B, C or D for each question. Correct: 1 point; wrong or blank: 0 points." : "Multiple-choice, gap-fill, ordering and matching tasks for reading and listening"}
               </li>
               {skills.includes("Writing") && (
                 <li className="flex items-start gap-2">
@@ -91,9 +94,14 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
               )}
               <li className="flex items-start gap-2">
                 <span className="mt-0.5 text-indigo-400 font-bold">→</span>
-                The test adapts difficulty as you go — there is no fixed number of questions
+                {fixed ? "Sections close when their time ends or you finish them. Closed sections cannot be revisited." : "The test adapts difficulty as you go — there is no fixed number of questions"}
               </li>
             </ul>
+            {fixed && <div className="mt-3 space-y-2 text-sm text-slate-600">
+              <ul className="space-y-1">{OZGUN_SECTIONS.map(section => <li key={section.skill}>{section.label}: {section.first}–{section.last} · {section.minutes} min</li>)}</ul>
+              <p>The listening recording plays once and contains each conversation twice. Do not use dictionaries or translation tools.</p>
+              <p>Writing and Speaking are not assessed. Results provide provisional course guidance, not a general CEFR certificate.</p>
+            </div>}
           </div>
 
           {/* Rubric transparency — Writing */}
@@ -132,7 +140,7 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
           <div className="flex items-start gap-2 text-xs text-slate-500">
             <ShieldCheck size={14} className="text-emerald-500 flex-shrink-0 mt-0.5" />
             <span>
-              Do not refresh or close the tab during the test. If disconnected, your progress is saved and you can resume within 30 minutes. Results and certificate will be issued after all sections are scored.
+              {fixed ? "Submitted answers are saved. Leaving or disconnecting does not pause section timers. Resume the same attempt while time remains. Preparation does not start the exam timer." : "Do not refresh or close the tab during the test. If disconnected, your progress is saved and you can resume within 30 minutes. Results and certificate will be issued after all sections are scored."}
             </span>
           </div>
         </div>

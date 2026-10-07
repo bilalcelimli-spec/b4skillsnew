@@ -1,4 +1,5 @@
 import { createOzgunKidsService } from "../fixed-forms/ozgun-kids-service";
+import {sessionDeadlineReached} from './session-deadline';
 import { buildSessionProgress } from "./session-progress";
 import { buildScoringPrompt } from "../scoring/task-context.js";
 import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence } from "../scoring/score-evidence.js";
@@ -319,7 +320,7 @@ export const AssessmentService = {
     // --- CREDIT CHECK ---
     const hasCredits = await BillingService.hasSufficientCredits(organizationId);
     if (!hasCredits) {
-      throw new Error("Insufficient assessment credits. Please top up your account.");
+      throw new AppError(402, "INSUFFICIENT_CREDITS", "Insufficient assessment credits. Please top up your account.");
     }
 
     const initialState = engine.initializeSession();
@@ -333,7 +334,7 @@ export const AssessmentService = {
     // so two simultaneous first-time test-takers don't see identical exams.
     try {
       const lastCompleted = await prisma.session.findFirst({
-        where: { candidateId, status: "COMPLETED" },
+        where: { candidateId, status: "COMPLETED", scoreReport: { isVerified: true } },
         orderBy: { completedAt: "desc" },
         select: { theta: true },
       });
@@ -399,25 +400,25 @@ export const AssessmentService = {
       );
     }
 
-    const session = await prisma.session.create({
-      data: {
-        candidateId,
-        organizationId,
-        status: SessionStatus.IN_PROGRESS,
-        theta: initialState.theta,
-        sem: initialState.sem,
-        metadata: productLine ? { productLine } : {},
-        startedAt: new Date()
-      }
+    const session = await prisma.$transaction(async tx => {
+      await BillingService.consumeCredit(organizationId, tx);
+      return tx.session.create({
+        data: {
+          candidateId,
+          organizationId,
+          status: SessionStatus.IN_PROGRESS,
+          theta: initialState.theta,
+          sem: initialState.sem,
+          metadata: productLine ? { productLine } : {},
+          startedAt: new Date(),
+        },
+      });
     });
 
     // Denominator for global Sympson–Hetter exposure rate (exposures / test starts)
     getExposureStore()
       .then((store) => store.recordTestStart())
       .catch(() => {});
-
-    // --- CONSUME CREDIT ---
-    await BillingService.consumeCredit(organizationId);
 
     return {
       sessionId: session.id,
@@ -447,6 +448,10 @@ export const AssessmentService = {
     });
 
     if ((session?.metadata as any)?.sessionType === 'FIXED_FORM') throw AppError.conflict('Use the fixed-form assessment endpoint');
+    if ((session?.metadata as any)?.sessionType === 'DIAGNOSTIC') {
+      const {DiagnosticService}=await import('./diagnostic-service.js');
+      return DiagnosticService.delivery(sessionId);
+    }
     if (!session || session.status !== SessionStatus.IN_PROGRESS) {
       throw new Error("Invalid session");
     }
@@ -461,15 +466,21 @@ export const AssessmentService = {
     //   (a) psychometric stopping criteria are met (preferred), or
     //   (b) this hard time ceiling is reached (fallback).
     const profile = getProfile(meta.productLine);
+    const finish = async (reason: string) => {
+      await this.finalizeSession(sessionId, session.theta, { stopReason: reason });
+      const completed = await prisma.session.findUnique({
+        where: { id: sessionId }, include: { scoreReport: true },
+      });
+      return { stop: true, reason, finalTheta: completed?.scoreReport?.isVerified ? completed.theta : null };
+    };
     if (session.startedAt) {
       const elapsedMs = Date.now() - session.startedAt.getTime();
-      if (elapsedMs >= profile.maxDurationMs) {
+      if (sessionDeadlineReached(session.startedAt,profile.maxDurationMs)) {
         logger.info(
           { sessionId, elapsedMs, maxDurationMs: profile.maxDurationMs, profileName: profile.name },
           "TIME_LIMIT_EXCEEDED — finalizing session"
         );
-        await this.finalizeSession(sessionId, session.theta, { stopReason: "TIME_LIMIT_EXCEEDED" });
-        return { stop: true, reason: "TIME_LIMIT_EXCEEDED", finalTheta: session.theta };
+        return finish("TIME_LIMIT_EXCEEDED");
       }
     }
 
@@ -482,8 +493,7 @@ export const AssessmentService = {
 
     // All sections complete
     if (sectionIndex >= activeSectionOrder.length) {
-      await this.finalizeSession(sessionId, session.theta, { stopReason: "ALL_SECTIONS_COMPLETE" });
-      return { stop: true, reason: "ALL_SECTIONS_COMPLETE", finalTheta: session.theta };
+      return finish("ALL_SECTIONS_COMPLETE");
     }
 
     const currentSkill = activeSectionOrder[sectionIndex];
@@ -499,8 +509,7 @@ export const AssessmentService = {
       );
       const newSectionIndex = sectionIndex + 1;
       if (newSectionIndex >= activeSectionOrder.length) {
-        await this.finalizeSession(sessionId, session.theta, { stopReason: "ALL_SECTIONS_COMPLETE" });
-        return { stop: true, reason: "ALL_SECTIONS_COMPLETE", finalTheta: session.theta };
+        return finish("ALL_SECTIONS_COMPLETE");
       }
       const nextSkill = activeSectionOrder[newSectionIndex];
       await prisma.session.update({
@@ -529,8 +538,11 @@ export const AssessmentService = {
     const skillSem = state.skillProfiles?.[currentSkill]?.sem ?? state.sem;
 
     // Check if current section is complete
+    // An async rating can change SEM after a task was served. The task remains
+    // owed to the candidate until answered, even if the section now meets SEM.
+    const hasOutstandingItem = typeof meta.currentItemId === "string" && meta.currentItemId.length > 0 && !state.usedItemIds.has(meta.currentItemId);
     const sectionDone =
-      sectionCount >= sectionCfg.minItems &&
+      !hasOutstandingItem && sectionCount >= sectionCfg.minItems &&
       (skillSem <= sectionCfg.semThreshold || sectionCount >= sectionCfg.maxItems);
 
     if (sectionDone) {
@@ -542,8 +554,7 @@ export const AssessmentService = {
 
       if (newSectionIndex >= activeSectionOrder.length) {
         // All sections done → finalize
-        await this.finalizeSession(sessionId, session.theta, { stopReason: "ALL_SECTIONS_COMPLETE" });
-        return { stop: true, reason: "ALL_SECTIONS_COMPLETE", finalTheta: session.theta };
+        return finish("ALL_SECTIONS_COMPLETE");
       }
 
       const nextSkill = activeSectionOrder[newSectionIndex];
@@ -815,8 +826,12 @@ export const AssessmentService = {
     const catSelector = getCATSelector(profile);
     // Reconnecting must return the already served unanswered task rather than
     // rerolling CAT selection and incrementing exposure for every refresh.
-    const outstandingItem = typeof meta.currentItemId === "string" && !state.usedItemIds.has(meta.currentItemId)
-      ? itemPool.find(item => item.id === meta.currentItemId) : undefined;
+    let outstandingItem = hasOutstandingItem ? itemPool.find(item => item.id === meta.currentItemId) : undefined;
+    if (hasOutstandingItem && !outstandingItem) {
+      const served = await prisma.item.findUnique({ where: { id: meta.currentItemId } });
+      if (!served) throw AppError.conflict("The current assessment task is unavailable");
+      outstandingItem = dbItemToEngineItem(served);
+    }
     const catResult = outstandingItem ? { item: outstandingItem } : await catSelector.selectNext(
       catPool as ShadowItem[],
       state,
@@ -841,8 +856,7 @@ export const AssessmentService = {
       );
       const newSectionIndex = sectionIndex + 1;
       if (newSectionIndex >= activeSectionOrder.length) {
-        await this.finalizeSession(sessionId, session.theta, { stopReason: "ALL_SECTIONS_COMPLETE" });
-        return { stop: true, reason: "ALL_SECTIONS_COMPLETE", finalTheta: session.theta };
+        return finish("ALL_SECTIONS_COMPLETE");
       }
       const nextSkill = activeSectionOrder[newSectionIndex];
       await prisma.session.update({
@@ -893,10 +907,12 @@ export const AssessmentService = {
     }
 
     // Persist the served item so arbitrary or replayed responses cannot change ability.
-    await prisma.$executeRaw`
+    const claimedItem = await prisma.$executeRaw`
       UPDATE "Session" SET metadata = jsonb_set(COALESCE(metadata, '{}'), '{currentItemId}', ${JSON.stringify(nextItem.id)}::jsonb)
-      WHERE id = ${sessionId}
+      WHERE id = ${sessionId} AND status = 'IN_PROGRESS'
+        AND COALESCE(metadata->>'currentItemId','') = ${typeof meta.currentItemId==='string'?meta.currentItemId:''}
     `;
+    if (claimedItem === 0) return this.getNextItem(sessionId);
     const candidateSafeContent = stripAnswerKeys(safeContent);
 
     // Compute elapsed time to send alongside the item so the UI can render
@@ -928,12 +944,23 @@ export const AssessmentService = {
     });
 
     if ((session?.metadata as any)?.sessionType === 'FIXED_FORM') throw AppError.conflict('Use the fixed-form assessment endpoint');
+    if ((session?.metadata as any)?.sessionType === 'DIAGNOSTIC') {
+      const {DiagnosticService}=await import('./diagnostic-service.js');
+      const result=await DiagnosticService.respond(sessionId,itemId,value,clientLatencyMs??0);
+      return {success:true,theta:result.theta,sem:result.sem,isCorrect:null,aiResult:null};
+    }
     if (!session || session.status !== SessionStatus.IN_PROGRESS) {
-      throw new Error("Invalid session");
+      throw AppError.conflict("Invalid session");
+    }
+
+    const maxDurationMs=getProfile((session.metadata as any)?.productLine).maxDurationMs;
+    if(sessionDeadlineReached(session.startedAt,maxDurationMs)) {
+      await this.finalizeSession(sessionId,session.theta,{stopReason:'TIME_LIMIT_EXCEEDED'});
+      throw new AppError(409,'TIME_LIMIT_EXCEEDED','Assessment time limit reached; the late answer was not saved');
     }
 
     if ((session.metadata as Record<string, unknown> | null)?.currentItemId !== itemId || session.responses.some(response => response.itemId === itemId)) {
-      throw new Error("Response must match the current unanswered item");
+      throw AppError.conflict("Response must match the current unanswered item");
     }
     const dbItem = await prisma.item.findUnique({
       where: { id: itemId }
@@ -1036,9 +1063,11 @@ export const AssessmentService = {
             const [savedResponse] = await prisma.$transaction(async tx => {
               await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
               const latest = await tx.session.findUnique({where:{id:sessionId}});
+              if(sessionDeadlineReached(latest?.startedAt,maxDurationMs))
+                throw new AppError(409,'TIME_LIMIT_EXCEEDED','Assessment time limit reached; the late answer was not saved');
               if ((latest?.metadata as Record<string, unknown> | null)?.currentItemId !== itemId ||
                   latest?.status !== SessionStatus.IN_PROGRESS || await tx.response.count({where:{sessionId,itemId}}) > 0) {
-                throw new Error("Response must match the current unanswered item");
+                throw AppError.conflict("Response must match the current unanswered item");
               }
               const saved = await tx.response.create({
                 data: {
@@ -1099,6 +1128,10 @@ export const AssessmentService = {
         }
       });
       return [saved];
+    }).catch(async error=>{
+      if(error instanceof AppError&&error.code==='TIME_LIMIT_EXCEEDED')
+        await this.finalizeSession(sessionId,session.theta,{stopReason:'TIME_LIMIT_EXCEEDED'});
+      throw error;
     });
 
     // Async AI scoring: dispatch WRITING / SPEAKING jobs to the queue (fire-and-forget).
@@ -1717,20 +1750,30 @@ export const AssessmentService = {
       await this.finalizeSession(sessionId, session.theta);
       return;
     }
-    const items = Object.fromEntries(session.responses.filter(r => r.item).map(r => [r.itemId, dbItemToEngineItem(r.item)]));
-    const state = toEngineState(session);
-    const estimate = estimateTheta(state.responses, items, engine.getConfig().priorMean ?? 0,
-      engine.getConfig().priorSd ?? 1, { useGrmProductive: engine.getConfig().useGrmProductive === true });
-    const skillProfiles: Record<string, { theta: number; sem: number }> = {};
-    for (const skill of Object.values(SkillType)) {
-      const responses = state.responses.filter(r => !r.isPretest && items[r.itemId]?.skill === skill);
-      if (responses.length) skillProfiles[skill] = estimateTheta(responses, items, 0, 1,
-        { useGrmProductive: engine.getConfig().useGrmProductive === true });
-    }
-    await prisma.session.update({ where: { id: sessionId }, data: {
-      theta: estimate.theta, sem: estimate.sem,
-      metadata: { ...((session.metadata as Record<string, unknown>) ?? {}), skillProfiles } as Prisma.InputJsonValue,
-    } });
+    // Serialize score refresh with answers, and merge only scoring metadata.
+    // A stale snapshot must never erase a question served while AI was working.
+    const ended = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+      const current = await tx.session.findUnique({ where: { id: sessionId }, include: { responses: { include: { item: true } } } });
+      if (!current) return false;
+      if (current.status === SessionStatus.COMPLETED) return true;
+      const items = Object.fromEntries(current.responses.filter(r => r.item).map(r => [r.itemId, dbItemToEngineItem(r.item)]));
+      const state = toEngineState(current);
+      const estimate = estimateTheta(state.responses, items, engine.getConfig().priorMean ?? 0,
+        engine.getConfig().priorSd ?? 1, { useGrmProductive: engine.getConfig().useGrmProductive === true });
+      const skillProfiles: Record<string, { theta: number; sem: number }> = {};
+      for (const skill of Object.values(SkillType)) {
+        const responses = state.responses.filter(r => !r.isPretest && items[r.itemId]?.skill === skill);
+        if (responses.length) skillProfiles[skill] = estimateTheta(responses, items, 0, 1,
+          { useGrmProductive: engine.getConfig().useGrmProductive === true });
+      }
+      await tx.session.update({ where: { id: sessionId }, data: {
+        theta: estimate.theta, sem: estimate.sem,
+        metadata: { ...((current.metadata as Record<string, unknown>) ?? {}), skillProfiles } as Prisma.InputJsonValue,
+      } });
+      return false;
+    });
+    if (ended) await this.finalizeSession(sessionId, session.theta);
   },
 
   /**

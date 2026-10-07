@@ -13,6 +13,7 @@ import { AudioPlayer } from "./AudioPlayer";
 interface PracticeModeProps {
   onComplete: () => void;
   onSkip?: () => void;
+  multipleChoiceOnly?: boolean;
 }
 
 type Step = "device-check" | "mc-practice" | "fill-practice" | "listening-practice" | "speaking-practice" | "writing-practice" | "ready";
@@ -30,7 +31,7 @@ interface DeviceStatus {
  * - One practice question per item type
  * - Keyboard navigation tutorial
  */
-export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }) => {
+export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip, multipleChoiceOnly = false }) => {
   const [currentStep, setCurrentStep] = useState<Step>("device-check");
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({
     microphone: "checking",
@@ -43,6 +44,10 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
   const [practiceSubmitted, setPracticeSubmitted] = useState(false);
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
 
+  const steps: Step[] = multipleChoiceOnly
+    ? ["device-check", "mc-practice", "listening-practice", "ready"]
+    : ["device-check", "mc-practice", "fill-practice", "listening-practice", "speaking-practice", "ready"];
+
   // Device checks
   useEffect(() => {
     if (currentStep !== "device-check") return;
@@ -51,7 +56,8 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
     setDeviceStatus(prev => ({ ...prev, internet: navigator.onLine ? "ok" : "error" }));
 
     // Check microphone
-    navigator.mediaDevices.getUserMedia({ audio: true })
+    if (multipleChoiceOnly) setDeviceStatus(prev => ({ ...prev, microphone: "ok" }));
+    else navigator.mediaDevices.getUserMedia({ audio: true })
       .then(stream => {
         stream.getTracks().forEach(t => t.stop());
         setDeviceStatus(prev => ({ ...prev, microphone: "ok" }));
@@ -74,7 +80,7 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
     } catch {
       setDeviceStatus(prev => ({ ...prev, speakers: "error" }));
     }
-  }, [currentStep]);
+  }, [currentStep, multipleChoiceOnly]);
 
   const allDevicesReady = deviceStatus.microphone === "ok" && 
     deviceStatus.speakers === "ok" && 
@@ -84,10 +90,9 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
     setPracticeAnswer(null);
     setPracticeText("");
     setPracticeSubmitted(false);
-    const steps: Step[] = ["device-check", "mc-practice", "fill-practice", "listening-practice", "speaking-practice", "ready"];
     const idx = steps.indexOf(currentStep);
     if (idx < steps.length - 1) setCurrentStep(steps[idx + 1]);
-  }, [currentStep]);
+  }, [currentStep, multipleChoiceOnly]);
 
   const renderDeviceCheck = () => (
     <div className="space-y-8">
@@ -99,11 +104,11 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {([
-          { key: "microphone", icon: Mic, label: "Microphone", required: true },
+          { key: "microphone", icon: Mic, label: "Microphone", required: !multipleChoiceOnly },
           { key: "camera", icon: Camera, label: "Camera", required: false },
           { key: "speakers", icon: Volume2, label: "Speakers/Headphones", required: true },
           { key: "internet", icon: Wifi, label: "Internet Connection", required: true },
-        ] as const).map(({ key, icon: Icon, label, required }) => {
+        ] as const).filter(device => !multipleChoiceOnly || device.key !== "microphone").map(({ key, icon: Icon, label, required }) => {
           const status = deviceStatus[key];
           return (
             <Card key={key} className={cn(
@@ -144,7 +149,7 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
         <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex gap-3">
           <Info className="text-amber-600 shrink-0" size={20} />
           <div className="text-sm text-amber-800">
-            <strong>Some devices are not available.</strong> A microphone and speakers are required for Speaking and Listening tasks. 
+            <strong>Some devices are not available.</strong> {multipleChoiceOnly ? "Speakers or headphones are required for Listening tasks." : "A microphone and speakers are required for Speaking and Listening tasks."}
             Please check your browser permissions and try again.
           </div>
         </div>
@@ -166,7 +171,7 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
   const renderMCPractice = () => (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-indigo-600 font-black text-xs uppercase tracking-widest">
-        <span className="px-3 py-1 bg-indigo-100 rounded-lg">Practice 1/4</span>
+        <span className="px-3 py-1 bg-indigo-100 rounded-lg">Practice 1/{multipleChoiceOnly ? 2 : 4}</span>
         Multiple Choice
       </div>
       
@@ -283,7 +288,7 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
   const renderListeningPractice = () => (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-indigo-600 font-black text-xs uppercase tracking-widest">
-        <span className="px-3 py-1 bg-indigo-100 rounded-lg">Practice 3/4</span>
+        <span className="px-3 py-1 bg-indigo-100 rounded-lg">Practice {multipleChoiceOnly ? 2 : 3}/{multipleChoiceOnly ? 2 : 4}</span>
         Listening
       </div>
 
@@ -296,7 +301,7 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
           <Volume2 className="text-indigo-600" size={24} />
           <div>
             <div className="font-bold text-slate-900">Audio Player Demo</div>
-            <div className="text-sm text-slate-500">In the real test, audio auto-plays with a 3-second countdown. You get 2 plays maximum.</div>
+            <div className="text-sm text-slate-500">{multipleChoiceOnly ? "This is a practice clip. In the exam, start the full recording once; it contains each conversation twice." : "In the real test, audio auto-plays with a 3-second countdown. You get 2 plays maximum."}</div>
           </div>
         </div>
         <AudioPlayer
@@ -312,7 +317,7 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
       <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex gap-3">
         <Info className="text-amber-600 shrink-0" size={20} />
         <div className="text-sm text-amber-800">
-          <strong>Important:</strong> In the actual test, you can only listen to each audio <strong>twice</strong>. 
+          <strong>Important:</strong> {multipleChoiceOnly ? <>The exam recording plays <strong>once</strong> and each conversation is included twice.</> : <>In the actual test, you can only listen to each audio <strong>twice</strong>.</>}
           Make sure your speakers or headphones are working properly.
         </div>
       </div>
@@ -387,8 +392,8 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 max-w-md mx-auto text-left space-y-3">
         <div className="font-bold text-slate-900 text-sm uppercase tracking-wider">Remember:</div>
         <ul className="text-sm text-slate-600 space-y-2">
-          <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 shrink-0 mt-0.5" /> The test adapts to your level — it's okay if questions get harder</li>
-          <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 shrink-0 mt-0.5" /> You have 30 minutes total</li>
+          <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 shrink-0 mt-0.5" /> {multipleChoiceOnly ? "Answer all 96 multiple-choice questions across four sections" : "The test adapts to your level — it's okay if questions get harder"}</li>
+          <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 shrink-0 mt-0.5" /> Timing depends on your assigned assessment</li>
           <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 shrink-0 mt-0.5" /> Stay in fullscreen — tab switches are monitored</li>
           <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 shrink-0 mt-0.5" /> Answer honestly — guessing is detected</li>
         </ul>
@@ -410,25 +415,21 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip }
     "ready": renderReady,
   };
 
-  const steps: Step[] = ["device-check", "mc-practice", "fill-practice", "listening-practice", "speaking-practice", "ready"];
   const stepIndex = steps.indexOf(currentStep);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <header className="bg-white border-b border-slate-200 px-3 sm:px-6 py-4 flex flex-wrap gap-3 items-center justify-between">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="bg-[#9b276c] text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight flex items-center">
             <span style={{ textShadow: '0 0 8px rgba(253, 224, 71, 0.8), 0 0 15px rgba(253, 224, 71, 0.4)' }}>b4skills</span>
           </div>
           <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">Tutorial & Practice</span>
         </div>
-        {onSkip && (
-          <Button variant="ghost" size="sm" onClick={onSkip}>
-            Skip Tutorial
-          </Button>
-        )}
       </header>
+
+      {onSkip && currentStep !== "device-check" && <div className="px-6 pt-3 text-right"><Button variant="ghost" size="sm" onClick={onSkip}>Skip Tutorial</Button></div>}
 
       {/* Progress */}
       <div className="h-1.5 w-full bg-slate-100">
