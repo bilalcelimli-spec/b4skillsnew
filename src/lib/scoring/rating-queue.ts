@@ -37,8 +37,10 @@ function validateScore(score:number) {
   if (!Number.isFinite(score) || score < 0 || score > 1) throw new Error("Rating score must be between 0 and 1");
 }
 function humanGrade(score:number, feedback:string, metadata:unknown, source:string) {
+  const previous = (metadata as Record<string,unknown>) ?? {};
+  const aiUnavailable = previous.aiUnavailable === true || previous.scoreSource === 'ai_unavailable' || previous.scoreFailed === true;
   return {humanScore:score,score,adjustedScore:null,isCorrect:score>=0.5,
-    metadata:{...((metadata as Record<string,unknown>) ?? {}),humanFeedback:feedback,scoreSource:'human',
+    metadata:{...previous,aiUnavailable,humanFeedback:feedback,scoreSource:'human',
       requiresHumanReview:false,pendingAsyncScore:false,scoreFailed:false,irrQwk:null,finalScoreSource:source}};
 }
 

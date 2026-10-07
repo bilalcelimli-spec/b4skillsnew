@@ -45,21 +45,31 @@ jobs:
       AUTH_PASSWORD: ${{ secrets.AUTH_SMOKE_PASSWORD }}
       DEPLOY_ALERT_WEBHOOK_URL: ${{ secrets.DEPLOY_ALERT_WEBHOOK_URL }}
     steps:
-      - name: Skip smoke if secrets not configured
-        if: ${{ env.BASE_URL == '' || env.AUTH_EMAIL == '' || env.AUTH_PASSWORD == '' }}
+      - name: Check smoke configuration
+        id: config
         run: |
-          echo "⚠️  Smoke test secrets (APP_URL / AUTH_SMOKE_EMAIL / AUTH_SMOKE_PASSWORD) not set."
-          echo "   Skipping post-deploy smoke test."
-          exit 0
+          if [ -z "$BASE_URL" ] || [ -z "$AUTH_EMAIL" ] || [ -z "$AUTH_PASSWORD" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Auth smoke skipped: APP_URL / AUTH_SMOKE_EMAIL / AUTH_SMOKE_PASSWORD are not configured. Deployment health was not verified."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.config.outputs.ready == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: actions/setup-node@v4
+        if: steps.config.outputs.ready == 'true'
         with:
           node-version: "24"
           cache: "npm"
       - run: npm ci
+        if: steps.config.outputs.ready == 'true'
       - name: Wait for Render rollout
+        if: steps.config.outputs.ready == 'true'
         run: sleep 45
       - name: Run auth smoke test
+        if: steps.config.outputs.ready == 'true'
         run: npm run smoke:auth
       - name: Optional failure webhook
         if: failure() && env.DEPLOY_ALERT_WEBHOOK_URL != ''

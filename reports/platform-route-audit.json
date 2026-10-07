@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-07T11:35:53.966Z",
+  "generatedAt": "2026-10-07T16:29:21.494Z",
   "scope": "Literal/template fetch calls and Express method/path coverage. Computed URLs, runtime responses, authorization, and payload schemas require separate verification.",
-  "routeCount": 289,
+  "routeCount": 291,
   "callCount": 224,
   "reachableMissing": [],
   "dormantMissing": [

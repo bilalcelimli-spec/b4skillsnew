@@ -49,9 +49,9 @@ RUN npm ci --omit=dev --ignore-scripts && npx prisma generate
 COPY --from=builder /app/dist           ./dist
 COPY --from=builder /app/prisma         ./prisma
 
-# Health check — /healthz is a liveness probe wired in server.ts
+# Require the canonical JSON liveness response; reject SPA HTML fallbacks.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=3 \
-  CMD wget -qO- http://localhost:${PORT}/healthz || exit 1
+  CMD node -e 'fetch("http://127.0.0.1:"+process.env.PORT+"/api/healthz/live",{signal:AbortSignal.timeout(5000)}).then(async r=>{if(!r.ok||!r.headers.get("content-type")?.includes("application/json")||(await r.json()).status!=="ok")process.exit(1)}).catch(()=>process.exit(1))'
 
 USER appuser
 EXPOSE 3000

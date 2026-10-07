@@ -3,11 +3,11 @@
   "verification": {
     "typescript": "passed",
     "tests": {
-      "passed": 1909,
-      "skipped": 30,
+      "passed": 2001,
+      "skipped": 32,
       "todo": 2,
-      "suitesPassed": 149,
-      "suitesSkipped": 2
+      "suitesPassed": 159,
+      "suitesSkipped": 3
     },
     "builds": {
       "client": "passed",
@@ -15,7 +15,7 @@
       "server": "passed"
     },
     "staticApiAudit": {
-      "routes": 289,
+      "routes": 291,
       "fetchCalls": 224,
       "reachableMissing": 0,
       "duplicate": 0
@@ -132,7 +132,167 @@
     "Psychometric/CEFR validity requires empirical evidence beyond software tests.",
     "Static route matching does not verify computed URLs, every payload contract or every authorization branch.",
     "Score Evidence is descriptive; repeat agreement is affected by learning and practice, and is limited to known product configurations within 30 days. Alpha, omega and external criterion accuracy are unavailable without appropriate studies.",
-    "The ordinary suite skips 30 tests and has 2 TODOs; 5 of those skipped tests were separately enabled and passed against disposable PostgreSQL. The remaining 25 skipped tests are not passing evidence."
+    "The ordinary suite skips 32 tests and has 2 TODOs; 7 skipped tests were separately enabled and passed against disposable PostgreSQL. The remaining 25 skipped tests are not passing evidence."
   ],
-  "changes": "Platform audit changes and migration are ready for Git publication; migration 009_rating_arbitration has been applied and verified in the configured deployment database."
+  "changes": "Audit fixes are local and unpublished. Migration 009_rating_arbitration was applied in an earlier pass; this scoring/certificate follow-up requires no schema migration.",
+  "operationalFollowup": {
+    "verifiedAt": "2026-10-07T15:16:34Z",
+    "baselineCommit": "03b3ccfe804fb8183b0599adeadebe2a28a80bc9",
+    "localChangesPublished": false,
+    "githubBaseline": {
+      "ci": "success",
+      "codeql": "success",
+      "security": "success",
+      "e2e": "failed: item-renderer fixtures used the main application config",
+      "postDeploySmoke": "failed: missing APP_URL / AUTH_SMOKE_EMAIL / AUTH_SMOKE_PASSWORD",
+      "sloAndRetention": "invalid YAML: duplicate env keys"
+    },
+    "liveChecks": {
+      "/api/health": "200; database up",
+      "/api/healthz/live": "200; status ok",
+      "/api/healthz/ready": "200; healthy; database ok (4ms)",
+      "deployedCommit": "not verified"
+    },
+    "localValidation": {
+      "itemRenderer": "22 browser tests passed at 320px and 1280px",
+      "smokeAndWorkflowRegression": "22 tests passed; all workflow YAML files parse without duplicate keys",
+      "typescript": "passed",
+      "mainE2ESelection": "180 tests in exam-flow.spec.ts; fixture tests now run in a separate CI job"
+    },
+    "changes": [
+      "Gate smoke execution on complete configuration and check out the triggering CI revision",
+      "Validate JSON health responses and database readiness; verify authenticated identity through refresh",
+      "Run media fixtures with their own Vite server and fake camera/microphone",
+      "Fix duplicate workflow env mappings, preserve multiline responses, save the retention artifact, and keep response bodies out of shell source"
+    ],
+    "unresolved": [
+      "Production auth smoke requires APP_URL, AUTH_SMOKE_EMAIL and AUTH_SMOKE_PASSWORD secrets; no production login was attempted",
+      "SLO and retention API implementations are local and have not been deployed. Operations workflows require APP_URL and INTERNAL_API_SECRET.",
+      "Retention is inventory only (enforced=false). Apply requests return 409. The two-year hard-delete / five-year anonymisation policy conflict, legal holds and owned-object deletion are unresolved.",
+      "Readiness skips Redis and OpenAI checks when their environment variables are absent; this does not verify the configured Gemini scoring provider.",
+      "Five SLOs remain unknown: uptime history, database availability history, writing and speaking human-agreement evidence, and latency history."
+    ]
+  },
+  "operationsImplementation": {
+    "verifiedAt": "2026-10-07T15:46:23.405Z",
+    "published": false,
+    "migrationRequired": false,
+    "api": [
+      "GET /api/admin/slo/report?window=30&format=json|markdown",
+      "POST /api/admin/data-retention/run (read-only default; dryRun=false returns 409)"
+    ],
+    "access": "SUPER_ADMIN session or INTERNAL_API_SECRET Bearer; other admin routes keep their existing authorization",
+    "fixes": [
+      "Real QWK, separate writing/speaking samples and integrated-task scoring modes",
+      "Persist diagnostic AI score/source/mode, preserve AI failure evidence after human overrides, and exclude unavailable fallback values",
+      "Unknown rather than perfect success for empty, degenerate, unavailable or incomplete evidence",
+      "Count productive AI attempts without objective/pretest/pending/integrity answers inflating the denominator",
+      "Use observed failure fraction to calculate consumed error allowance; no time error budget for QWK",
+      "SLO workflow validates JSON compliance regardless of display format",
+      "Retention workflow performs inventory only and validates the response",
+      "Docker probe uses canonical JSON liveness instead of an HTML fallback"
+    ],
+    "validation": {
+      "fullTestSuite": "1969 passed, 30 skipped, 2 todo",
+      "typescript": "passed",
+      "serverBuild": "passed",
+      "routeAudit": "291 routes; 0 reachable missing; 0 duplicate",
+      "dockerProbeCommand": "healthy JSON exit 0; HTML fallback exit 1; unhealthy JSON exit 1; full Docker image not built"
+    },
+    "nativeDatabaseReadOnly": {
+      "summary": {
+        "totalSlos": 7,
+        "compliantSlos": 1,
+        "nonCompliantSlos": 1,
+        "unknownSlos": 5,
+        "overallHealthy": false
+      },
+      "metrics": [
+        {
+          "name": "api_availability",
+          "achieved": null,
+          "compliant": null,
+          "note": "Requires Betterstack/UptimeRobot data export \u2014 see docs/slo-definitions.md \u00a75"
+        },
+        {
+          "name": "session_success_rate",
+          "achieved": 1,
+          "compliant": true,
+          "note": "2/2 sessions completed"
+        },
+        {
+          "name": "ai_scoring_availability",
+          "achieved": 0.875,
+          "compliant": false,
+          "note": "1 unavailable out of 8 classified AI attempts; 0 legacy responses have incomplete AI evidence"
+        },
+        {
+          "name": "db_availability",
+          "achieved": null,
+          "compliant": null,
+          "note": "Requires /api/healthz/ready response history \u2014 log to DB or APM"
+        },
+        {
+          "name": "ai_writing_qwk",
+          "achieved": null,
+          "compliant": null,
+          "note": "n=0 human-reviewed responses"
+        },
+        {
+          "name": "ai_speaking_qwk",
+          "achieved": null,
+          "compliant": null,
+          "note": "n=0 human-reviewed responses"
+        },
+        {
+          "name": "next_item_p95",
+          "achieved": null,
+          "compliant": null,
+          "note": "Requires Pino log aggregation to Grafana/Loki \u2014 not yet configured"
+        }
+      ]
+    },
+    "retentionReadOnlyInventory": {
+      "expiredSessions": 0,
+      "expiredAudioReferences": 0,
+      "openReviews": 61,
+      "dryRun": true,
+      "enforced": false
+    },
+    "limitations": [
+      "Eight classified AI attempts is a small historical sample, not a platform-wide reliability guarantee.",
+      "Historical missing evidence is not backfilled from inferred scores.",
+      "Retention inventory counts are not eligibility decisions and exclude embedded/integrated/storage-only audio."
+    ]
+  },
+  "assessmentCertificationFollowup": {
+    "verifiedAt": "2026-10-07T16:29:39.224003+00:00",
+    "published": false,
+    "migrationRequired": false,
+    "fixes": [
+      "Fixed diagnostics recompute six-skill estimates from final persisted grades, including human review; five scored items per skill are required.",
+      "Missing, pending, disputed, duplicate and pretest response evidence cannot certify a result; security holds and failed analysis prevent verification.",
+      "Expired diagnostic answers are rejected before grading or persistence.",
+      "Certificate issuance uses authoritative database identity and grades, cannot promote verification, and uses completion-based expiry.",
+      "Public verification rechecks current scoring evidence and expiry without issuing certificates.",
+      "Signed certificates cover nested skill scores, persist with the score report, and require a stable production signing key; on-chain status is unknown without independent verification.",
+      "Candidate progress keeps stored 0\u2013100 scores, includes grammar and vocabulary, and withholds incomplete or held grades; trend chart uses canonical CEFR boundaries.",
+      "Scoring queue includes SCORING, PAUSED and FLAGGED sessions; completed does not imply verified.",
+      "Share tokens use the scoring lock order and preserve concurrent scoring/signature metadata; results emails withhold unfinished grades and unissued certificate links."
+    ],
+    "validation": {
+      "normalSuite": "2001 passed; 32 skipped; 2 TODO",
+      "typescript": "passed",
+      "disposablePostgreSQL": "7 passed, including actual diagnostic human review -> report -> certificate, evidence revocation, expired answer rejection and concurrent share-token persistence",
+      "browser": "24 passed: item renderers and certificate layouts at 320px/1280px; fixture APIs, not production end-to-end",
+      "build": "Client, SSR and server builds passed; Prisma client generated",
+      "routeAudit": "291 routes; 224 fetch calls; 0 reachable missing; 0 duplicate"
+    },
+    "limitations": [
+      "Software correctness checks do not establish empirical CEFR cut-score validity or AI/human agreement.",
+      "Population percentiles remain unavailable without validated norms.",
+      "Stable CERT_SIGNING_KEY_PEM and signing-key rotation remain deployment responsibilities.",
+      "External providers, production deployment and all skipped tests were not verified by these local checks."
+    ]
+  }
 }

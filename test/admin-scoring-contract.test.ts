@@ -53,6 +53,7 @@ describe('scoring queue evidence',()=>{
    expect(findMany).not.toHaveBeenCalled();
    expect((await fetch(origin,{headers:{...headers,'x-role':'INST_ADMIN','x-org':'org'}})).status).toBe(200);
    expect(findMany.mock.calls[0][0].where.session.organizationId).toBe('org');
+   expect(findMany.mock.calls[0][0].where.session.status.in).toEqual(expect.arrayContaining(['SCORING','FLAGGED','PAUSED']));
  });
  it('checks ownership before requeue and enqueues only eligible submissions',async()=>{
    ownership=false;expect((await fetch(origin+'/session/requeue',{method:'POST',headers})).status).toBe(403);

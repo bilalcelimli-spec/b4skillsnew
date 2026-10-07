@@ -1050,7 +1050,7 @@ export const AssessmentService = {
               : null,
           isCorrect: requiresHumanReview ? null : score >= 0.5,
           isPretest: item.isPretest || dbItem.status === "PRETEST",
-          aiScore: aiResult?.score,
+          aiScore: scoringDecision?.scoreSource === "ai_unavailable" ? null : aiResult?.score,
           latencyMs: typeof clientLatencyMs === 'number' && clientLatencyMs > 0 ? clientLatencyMs : 0,
           rtZScore: rtZ,
           rtFlag: rtFlag,
@@ -1064,6 +1064,7 @@ export const AssessmentService = {
             corrections: (aiResult as any).corrections,
             transcript: (aiResult as any).transcript,
             scoreSource: (aiResult as any).scoreSource ?? scoringDecision?.scoreSource,
+            aiUnavailable: scoringDecision?.scoreSource === "ai_unavailable",
             reviewReasons: (aiResult as any).reviewReasons ?? scoringDecision?.reviewReasons,
             agreementDelta: scoringDecision?.agreementDelta,
             model: scoringDecision?.model,
@@ -1173,7 +1174,7 @@ export const AssessmentService = {
     // Fetch full session including responses and MIRT profiles stored in metadata
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
-      include: { responses: { include: { item: true } } },
+      include: { responses: { include: { item: true } }, scoreReport: true },
     });
 
     if (!session) throw new Error("Session not found");
@@ -1205,9 +1206,16 @@ export const AssessmentService = {
       return metadata.pendingAsyncScore === true && metadata.asyncScored !== true;
     });
     const pendingAsyncScoring = pendingAsyncResponses.length > 0;
-    const scoringComplete = hasCompleteScoringEvidence(session.responses, Object.fromEntries(
+    const responseScoringComplete = hasCompleteScoringEvidence(session.responses, Object.fromEntries(
       sessionProfile.sectionOrder.map(skill => [skill,sessionProfile.sectionConfig[skill]?.minItems ?? 1])));
 
+    let scoringComplete = false;
+    const previousDiagnostic = (session.scoreReport?.diagnosticReport ?? {}) as Record<string, unknown>;
+    const preservedReportFields = {
+      ...(typeof previousDiagnostic.shareToken === 'string' ? {shareToken:previousDiagnostic.shareToken} : {}),
+      ...(typeof previousDiagnostic.certificateIssuedAt === 'string' ? {certificateIssuedAt:previousDiagnostic.certificateIssuedAt} : {}),
+      ...(previousDiagnostic.signedCertificate && typeof previousDiagnostic.signedCertificate === 'object' ? {signedCertificate:previousDiagnostic.signedCertificate} : {}),
+    };
     // Initialize with safe defaults — overwritten by analysis block below if successful
     let skillScoresForDb: Record<string, number | null> = {
       readingScore: null, listeningScore: null, writingScore: null,
@@ -1215,6 +1223,8 @@ export const AssessmentService = {
     };
     let skillProfilesSnapshot: Record<string, { theta: number; sem: number }> = {};
     let diagnosticReport: any = {
+      ...preservedReportFields,
+      scoringComplete: false,
       overallTheta: theta,
       overallSem: sessionSem,
       overallCefr: cefrLevel,
@@ -1589,7 +1599,12 @@ export const AssessmentService = {
         }
       })();
 
+      scoringComplete = responseScoringComplete && sessionProfile.sectionOrder.every(skill => {
+        const profile = skillSubReports[skill];
+        return profile && Number.isFinite(profile.theta) && Number.isFinite(profile.sem) && profile.sem > 0;
+      });
       diagnosticReport = {
+        ...preservedReportFields,
         scoringComplete,
         overallTheta: theta,
         overallSem: sessionSem,
@@ -1633,6 +1648,8 @@ export const AssessmentService = {
         generatedAt: new Date().toISOString(),
       };
     } catch (analysisErr) {
+      scoringComplete = false;
+      diagnosticReport.scoringComplete = false;
       // Analysis failed — log and proceed with minimal report so the session
       // is always completed. Psychometric data will be absent but the session
       // lifecycle is not blocked.
@@ -1682,9 +1699,14 @@ export const AssessmentService = {
   },
 
   async refreshSessionScoring(sessionId: string) {
-    const engine = await getEngine();
     const session = await prisma.session.findUnique({ where: { id: sessionId }, include: { responses: { include: { item: true } } } });
     if (!session) return;
+    if ((session.metadata as any)?.sessionType === 'DIAGNOSTIC') {
+      const { DiagnosticService } = await import('./diagnostic-service.js');
+      await DiagnosticService.refreshScoring(sessionId);
+      return;
+    }
+    const engine = await getEngine();
     if (session.status === SessionStatus.COMPLETED) {
       await this.finalizeSession(sessionId, session.theta);
       return;

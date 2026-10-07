@@ -1,4 +1,6 @@
 import "dotenv/config";
+import { ensureReportShareToken } from "./src/lib/reporting/report-sharing.js";
+import { hasFinalResult } from "./src/lib/reporting/candidate-history.js";
 // Observability bootstrap — Sentry + OpenTelemetry. Must run before any other import that might throw.
 import "./src/lib/observability/instrument.js";
 import * as Sentry from "@sentry/node";
@@ -4320,27 +4322,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
               scoreReport: { select: { id: true, overallCefr: true, overallScore: true, diagnosticReport: true, isVerified: true } },
             },
           }) as { cefrLevel?: string; candidate?: { email: string; name?: string }; scoreReport?: { id: string; overallCefr?: string; overallScore?: number; diagnosticReport?: any; isVerified?: boolean } } | null;
-          if (!sess?.candidate?.email) return;
+          if (!sess?.candidate?.email || !hasFinalResult(sess)) return;
           const cefr = sess.scoreReport?.overallCefr ?? sess.cefrLevel ?? "—";
           const score = sess.scoreReport?.overallScore != null ? Math.round(sess.scoreReport.overallScore) : null;
           const name = sess.candidate.name ?? "Candidate";
 
-          // Auto-generate shareToken if not already present
-          let shareToken: string | null = null;
-          try {
-            const diag = (sess.scoreReport?.diagnosticReport as any) ?? {};
-            if (diag.shareToken) {
-              shareToken = diag.shareToken;
-            } else {
-              shareToken = crypto.randomBytes(16).toString("hex");
-              await (prisma.scoreReport.updateMany as any)({
-                where: { sessionId: id },
-                data: { diagnosticReport: { ...diag, shareToken } },
-              });
-            }
-          } catch { /* shareToken optional */ }
-
-          const certId = sess.scoreReport?.isVerified ? sess.scoreReport.id : null;
+          const shareToken = await ensureReportShareToken(id);
+          const certId = sess.scoreReport?.isVerified && sess.scoreReport?.diagnosticReport?.certificateIssuedAt ? sess.scoreReport.id : null;
           const reportUrl = shareToken ? `${APP_BASE_URL}/share/${shareToken}` : `${APP_BASE_URL}/dashboard`;
           const certUrl = certId ? `${APP_BASE_URL}/verify/${certId}` : null;
 
@@ -4573,6 +4561,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
       // Use measured per-skill estimates; never copy the overall theta into each skill.
       const sr = session.scoreReport as any;
+      const { buildAssessmentReport } = await import('./src/lib/reporting/assessment-report-model.js');
+      const reportState = buildAssessmentReport(session, APP_BASE_URL);
       const profiles = diagnostic.skillProfiles ?? sessionMeta.skillProfiles ?? {};
       const skillScores = Object.entries(profiles as Record<string, any>)
         .filter(([skill, profile]) => Number.isFinite(profile.theta) && Number.isFinite(profile.sem) &&
@@ -4595,11 +4585,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         totalItems: responses.length,
         skillScores,
         responses,
-        canDo: getCanDo(level),
+        canDo: reportState.status === 'Completed' ? getCanDo(level) : [],
+        scoringComplete: !reportState.provisional,
         integrityRisk: sessionMeta.integrityRisk ?? "LOW",
         productLine:   diagnostic.productLine ?? sessionMeta.productLine ?? undefined,
-        certificateId: sr?.isVerified ? sr.id : null,
-        hasPendingAI:  responses.some((r: any) => r.pendingAsyncScore),
+        certificateId: reportState.certificateId,
+        hasPendingAI: reportState.provisional,
       });
     } catch (err) {
       console.error("adaptive-report error:", err);
@@ -4644,18 +4635,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const { id } = req.params;
     try {
       if (!(await assertSessionOwnership(req, res, id))) return;
-      const report = await prisma.scoreReport.findUnique({ where: { sessionId: id } });
-      if (!report) return res.status(404).json({ error: "Score report not found" });
-      // Use existing diagnosticReport JSON to store shareToken without schema change
-      const existing = (report.diagnosticReport as any) ?? {};
-      let token: string = existing.shareToken;
-      if (!token) {
-        token = crypto.randomBytes(16).toString("hex");
-        await prisma.scoreReport.update({
-          where: { sessionId: id },
-          data: { diagnosticReport: { ...(existing as object), shareToken: token } },
-        });
-      }
+      const token = await ensureReportShareToken(id);
+      if (!token) return res.status(404).json({ error: "Score report not found" });
       res.json({ token, url: `${APP_BASE_URL}/share/${token}` });
     } catch (err) {
       res.status(500).json({ error: "Failed to generate share link" });
@@ -5414,8 +5395,13 @@ ${codeSection}
           theta: true,
           cefrLevel: true,
           metadata: true,
+          status: true,
           scoreReport: {
             select: {
+              isVerified: true,
+              diagnosticReport: true,
+              grammarScore: true,
+              vocabularyScore: true,
               overallCefr: true,
               overallScore: true,
               readingScore: true,
@@ -5430,7 +5416,7 @@ ${codeSection}
       });
 
       const history = sessions
-        .filter((s) => s.theta != null)
+        .filter((s) => typeof s.theta === "number" && Number.isFinite(s.theta) && hasFinalResult(s))
         .map((s) => {
           const meta = s.metadata as Record<string, any> | null;
           return {
@@ -5441,6 +5427,8 @@ ${codeSection}
             cefrLevel: s.scoreReport?.overallCefr ?? s.cefrLevel ?? "—",
             skillScores: s.scoreReport
               ? {
+                  grammar: s.scoreReport.grammarScore,
+                  vocabulary: s.scoreReport.vocabularyScore,
                   reading: s.scoreReport.readingScore,
                   listening: s.scoreReport.listeningScore,
                   writing: s.scoreReport.writingScore,
@@ -5457,12 +5445,13 @@ ${codeSection}
   });
 
   // --- CERTIFICATION API ---
-  const { CertificateService } = await import("./src/lib/certification/certificate-service.js");
+  const { CertificateService, CertificateNotReadyError } = await import("./src/lib/certification/certificate-service.js");
 
   app.post("/api/certificates/generate", authMiddleware, async (req: any, res) => {
     try {
       const { sessionId } = req.body;
       if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+      if (!dbAvailable) return res.status(503).json({ error: "Certification requires an available database" });
 
       // Verify session belongs to the authenticated user before generating a certificate
       if (!(await assertSessionOwnership(req, res, sessionId))) return;
@@ -5502,6 +5491,7 @@ ${codeSection}
       const cert = await CertificateService.generateCertificate(sessionData, authoritativeCandidate, authoritativeBranding);
       res.json(cert);
     } catch (error) {
+      if (error instanceof CertificateNotReadyError) return res.status(409).json({ error: error.message });
       res.status(500).json({ error: "Failed to generate certificate" });
     }
   });
@@ -6271,6 +6261,18 @@ ${codeSection}
     } catch (err) { res.status(500).json({ error: "Cohort report generation failed"}); }
   });
 
+  // Operations automation and platform-wide reports require the internal secret or a super admin.
+  {
+    const { createOperationsRouter } = await import("./src/routes/operations.js");
+    const { generateSloReport, sloReportToMarkdown } = await import("./src/lib/observability/slo-monitor.js");
+    const { previewDataRetention } = await import("./src/lib/compliance/retention-preview.js");
+    app.use("/api/admin", createOperationsRouter({
+      checkRole, internalSecret: () => process.env.INTERNAL_API_SECRET,
+      databaseAvailable: () => dbAvailable, generateReport: generateSloReport,
+      markdown: sloReportToMarkdown, retentionPreview: () => previewDataRetention(prisma),
+    }));
+  }
+
   // ── Q3: Privacy Manager ───────────────────────────────────────────────────
   const { privacyManager } = await import("./src/lib/compliance/privacy-manager.js");
 
@@ -6943,15 +6945,32 @@ ${codeSection}
 
   // ── Certificates ─────────────────────────────────────────────────────────
   {
-    const { issueCertificate, buildCertificatePayload, verifyCertificate, lookupCertificate, listCertificatesByCandidate }
+    const { issueCertificate, buildCertificatePayload, verifyCertificate, lookupCertificate, listCertificatesByCandidate, storeCertificate, getPublicKeyPem, CertificateSigningUnavailableError }
       = await import("./src/lib/certificates/blockchain-cert.js");
 
     app.post("/api/certificates/issue", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]), async (req, res) => {
       try {
-        const payload = buildCertificatePayload(req.body);
-        const cert    = await issueCertificate(payload);
+        const { sessionId } = req.body;
+        if (typeof sessionId !== 'string') return res.status(400).json({error:'sessionId required'});
+        if (!dbAvailable) return res.status(503).json({error:'Certification requires an available database'});
+        if (!(await assertSessionOwnership(req,res,sessionId))) return;
+        getPublicKeyPem(); // Do not issue an ordinary certificate if durable signing is unavailable.
+        const authoritative = await CertificateService.generateCertificate({sessionId},null,null);
+        const session = await prisma.session.findUniqueOrThrow({where:{id:sessionId}});
+        const payload = buildCertificatePayload({candidateId:authoritative.candidateId,candidateName:authoritative.candidateName,
+          organizationId:authoritative.organizationId,organizationName:authoritative.organizationName,sessionId,
+          cefrLevel:authoritative.cefrLevel,overallScore:authoritative.overallScore,
+          skillScores:Object.fromEntries(Object.entries(authoritative.skillScores).filter(([,score])=>typeof score==='number').map(([skill,score])=>[skill.toUpperCase(),score as number])),
+          examDate:session.completedAt!.toISOString().slice(0,10),module:(session.metadata as any)?.productLine ?? 'DIAGNOSTIC'});
+        payload.id=authoritative.id;payload.issuedAt=authoritative.issuedAt.toISOString();payload.expiresAt=authoritative.expiresAt.toISOString();
+        const cert = issueCertificate(payload);
+        await storeCertificate(cert);
         res.status(201).json(cert);
-      } catch (err) { res.status(500).json({ error: "Internal server error" }); }
+      } catch (err) {
+        if (err instanceof CertificateNotReadyError) return res.status(409).json({error:err.message});
+        if (err instanceof CertificateSigningUnavailableError) return res.status(503).json({error:err.message});
+        res.status(500).json({ error: "Internal server error" });
+      }
     });
 
     // Public: no auth required
@@ -7416,7 +7435,7 @@ ${codeSection}
 
   // ── Diagnostic Test Engine ───────────────────────────────────────────────
   {
-    const { DiagnosticService } = await import("./src/lib/assessment-engine/diagnostic-service.js");
+    const { DiagnosticService, DiagnosticReportNotReadyError } = await import("./src/lib/assessment-engine/diagnostic-service.js");
 
     // POST /api/sessions/diagnostic/launch
     app.post("/api/sessions/diagnostic/launch", checkRole(["CANDIDATE", "INST_ADMIN", "SUPER_ADMIN"]), async (req, res) => {
@@ -7452,7 +7471,7 @@ ${codeSection}
         const report = await DiagnosticService.getReport(req.params.id);
         return res.json(report);
       } catch (err: any) {
-        return res.status(404).json({ error: err.message });
+        return res.status(err instanceof DiagnosticReportNotReadyError ? 409 : 404).json({ error: err.message });
       }
     });
   }
@@ -7990,24 +8009,15 @@ ${codeSection}
         return res.status(404).json({ error: "No completed session found for this student" });
       }
 
-      // Ensure shareToken exists in diagnosticReport JSON
-      let shareToken: string;
-      const diag = (session.scoreReport?.diagnosticReport as any) ?? {};
-      if (diag.shareToken) {
-        shareToken = diag.shareToken;
-      } else {
-        shareToken = crypto.randomBytes(16).toString("hex");
-        await (prisma.scoreReport.updateMany as any)({
-          where: { sessionId: session.id },
-          data: { diagnosticReport: { ...diag, shareToken } },
-        });
-      }
+      if (!hasFinalResult(session)) return res.status(409).json({error:'Final scoring is not complete'});
+      const shareToken = await ensureReportShareToken(session.id);
+      if (!shareToken) return res.status(404).json({error:'Score report not found'});
 
       const cefr = session.scoreReport?.overallCefr ?? "—";
       const score = session.scoreReport?.overallScore != null ? Math.round(session.scoreReport.overallScore) : null;
       const name = session.candidate.name ?? "Student";
       const reportUrl = `${APP_BASE_URL}/share/${shareToken}`;
-      const certId = session.scoreReport?.isVerified ? session.scoreReport.id : null;
+      const certId = session.scoreReport?.isVerified && session.scoreReport?.diagnosticReport?.certificateIssuedAt ? session.scoreReport.id : null;
       const certUrl = certId ? `${APP_BASE_URL}/verify/${certId}` : null;
 
       await sendEmail(

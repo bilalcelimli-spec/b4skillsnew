@@ -45,12 +45,12 @@ describe("errorBudgetMinutes", () => {
 // ─── errorBudgetConsumedPct ───────────────────────────────────────────────────
 
 describe("errorBudgetConsumedPct", () => {
-  it("returns 0 when SLO is met exactly", () => {
-    expect(errorBudgetConsumedPct(0.995, 0.995, 30)).toBe(0);
+  it("returns 100 when the full allowance is consumed at the target", () => {
+    expect(errorBudgetConsumedPct(0.995, 0.995, 30)).toBeCloseTo(100);
   });
 
-  it("returns 0 when SLO is exceeded", () => {
-    expect(errorBudgetConsumedPct(0.995, 0.999, 30)).toBe(0);
+  it("tracks consumed allowance while SLO is still met", () => {
+    expect(errorBudgetConsumedPct(0.995, 0.999, 30)).toBeCloseTo(20);
   });
 
   it("returns 100 when entirely failed", () => {
@@ -58,8 +58,8 @@ describe("errorBudgetConsumedPct", () => {
   });
 
   it("returns ~50 when half the budget is consumed", () => {
-    // SLO = 99.5%; achieved = 99.25% → half the 0.5% budget consumed
-    const result = errorBudgetConsumedPct(0.995, 0.9925, 30);
+    // SLO = 99.5%; achieved = 99.75% → half the 0.5% budget consumed
+    const result = errorBudgetConsumedPct(0.995, 0.9975, 30);
     expect(result).toBeCloseTo(50, 1);
   });
 

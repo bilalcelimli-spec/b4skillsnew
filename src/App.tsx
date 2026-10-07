@@ -1,3 +1,4 @@
+import { hasFinalResult, historyStatus, historySkills } from "./lib/reporting/candidate-history";
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useScoringStatus } from "./hooks/useScoringStatus";
@@ -790,8 +791,8 @@ export default function App() {
                         key={s.id}
                         title={s.metadata?.productLine || "Assessment"}
                         date={s.completedAt ? new Date(s.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "In progress"}
-                        score={s.scoreReport?.overallCefr ?? s.cefrLevel ?? "—"}
-                        status={s.status === "COMPLETED" ? "Verified" : s.status === "IN_PROGRESS" ? "In Progress" : s.status}
+                        score={hasFinalResult(s) ? s.scoreReport.overallCefr : "—"}
+                        status={historyStatus(s)}
                       />
                     ))}
                   </div>
@@ -803,16 +804,9 @@ export default function App() {
                   <CardHeader className="font-black uppercase tracking-widest text-xs text-slate-400">Your Progress</CardHeader>
                   <CardContent>
                     {(() => {
-                      const latest = recentSessions.find(s => s.status === "COMPLETED" && s.scoreReport);
+                      const latest = recentSessions.find(hasFinalResult);
                       if (!latest) return <p className="text-sm text-slate-400 font-medium py-2">Complete an assessment to see your skill breakdown.</p>;
-                      const r = latest.scoreReport;
-                      const toVal = (score: number | null) => score != null ? Math.round(score * 100) : null;
-                      const skills = [
-                        { label: "Reading",   value: toVal(r.readingScore),   level: r.readingCefr   },
-                        { label: "Listening", value: toVal(r.listeningScore), level: r.listeningCefr },
-                        { label: "Writing",   value: toVal(r.writingScore),   level: r.writingCefr   },
-                        { label: "Speaking",  value: toVal(r.speakingScore),  level: r.speakingCefr  },
-                      ].filter(s => s.value != null);
+                      const skills = historySkills(latest);
                       if (skills.length === 0) return <p className="text-sm text-slate-400 font-medium py-2">Skill data not yet available.</p>;
                       return (
                         <div className="space-y-6">
@@ -823,7 +817,7 @@ export default function App() {
                   </CardContent>
                 </Card>
 
-                {recentSessions.filter(s => s.status === "COMPLETED").length > 1 && user && (
+                {recentSessions.filter(hasFinalResult).length > 1 && user && (
                   <Suspense fallback={null}>
                     <ProgressTrendChart candidateId={user.uid} />
                   </Suspense>
@@ -836,7 +830,7 @@ export default function App() {
                       <h4 className="font-black uppercase tracking-tighter">Security Status</h4>
                     </div>
                     <p className="text-sm text-slate-400 leading-relaxed font-bold">
-                      Your identity has been verified. You are eligible for high-stakes admissions testing.
+                      Assessments may require identity checks and proctoring. Review the requirements before starting your test.
                     </p>
                   </CardContent>
                 </Card>
@@ -878,14 +872,14 @@ function ActivityItem({ title, date, score, status }: { title: string; date: str
       </div>
       <div className="text-right">
         <div className="text-lg font-bold text-indigo-600">{score}</div>
-        <div className="text-[10px] font-bold uppercase tracking-widest text-green-600">{status}</div>
+        <div className={`text-[10px] font-bold uppercase tracking-widest ${status === "Completed" ? "text-green-600" : "text-amber-600"}`}>{status}</div>
       </div>
     </div>
   );
 }
 
 function ResultsHistory({ sessions, onSelectSession }: { sessions: any[]; onSelectSession: (id: string) => void }) {
-  const completed = sessions.filter(s => s.status === "COMPLETED");
+  const completed = sessions.filter(s => ["COMPLETED", "SCORING", "FLAGGED"].includes(s.status));
   return (
     <div className="max-w-2xl mx-auto">
       <header className="mb-8">
@@ -900,8 +894,8 @@ function ResultsHistory({ sessions, onSelectSession }: { sessions: any[]; onSele
       ) : (
         <div className="space-y-3">
           {completed.map((s: any) => {
-            const cefr = s.scoreReport?.overallCefr ?? s.cefrLevel ?? "—";
-            const beps = s.scoreReport?.bepsScore ?? (s.finalTheta != null ? thetaToBeps(s.finalTheta) : null);
+            const cefr = hasFinalResult(s) ? s.scoreReport.overallCefr : historyStatus(s);
+            const beps = hasFinalResult(s) ? s.scoreReport?.bepsScore ?? (s.finalTheta != null ? thetaToBeps(s.finalTheta) : null) : null;
             const date = s.completedAt ? new Date(s.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
             const product = s.metadata?.productLine ?? "Assessment";
             return (

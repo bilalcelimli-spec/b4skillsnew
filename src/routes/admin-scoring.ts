@@ -20,7 +20,7 @@ export function createAdminScoringRouter(deps: Dependencies) {
       if(req.user?.role==='INST_ADMIN' && !req.user.organizationId){res.status(403).json({error:'Organization required'});return;}
       const tenant = req.user?.role==='INST_ADMIN'?{organizationId:req.user.organizationId}:{};
       const responses = await deps.prisma.response.findMany({where:{...unresolvedScoringWhere,
-        session:{...tenant,status:{in:['COMPLETED','IN_PROGRESS']}}},include,orderBy:{createdAt:'asc'}});
+        session:{...tenant,status:{in:['COMPLETED','IN_PROGRESS','SCORING','PAUSED','FLAGGED']}}},include,orderBy:{createdAt:'asc'}});
       res.json(summarizeAdminQueue(responses));
     } catch {res.status(500).json({error:'Could not load scoring queue'});}
   });

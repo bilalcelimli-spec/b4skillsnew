@@ -116,3 +116,26 @@ jobs:
           name: playwright-screenshots
           path: test-results/
           retention-days: 7
+
+  item-renderer:
+    name: Item Renderer (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Run isolated renderer and media fixtures
+        run: npm run test:item-renderer
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: item-renderer-results
+          path: test-results/
+          retention-days: 7

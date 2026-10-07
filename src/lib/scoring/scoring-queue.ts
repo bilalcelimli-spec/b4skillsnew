@@ -143,8 +143,9 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
               pendingAsyncScore: false,
               requiresHumanReview,
               scoreFailed: scoringDecision?.scoreSource === "ai_unavailable",
+              aiUnavailable: scoringDecision?.scoreSource === "ai_unavailable",
             }
-          : { asyncScored: true, scoreFailed: true },
+          : { scoringMode: job.skill, asyncScored: true, pendingAsyncScore: false, requiresHumanReview: true, scoreFailed: true, aiUnavailable: true },
       });
     if (!persisted) { await resolveHumanGrade(job); return; }
 
@@ -180,7 +181,7 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
     try {
       const persisted = await persistScoringResult(job.responseId, {
           score: null, adjustedScore: null, isCorrect: null,
-          metadata: { asyncScored: true, pendingAsyncScore: false, requiresHumanReview: true, scoreFailed: true, failureReason: (err as Error).message } as any,
+          metadata: { scoringMode: job.skill, asyncScored: true, pendingAsyncScore: false, requiresHumanReview: true, scoreFailed: true, aiUnavailable: true, failureReason: (err as Error).message } as any,
       });
       if (!persisted) { await resolveHumanGrade(job); return; }
       await RatingQueueService.enqueue({

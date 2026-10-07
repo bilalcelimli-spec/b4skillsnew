@@ -1,4 +1,4 @@
-import { shouldExcludeResponseFromAbility } from "../scoring/score-evidence.js";
+import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence, scoringRequirements } from "../scoring/score-evidence.js";
 import { CEFR_META, thetaToBeps, thetaToCefr, type CefrLevel } from '../cefr/cefr-framework.js';
 
 export const REPORT_SKILLS = ['READING', 'LISTENING', 'WRITING', 'SPEAKING', 'GRAMMAR', 'VOCABULARY'] as const;
@@ -15,7 +15,7 @@ export interface ReportSession {
   sem?: number | null;
   metadata?: unknown;
   scoreReport?: Json | null;
-  responses?: Array<{ isPretest?: boolean; metadata?: unknown; item?: { skill?: string } | null }>;
+  responses?: Array<{ score?: number | null; isPretest?: boolean; metadata?: unknown; item?: { skill?: string } | null }>;
 }
 
 const record = (value: unknown): Json => value && typeof value === 'object' && !Array.isArray(value) ? value as Json : {};
@@ -43,7 +43,7 @@ export function buildAssessmentReport(session: ReportSession, baseUrl: string, n
   const validUntil = date(session.validUntil);
   const expired = session.status === 'EXPIRED' || !!(validUntil && validUntil < now);
   const review = session.status === 'FLAGGED' || diagnostic.securityFlag === true;
-  const provisional = pending || diagnostic.scoringComplete === false || !completedAt || !session.scoreReport || !['COMPLETED', 'EXPIRED'].includes(session.status);
+  const provisional = pending || diagnostic.scoringComplete !== true || sr.isVerified !== true || (session.responses !== undefined && !hasCompleteScoringEvidence(responses, scoringRequirements(meta))) || !completedAt || !session.scoreReport || !['COMPLETED', 'EXPIRED'].includes(session.status);
   const status = expired ? 'Expired' : review ? 'Under review' : provisional ? 'Provisional' : 'Completed';
   const profiles = Object.fromEntries(Object.entries(record(diagnostic.skillProfiles)).map(([key, value]) => [key.toUpperCase(), record(value)]));
   const skills = REPORT_SKILLS.map(skill => {
@@ -63,7 +63,7 @@ export function buildAssessmentReport(session: ReportSession, baseUrl: string, n
       state: skillPending ? 'Scoring pending' : skillLevel ? 'Reported' : matching.length ? 'Result unavailable' : 'Not assessed',
     };
   });
-  const certificateId = sr.isVerified === true && typeof sr.id === 'string' && !provisional && !review && !expired ? sr.id : null;
+  const certificateId = sr.isVerified === true && typeof sr.certificateUrl === 'string' && !!date(diagnostic.certificateIssuedAt) && typeof sr.id === 'string' && !provisional && !review && !expired ? sr.id : null;
   return {
     sessionId: session.id, reportId: typeof sr.id === 'string' ? sr.id : null,
     candidateName: session.candidate?.name?.trim() || 'Candidate',

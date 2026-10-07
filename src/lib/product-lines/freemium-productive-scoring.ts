@@ -10,6 +10,9 @@ export interface FreemiumEvaluation {
   kind: 'objective' | 'rubric';
   status: 'scored' | 'review_required' | 'unavailable';
   feedback?: string;
+  scoreSource?: 'ai_auto' | 'ai_flagged' | 'ai_unavailable' | 'rejected_integrity';
+  aiScore?: number | null;
+  scoringMode?: 'WRITING' | 'SPEAKING';
 }
 
 export async function evaluateFreemiumResponse(
@@ -41,14 +44,16 @@ export async function evaluateFreemiumResponse(
     const decision = await Promise.race([scoring, new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error('Scoring timed out')), 45_000);
     })]);
-    if (decision.scoreSource === 'ai_unavailable') return { score: null, kind: 'rubric', status: 'unavailable' };
+    if (decision.scoreSource === 'ai_unavailable') return { score: null, kind: 'rubric', status: 'unavailable', scoreSource: 'ai_unavailable', aiScore: null, scoringMode: mode };
     // Integrity rejection is evidence of an invalid/non-substantive response, never full credit.
-    if (decision.scoreSource === 'rejected_integrity') return { score: 0, kind: 'rubric', status: 'scored', feedback: decision.aiResult.feedback };
-    if (decision.requiresHumanReview) return { score: null, kind: 'rubric', status: 'review_required', feedback: decision.aiResult.feedback };
-    if (!Number.isFinite(decision.score) || decision.score < 0 || decision.score > 1) return { score: null, kind: 'rubric', status: 'unavailable' };
-    return { score: decision.score, kind: 'rubric', status: 'scored', feedback: decision.aiResult.feedback };
+    if (decision.scoreSource === 'rejected_integrity') return { score: 0, kind: 'rubric', status: 'scored', feedback: decision.aiResult.feedback, scoreSource: 'rejected_integrity', aiScore: null, scoringMode: mode };
+    const aiScore = decision.aiResult.score ?? decision.score;
+    if (!Number.isFinite(aiScore) || aiScore < 0 || aiScore > 1) return { score: null, kind: 'rubric', status: 'unavailable', scoreSource: 'ai_unavailable', aiScore: null, scoringMode: mode };
+    if (decision.requiresHumanReview) return { score: null, kind: 'rubric', status: 'review_required', feedback: decision.aiResult.feedback, scoreSource: 'ai_flagged', aiScore, scoringMode: mode };
+    if (!Number.isFinite(decision.score) || decision.score < 0 || decision.score > 1) return { score: null, kind: 'rubric', status: 'unavailable', scoreSource: 'ai_unavailable', aiScore: null, scoringMode: mode };
+    return { score: decision.score, kind: 'rubric', status: 'scored', feedback: decision.aiResult.feedback, scoreSource: 'ai_auto', aiScore, scoringMode: mode };
   } catch (error) {
-    if (error instanceof Error && error.message === "Scoring timed out") return {score:null,kind:"rubric",status:"unavailable"};
+    if (error instanceof Error && error.message === "Scoring timed out") return {score:null,kind:"rubric",status:"unavailable",scoreSource:"ai_unavailable",aiScore:null,scoringMode:mode};
     throw error;
   } finally { if (timer) clearTimeout(timer); }
 }

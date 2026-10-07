@@ -10,7 +10,7 @@ it('withholds failed and review scores while accepting zero as a completed grade
   expect(buildScoringStatus([{id:'a',score:0.5,metadata:{scoreSource:'ai_unavailable'}}])).toMatchObject({complete:false,needsReview:true,items:[{status:'unavailable'}]});
   expect(buildScoringStatus([{id:'a',score:null,metadata:{pendingAsyncScore:true}}])).toMatchObject({complete:false,items:[{status:'pending'}]});
   expect(buildScoringStatus([{id:'a',score:0.8,metadata:{requiresHumanReview:true}}])).toMatchObject({complete:false,needsReview:true});
-  expect(buildScoringStatus([{id:'a',score:null,isPretest:true}])).toMatchObject({complete:true,items:[]});
+  expect(buildScoringStatus([{id:'a',score:null,isPretest:true}])).toMatchObject({complete:false,items:[]});
 });
 
 const session = (id:string, theta:number, date:string) => ({id,candidateId:'candidate',status:'COMPLETED',theta,sem:0.3,

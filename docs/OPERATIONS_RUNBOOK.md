@@ -9,8 +9,8 @@ Use this when a fresh deploy is unhealthy (high 5xx, auth failures, broken UI).
 1. Identify last known-good commit on `main`.
 2. Re-deploy that commit through Render (manual redeploy of previous release, or push revert commit).
 3. Run smoke checks:
-   - `GET /healthz`
-   - `GET /readyz`
+   - `GET /api/healthz/live`
+   - `GET /api/healthz/ready`
    - `npm run smoke:auth` against production.
 4. Confirm error budget and metrics recovered before closing incident.
 
@@ -82,3 +82,13 @@ For SEV-1/2, open incident channel immediately and timestamp each action.
 - `AUTH_SMOKE_PASSWORD`
 
 Rotate exposed credentials immediately after any leak.
+
+## 6) Assessment and certificate evidence
+
+A submitted diagnostic with unresolved or insufficient grades remains `SCORING`. Human review refreshes the fixed six-skill diagnostic blueprint from persisted responses; each skill requires five scored items. Pending, missing, pretest and disputed grades do not count toward certification. Security holds remain in force after grading.
+
+Certificate generation requires a completed, verified report with complete evidence and valid ability estimates. Identity and grades come from the database, and expiry is based on assessment completion. Issuance does not mark a report verified. Public verification rechecks current evidence and expiry without issuing certificates. Reports may exist without an issued certificate.
+
+Signed certificates require a stable `CERT_SIGNING_KEY_PEM` in production. Without it, signed issuance returns 503; ephemeral keys are limited to development/tests. Signed payloads are persisted with the score report and cover nested skill scores. An on-chain status remains unknown unless independently verified. Keep the signing key stable across restarts; key rotation requires a verification-key migration strategy.
+
+Population percentiles are unavailable without a validated reference population. The platform's default CEFR cut scores require empirical standard setting; passing software checks does not establish psychometric validity. Historical reports with incomplete evidence are withheld from certification and final progress displays rather than inferred or automatically backfilled.

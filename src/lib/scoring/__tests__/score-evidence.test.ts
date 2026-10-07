@@ -13,8 +13,13 @@ describe('score evidence contract', () => {
     expect(hasCompleteScoringEvidence([reading,{...writing,isPretest:true}],{READING:1,WRITING:1})).toBe(false);
     expect(hasCompleteScoringEvidence([reading,{...writing,metadata:{requiresHumanReview:true}}],{READING:1,WRITING:1})).toBe(false);
   });
+  it('does not let duplicate responses substitute for independently administered items', () => {
+    const repeated = Array.from({length:5},()=>({itemId:'one-reading-item',score:1,item:{skill:'READING'}}));
+    expect(hasCompleteScoringEvidence(repeated,{READING:5})).toBe(false);
+    expect(hasCompleteScoringEvidence(repeated,{})).toBe(false);
+  });
   it.each([
-    {score: null}, {score: NaN}, {score: Infinity}, {score: 1.2}, {isPretest:true,score:1},
+    {}, {score: undefined}, {score: null}, {score: NaN}, {score: Infinity}, {score: 1.2}, {isPretest:true,score:1},
     {score:.5,metadata:{scoreSource:'ai_unavailable'}},
     {score:.9,metadata:{scoreSource:'ai_flagged'}},
     {score:0,metadata:{pendingAsyncScore:true}},

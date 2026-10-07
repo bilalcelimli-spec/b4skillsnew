@@ -26,6 +26,7 @@
  */
 
 import { prisma } from "../prisma.js";
+import { quadraticWeightedKappa } from "../scoring/ai-human-agreement.js";
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -124,112 +125,72 @@ export function errorBudgetConsumedPct(
   achieved: number,
   windowDays: number
 ): number {
-  if (achieved >= target) return 0;
+  // Consumed budget is observed failures / allowed failures, including when
+  // the target is still met. At the target the entire budget has been spent.
   const budget = errorBudgetMinutes(target, windowDays);
-  const consumed = (target - achieved) * windowDays * 24 * 60;
-  return Math.min(100, (consumed / budget) * 100);
+  if (budget <= 0) return achieved >= 1 ? 0 : 100;
+  return Math.max(0, Math.min(100, ((1 - achieved) * windowDays * 24 * 60) / budget * 100));
 }
 
 // ─── DB-derived metrics ───────────────────────────────────────────────────────
 
-/** Exam session completion rate over the last N days. */
-async function computeSessionSuccessRate(windowDays: number): Promise<{
-  achieved: number;
-  totalSessions: number;
-  completedSessions: number;
-}> {
+/** Completion among finished, started attempts; exclude scheduled/live attempts. */
+async function computeSessionSuccessRate(windowDays: number) {
   const windowStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
-
+  const terminal = { startedAt: { not: null }, OR: [
+    { status: "COMPLETED" as const, completedAt: { gte: windowStart } },
+    { status: "EXPIRED" as const, updatedAt: { gte: windowStart } },
+  ] };
   const [total, completed] = await Promise.all([
-    prisma.session.count({
-      where: { createdAt: { gte: windowStart } },
-    }),
-    prisma.session.count({
-      where: {
-        createdAt: { gte: windowStart },
-        status: "COMPLETED",
-      },
-    }),
+    prisma.session.count({ where: terminal }),
+    prisma.session.count({ where: { ...terminal, status: "COMPLETED" } }),
   ]);
-
-  const achieved = total === 0 ? 1.0 : completed / total;
-  return { achieved, totalSessions: total, completedSessions: completed };
+  return { achieved: total === 0 ? null : completed / total, totalSessions: total, completedSessions: completed };
 }
 
-/** AI scoring availability: fraction of scored responses NOT from "ai_unavailable". */
-async function computeAiScoringAvailability(windowDays: number): Promise<{
-  achieved: number;
-  totalScored: number;
-  aiUnavailableCount: number;
-}> {
+const validScore = (score: unknown): score is number => typeof score === "number" && Number.isFinite(score) && score >= 0 && score <= 1;
+
+/** Actual productive-skill AI attempts; objective answers never inflate availability. */
+async function computeAiScoringAvailability(windowDays: number) {
   const windowStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
-
-  // Count responses where AI was attempted (writing/speaking items)
-  // scoreSource field stored in Response.metadata.scoreSource
-  const allScored = await prisma.response.findMany({
-    where: {
-      createdAt: { gte: windowStart },
-      score: { not: undefined },
-    },
-    select: { metadata: true },
-  });
-
-  const totalScored = allScored.length;
-  const aiUnavailableCount = allScored.filter((r) => {
-    const meta = r.metadata as Record<string, unknown> | null;
-    return meta?.scoreSource === "ai_unavailable";
-  }).length;
-
-  const achieved =
-    totalScored === 0 ? 1.0 : (totalScored - aiUnavailableCount) / totalScored;
-
-  return { achieved, totalScored, aiUnavailableCount };
-}
-
-/** AI-human QWK from the agreement monitor (rolling 30-day). */
-export async function computeQwkSlo(
-  skill: "WRITING" | "SPEAKING",
-  windowDays: number
-): Promise<{ achieved: number | null; sampleSize: number }> {
-  const windowStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
-
-  // Look for responses with both AI score and human review override
   const responses = await prisma.response.findMany({
-    where: {
-      createdAt: { gte: windowStart },
-      score: { not: undefined },
-    },
-    select: { score: true, metadata: true },
+    where: { createdAt: { gte: windowStart }, isPretest: false, item: { OR: [{ skill: { in: ["WRITING", "SPEAKING"] } }, { type: "INTEGRATED_TASK" }] } },
+    select: { aiScore: true, metadata: true },
   });
-
-  // Filter to responses with human review scores
-  const pairs: Array<{ ai: number; human: number }> = [];
-  for (const r of responses) {
-    const meta = r.metadata as Record<string, unknown> | null;
-    if (!meta) continue;
-    const humanScore = meta.humanScore as number | undefined;
-    const aiScore = meta.aiScore as number | undefined;
-    if (typeof humanScore === "number" && typeof aiScore === "number") {
-      pairs.push({ ai: aiScore, human: humanScore });
+  let totalScored = 0, aiUnavailableCount = 0, unclassifiedAiResponses = 0;
+  for (const response of responses) {
+    const meta = response.metadata as Record<string, unknown> | null;
+    if (meta?.scoreSource === "rejected_integrity" || meta?.pendingAsyncScore === true) continue;
+    // Preserve a failed attempt after a human override clears scoreFailed/scoreSource.
+    const failed = meta?.scoreSource === "ai_unavailable" || meta?.scoreFailed === true || meta?.aiUnavailable === true;
+    const success = !failed && validScore(response.aiScore);
+    if (!success && !failed) {
+      if (meta?.scoreSource === "ai_auto" || meta?.scoreSource === "ai_flagged") unclassifiedAiResponses++;
+      continue; // Legacy incomplete AI evidence or human-only response.
     }
+    totalScored++;
+    if (!success) aiUnavailableCount++;
   }
+  return { achieved: totalScored === 0 || unclassifiedAiResponses > 0 ? null : (totalScored - aiUnavailableCount) / totalScored, totalScored, aiUnavailableCount, unclassifiedAiResponses };
+}
 
-  if (pairs.length < 10) {
-    return { achieved: null, sampleSize: pairs.length };
-  }
-
-  // Compute QWK (quadratic weighted kappa, approximated as Pearson r for continuous)
-  // For ordinal QWK, scores are assumed 0.0–1.0 in 0.1 increments
-  const n = pairs.length;
-  const meanAi = pairs.reduce((s, p) => s + p.ai, 0) / n;
-  const meanHuman = pairs.reduce((s, p) => s + p.human, 0) / n;
-  const num = pairs.reduce((s, p) => s + (p.ai - meanAi) * (p.human - meanHuman), 0);
-  const denAi = Math.sqrt(pairs.reduce((s, p) => s + (p.ai - meanAi) ** 2, 0));
-  const denHuman = Math.sqrt(pairs.reduce((s, p) => s + (p.human - meanHuman) ** 2, 0));
-  const pearsonR =
-    denAi === 0 || denHuman === 0 ? 0 : num / (denAi * denHuman);
-
-  return { achieved: pearsonR, sampleSize: n };
+/** QWK on the same seven ordinal score bands used by the agreement monitor. */
+export async function computeQwkSlo(skill: "WRITING" | "SPEAKING", windowDays: number): Promise<{ achieved: number | null; sampleSize: number }> {
+  const windowStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const responses = await prisma.response.findMany({
+    where: { createdAt: { gte: windowStart }, isPretest: false, OR: [{ item: { skill } }, { item: { type: "INTEGRATED_TASK" }, metadata: { path: ["scoringMode"], equals: skill } }], aiScore: { not: null }, humanScore: { not: null } },
+    select: { aiScore: true, humanScore: true, metadata: true },
+  });
+  const pairs = responses.filter(response => {
+    const meta = response.metadata as Record<string, unknown> | null;
+    return validScore(response.aiScore) && validScore(response.humanScore) && meta?.aiUnavailable !== true && meta?.scoreSource !== "ai_unavailable" && meta?.scoreFailed !== true;
+  });
+  if (pairs.length < 10) return { achieved: null, sampleSize: pairs.length };
+  // Kappa is undefined when both marginals occupy the same single band.
+  // A repeated identical score cannot establish population-level agreement.
+  const bands = new Set(pairs.flatMap(response => [Math.round(response.aiScore! * 6), Math.round(response.humanScore! * 6)]));
+  if (bands.size < 2) return { achieved: null, sampleSize: pairs.length };
+  return { achieved: quadraticWeightedKappa(pairs.map(response => response.aiScore!), pairs.map(response => response.humanScore!)), sampleSize: pairs.length };
 }
 
 // ─── Main report generator ────────────────────────────────────────────────────
@@ -249,6 +210,7 @@ export interface LatencySnapshot {
 }
 
 export async function generateSloReport(windowDays = 30, latency?: LatencySnapshot): Promise<SloReport> {
+  if (!Number.isInteger(windowDays) || windowDays < 1 || windowDays > 365) throw new Error("windowDays must be an integer from 1 to 365");
   const now = new Date();
   const windowStart = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
@@ -307,7 +269,7 @@ export async function generateSloReport(windowDays = 30, latency?: LatencySnapsh
             : null,
         windowDays,
         note: aiData
-          ? `${aiData.aiUnavailableCount} ai_unavailable out of ${aiData.totalScored} scored`
+          ? `${aiData.aiUnavailableCount} unavailable out of ${aiData.totalScored} classified AI attempts; ${aiData.unclassifiedAiResponses} legacy responses have incomplete AI evidence`
           : undefined,
       };
     })(),
@@ -321,7 +283,7 @@ export async function generateSloReport(windowDays = 30, latency?: LatencySnapsh
       errorBudgetConsumedPct: null,
       windowDays,
       apmRequired: true,
-      note: "Requires /readyz response history — log to DB or APM",
+      note: "Requires /api/healthz/ready response history — log to DB or APM",
     },
 
     // Writing QWK
@@ -333,10 +295,7 @@ export async function generateSloReport(windowDays = 30, latency?: LatencySnapsh
         target: 0.80,
         achieved,
         compliant,
-        errorBudgetConsumedPct:
-          achieved !== null
-            ? errorBudgetConsumedPct(0.80, achieved, windowDays)
-            : null,
+        errorBudgetConsumedPct: null, // Agreement coefficients have no time-based error budget.
         windowDays,
         note: writingQwk
           ? `n=${writingQwk.sampleSize} human-reviewed responses`
@@ -353,10 +312,7 @@ export async function generateSloReport(windowDays = 30, latency?: LatencySnapsh
         target: 0.80,
         achieved,
         compliant,
-        errorBudgetConsumedPct:
-          achieved !== null
-            ? errorBudgetConsumedPct(0.80, achieved, windowDays)
-            : null,
+        errorBudgetConsumedPct: null, // Agreement coefficients have no time-based error budget.
         windowDays,
         note: speakingQwk
           ? `n=${speakingQwk.sampleSize} human-reviewed responses`
@@ -401,7 +357,7 @@ export async function generateSloReport(windowDays = 30, latency?: LatencySnapsh
   const recommendations: string[] = [];
   if (unknownSlos > 0) {
     recommendations.push(
-      `${unknownSlos} SLOs require APM tooling (Betterstack/Grafana) — configure uptime monitoring as per docs/slo-definitions.md §5.`
+      `${unknownSlos} SLOs lack sufficient evidence. Check APM history, sample sizes and persisted scoring evidence — see docs/slo-definitions.md §5.`
     );
   }
   for (const m of metrics) {
@@ -428,45 +384,10 @@ export async function generateSloReport(windowDays = 30, latency?: LatencySnapsh
       compliantSlos,
       nonCompliantSlos,
       unknownSlos,
-      overallHealthy: nonCompliantSlos === 0,
+      overallHealthy: nonCompliantSlos === 0 && unknownSlos === 0,
     },
     recommendations,
   };
 }
 
-/** Markdown-formatted SLO report for GitHub Actions step summary. */
-export function sloReportToMarkdown(report: SloReport): string {
-  const statusIcon = (m: SloMetric) =>
-    m.compliant === true ? "✅" :
-    m.compliant === false ? "❌" : "⚠️";
-
-  const fmtPct = (n: number | null) =>
-    n === null ? "N/A" : `${(n * 100).toFixed(2)}%`;
-
-  const lines: string[] = [
-    `## SLO Report — ${report.windowDays}-day window`,
-    `**Generated:** ${report.generatedAt}  |  **Window:** ${report.windowStart.slice(0, 10)} → ${report.windowEnd.slice(0, 10)}`,
-    "",
-    "### Summary",
-    `| Total SLOs | Compliant | Non-compliant | Unknown |`,
-    `|---|---|---|---|`,
-    `| ${report.summary.totalSlos} | ${report.summary.compliantSlos} ✅ | ${report.summary.nonCompliantSlos} ❌ | ${report.summary.unknownSlos} ⚠️ |`,
-    "",
-    "### SLO Table",
-    "| SLO | Target | Achieved | Budget Consumed | Status | Note |",
-    "|---|---|---|---|---|---|",
-    ...report.metrics.map((m) =>
-      `| ${m.sloName} | ${fmtPct(m.target)} | ${fmtPct(m.achieved)} | ${m.errorBudgetConsumedPct !== null ? `${m.errorBudgetConsumedPct.toFixed(1)}%` : "N/A"} | ${statusIcon(m)} | ${m.note ?? ""} |`
-    ),
-    "",
-  ];
-
-  if (report.recommendations.length > 0) {
-    lines.push("### Recommendations");
-    for (const r of report.recommendations) {
-      lines.push(`- ${r}`);
-    }
-  }
-
-  return lines.join("\n");
-}
+export { sloReportToMarkdown } from "./slo-format.js";

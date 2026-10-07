@@ -4,7 +4,7 @@ import {
   ReferenceLine, ResponsiveContainer,
 } from "recharts";
 import { TrendingUp, TrendingDown, Minus, Trophy } from "lucide-react";
-import { thetaToCefr } from "../lib/cefr/cefr-framework";
+import { thetaToCefr, CEFR_THETA_THRESHOLDS } from "../lib/cefr/cefr-framework";
 
 interface ProgressPoint {
   sessionId: string;
@@ -19,13 +19,11 @@ interface Props {
   candidateId: string;
 }
 
-const CEFR_THRESHOLDS: Array<{ theta: number; label: string; color: string }> = [
-  { theta: -2.5, label: "A1→A2", color: "#94a3b8" },
-  { theta: -1.0, label: "A2→B1", color: "#60a5fa" },
-  { theta: 0.5,  label: "B1→B2", color: "#34d399" },
-  { theta: 2.0,  label: "B2→C1", color: "#f59e0b" },
-  { theta: 3.5,  label: "C1→C2", color: "#a78bfa" },
-];
+const CEFR_THRESHOLDS = ['PRE_A1', 'A1', 'A2', 'B1', 'B2', 'C1'].map((level, index, levels) => ({
+  theta: CEFR_THETA_THRESHOLDS[level],
+  label: `${level === 'PRE_A1' ? 'Pre-A1' : level}→${levels[index + 1] ?? 'C2'}`,
+  color: ['#9ca3af', '#94a3b8', '#60a5fa', '#34d399', '#f59e0b', '#a78bfa'][index],
+}));
 
 const fmt = (iso: string) => {
   const d = new Date(iso);

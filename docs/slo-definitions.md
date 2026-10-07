@@ -27,10 +27,10 @@ b4skills, kurumsal ve bireysel kullanıcılara CEFR tabanlı adaptif İngilizce 
 
 | SLO | Hedef | Ölçüm | Hata Bütçesi (30 gün) |
 |---|---|---|---|
-| **Genel API erişilebilirliği** | ≥ 99.5% | `/healthz` her 60s check | 3.6 saat/ay |
+| **Genel API erişilebilirliği** | ≥ 99.5% | `/api/healthz/live` her 60s check | 3.6 saat/ay |
 | **Sınav oturumu API'si** | ≥ 99.0% | `POST /api/sessions` 5xx oranı | 7.2 saat/ay |
 | **AI Puanlama (Gemini)** | ≥ 95.0% | `scoreWriting`/`scoreSpeaking` başarı oranı | 36 saat/ay |
-| **Veritabanı bağlantısı** | ≥ 99.9% | `/readyz` DB check | 43 dakika/ay |
+| **Veritabanı bağlantısı** | ≥ 99.9% | `/api/healthz/ready` DB check | 43 dakika/ay |
 
 > **Not:** AI Puanlama SLO'su circuit breaker + human review fallback nedeniyle daha düşük tutulmuştur — Gemini'nin mevcut olmadığı durumlarda yanıt otomatik olarak insan değerlendirme kuyruğuna yönlendirilir.
 
@@ -91,8 +91,8 @@ Hata bütçesi (dakika/ay) = (1 - SLO_hedefi) × 43200 dakika
 
 | Kural | Eşik | Gecikme |
 |---|---|---|
-| `/healthz` başarısız | 3 ardışık check (3 dakika) | 0 |
-| DB bağlantısı yok | `/readyz` 2× ardışık fail | 0 |
+| `/api/healthz/live` başarısız | 3 ardışık check (3 dakika) | 0 |
+| DB bağlantısı yok | `/api/healthz/ready` 2× ardışık fail | 0 |
 | 5xx oranı | > 5% (5-dakika pencere) | 5 dk |
 | Circuit breaker OPEN | `gemini-scoring` veya `gemini-generation` OPEN | 0 |
 
@@ -116,7 +116,7 @@ Hata bütçesi (dakika/ay) = (1 - SLO_hedefi) × 43200 dakika
 # betterstack-monitors.yml
 monitors:
   - name: "b4skills API Liveness"
-    url: "https://app.b4skills.com/healthz"
+    url: "https://b4skills.com/api/healthz/live"
     method: GET
     check_frequency: 60        # saniye
     regions: [us-east, eu-west, ap-southeast]
@@ -127,7 +127,7 @@ monitors:
     ssl_alert_days: 14
 
   - name: "b4skills DB Readiness"
-    url: "https://app.b4skills.com/readyz"
+    url: "https://b4skills.com/api/healthz/ready"
     method: GET
     check_frequency: 120
     regions: [us-east, eu-west]
@@ -148,7 +148,7 @@ monitors:
 
 ```
 Monitor Type: HTTP(s)
-URL: https://app.b4skills.com/healthz
+URL: https://b4skills.com/api/healthz/live
 Monitoring Interval: 5 minutes
 Alert Contacts: [ops@b4skills.com, Slack #ops-alerts]
 HTTP Method: GET
@@ -204,3 +204,46 @@ Bu belge her çeyrekte veya aşağıdaki durumlarda güncellenir:
 - Mimari değişiklik (yeni veritabanı, yeni AI servisi) sonrasında
 
 **Sonraki Planlı Gözden Geçirme:** 2026-08-10
+
+
+## 9. Uygulanan rapor ve saklama önizlemesi (2026-10-07)
+
+`GET /api/admin/slo/report?window=30&format=json` JSON; `format=markdown`
+Markdown döndürür. Pencere 1–365 tam gün olmalıdır. Erişim platform geneli olduğu
+için `SUPER_ADMIN` oturumu veya `INTERNAL_API_SECRET` Bearer anahtarı gerekir.
+Kurum yöneticileri diğer kurumların sonuçlarına erişemez.
+
+- Oturum oranı yalnızca başlamış, tamamlanmış veya süresi dolmuş girişimleri kapsar.
+  Devam eden, planlanmış ve değerlendirme bekleyen oturumlar başarısız sayılmaz.
+- AI erişilebilirliği yalnızca gerçek writing/speaking AI denemelerini ve
+  bu modlarda puanlanan entegre görevleri kapsar.
+  Objektif, ön test, henüz puanlanmamış ve bütünlük nedeniyle reddedilmiş yanıtlar paydayı şişirmez.
+- QWK gerçek `Response.aiScore` / `humanScore` çiftlerinden, writing ve speaking
+  ayrı tutularak, ortak yedi ordinal puan bandında hesaplanır. Bu bantlar CEFR
+  seviye dönüşümü değildir. En az on geçerli çift ve varyasyon gerekir.
+- Tanı sınavları da AI puanı, puan kaynağı ve puanlama modunu kalıcı olarak kaydeder.
+  Eski eksik AI kayıtları başarı veya başarısızlık olarak tahmin edilmez; ilgili oran bilinmez kalır.
+- Boş veya erişilemeyen veri `unknown` olur; tüm SLO'lar ölçülmeden genel sağlık
+  doğrulanmış sayılmaz. Uptime geçmişi ve pencereye ait gecikme verisi yoksa bunlar bilinmez kalır.
+- Tüketilen hata bütçesi `(1 - gerçekleşen oran) / (1 - hedef) × 100` ile
+  hesaplanır ve 100'de sınırlandırılır. Tam hedefte bütçenin tamamı tüketilmiştir.
+  QWK için süreye dayalı hata bütçesi hesaplanmaz.
+
+Haftalık workflow, görüntüleme biçiminden bağımsız olarak JSON verisini doğrular;
+Markdown görünümü nedeniyle uyumsuzluk kontrolü atlanmaz. `APP_URL` ve
+`INTERNAL_API_SECRET` GitHub secret'ları gerekir. `slo-report.json` ve
+`slo-report.txt` artifact olarak saklanır; bilinmeyen ölçüm sayısı özette görünür.
+
+`POST /api/admin/data-retention/run` varsayılan olarak yalnızca envanter çıkarır.
+`dryRun: true` veya `?dry=1` kullanılabilir. `dryRun: false` / `?dry=0` isteği
+409 döndürür; silme veya anonimleştirme yapılmaz. Önizleme yanıtında
+`dryRun: true, enforced: false` açıkça belirtilir.
+
+Envanter, workflow'daki 90 günlük ses ve beş yıllık oturum varsayımlarına göre
+sayım yapar. Bu sayımlar silme uygunluğu kararı değildir. JSON yanıt içinde
+gömülü sesler, entegre görevler ve yalnızca depolamada bulunan dosyalar ses
+referans sayımına dahil değildir. Mevcut `PrivacyManager.deleteExpiredData()`
+iki yıllık kalıcı silme yapar; bu eski fonksiyon yeni API'ye veya zamanlayıcıya
+bağlanmamıştır. Saklama sürelerindeki çelişki, hukuki saklama istisnaları,
+depolama nesnesi sahipliği ve ilişkili verilerin eksiksiz anonimleştirilmesi
+çözülmeden otomatik silme işlevi uygulanmış kabul edilmemelidir.

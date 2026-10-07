@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useToast } from "../hooks/useToast.js";
 import QRCode from "qrcode";
-import { Certificate } from "../lib/certification/certificate-service";
+import type { Certificate } from "../lib/certification/certificate-service";
 import { Card, CardContent } from "./ui/Card";
 import { Button } from "./ui/Button";
 import { 
@@ -55,23 +55,15 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
   const logoUrl = branding?.logoUrl || null;
   const orgName = branding?.name || "b4skills";
 
-  // Only show skill breakdown if at least one score is non-zero
   const skillScores = certificate.skillScores;
-  const hasSkillScores =
-    skillScores &&
-    (skillScores.reading > 0 ||
-      skillScores.listening > 0 ||
-      skillScores.speaking > 0 ||
-      skillScores.writing > 0);
-
-  // Overall percentage for display (theta range -3 to 3 → 0–100)
-  const overallPct = Math.round(((certificate.theta + 3) / 6) * 100);
+  const hasSkillScores = Object.values(skillScores ?? {}).some(score => typeof score === 'number');
+  const overallPct = certificate.overallScore;
 
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-12">
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-8 flex flex-wrap gap-4 items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Your Certificate</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Your Certificate</h1>
           <p className="text-slate-500 mt-1">Official English Proficiency Certification</p>
         </div>
         <div className="flex items-center gap-3">
@@ -95,7 +87,7 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
         <div className="absolute inset-0 border-[24px] border-slate-50 pointer-events-none" />
         <div className="absolute inset-0 border-[2px] border-slate-200 m-6 pointer-events-none" />
 
-        <CardContent className="relative p-16 md:p-24 flex flex-col items-center text-center">
+        <CardContent className="relative p-8 md:p-24 flex flex-col items-center text-center">
           {/* Header — Logo + Org name */}
           <div className="mb-12 flex flex-col items-center gap-3">
             {logoUrl ? (
@@ -122,12 +114,12 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
             <div className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em]">{orgName}</div>
           </div>
 
-          <h2 className="text-4xl md:text-5xl font-black text-slate-900 mb-8 tracking-tight">
+          <h2 className="text-2xl md:text-5xl font-black text-slate-900 mb-8 tracking-tight">
             Certificate of Proficiency
           </h2>
 
           <p className="text-xl text-slate-500 mb-4 italic">This is to certify that</p>
-          <div className="text-4xl md:text-5xl font-serif font-bold text-slate-900 mb-12 border-b-2 border-slate-100 pb-4 px-12">
+          <div className="text-2xl md:text-5xl font-serif max-w-full break-words font-bold text-slate-900 mb-12 border-b-2 border-slate-100 pb-4 px-2 md:px-12">
             {certificate.candidateName || "Candidate"}
           </div>
 
@@ -141,7 +133,7 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
               className="absolute inset-0 blur-3xl opacity-10 rounded-full"
               style={{ backgroundColor: primaryColor }}
             />
-            <div className="relative w-48 h-48 rounded-full border-8 border-indigo-50 flex flex-col items-center justify-center bg-white shadow-xl">
+            <div className="relative w-40 h-40 md:w-48 md:h-48 rounded-full border-8 border-indigo-50 flex flex-col items-center justify-center bg-white shadow-xl">
               <div
                 className="text-[10px] font-black uppercase tracking-widest mb-1"
                 style={{ color: primaryColor }}
@@ -163,11 +155,13 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
 
           {/* Skill Breakdown — only when individual scores exist */}
           {hasSkillScores && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 w-full max-w-3xl mb-16">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-8 w-full max-w-3xl mb-16">
               <SkillScore label="Reading" score={skillScores.reading} primaryColor={primaryColor} />
               <SkillScore label="Listening" score={skillScores.listening} primaryColor={primaryColor} />
               <SkillScore label="Speaking" score={skillScores.speaking} primaryColor={primaryColor} />
               <SkillScore label="Writing" score={skillScores.writing} primaryColor={primaryColor} />
+              <SkillScore label="Grammar" score={skillScores.grammar} primaryColor={primaryColor} />
+              <SkillScore label="Vocabulary" score={skillScores.vocabulary} primaryColor={primaryColor} />
             </div>
           )}
 
@@ -229,16 +223,16 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
   );
 };
 
-const SkillScore: React.FC<{ label: string; score?: number; primaryColor: string }> = ({
+const SkillScore: React.FC<{ label: string; score?: number | null; primaryColor: string }> = ({
   label,
-  score = 0,
+  score,
   primaryColor,
 }) => (
   <div className="text-center">
     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{label}</div>
-    <div className="text-2xl font-black text-slate-900">{score}</div>
+    <div className="text-2xl font-black text-slate-900">{score ?? "N/A"}</div>
     <div className="w-full h-1 bg-slate-100 rounded-full mt-2 overflow-hidden">
-      <div className="h-full rounded-full" style={{ width: `${score}%`, backgroundColor: primaryColor }} />
+      <div className="h-full rounded-full" style={{ width: `${score ?? 0}%`, backgroundColor: primaryColor }} />
     </div>
   </div>
 );

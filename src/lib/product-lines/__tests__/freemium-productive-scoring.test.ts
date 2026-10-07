@@ -17,7 +17,7 @@ describe('six-skill response pipeline', () => {
   it('uses the actual essay and returns fractional rubric credit',async () => {
     const evaluation = await evaluateFreemiumResponse(writing,'My family lives in London.');
     expect(scorer.writing).toHaveBeenCalledWith('My family lives in London.',writing.content.prompt);
-    expect(evaluation).toMatchObject({score:.7,kind:'rubric',status:'scored'});
+    expect(evaluation).toMatchObject({score:.7,kind:'rubric',status:'scored',aiScore:.7,scoreSource:'ai_auto',scoringMode:'WRITING'});
     const breakdown: Record<string, FreemiumSkillBreakdown> = {};
     recordFreemiumScore(breakdown,'WRITING',evaluation.score,evaluation.kind);
     expect(breakdown.WRITING).toMatchObject({scoreSum:.7,correct:0,scored:1});
@@ -30,11 +30,11 @@ describe('six-skill response pipeline', () => {
   });
   it('gives zero credit to an integrity-rejected one-word response',async () => {
     scorer.writing.mockResolvedValue({...decision,score:0,scoreSource:'rejected_integrity',requiresHumanReview:true});
-    expect((await evaluateFreemiumResponse(writing,'hello')).score).toBe(0);
+    expect(await evaluateFreemiumResponse(writing,'hello')).toMatchObject({score:0,aiScore:null,scoreSource:'rejected_integrity'});
   });
   it.each(['ai_unavailable','ai_flagged'])('does not let %s influence ability',async scoreSource => {
     scorer.writing.mockResolvedValue({...decision,score:.9,scoreSource,requiresHumanReview:true});
-    expect((await evaluateFreemiumResponse(writing,'An essay')).score).toBeNull();
+    expect(await evaluateFreemiumResponse(writing,'An essay')).toMatchObject({score:null,aiScore:scoreSource==='ai_unavailable'?null:.9,scoreSource});
   });
   it('rejects missing or malformed audio before calling the provider',async () => {
     for(const audio of [{audio:'not audio',mimeType:'audio/wav'},{audio:'UklGRmAAAAAAAAAAZm10IAAAAA==',mimeType:'image/png'}]) {

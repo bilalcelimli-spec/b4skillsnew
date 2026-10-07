@@ -77,6 +77,7 @@ const factories = {
   'src/routes/proctoring.ts': 'createProctoringRouter',
   'src/routes/psychometrics.ts': 'createPsychometricsRouter',
   'src/routes/admin-scoring.ts': 'createAdminScoringRouter',
+  'src/routes/operations.ts': 'createOperationsRouter',
   'src/routes/rating.ts': 'createRatingRouter',
 };
 const active = routes.flatMap(route => {

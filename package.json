@@ -76,7 +76,8 @@
     "db:seed:anchors:dry": "tsx scripts/seed-anchor-items.ts --dry-run",
     "db:seed:diverse-types": "tsx scripts/seed-diverse-item-types.ts",
     "db:seed:diverse-types:dry": "tsx scripts/seed-diverse-item-types.ts --dry-run",
-    "audit:routes": "node scripts/audit-platform-routes.mjs"
+    "audit:routes": "node scripts/audit-platform-routes.mjs",
+    "test:item-renderer": "playwright test --config test/e2e/item-renderer.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
@@ -206,7 +207,8 @@
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "vitest": "^4.1.5",
-    "vitest-axe": "^0.1.0"
+    "vitest-axe": "^0.1.0",
+    "yaml": "^2.9.1"
   },
   "overrides": {
     "exceljs": {

@@ -13,6 +13,6 @@ export function buildScoringStatus(responses: Array<{
       ...(status === 'scored' ? { score: response.score, cefrLevel: meta.cefrLevel } : {}),
     };
   });
-  return { items, complete: items.every(item => item.status === 'scored'),
+  return { items, complete: items.length > 0 && items.every(item => item.status === 'scored'),
     needsReview: items.some(item => item.status === 'review_required' || item.status === 'unavailable') };
 }

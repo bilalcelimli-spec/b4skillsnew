@@ -19,22 +19,19 @@
 
 import { evaluateFreemiumResponse } from "../product-lines/freemium-productive-scoring.js";
 import { stripAnswerKeys } from "../security/answer-sanitizer.js";
-import { estimateTheta } from "./estimator.js";
-import { thetaToCefr } from "../cefr/cefr-framework.js";
-import type { Item, SkillType } from "./types.js";
+import { thetaToCefr, getCanDo } from "../cefr/cefr-framework.js";
 import { RatingQueueService } from "../scoring/rating-queue.js";
-import { shouldExcludeResponseFromAbility } from "../scoring/score-evidence.js";
+import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence, scoringRequirements } from "../scoring/score-evidence.js";
 import { prisma } from "../prisma.js";
+import { recalculateDiagnosticState, diagnosticStateFromResponses } from './diagnostic-evidence.js';
+
+export class DiagnosticReportNotReadyError extends Error {}
 
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-export const SKILLS = ["READING", "LISTENING", "WRITING", "SPEAKING", "GRAMMAR", "VOCABULARY"] as const;
-export type Skill = typeof SKILLS[number];
-
-export const DIAGNOSTIC_ITEMS_PER_SKILL = 5;
-export const DIAGNOSTIC_TOTAL_ITEMS     = SKILLS.length * DIAGNOSTIC_ITEMS_PER_SKILL; // 30
-export const DIAGNOSTIC_WALL_CLOCK_MS   = 45 * 60 * 1_000; // 45 min
+import { SKILLS, type Skill, DIAGNOSTIC_ITEMS_PER_SKILL, DIAGNOSTIC_TOTAL_ITEMS, DIAGNOSTIC_WALL_CLOCK_MS } from './diagnostic-config.js';
+export { SKILLS, type Skill, DIAGNOSTIC_ITEMS_PER_SKILL, DIAGNOSTIC_TOTAL_ITEMS, DIAGNOSTIC_WALL_CLOCK_MS } from './diagnostic-config.js';
 
 // ── DiagnosticSession state ───────────────────────────────────────────────────
 
@@ -158,6 +155,7 @@ export class DiagnosticService {
         candidateId,
         organizationId: orgId,
         status:  "IN_PROGRESS",
+        startedAt: new Date(),
         theta:   0.0,
         sem:     1.0,
         metadata: { sessionType: "DIAGNOSTIC" },
@@ -216,6 +214,21 @@ export class DiagnosticService {
     const state = await loadState(sessionId);
     if (!state) throw new Error("Diagnostic session not found");
     if (state.complete) throw new Error("Session already complete");
+    if (Date.now() >= new Date(state.expiresAt).getTime()) {
+      await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+        const current = await tx.session.findUnique({where:{id:sessionId}});
+        const meta = (current?.metadata ?? {}) as any;
+        if (current && meta.diagnosticState && !meta.diagnosticState.complete) {
+          await tx.session.update({where:{id:sessionId},data:{
+            status:current.status === 'FLAGGED' ? 'FLAGGED' : 'SCORING', completedAt:new Date(meta.diagnosticState.expiresAt),
+            metadata:{...meta,diagnosticState:{...meta.diagnosticState,complete:true}},
+          }});
+        }
+      });
+      await this.refreshScoring(sessionId);
+      throw new DiagnosticReportNotReadyError('Diagnostic time limit reached; the late answer was not scored');
+    }
 
     // Find item
     let foundItem: DiagnosticItemRecord | null = null;
@@ -245,31 +258,9 @@ export class DiagnosticService {
     foundItem.score = score;
     foundItem.latencyMs = latencyMs;
     foundItem.answeredAt = new Date().toISOString();
-    const skillState = state.skills[foundSkill];
-    const evidence = skillState.items.filter(item => item.answered && item.score != null);
-    const itemDict: Record<string, Item> = Object.fromEntries(evidence.map(item => [item.itemId, {
-      id:item.itemId,skill:foundSkill as SkillType,type:item.type,params:{a:item.irtA,b:item.irtB,c:item.irtC},isPretest:false,status:"ACTIVE",
-    }]));
-    const estimate = estimateTheta(evidence.map(item => ({itemId:item.itemId,score:item.score!})),itemDict,0,1,{useGrmProductive:true});
-    skillState.theta = estimate.theta;
-    skillState.sem = estimate.sem;
-    skillState.answered++;
-    state.totalAnswered++;
-
-    // Check completion
-    const allDone = SKILLS.every((s) => state.skills[s].answered >= DIAGNOSTIC_ITEMS_PER_SKILL);
-    const expired = Date.now() > new Date(state.expiresAt).getTime();
-    state.complete = allDone || expired;
-
-    // Overall theta = weighted average across skills
-    const skillWeights = { READING: 2, LISTENING: 2, GRAMMAR: 1.5, VOCABULARY: 1.5, WRITING: 2, SPEAKING: 2 } as Record<Skill, number>;
-    let wSum = 0, wTheta = 0;
-    for (const s of SKILLS) {
-      const w = skillWeights[s];
-      wTheta += w * state.skills[s].theta;
-      wSum   += w;
-    }
-    const overallTheta = wTheta / wSum;
+    let estimate = recalculateDiagnosticState(state);
+    state.complete = estimate.allAnswered || Date.now() > new Date(state.expiresAt).getTime();
+    let overallTheta = estimate.theta;
 
     await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
@@ -277,6 +268,14 @@ export class DiagnosticService {
       const currentState = (current?.metadata as any)?.diagnosticState as DiagnosticSessionState | undefined;
       if (!currentState || currentState.complete || DiagnosticService._nextItem(currentState)?.itemId !== itemId ||
           await tx.response.count({where:{sessionId,itemId}}) > 0) throw new Error("Response must match the current unanswered item");
+      // A rating may have completed while this answer was being graded. Keep
+      // the current stored state and apply only this newly accepted answer.
+      for (const skill of SKILLS) state.skills[skill] = structuredClone(currentState.skills[skill]);
+      const currentItem = state.skills[foundSkill].items.find(item => item.itemId === itemId)!;
+      Object.assign(currentItem, foundItem);
+      estimate = recalculateDiagnosticState(state);
+      state.complete = estimate.allAnswered || Date.now() > new Date(state.expiresAt).getTime();
+      overallTheta = estimate.theta;
     // Persist Response row
     await tx.response.create({
       data: {
@@ -286,10 +285,13 @@ export class DiagnosticService {
         isCorrect,
         score,
         isPretest: false,
+        aiScore: evaluation.aiScore ?? null,
         latencyMs,
         order: state.totalAnswered,
         metadata: { diagnosticSkill: foundSkill, requiresHumanReview: score === null,
-          scoreSource: score === null ? "ai_flagged" : evaluation.kind === "rubric" ? "ai_auto" : "objective",
+          scoreSource: evaluation.scoreSource ?? (evaluation.kind === "objective" ? "objective" : evaluation.status === "unavailable" ? "ai_unavailable" : score === null ? "ai_flagged" : "ai_auto"),
+          scoringMode: evaluation.scoringMode,
+          aiUnavailable: evaluation.kind === "rubric" && evaluation.status === "unavailable",
           aiFeedback: evaluation.feedback, },
       },
     });
@@ -297,12 +299,16 @@ export class DiagnosticService {
       await tx.session.update({where:{id:sessionId},data:{
         metadata:{...((current?.metadata as any) ?? {}),diagnosticState:state},
         theta:overallTheta,sem:Math.max(...SKILLS.map(skill=>state.skills[skill].sem)),
-        ...(state.complete ? {status:"COMPLETED",cefrLevel:thetaToCefr(overallTheta) as any,completedAt:new Date()} : {}),
+        ...(state.complete ? {status:estimate.scoringComplete ? "COMPLETED" : "SCORING",cefrLevel:estimate.scoringComplete ? thetaToCefr(overallTheta) as any : null,completedAt:new Date()} : {}),
       }});
     });
     if (score === null) await RatingQueueService.enqueue({sessionId,itemId,type:foundSkill === "SPEAKING" ? "SPEAKING" : "WRITING",content:typeof value === "string" ? value : JSON.stringify(value)});
 
 
+    if (state.complete) {
+      const refreshed = await this.refreshScoring(sessionId);
+      if (refreshed) { Object.assign(state, refreshed.state); overallTheta = refreshed.estimate.theta; }
+    }
     const skillThetas = Object.fromEntries(
       SKILLS.map((s) => [s, {
         theta:    state.skills[s].theta,
@@ -329,46 +335,74 @@ export class DiagnosticService {
     };
   }
 
+  /** Rebuild diagnostic state and report with the fixed diagnostic blueprint. */
+  static async refreshScoring(sessionId: string) {
+    return prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+      const session = await tx.session.findUnique({where:{id:sessionId},include:{responses:true,scoreReport:true}});
+      const meta = (session?.metadata ?? {}) as any;
+      if (!session || meta.sessionType !== 'DIAGNOSTIC' || !meta.diagnosticState) return null;
+      const state = diagnosticStateFromResponses(meta.diagnosticState, session.responses);
+      const estimate = recalculateDiagnosticState(state);
+      const pending = session.responses.filter(response => !response.isPretest && shouldExcludeResponseFromAbility(response)).length;
+      const held = session.status === 'FLAGGED' || meta.securityFlag === true || (session.scoreReport?.diagnosticReport as any)?.securityFlag === true;
+      const complete = state.complete && estimate.scoringComplete && pending === 0 && !held;
+      const profiles = Object.fromEntries(SKILLS.filter(skill => estimate.counts[skill] > 0).map(skill => [skill, {
+        theta:state.skills[skill].theta,sem:state.skills[skill].sem,cefr:thetaToCefr(state.skills[skill].theta),
+      }]));
+      await tx.session.update({where:{id:sessionId},data:{theta:estimate.theta,sem:estimate.sem,
+        ...(state.complete ? {status:held?'FLAGGED':complete?'COMPLETED':'SCORING',cefrLevel:complete?thetaToCefr(estimate.theta) as any:null}:{}),
+        metadata:{...meta,diagnosticState:state,skillProfiles:profiles,pendingCount:pending,pendingAsyncScoring:pending>0,scoringPending:!complete},
+      }});
+      if (state.complete) {
+        const old = (session.scoreReport?.diagnosticReport ?? {}) as any;
+        const level = thetaToCefr(estimate.theta);
+        const diagnosticReport = {scoringComplete:complete,securityFlag:held,overallTheta:estimate.theta,overallSem:estimate.sem,overallCefr:level,
+          skillProfiles:profiles,productLine:'Fixed Diagnostic (30 items)',
+          canDoStatements:complete?getCanDo(level).flatMap(group=>group.descriptors).slice(0,6):[],
+          generatedAt:new Date().toISOString(),...(old.shareToken?{shareToken:old.shareToken}:{}),
+          ...(old.certificateIssuedAt?{certificateIssuedAt:old.certificateIssuedAt}:{}),
+          ...(old.signedCertificate?{signedCertificate:old.signedCertificate}:{})};
+        const fields = Object.fromEntries(SKILLS.map(skill=>[skill.toLowerCase()+'Score',estimate.counts[skill] ? Math.max(0,Math.min(100,Math.round((state.skills[skill].theta+4)/8*100))):null]));
+        const report = {overallCefr:level as any,overallScore:Math.max(0,Math.min(100,Math.round((estimate.theta+4)/8*100))),
+          ...fields,isVerified:complete,diagnosticReport};
+        await tx.scoreReport.upsert({where:{sessionId},create:{sessionId,...report},update:report});
+      }
+      return {state,estimate};
+    });
+  }
+
   /** Get the diagnostic report once complete */
   static async getReport(sessionId: string): Promise<{
     sessionId:     string;
     candidateId:   string;
     overallBand:   string;
     overallTheta:  number;
-    skills:        Array<{ skill: Skill; cefrBand: string; theta: number; sem: number; percentile: number }>;
+    skills:        Array<{ skill: Skill; cefrBand: string; theta: number; sem: number; percentile: number | null }>;
     strengths:     Skill[];
     gaps:          Skill[];
     recommendations: string[];
     completedAt:   string;
   }> {
-    const state = await loadState(sessionId);
+    let state = await loadState(sessionId);
     if (!state) throw new Error("Session not found");
 
     const session = await prisma.session.findUnique({ where: { id: sessionId }, include:{responses:{include:{item:true}}} });
-    if (!session?.completedAt) throw new Error("Session not yet complete");
-
-    if (session.responses.some(response => shouldExcludeResponseFromAbility(response) && !response.isPretest)) {
-      throw new Error("Diagnostic scoring is incomplete; unresolved responses require review");
+    if (session?.status === 'FLAGGED') throw new DiagnosticReportNotReadyError('Diagnostic result is under review');
+    if (!session?.completedAt || !state.complete) throw new DiagnosticReportNotReadyError("Session not yet complete");
+    if (!hasCompleteScoringEvidence(session.responses, scoringRequirements({sessionType:'DIAGNOSTIC'}))) {
+      throw new DiagnosticReportNotReadyError("Diagnostic scoring is incomplete; all required responses must be scored");
     }
-    for (const skill of SKILLS) {
-      const responses = session.responses.filter(response => response.item.skill === skill && !shouldExcludeResponseFromAbility(response));
-      if (!responses.length) throw new Error("Diagnostic scoring lacks evidence for a required skill");
-      const items: Record<string, Item> = Object.fromEntries(responses.map(response => [response.itemId, {
-        id:response.itemId, skill:skill as SkillType, type:response.item.type,
-        params:{a:response.item.discrimination,b:response.item.difficulty,c:response.item.guessing},isPretest:false,status:"ACTIVE",
-      }]));
-      const estimate = estimateTheta(responses.map(response => ({itemId:response.itemId,score:response.score!})),items,0,1,{useGrmProductive:true});
-      state.skills[skill].theta=estimate.theta; state.skills[skill].sem=estimate.sem;
-    }
+    state = diagnosticStateFromResponses(state, session.responses);
+    const estimate = recalculateDiagnosticState(state);
+    if (!estimate.scoringComplete) throw new DiagnosticReportNotReadyError("Diagnostic scoring lacks assigned-item evidence");
     const skillResults = SKILLS.map((s) => {
       const st = state.skills[s];
-      // Rough percentile from theta (normal distribution approximation)
-      const z   = st.theta / 1;
-      const pct = Math.round(50 * (1 + Math.sign(z) * (1 - Math.exp(-0.7 * z * z))));
-      return { skill: s, cefrBand: thetaToCefr(st.theta), theta: st.theta, sem: st.sem, percentile: Math.min(99, Math.max(1, pct)) };
+      // Population percentiles require a validated norm sample.
+      return { skill: s, cefrBand: thetaToCefr(st.theta), theta: st.theta, sem: st.sem, percentile: null };
     });
 
-    const overallTheta = session.theta ?? 0;
+    const overallTheta = estimate.theta;
     const sorted       = [...skillResults].sort((a, b) => b.theta - a.theta);
     const strengths    = sorted.slice(0, 2).map((s) => s.skill);
     const gaps         = sorted.slice(-2).map((s) => s.skill);

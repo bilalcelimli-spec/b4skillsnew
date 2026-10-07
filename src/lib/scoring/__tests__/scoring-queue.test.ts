@@ -26,7 +26,7 @@ describe('background scoring persistence', () => {
   it('withholds the AI outage placeholder instead of recording it as a grade', async () => {
     mocks.writing.mockResolvedValue({...decision,score:.5,scoreSource:'ai_unavailable',requiresHumanReview:true});
     await enqueueScoringJob(job);
-    expect(mocks.update.mock.calls[0][0].data).toMatchObject({score:null,isCorrect:null,aiScore:null,metadata:{scoreFailed:true,requiresHumanReview:true}});
+    expect(mocks.update.mock.calls[0][0].data).toMatchObject({score:null,isCorrect:null,aiScore:null,metadata:{scoreFailed:true,aiUnavailable:true,requiresHumanReview:true}});
     expect(mocks.enqueue).toHaveBeenCalledOnce();
   });
   it('routes disputed grades to human review with no proficiency credit', async () => {

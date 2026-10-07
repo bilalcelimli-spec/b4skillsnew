@@ -7,15 +7,16 @@ function session(overrides: Partial<ReportSession> = {}): ReportSession {
   return {
     id: 'exam-id', status: 'COMPLETED', candidate: { name: 'Çağrı Çelimli Şen' },
     completedAt: '2026-09-30T10:00:00Z', theta: -0.05, sem: 0.35,
-    scoreReport: { id: 'report-id', isVerified: true, overallCefr: 'B1' },
-    responses: [], ...overrides,
+    scoreReport: { id: 'report-id', isVerified: true, overallCefr: 'B1', certificateUrl:'/verify/report-id', diagnosticReport:{scoringComplete:true,certificateIssuedAt:'2026-09-30T11:00:00Z'} },
+    metadata:{sessionType:'DIAGNOSTIC'},
+    responses: ['READING','LISTENING','WRITING','SPEAKING','GRAMMAR','VOCABULARY'].flatMap(skill => Array.from({length:5},()=>({score:1,item:{skill}}))), ...overrides,
   };
 }
 const build = (s: ReportSession) => buildAssessmentReport(s, 'https://b4skills.com/', now);
 
 describe('evidence-aware candidate reports', () => {
   it('does not invent skill results from the overall theta or a stored percentage', () => {
-    const r = build(session({ responses: [{ item: { skill: 'READING' } }], scoreReport: { readingScore: 60, overallCefr: 'B1' } }));
+    const r = build(session({ responses: [{ score:1, item: { skill: 'READING' } }], scoreReport: { readingScore: 60, overallCefr: 'B1' } }));
     expect(r.skills[0]).toMatchObject({ theta: null, cefr: null, state: 'Result unavailable', count: 1 });
     expect(r.skills[1]).toMatchObject({ cefr: null, state: 'Not assessed', count: 0 });
   });
@@ -25,7 +26,7 @@ describe('evidence-aware candidate reports', () => {
   it('normalises profile keys and excludes pretest counts', () => {
     const r = build(session({
       scoreReport: { diagnosticReport: { skillProfiles: { reading: { theta: 1, sem: 0.3 } } } },
-      responses: [{ item: { skill: 'READING' } }, { isPretest: true, item: { skill: 'READING' } }],
+      responses: [{ score:1, item: { skill: 'READING' } }, { isPretest: true, item: { skill: 'READING' } }],
     }));
     expect(r.skills[0]).toMatchObject({ cefr: 'B2', theta: 1, sem: 0.3, count: 1 });
   });
@@ -39,7 +40,7 @@ describe('evidence-aware candidate reports', () => {
     expect(r.verificationUrl).toBeNull();
   });
   it('does not retain stale pending metadata after responses are scored', () => {
-    expect(build(session({ metadata: { pendingAsyncScoring: true }, responses: [{ metadata: { pendingAsyncScore: true, asyncScored: true } }] })).status).toBe('Completed');
+    expect(build(session({ metadata: { sessionType:'DIAGNOSTIC',pendingAsyncScoring: true }, responses: session().responses!.map(response=>({...response,metadata:{pendingAsyncScore:true,asyncScored:true}})) })).status).toBe('Completed');
   });
   it.each(['FLAGGED', 'SCORING', 'IN_PROGRESS', 'EXPIRED'])('does not issue verified certificates for %s', status => {
     expect(build(session({ status })).verificationUrl).toBeNull();
@@ -47,6 +48,13 @@ describe('evidence-aware candidate reports', () => {
   it('suppresses expired validity and provides a correctly encoded valid verification URL', () => {
     expect(build(session({ validUntil: '2026-01-01' })).status).toBe('Expired');
     expect(build(session()).verificationUrl).toBe('https://b4skills.com/verify/report-id');
+  });
+  it('does not publish a certificate link for a verified score report that has not been issued', () => {
+    const source = session(); delete source.scoreReport!.certificateUrl;
+    expect(build(source).verificationUrl).toBeNull();
+  });
+  it('treats absent score values as unresolved evidence', () => {
+    expect(build(session({responses:[{item:{skill:'READING'}}]})).status).toBe('Provisional');
   });
   it('does not default missing ability and uncertainty to fake values', () => {
     const r = build(session({ theta: NaN, currentTheta: Infinity, sem: -1, scoreReport: null }));

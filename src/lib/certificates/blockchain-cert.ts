@@ -22,6 +22,9 @@
  */
 
 import * as crypto from "crypto";
+import { prisma } from '../prisma.js';
+import { CertificateService, CertificateNotReadyError, isCertificateReady } from '../certification/certificate-service.js';
+export class CertificateSigningUnavailableError extends Error {}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -88,6 +91,7 @@ function initKeys(): void {
     return;
   }
 
+  if (process.env.NODE_ENV === 'production') throw new CertificateSigningUnavailableError('CERT_SIGNING_KEY_PEM is required for durable certificate signatures');
   // Generate ephemeral keypair in dev/test
   const { privateKey, publicKey } = crypto.generateKeyPairSync("ec", {
     namedCurve: "P-256",
@@ -110,7 +114,9 @@ export function getPublicKeyPem(): string {
 
 function canonicalJSON(obj: object): string {
   // Deterministic JSON: keys sorted recursively
-  return JSON.stringify(obj, Object.keys(obj).sort());
+  const sorted = (value: unknown): unknown => Array.isArray(value) ? value.map(sorted) :
+    value !== null && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a],[b])=>a < b ? -1 : a > b ? 1 : 0).map(([key,item])=>[key,sorted(item)])) : value;
+  return JSON.stringify(sorted(obj));
 }
 
 function contentHash(payload: CertificatePayload): string {
@@ -134,7 +140,7 @@ export function issueCertificate(payload: CertificatePayload): IssuedCertificate
     signature,
     publicKeyFingerprint: _publicKeyFingerprint!,
     onChain: null,
-    verificationUrl: `${process.env.APP_BASE_URL ?? "https://app.linguadapt.com"}/verify/${payload.id}`,
+    verificationUrl: `${(process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || process.env.APP_BASE_URL || "https://b4skills.com").replace(/\/$/, "")}/verify/${payload.id}`,
   };
 }
 
@@ -201,7 +207,7 @@ export function verifyCertificate(cert: IssuedCertificate): VerificationResult {
   if (!notExpired) errors.push("CERTIFICATE_EXPIRED");
 
   // 4. On-chain check (if anchored)
-  const onChainValid = cert.onChain ? true : null; // Full on-chain check requires ethers.js call
+  const onChainValid = null; // Full on-chain check requires ethers.js call
 
   return {
     valid: signatureValid && notExpired && errors.length === 0,
@@ -259,18 +265,39 @@ export async function anchorCertificatesOnChain(
   }));
 }
 
-// ── Certificate registry (in-memory, replace with DB in production) ───────────
+// ── Durable registry backed by the authoritative score report ───────────────
 
-const certRegistry = new Map<string, IssuedCertificate>();
-
-export function storeCertificate(cert: IssuedCertificate): void {
-  certRegistry.set(cert.payload.id, cert);
+const includeSession = {session:{include:{candidate:true,organization:true,responses:{include:{item:{select:{skill:true}}}}}}} as const;
+function matchesReport(cert: IssuedCertificate, report: any): boolean {
+  if (!cert || !cert.payload || typeof cert.payload !== 'object' || !cert.payload.skillScores) return false;
+  const session = report.session;
+  if (!isCertificateReady(report,session)) return false;
+  const authoritative = CertificateService.mapToCertificate(report,session.candidate,{organizationId:session.organizationId,name:session.organization.name},session);
+  const scores = Object.fromEntries(Object.entries(authoritative.skillScores).filter(([,score])=>typeof score==='number').map(([skill,score])=>[skill.toUpperCase(),score]));
+  return cert.payload.id === report.id && cert.payload.sessionId === report.sessionId && cert.payload.candidateId === session.candidateId &&
+    cert.payload.organizationId === session.organizationId && cert.payload.overallScore === report.overallScore && cert.payload.cefrLevel === report.overallCefr &&
+    cert.payload.expiresAt === authoritative.expiresAt.toISOString() && canonicalJSON(cert.payload.skillScores) === canonicalJSON(scores);
 }
 
-export function lookupCertificate(id: string): IssuedCertificate | null {
-  return certRegistry.get(id) ?? null;
+export async function storeCertificate(cert: IssuedCertificate): Promise<void> {
+  await prisma.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${cert.payload.sessionId} FOR UPDATE`;
+    const report = await tx.scoreReport.findUnique({where:{id:cert.payload.id},include:includeSession});
+    if (!report || !matchesReport(cert,report)) throw new CertificateNotReadyError('Signed certificate does not match completed scoring evidence');
+    await tx.scoreReport.update({where:{id:report.id},data:{diagnosticReport:{...((report.diagnosticReport ?? {}) as Record<string,unknown>),signedCertificate:JSON.parse(JSON.stringify(cert))}}});
+  });
 }
 
-export function listCertificatesByCandidate(candidateId: string): IssuedCertificate[] {
-  return Array.from(certRegistry.values()).filter((c) => c.payload.candidateId === candidateId);
+export async function lookupCertificate(id: string): Promise<IssuedCertificate | null> {
+  const report = await prisma.scoreReport.findUnique({where:{id},include:includeSession});
+  const cert = (report?.diagnosticReport as any)?.signedCertificate as IssuedCertificate | undefined;
+  return cert && report && matchesReport(cert,report) ? cert : null;
+}
+
+export async function listCertificatesByCandidate(candidateId: string): Promise<IssuedCertificate[]> {
+  const reports = await prisma.scoreReport.findMany({where:{session:{candidateId},isVerified:true,certificateUrl:{not:null}},include:includeSession});
+  return reports.flatMap(report=>{
+    const cert = (report.diagnosticReport as any)?.signedCertificate as IssuedCertificate | undefined;
+    return cert && matchesReport(cert,report) ? [cert] : [];
+  });
 }

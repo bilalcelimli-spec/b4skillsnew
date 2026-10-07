@@ -23,7 +23,7 @@ function arbitration(){stored={...stored,status:'CLAIMED',secondRaterScore:.1,re
 describe('independent human rating',()=>{
  it('completes an agreeing second rating and refreshes the report after the transaction',async()=>{
   await RatingQueueService.submitSecondRating('task',.8,'Clear response','second');
-  expect(mocks.response.mock.calls[0][0].data).toMatchObject({score:.75,humanScore:.75,adjustedScore:null,metadata:{scoreSource:'human',scoreFailed:false,requiresHumanReview:false,irrQwk:null}});
+  expect(mocks.response.mock.calls[0][0].data).toMatchObject({score:.75,humanScore:.75,adjustedScore:null,metadata:{scoreSource:'human',scoreFailed:false,aiUnavailable:true,requiresHumanReview:false,irrQwk:null}});
   expect(stored.status).toBe('COMPLETED');expect(mocks.refresh).toHaveBeenCalledWith('session');
  });
  it('withholds a disputed grade and marks the response for human review',async()=>{
