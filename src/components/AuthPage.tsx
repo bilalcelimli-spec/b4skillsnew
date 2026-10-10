@@ -5,12 +5,17 @@ import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
 import { cn } from "../lib/utils";
 
+export type AuthenticatedUser = {uid:string;email:string;role:string;displayName?:string;organizationId?:string|null};
+
 type AuthMode = "signin" | "signup" | "forgot" | "reset" | "verify";
 
 interface AuthPageProps {
   onBack?: () => void;
   initialMode?: AuthMode;
   initialToken?: string;
+  initialEmail?: string;
+  signInOnly?: boolean;
+  onAuthenticated?: (user: AuthenticatedUser) => void;
 }
 
 // Marker highlight component
@@ -21,9 +26,9 @@ const Highlight = ({ children, className }: { children: React.ReactNode, classNa
   </span>
 );
 
-export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initialToken }) => {
+export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initialToken, initialEmail, signInOnly = false, onAuthenticated }) => {
   const [mode, setMode] = useState<AuthMode>(initialMode ?? "signin");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -135,7 +140,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to sign in');
-      window.location.reload();
+      if (onAuthenticated) {
+        if (!data.user?.uid || !data.user?.email || !data.user?.role) throw new Error("Sign in could not be confirmed. Please try again.");
+        onAuthenticated(data.user);
+      } else window.location.reload();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -174,7 +182,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
           <button
             onClick={onBack}
             className="absolute left-6 top-6 sm:left-12 sm:top-12 p-2 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors"
-            aria-label="Back to home"
+            disabled={loading}
+            aria-label={signInOnly ? "Back to exam details" : "Back to home"}
           >
             <ArrowLeft size={20} />
           </button>
@@ -208,7 +217,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
               {mode === "reset" && "Set new password"}
             </h1>
             <p className="text-slate-500 mt-2 font-medium text-sm">
-              {mode === "signin" && "Enter your details below to access your dashboard."}
+              {mode === "signin" && (signInOnly ? "Sign in to continue with your exam code. Your candidate details will be kept." : "Enter your details below to access your dashboard.")}
               {mode === "signup" && "Start assessing with precision today."}
               {mode === "forgot" && "We'll send you an email with a link to reset it."}
               {mode === "verify" && "Paste the token from the reset link in your email."}
@@ -217,7 +226,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
           </div>
 
           {/* Tab switcher (signin ↔ signup only) */}
-          {(mode === "signin" || mode === "signup") && (
+          {!signInOnly && (mode === "signin" || mode === "signup") && (
             <div className="flex border-b border-slate-200 mb-8">
               <button
                 type="button"
@@ -287,6 +296,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
                       <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                       <Input
                         id="email"
+                        readOnly={signInOnly && !!initialEmail}
                         type="email"
                         autoComplete="email"
                         placeholder="you@example.com"

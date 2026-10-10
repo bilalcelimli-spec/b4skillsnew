@@ -321,19 +321,28 @@ export default function App() {
 
   if (showCodeEntry) {
     return <CodeEntryPage
+      onAccountSignIn={account => {
+        setUser(account);
+        setUserProfile({...account,organizationId:account.organizationId ?? null});
+        setRecentSessions([]);
+        setBranding(null);
+        setShowLanding(false);
+        setActiveTab("dashboard");
+      }}
       onBack={() => {
         setShowCodeEntry(false);
         // If already logged in, return to dashboard; otherwise go to landing
         if (user) { /* stay in dashboard */ } else { setShowLanding(true); }
       }}
       onSuccess={(productLine, orgId, email, candidateId, name) => {
-        if (user) {
-          // Already logged in: just unlock access without overwriting the session
-          setUserProfile((prev: any) => ({ ...prev, allowedProductLine: productLine, organizationId: orgId }));
-        } else {
-          setUser({ uid: candidateId, email, displayName: `${name}` } as any);
-          setUserProfile({ uid: candidateId, email, role: "CANDIDATE", organizationId: orgId, allowedProductLine: productLine });
-        }
+        // Code redemption may follow a sign-in to a different candidate account.
+        // Always use the server identity rather than retaining the previous user.
+        setUser({uid:candidateId,email,displayName:name,role:"CANDIDATE"});
+        setUserProfile({uid:candidateId,email,role:"CANDIDATE",organizationId:orgId,allowedProductLine:productLine});
+        if (user?.uid !== candidateId) setRecentSessions([]);
+        setBranding(null);
+        setActiveTab("dashboard");
+        setShowLanding(false);
         setShowCodeEntry(false);
       }}
     />;

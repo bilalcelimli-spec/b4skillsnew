@@ -15,7 +15,7 @@ export const GenerateCodesBody = z.object({
   }),
 }).strict();
 
-const CodeString = z.string().trim().min(4).max(64).regex(/^[A-Za-z0-9-]+$/);
+const CodeString = z.string().trim().min(4).max(64).regex(/^[A-Za-z0-9-]+$/).transform(code => code.toUpperCase());
 
 export const ValidateCodeBody = z.object({
   code: CodeString,

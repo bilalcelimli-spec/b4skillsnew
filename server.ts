@@ -36,7 +36,8 @@ import { SystemConfigBody } from "./src/lib/security/schemas/calibration.js";
 import { CreateWebhookBody, BrandingPatchBody, UpdateSettingsBody, SsoConfigBody } from "./src/lib/security/schemas/organizations.js";
 import { ProctoringAuditBody, ProctoringEventBody } from "./src/lib/security/schemas/proctoring.js";
 import { AITutorBody, SpeakingMultimodalBody } from "./src/lib/security/schemas/ai.js";
-import { GenerateCodesBody, RedeemCodeBody } from "./src/lib/security/schemas/codes.js";
+import { CodeRedemptionError, redeemExamCode } from "./src/lib/security/exam-code-redemption.js";
+import { GenerateCodesBody, RedeemCodeBody, ValidateCodeBody } from "./src/lib/security/schemas/codes.js";
 import { recordFreemiumScore, type FreemiumSkillBreakdown } from "./src/lib/product-lines/freemium-response-scoring.js";
 import { evaluateFreemiumResponse } from "./src/lib/product-lines/freemium-productive-scoring.js";
 import { estimateTheta as estimatePlacementTheta } from "./src/lib/assessment-engine/estimator.js";
@@ -3866,7 +3867,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   app.post("/api/codes/validate", async (req, res) => {
     try {
-      const { code } = req.body;
+      const body = validate(ValidateCodeBody, req.body, res);
+      if (!body) return;
+      const { code } = body;
       const examCode = await prisma.examCode.findUnique({ where: { code } });
       if(!examCode) return res.status(404).json({ error: "Code not found" });
       if(examCode.isUsed) return res.status(400).json({ error: "Code is already used" });
@@ -3886,79 +3889,22 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (!email) {
         return res.status(400).json({ error: "Valid code and email are required" });
       }
-      const normalizedEmail = email.trim().toLowerCase();
-
-      // A code is not proof of ownership of an existing account. Existing
-      // users must already be signed in, and privileged accounts can never be
-      // converted or accessed through the candidate code flow.
-      const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-      if (existingUser) {
-        if (existingUser.role !== "CANDIDATE") {
-          return res.status(403).json({ error: "This account cannot redeem candidate exam codes" });
-        }
-        let authenticatedUserId: string | null = null;
-        const existingToken = req.cookies?.accessToken;
-        if (existingToken) {
-          try {
-            const decoded = jwt.verify(existingToken, JWT_SECRET) as any;
-            authenticatedUserId = typeof decoded?.userId === "string" ? decoded.userId : null;
-          } catch { /* login required below */ }
-        }
-        if (authenticatedUserId !== existingUser.id) {
-          return res.status(409).json({
-            error: "account_login_required",
-            message: "Sign in to the existing account before redeeming this code.",
-          });
-        }
+      let authenticatedUserId: string | null = null;
+      if (req.cookies?.accessToken) {
+        try {
+          const decoded = jwt.verify(req.cookies.accessToken, JWT_SECRET) as any;
+          authenticatedUserId = typeof decoded?.userId === "string" ? decoded.userId : null;
+        } catch { /* The service requires login for an existing account. */ }
       }
-
-      // Atomically claim the code — updateMany with isUsed:false prevents a TOCTOU race.
-      const examCodeLookup = await prisma.examCode.findUnique({ where: { code } });
-      if(!examCodeLookup) return res.status(404).json({ error: "Code not found" });
-      if(examCodeLookup.expiresAt && examCodeLookup.expiresAt < new Date()) return res.status(400).json({ error: "Code has expired" });
-      const claimed = await prisma.examCode.updateMany({
-        where: { code, isUsed: false },
-        data: { isUsed: true, usedByEmail: normalizedEmail, usedAt: new Date() }
-      });
-      if (claimed.count === 0) return res.status(400).json({ error: "Code already used" });
-      const examCode = examCodeLookup;
-
-      // 3. Upsert user info in DB
-      await prisma.organization.upsert({
-        where: { id: examCode.organizationId },
-        update: {},
-        create: { id: examCode.organizationId, name: examCode.organizationId, slug: examCode.organizationId.toLowerCase() + "-" + Date.now() }
-      });
-      
-      const upsertedUser = await prisma.user.upsert({
-        where: { email: normalizedEmail },
-        update: { name: `${name} ${surname}`, organizationId: examCode.organizationId },
-        create: { email: normalizedEmail, name: `${name} ${surname}`, organizationId: examCode.organizationId, role: "CANDIDATE" }
-      });
-
-      await prisma.candidateProfile.upsert({
-        where: { userId: upsertedUser.id },
-        update: { metadata: { school, className } },
-        create: { userId: upsertedUser.id, metadata: { school, className } }
-      });
-
-      // 4. Issue JWT so the candidate can immediately start a session
-      const accessToken = jwt.sign({ userId: upsertedUser.id }, JWT_SECRET, { expiresIn: '15m' });
-      const refreshToken = jwt.sign({ userId: upsertedUser.id }, REFRESH_SECRET, { expiresIn: '7d' });
-      await prisma.user.update({
-        where: { id: upsertedUser.id },
-        data: { refreshToken }
-      });
+      const result = await redeemExamCode(prisma, {code,email,name,surname,school,className,authenticatedUserId}, userId => ({
+        accessToken: jwt.sign({userId},JWT_SECRET,{expiresIn:'15m'}),
+        refreshToken: jwt.sign({userId},REFRESH_SECRET,{expiresIn:'7d'}),
+      }));
+      const {accessToken,refreshToken,...candidate} = result;
       setAuthCookies(res, accessToken, refreshToken);
-
-      res.json({
-        success: true,
-        organizationId: examCode.organizationId,
-        productLine: examCode.productLine,
-        candidateId: upsertedUser.id,
-        displayName: upsertedUser.name,
-      });
+      res.json(candidate);
     } catch(err) {
+      if (err instanceof CodeRedemptionError) return res.status(err.status).json({error:err.errorCode,message:err.message});
       res.status(500).json({ error: "Redeem failed"});
     }
   });

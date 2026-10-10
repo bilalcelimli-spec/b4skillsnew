@@ -6,7 +6,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import App from '../../App';
 vi.mock('../../hooks/useScoringStatus',()=>({useScoringStatus:()=>({state:'complete'})}));
 vi.mock('../CandidateAdaptiveReport',()=>({CandidateAdaptiveReport:({sessionId}:any)=><h1>Report {sessionId}</h1>}));
-vi.mock('../TestPlayer',()=>({TestPlayer:({initialSessionId,onCancel}:any)=><><h1>Resume {initialSessionId}</h1><button onClick={onCancel}>Exit fixture exam</button></>}));
+vi.mock('../TestPlayer',()=>({TestPlayer:({initialSessionId,candidateId,onCancel}:any)=><><h1>Resume {initialSessionId}</h1><p>Candidate {candidateId}</p><button onClick={onCancel}>Exit fixture exam</button></>}));
 vi.mock('../admin/ContentFactoryReviewQueue',()=>({ContentFactoryReviewQueue:()=><h1>Content review queue</h1>}));
 vi.mock('../RatingDashboard',()=>({RatingDashboard:({raterId}:any)=><h1>Rater workspace {raterId}</h1>}));
 vi.mock('../CandidateProfile',()=>({CandidateProfile:()=><h1>Account settings</h1>}));
@@ -60,4 +60,22 @@ it('returns to the dashboard after exit and resumes the same stored attempt', as
   fireEvent.click(await screen.findByRole('button',{name:/Resume exam|Sınava devam et/}));
   expect(await screen.findByRole('heading',{name:'Resume existing-session'})).toBeTruthy();
   await waitFor(()=>expect(screen.getByTestId('path').textContent).toBe('/exam/existing-session'));
+});
+
+it('starts with the server candidate identity after code redemption switches accounts',async()=>{
+  window.history.replaceState({},'', '/dashboard');
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url==='/api/auth/me'
+    ? {user:{uid:'old-candidate',email:'old@example.test',role:'CANDIDATE',organizationId:null}}
+    : url==='/api/codes/validate' ? {valid:true,productLine:'General English'}
+    : url==='/api/codes/redeem' ? {success:true,candidateId:'new-candidate',organizationId:'new-org',productLine:'General English'} : []})));
+  render(<MemoryRouter initialEntries={['/dashboard']}><App/><LocationProbe/></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button',{name:'Enter Exam Code'}));
+  fireEvent.change(screen.getByLabelText('Exam code'),{target:{value:'ABC1234567'}});
+  fireEvent.click(screen.getByRole('button',{name:'Verify Code'}));
+  await screen.findByRole('heading',{name:'Candidate Details'});
+  for(const [label,value] of [['First Name','Ada'],['Last Name','Yılmaz'],['Email Address','ada@example.test'],['School / Organization','School'],['Grade / Level','5']])fireEvent.change(screen.getByLabelText(label),{target:{value}});
+  fireEvent.click(screen.getByRole('button',{name:'Start Exam'}));
+  fireEvent.click(await screen.findByRole('button',{name:/Start Test/}));
+  expect(await screen.findByText('Candidate new-candidate')).toBeTruthy();
+  expect(screen.queryByText('Candidate old-candidate')).toBeNull();
 });
