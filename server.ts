@@ -4524,10 +4524,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         responses,
         canDo: reportState.status === 'Completed' ? getCanDo(level) : [],
         scoringComplete: !reportState.provisional,
+        reportStatus: reportState.status,
+        hasScoredEvidence: session.responses.some((response: any) => !shouldExcludeResponseFromAbility(response)),
         integrityRisk: sessionMeta.integrityRisk ?? "LOW",
         productLine:   diagnostic.productLine ?? sessionMeta.productLine ?? undefined,
         certificateId: reportState.certificateId,
-        hasPendingAI: reportState.provisional,
+        hasPendingAI: buildScoringStatus(session.responses).pendingCount > 0,
       });
     } catch (err) {
       console.error("adaptive-report error:", err);
@@ -4846,7 +4848,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
         const state = buildScoringStatus(responses);
         for (const item of state.items) writeEvent("status", item);
-        if (state.complete || state.needsReview || elapsed >= SSE_TIMEOUT_MS) {
+        if (state.complete || (state.needsReview && state.pendingCount === 0) || elapsed >= SSE_TIMEOUT_MS) {
           if (state.needsReview) {
             writeEvent("review_required", { sessionId: id, message: "Some responses require review or scoring is unavailable. Your report remains provisional." });
           } else if (!state.complete) {

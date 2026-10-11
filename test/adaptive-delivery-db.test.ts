@@ -169,6 +169,40 @@ describe.runIf(process.env.B4SKILLS_ARBITRATION_DB_TEST === '1')('PostgreSQL ada
     expect(after.scoreReport).toMatchObject({ isVerified: false, writingScore: null });
     expect(after.scoreReport!.diagnosticReport).toMatchObject({ scoringComplete: false });
   });
+  it('waits for the session lock before reading the final report evidence', async () => {
+    const session = await makeSession({ sectionIndex: 4 });
+    const item = bank.find(item => item.skill === 'WRITING')!;
+    const response = await db.response.create({ data: { sessionId: session.id, itemId: item.id,
+      order: 1, value: 'pending', score: null, metadata: { pendingAsyncScore: true } } });
+    let unlock!: () => void, locked!: () => void;
+    const release = new Promise<void>(resolve => { unlock = resolve; });
+    const acquired = new Promise<void>(resolve => { locked = resolve; });
+    const holder = db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${session.id} FOR UPDATE`;
+      locked(); await release;
+    });
+    await acquired;
+    const finishing = AssessmentService.finalizeSession(session.id, 0);
+    try {
+      let waiting = false;
+      for (let attempt = 0; attempt < 50 && !waiting; attempt++) {
+        const rows = await db.$queryRaw<Array<{ waiting: boolean }>>`
+          SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+            WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND query LIKE '%Session%') AS waiting`;
+        waiting = rows[0].waiting;
+        if (!waiting) await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(waiting).toBe(true);
+      // This grade arrives while finalization is queued behind the session lock.
+      await db.response.update({ where: { id: response.id }, data: { score: 1, isCorrect: true,
+        metadata: { pendingAsyncScore: false, asyncScored: true } } });
+    } finally { unlock(); await holder; await finishing; }
+    const saved = await db.session.findUniqueOrThrow({ where: { id: session.id }, include: { scoreReport: true } });
+    expect(saved.theta).toBeGreaterThan(0);
+    expect(saved.metadata).toMatchObject({ pendingAsyncScoring: false, pendingCount: 0 });
+    expect(saved.scoreReport!.diagnosticReport).toMatchObject({ overallTheta: saved.theta });
+  });
   it('caps repeated passage questions using full administered content, not the remaining pool', async () => {
     const session = await makeSession({ sectionIndex: 2 });
     const reading = bank.filter(item => item.skill === 'READING').slice(0, 2);

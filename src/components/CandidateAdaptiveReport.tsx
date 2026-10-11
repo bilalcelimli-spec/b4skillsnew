@@ -76,6 +76,9 @@ interface AdaptiveReport {
   stopReason: string;
   certificateId?: string | null;
   hasPendingAI?: boolean;
+  scoringComplete?: boolean;
+  reportStatus?: string;
+  hasScoredEvidence?: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -183,23 +186,29 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
 
 
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
-    fetch(`/api/sessions/${sessionId}/adaptive-report`, { credentials: "include" })
+    setReport(null);
+    setTab('overview');
+    setSessionHistory([]);
+    fetch(`/api/sessions/${sessionId}/adaptive-report`, { credentials: "include", signal: controller.signal })
       .then((r) => r.ok ? r.json() : null)
       .then((d) => {
-        if (d) {
+        if (d && !cancelled) {
           setReport(d);
           // If candidateId is known, pre-fetch history for growth tab
           if (d.candidateId) {
-            fetch(`/api/candidates/${d.candidateId}/history`, { credentials: "include" })
+            fetch(`/api/candidates/${d.candidateId}/history`, { credentials: "include", signal: controller.signal })
               .then((r) => r.ok ? r.json() : [])
-              .then((hist: any[]) => setSessionHistory(hist.filter((s: any) => s.id !== sessionId && s.completedAt)))
+              .then((hist: any[]) => { if (!cancelled) setSessionHistory(hist.filter((s: any) => s.id !== sessionId && s.completedAt)); })
               .catch(() => {});
           }
         }
       })
-      .catch(() => { setReport(null); })
-      .finally(() => setLoading(false));
+      .catch(() => { if (!cancelled) setReport(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; controller.abort(); };
   }, [sessionId]);
 
   async function handleShare() {
@@ -234,6 +243,8 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
   }
 
   const cefrColor = CEFR_COLORS[report.cefrLevel] ?? "#64748b";
+  const isFinal = report.scoringComplete === true && report.reportStatus === 'Completed';
+  const hasEvidence = report.hasScoredEvidence === true;
   const TABS = [
     { id: "overview"   as const, label: "Overview" },
     { id: "insights"   as const, label: "Insights" },
@@ -256,7 +267,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
   return (
     <div data-testid="score-report" className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {onClose && (
             <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
@@ -273,7 +284,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
           </div>
         </div>
         <div className="flex items-center gap-2 no-print flex-wrap">
-          {report.certificateId && (
+          {isFinal && report.certificateId && (
             <a
               href={`/verify/${report.certificateId}`}
               target="_blank"
@@ -307,29 +318,29 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
           className="px-5 py-2 rounded-xl text-white font-bold text-xl"
           style={{ backgroundColor: cefrColor }}
         >
-          {report.cefrLevel.replace("_", " ")}
+          {hasEvidence ? `${isFinal ? '' : 'Provisional · '}${report.cefrLevel.replace("_", " ")}` : 'Result unavailable'}
         </div>
       </div>
 
       {/* Theta + BEPS summary */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded-xl border border-slate-200 p-4 bg-white">
-          <p className="text-xs text-slate-500 mb-1">BEPS Score</p>
+          <p className="text-xs text-slate-500 mb-1">{isFinal ? 'BEPS Score' : 'Provisional BEPS Score'}</p>
           <p className="text-3xl font-black" style={{ color: cefrColor }}>
-            {thetaToBeps(report.finalTheta)}
+            {hasEvidence ? thetaToBeps(report.finalTheta) : '—'}
           </p>
-          <p className="text-[10px] text-slate-400 mt-1">θ {(report.finalTheta ?? 0) >= 0 ? "+" : ""}{(report.finalTheta ?? 0).toFixed(2)} · ±{(report.finalSem ?? 0).toFixed(2)} SEM</p>
-          <ThetaBar theta={report.finalTheta} sem={report.finalSem} color={cefrColor} />
+          {hasEvidence && <><p className="text-[10px] text-slate-400 mt-1">θ {(report.finalTheta ?? 0) >= 0 ? "+" : ""}{(report.finalTheta ?? 0).toFixed(2)} · ±{(report.finalSem ?? 0).toFixed(2)} SEM</p>
+          <ThetaBar theta={report.finalTheta} sem={report.finalSem} color={cefrColor} /></>}
         </div>
-        <div data-testid="skill-scores" className="rounded-xl border border-slate-200 p-4 bg-white col-span-2">
-          <p className="text-xs font-medium text-slate-600 mb-3">Skill Profile — CEFR per Skill</p>
+        <div data-testid="skill-scores" className="rounded-xl border border-slate-200 p-4 bg-white sm:col-span-2 min-w-0">
+          <p className="text-xs font-medium text-slate-600 mb-3">{isFinal ? 'Skill Profile — CEFR per Skill' : 'Skill Profile — provisional estimates'}</p>
           <div className="space-y-2.5">
             {report.skillScores.map((s, i) => {
               const color = SKILL_COLORS[i % 6];
               const ciSame = s.ciLo === s.ciHi;
               return (
                 <div key={s.skill} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                  <div className="flex items-center gap-2 mb-1.5">
+                  <div className="flex flex-wrap items-center gap-2 mb-1.5">
                     {/* Skill name */}
                     <span className="text-xs font-semibold text-slate-600 w-24 flex-shrink-0 capitalize">
                       {s.skill.charAt(0) + s.skill.slice(1).toLowerCase()}
@@ -365,22 +376,24 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
       </div>
 
       {/* SLA notice for pending AI scoring */}
-      {report.hasPendingAI && (
+      {!isFinal && (
         <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800">
           <span className="text-amber-500 text-base leading-none mt-0.5">⏱</span>
           <span>
-            <strong>Speaking / Writing results within 48 hours.</strong> Your AI-assessed responses are being processed. Scores will update automatically — no action needed.
+            <strong>{report.hasPendingAI ? 'Responses are being evaluated.' : 'This report is not final.'}</strong>{' '}
+            {report.hasPendingAI ? 'Completed evaluations will update automatically. Any displayed estimates remain provisional.' : 'Some responses require review or there is insufficient scored evidence. A final overall result is not available yet.'}
           </span>
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-slate-200">
+      <div className="flex flex-wrap gap-1 border-b border-slate-200">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 -mb-px transition-colors ${
+            disabled={(t.id === 'cando' && !isFinal) || (!hasEvidence && !['overview', 'items'].includes(t.id))}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 -mb-px transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
               tab === t.id
                 ? "border-indigo-600 text-indigo-700 bg-indigo-50"
                 : "border-transparent text-slate-500 hover:text-slate-700"
@@ -394,7 +407,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
       {/* ── OVERVIEW ─────────────────────────────────────────────────────── */}
       {tab === "overview" && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-          <div className="border border-slate-200 rounded-xl p-4 bg-white">
+          {hasEvidence ? <div className="border border-slate-200 rounded-xl p-4 bg-white">
             <p className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-indigo-500" />
               Measurement Precision
@@ -417,7 +430,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
                 <p className="text-xs text-slate-500">Precision</p>
               </div>
             </div>
-          </div>
+          </div> : <p className="text-sm text-slate-600">No scored evidence is available yet. Scores and measurement precision will appear after evaluation.</p>}
         </motion.div>
       )}
 
@@ -633,7 +646,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
       )}
 
       {/* ── CAN-DO ──────────────────────────────────────────────────────── */}
-      {tab === "cando" && (() => {
+      {tab === "cando" && isFinal && (() => {
         // Collect can-dos for the achieved level (plus one below for context)
         const CEFR_ORDER = ["PRE_A1","A1","A2","B1","B2","C1","C2"];
         const cefrIdx = CEFR_ORDER.indexOf(report.cefrLevel);
@@ -864,14 +877,14 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
       )}
 
       {/* AI Tutor — floating coaching bubble, context-aware for this report */}
-      <AITutorOverlay
+      {hasEvidence && <AITutorOverlay
         context={{
           cefrBand: report.cefrLevel.replace("_", " "),
           skill: report.skillScores.length > 0
             ? report.skillScores.reduce((a, b) => a.theta < b.theta ? a : b).skill
             : undefined,
         }}
-      />
+      />}
     </div>
   );
 }

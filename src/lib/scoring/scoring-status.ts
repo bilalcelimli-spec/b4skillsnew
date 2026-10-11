@@ -6,6 +6,7 @@ export function buildScoringStatus(responses: Array<{
   const items = responses.filter(r => !r.isPretest).map(response => {
     const meta = (response.metadata ?? {}) as Record<string, unknown>;
     const status = !shouldExcludeResponseFromAbility(response) ? 'scored'
+      : meta.pendingAsyncScore === true && meta.asyncScored !== true ? 'pending'
       : meta.scoreFailed === true || meta.scoreSource === 'ai_unavailable' ? 'unavailable'
       : meta.requiresHumanReview === true || meta.scoreSource === 'ai_flagged' ? 'review_required'
       : 'pending';
@@ -13,6 +14,7 @@ export function buildScoringStatus(responses: Array<{
       ...(status === 'scored' ? { score: response.score, cefrLevel: meta.cefrLevel } : {}),
     };
   });
-  return { items, complete: items.length > 0 && items.every(item => item.status === 'scored'),
+  return { items, pendingCount: items.filter(item => item.status === 'pending').length,
+    complete: items.length > 0 && items.every(item => item.status === 'scored'),
     needsReview: items.some(item => item.status === 'review_required' || item.status === 'unavailable') };
 }

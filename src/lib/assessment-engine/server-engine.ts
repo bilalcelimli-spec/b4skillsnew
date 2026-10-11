@@ -1071,8 +1071,12 @@ export const AssessmentService = {
     opts?: { stopReason?: string | null }
   ) {
     const engine = await getEngine();
+    // Serialize finalization with scoring refreshes across server processes.
+    // Read the report snapshot only after taking the same session lock as answers.
+    return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
     // Fetch full session including responses and MIRT profiles stored in metadata
-    const session = await prisma.session.findUnique({
+    const session = await tx.session.findUnique({
       where: { id: sessionId },
       include: { responses: { include: { item: true } }, scoreReport: true },
     });
@@ -1439,7 +1443,7 @@ export const AssessmentService = {
         if (!session || session.responses.filter(r => !shouldExcludeResponseFromAbility(r)).length < 10) return null;
         try {
           const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-          const recentSessions = await prisma.session.findMany({
+          const recentSessions = await tx.session.findMany({
             where: {
               status: "COMPLETED",
               completedAt: { gte: since },
@@ -1560,8 +1564,7 @@ export const AssessmentService = {
       );
     }
 
-    await prisma.$transaction([
-      prisma.session.update({
+    await tx.session.update({
         where: { id: sessionId },
         data: {
           status: SessionStatus.COMPLETED,
@@ -1577,8 +1580,8 @@ export const AssessmentService = {
             pendingAsyncScoring, pendingCount: pendingAsyncResponses.length,
           } as Prisma.InputJsonValue,
         }
-      }),
-      prisma.scoreReport.upsert({
+      });
+    await tx.scoreReport.upsert({
         where: { sessionId },
         create: {
           sessionId,
@@ -1595,8 +1598,8 @@ export const AssessmentService = {
           ...skillScoresForDb,
           diagnosticReport,
         } as any,
-      }),
-    ]);
+      });
+    }, { timeout: 30000 });
   },
 
   async refreshSessionScoring(sessionId: string) {

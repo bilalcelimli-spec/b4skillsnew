@@ -83,3 +83,17 @@ it('still redirects exactly once when refresh credentials are definitively rejec
  await Promise.all([apiFetch('/api/one'),apiFetch('/api/two')]);await apiFetch('/api/three');
  expect(expired).toHaveBeenCalledTimes(1);
 });
+
+it('keeps live scoring open while another response is still pending', () => {
+  const mixed = buildScoringStatus([
+    { id: 'review', score: null, metadata: { requiresHumanReview: true, asyncScored: true } },
+    { id: 'queued', score: null, metadata: { pendingAsyncScore: true, requiresHumanReview: true } },
+  ]);
+  expect(mixed).toMatchObject({ pendingCount: 1, needsReview: true, complete: false });
+  expect(mixed.items.map(item => item.status)).toEqual(['review_required', 'pending']);
+  const settled = buildScoringStatus([
+    { id: 'review', score: null, metadata: { requiresHumanReview: true, asyncScored: true } },
+    { id: 'queued', score: .8, metadata: { asyncScored: true, pendingAsyncScore: false } },
+  ]);
+  expect(settled).toMatchObject({ pendingCount: 0, needsReview: true, complete: false });
+});
