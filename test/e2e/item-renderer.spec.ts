@@ -120,3 +120,42 @@ for (const width of [320, 1280]) {
     await expect(page.getByLabel('Submitted answer')).toHaveText('"H"');
   });
 }
+
+test('saved-answer conflict recovers the next question without another submission',async({page})=>{
+ let saved=false,posts=0;
+ await page.addInitScript(()=>localStorage.setItem('i18nextLng','en'));
+ await page.route('https://fonts.googleapis.com/**',route=>route.abort());
+ await page.route('**/api/**',async route=>{
+  const url=route.request().url();
+  if(url.endsWith('/status'))return route.fulfill({json:{status:'IN_PROGRESS',answeredItemIds:saved?['first']:[],sectionCounts:{READING:saved?1:0}}});
+  if(url.endsWith('/respond')){posts++;saved=true;return route.fulfill({status:409,json:{error:'Already saved'}});}
+  if(url.endsWith('/next'))return route.fulfill({json:{currentSection:'READING',item:{id:saved?'second':'first',skill:'READING',type:'MULTIPLE_CHOICE',content:{prompt:saved?'Next question':'First question',options:['A','B']}}}});
+  return route.fulfill({json:{success:true,stored:true}});
+ });
+ await page.goto('/test/e2e/fixtures/item-renderer.html?mode=exam',{waitUntil:'domcontentloaded'});
+ await page.getByRole('button',{name:'Take Photo',exact:true}).click();
+ await expect(page.getByRole('form',{name:'First question'})).toBeVisible();
+ await page.getByRole('radio').first().click();
+ await page.getByRole('button',{name:'Confirm Answer'}).click();
+ await expect(page.getByRole('form',{name:'Next question'})).toBeVisible();
+ expect(posts).toBe(1);
+});
+
+test('initial connection retry preserves the existing exam without reloading',async({page})=>{
+ let reads=0,launches=0,navigations=0;
+ page.on('framenavigated',frame=>{if(frame===page.mainFrame())navigations++;});
+ await page.addInitScript(()=>localStorage.setItem('i18nextLng','en'));
+ await page.route('https://fonts.googleapis.com/**',route=>route.abort());
+ await page.route('**/api/**',async route=>{
+  const url=route.request().url();
+  if(url.endsWith('/launch'))launches++;
+  if(url.endsWith('/status'))return ++reads===1?route.fulfill({status:503,json:{error:'Temporary connection failure'}}):route.fulfill({json:{status:'IN_PROGRESS'}});
+  if(url.endsWith('/next'))return route.fulfill({json:{item:{id:'original',skill:'READING',type:'MULTIPLE_CHOICE',content:{prompt:'Original question',options:['A','B']}}}});
+  return route.fulfill({json:{success:true,stored:true}});
+ });
+ await page.goto('/test/e2e/fixtures/item-renderer.html?mode=exam',{waitUntil:'domcontentloaded'});
+ await page.getByRole('button',{name:'Try Reconnecting'}).click();
+ await page.getByRole('button',{name:'Take Photo',exact:true}).click();
+ await expect(page.getByRole('form',{name:'Original question'})).toBeVisible();
+ expect(launches).toBe(0);expect(navigations).toBe(1);
+});

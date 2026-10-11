@@ -15,4 +15,14 @@ describe('authoritative in-exam progress',()=>{
     expect(progress.maxItems).toBe(Object.values(progress.sectionLimits).reduce((a,b)=>a+b,0));
     expect(progress.provisional).toBe(true);
   });
+  it('returns persisted item IDs for reconnect recovery without exposing response values',()=>{
+    const progress=buildSessionProgress({metadata:{productLine:'General English'},responses:[
+      {...response('READING',1),itemId:'saved-1',value:'Private answer'},
+      {...response('WRITING',null),itemId:'saved-2',value:'Private essay'},
+      {...response('GRAMMAR',1),itemId:'pretest',isPretest:true},
+    ]});
+    expect(progress.answeredItemIds).toEqual(['saved-1','saved-2','pretest']);
+    expect(JSON.stringify(progress)).not.toContain('Private');
+  });
+
 });

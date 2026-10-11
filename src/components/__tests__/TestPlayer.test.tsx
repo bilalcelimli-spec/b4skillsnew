@@ -211,4 +211,66 @@ describe("TestPlayer response persistence", () => {
     fireEvent.click(screen.getByRole('button',{name:'Back to dashboard'}));expect(exit).toHaveBeenCalledOnce();
   });
 
+  it.each(['network', 'conflict'])('recovers an already saved answer after a %s failure without submitting again',async failure=>{
+    let saved=false;const complete=vi.fn();
+    const fetchMock=vi.fn(async(url:string)=>{
+      if(url.endsWith('/status'))return {ok:true,json:async()=>({status:'IN_PROGRESS',answeredItemIds:saved?['item-1']:[],sectionCounts:{WRITING:saved?1:0}})};
+      if(url.endsWith('/respond')){
+        saved=true;
+        if(failure==='network')throw new TypeError('Connection lost after save');
+        return {ok:false,status:409,json:async()=>({error:'Already answered'})};
+      }
+      return {ok:true,json:async()=>({currentSection:'WRITING',item:{id:saved?'item-2':'item-1',skill:'WRITING'}})};
+    });
+    vi.stubGlobal('fetch',fetchMock);sessionStorage.setItem(writingDraftKey('existing','item-1'),'Keep until saved');
+    render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="existing" onComplete={complete}/>);
+    fireEvent.click(await screen.findByRole('button',{name:'Verify'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Send essay'}));
+    expect(await screen.findByText('item-2')).toBeTruthy();
+    expect(fetchMock.mock.calls.filter(([url])=>url.endsWith('/respond'))).toHaveLength(1);
+    expect(sessionStorage.getItem(writingDraftKey('existing','item-1'))).toBeNull();expect(complete).not.toHaveBeenCalled();
+  });
+  it('keeps the question and writing draft when the server cannot confirm a saved response',async()=>{
+    vi.spyOn(console,'error').mockImplementation(()=>{});
+    vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
+      if(url.endsWith('/status'))return {ok:true,json:async()=>({status:'IN_PROGRESS',answeredItemIds:[]})};
+      if(url.endsWith('/respond'))throw new TypeError('Offline');
+      return {ok:true,json:async()=>({item:{id:'item-1',skill:'WRITING'}})};
+    }));
+    sessionStorage.setItem(writingDraftKey('existing','item-1'),'Keep this draft');
+    render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="existing" onComplete={vi.fn()}/>);
+    fireEvent.click(await screen.findByRole('button',{name:'Verify'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Send essay'}));
+    await screen.findByRole('alert');
+    expect(screen.getByText('item-1')).toBeTruthy();
+    expect(sessionStorage.getItem(writingDraftKey('existing','item-1'))).toBe('Keep this draft');
+  });
+  it('opens results if the lost response completed the attempt',async()=>{
+    let saved=false;const complete=vi.fn();
+    const fetchMock=vi.fn(async(url:string)=>{
+      if(url.endsWith('/status'))return {ok:true,json:async()=>({status:saved?'SCORING':'IN_PROGRESS',answeredItemIds:saved?['item-1']:[]})};
+      if(url.endsWith('/respond')){saved=true;throw new TypeError('Connection lost');}
+      return {ok:true,json:async()=>({item:{id:'item-1',skill:'WRITING'}})};
+    });
+    vi.stubGlobal('fetch',fetchMock);
+    render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="existing" onComplete={complete}/>);
+    fireEvent.click(await screen.findByRole('button',{name:'Verify'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Send essay'}));
+    await waitFor(()=>expect(complete).toHaveBeenCalledExactlyOnceWith(null,'existing'));
+    expect(fetchMock.mock.calls.filter(([url])=>url.endsWith('/next'))).toHaveLength(1);
+  });
+  it('retries an initial status failure in place without launching a new attempt',async()=>{
+    let reads=0;
+    const fetchMock=vi.fn(async(url:string)=>{
+      if(url.endsWith('/status'))return ++reads===1 ? {ok:false,json:async()=>({error:'Temporary connection failure'})} : {ok:true,json:async()=>({status:'IN_PROGRESS'})};
+      return {ok:true,json:async()=>({item:{id:'original-question',skill:'READING'}})};
+    });
+    vi.stubGlobal('fetch',fetchMock);
+    render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="existing" onComplete={vi.fn()}/>);
+    fireEvent.click(await screen.findByRole('button',{name:'Try Reconnecting'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Verify'}));
+    expect(await screen.findByText('original-question')).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url])=>url.endsWith('/launch'))).toBe(false);
+  });
+
 });

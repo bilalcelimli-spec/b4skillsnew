@@ -108,22 +108,25 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
   const [activePassage, setActivePassage] = useState<string | null>(null);
 
   const launchStarted = React.useRef(false);
-  // StrictMode replays effects in development; a launch must create one attempt.
-  useEffect(() => {
-    if (launchStarted.current) return;
-    launchStarted.current = true;
-    const launch = async () => {
-      try {
-        if (initialSessionId) {
-          const statusRes = await fetch(`/api/sessions/${encodeURIComponent(initialSessionId)}/status`, { credentials: "include" });
+  const knownSession = React.useRef(initialSessionId);
+  const initializationPending = React.useRef(false);
+  const [initializationFailed, setInitializationFailed] = useState(false);
+  const initialize = async () => {
+    if (initializationPending.current) return;
+    initializationPending.current = true;
+    setInitializationFailed(false);setLoading(true);setError(null);
+    try {
+        if (knownSession.current) {
+          const initialSessionId = knownSession.current;
+          const statusRes = await fetch(`/api/sessions/${encodeURIComponent(initialSessionId)}/status`, { credentials: "include", signal: AbortSignal.timeout(15000) });
           let existing = await statusRes.json();
           if (!activeRef.current) return;
           if (!statusRes.ok) throw new Error(existing.error ?? "Could not resume assessment");
           if (existing.status === 'PAUSED') {
-            const resumed = await fetch(`/api/sessions/${encodeURIComponent(initialSessionId)}/resume`, {method: 'POST', credentials: 'include'});
+            const resumed = await fetch(`/api/sessions/${encodeURIComponent(initialSessionId)}/resume`, {method: 'POST', credentials: 'include', signal: AbortSignal.timeout(15000)});
             const result = await resumed.json();
             if (!resumed.ok) throw new Error(result.error ?? 'Could not resume assessment');
-            const refreshed = await fetch(`/api/sessions/${encodeURIComponent(initialSessionId)}/status`, {credentials: 'include'});
+            const refreshed = await fetch(`/api/sessions/${encodeURIComponent(initialSessionId)}/status`, {credentials: 'include', signal: AbortSignal.timeout(15000)});
             existing = await refreshed.json();
             if (!refreshed.ok) throw new Error(existing.error ?? 'Could not resume assessment');
             if (!activeRef.current) return;
@@ -143,6 +146,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
         }
         const res = await fetch("/api/sessions/launch", {
           method: "POST",
+          signal: AbortSignal.timeout(20000),
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({ candidateId, organizationId, productLine, ...(startingSkill ? { startingSkill } : {}) })
@@ -154,6 +158,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
           throw new Error(data.error || "Launch failed");
         }
         
+        knownSession.current = data.sessionId;
         setSessionId(data.sessionId);
         onSessionStarted?.(data.sessionId);
         setSessionReady(true);
@@ -170,6 +175,8 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
         sessionStartRef.current = Date.now();
         fetchNextItem(data.sessionId);
       } catch (err: any) {
+        if (!activeRef.current) return;
+        setInitializationFailed(true);
         const raw = err?.message || "Unknown error";
         const msg = raw === "exam_code_required"
           ? "A valid exam code is required to start this assessment."
@@ -177,8 +184,13 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
         setError(msg);
         setLoading(false);
       }
-    };
-    launch();
+      finally {initializationPending.current=false;}
+  };
+  // StrictMode replays effects in development; a launch must create one attempt.
+  useEffect(() => {
+    if (launchStarted.current) return;
+    launchStarted.current=true;
+    void initialize();
   }, []);
 
   // Elapsed time counter — counts up from 0. The exam ends when the server
@@ -318,7 +330,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
     const request = ++statusRequestRef.current;
     setStatusError(false);
     try {
-      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/status`, { credentials: "include" });
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/status`, { credentials: "include", signal: AbortSignal.timeout(15000) });
       if (!res.ok) throw new Error('Progress unavailable');
       const data = await res.json();
       if (!activeRef.current || request !== statusRequestRef.current) return;
@@ -352,50 +364,64 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
     });
   };
 
+  const responsePending = React.useRef(false);
   const handleResponse = async (value: any) => {
-    if (!sessionId || !currentItem || submitting) return;
-    
+    if (!sessionId || !currentItem || responsePending.current) return;
+    responsePending.current = true;
+    const answeredItem = currentItem;
     setSubmitting(true);
     setItemFeedback(null);
     setUploadStatus('uploading');
     setUploadProgress(10);
-
+    const advanceSavedAnswer = async (recovered = false) => {
+      if (!activeRef.current) return;
+      setUploadStatus('success');setUploadProgress(100);
+      try {sessionStorage.removeItem(writingDraftKey(sessionId, answeredItem.id));} catch { /* Storage unavailable */ }
+      if (!recovered) setSectionCounts(prev => ({...prev, [currentSection]: (prev[currentSection] ?? 0) + 1}));
+      await fetchNextItem(sessionId);
+    };
+    // A lost HTTP response is not proof that the answer failed to save.
+    // Confirm the exact item from persisted responses before discarding a draft.
+    const recoverSavedAnswer = async () => {
+      try {
+        const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/status`, {credentials: 'include', signal: AbortSignal.timeout(15000)});
+        const result = await response.json();
+        if (!response.ok || !activeRef.current || !Array.isArray(result.answeredItemIds) || !result.answeredItemIds.includes(answeredItem.id)) return false;
+        setStatus(result);
+        if (result.sectionCounts) setSectionCounts(result.sectionCounts);
+        if (['COMPLETED', 'SCORING'].includes(result.status)) {
+          try {sessionStorage.removeItem(writingDraftKey(sessionId, answeredItem.id));} catch { /* Storage unavailable */ }
+          setFinished(true);onComplete(null,sessionId);
+        } else await advanceSavedAnswer(true);
+        return true;
+      } catch {return false;}
+    };
     let finalValue = value;
-
     try {
-      // Save the response first. The server queues productive scoring after persistence.
       if (value instanceof Blob) {
-        if (!value.size) throw new Error("Empty recording");
+        if (!value.size) throw new Error('Empty recording');
         const base64 = await blobToBase64(value);
-        finalValue = { audio: base64, mimeType: value.type };
-        setUploadProgress(60);
+        finalValue = {audio: base64, mimeType: value.type};setUploadProgress(60);
       }
-      const res = await fetch(`/api/sessions/${sessionId}/respond`, {
-        credentials: "include",
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId: currentItem.id, value: finalValue, latencyMs: Date.now() - responseStartTime.current, candidateId })
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/respond`, {
+        credentials: 'include', method: 'POST', signal: AbortSignal.timeout(45000),
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({itemId: answeredItem.id, value: finalValue, latencyMs: Date.now() - responseStartTime.current, candidateId})
       });
       const submitData = await res.json();
-      
+      if (!activeRef.current) return;
       if (!res.ok) {
+        if ((res.status === 409 || res.status >= 500) && await recoverSavedAnswer()) return;
         console.error('[respond]', submitData);
-        // Don't crash the whole exam for a single failed submit — show inline warning
-        setItemFeedback({ error: submitData?.error || "Failed to submit response. Please try again." });
-        setUploadStatus('error');
-      } else {
-        setUploadStatus('success');
-        setUploadProgress(100);
-        try { sessionStorage.removeItem(writingDraftKey(sessionId, currentItem.id)); } catch { /* Storage unavailable */ }
-        setSectionCounts(prev => ({ ...prev, [currentSection]: (prev[currentSection] ?? 0) + 1 }));
-        await fetchNextItem(sessionId);
-      }
+        setItemFeedback({error: submitData?.error || 'Failed to submit response. Please try again.'});setUploadStatus('error');
+      } else await advanceSavedAnswer();
     } catch (err) {
+      if (!activeRef.current || await recoverSavedAnswer()) return;
       console.error('[respond network]', err);
-      setItemFeedback({ error: "Connection error. Please check your internet and try again." });
-      setUploadStatus('error');
+      setItemFeedback({error: 'Connection error. Please check your internet and try again.'});setUploadStatus('error');
     } finally {
-      setSubmitting(false);
+      responsePending.current = false;
+      if (activeRef.current) setSubmitting(false);
     }
   };
 
@@ -443,10 +469,10 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
             size="lg"
             onClick={() => {
               setError(null);
-              if (sessionId) {
-                fetchNextItem(sessionId);
+              if (initializationFailed || !sessionId) {
+                void initialize();
               } else {
-                window.location.reload();
+                fetchNextItem(sessionId);
               }
             }}
           >

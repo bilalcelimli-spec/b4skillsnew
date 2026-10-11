@@ -31,6 +31,7 @@ export function buildSessionProgress(session: any) {
     serverNow: new Date().toISOString(), startedAt: effectiveSessionStart(session), pause: pauseInfo(session), organizationId: session.organizationId, status: session.status,
     maxDurationMs: diagnostic ? DIAGNOSTIC_WALL_CLOCK_MS : profile.maxDurationMs,
     sectionOrder, sectionCounts, sectionLimits, skillProgress, skills,
+    answeredItemIds: responses.map(response => response.itemId).filter((id): id is string => typeof id === 'string'),
     progress: answered, scoredCount, pendingCount: answered - scoredCount,
     maxItems: Object.values(sectionLimits).reduce((sum, count) => sum + count, 0),
     theta, sem: theta !== null && typeof session.sem === 'number' && Number.isFinite(session.sem) ? session.sem : null,
