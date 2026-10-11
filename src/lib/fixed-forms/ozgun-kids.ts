@@ -22,6 +22,7 @@ export interface FixedFormState {
   answers: FixedAnswers;
   report?: ReturnType<typeof scoreFixedForm>;
   listeningStartedAt?: string;
+  resumeQuestion?: number;
 }
 export function scoreFixedForm(answers: FixedAnswers, key: string, keyConfirmed: boolean) {
   if (!/^[ABCD]{96}$/.test(key)) throw new Error('Cevap anahtarı 96 adet A/B/C/D içermelidir.');

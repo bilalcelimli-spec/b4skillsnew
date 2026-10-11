@@ -1,3 +1,4 @@
+import { createSessionPauseRouter } from './src/routes/session-pause';
 import "dotenv/config";
 import {AppError} from "./src/lib/errors/app-error.js";
 import {productForRedeemedCode} from "./src/lib/security/exam-code-product.js";
@@ -1557,23 +1558,12 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     if (!frame && failureReason) {
       try {
         if (!id.startsWith("demo-session-")) {
-          const existing = await prisma.session.findUnique({
-            where: { id },
-            select: { metadata: true },
-          });
-          await prisma.session.update({
-            where: { id },
-            data: {
-              metadata: {
-                ...(typeof existing?.metadata === "object" && existing.metadata !== null
-                  ? (existing.metadata as Record<string, unknown>)
-                  : {}),
-                identitySnapshotFailed: true,
-                identitySnapshotFailureReason: failureReason,
-                identitySnapshotAt: new Date().toISOString(),
-              },
-            },
-          });
+          const failurePatch = JSON.stringify({identitySnapshotFailed: true,
+            identitySnapshotFailureReason: failureReason, identitySnapshotAt: new Date().toISOString()});
+          await prisma.$executeRaw`
+            UPDATE "Session" SET metadata = COALESCE(metadata, '{}') || ${failurePatch}::jsonb
+            WHERE id = ${id}
+          `;
           await (prisma as any).proctoringEvent.create({
             data: {
               sessionId: id,
@@ -1605,25 +1595,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const evidence = await uploadPrivateObject("identity", evidenceKey, buffer, "image/jpeg");
 
       if (!id.startsWith("demo-session-")) {
-        const existing = await prisma.session.findUnique({
-          where: { id },
-          select: { metadata: true },
-        });
-        await prisma.session.update({
-          where: { id },
-          data: {
-            metadata: {
-              ...(typeof existing?.metadata === "object" && existing.metadata !== null
-                ? (existing.metadata as Record<string, unknown>)
-                : {}),
-              identitySnapshotKey: evidenceKey,
-              identitySnapshotProvider: evidence.provider,
-              identitySnapshotBucket: evidence.bucket,
-              identitySnapshotUrl: null,
-              identitySnapshotAt: new Date().toISOString(),
-            },
-          },
-        });
+        const identityPatch = JSON.stringify({identitySnapshotKey: evidenceKey,
+          identitySnapshotProvider: evidence.provider, identitySnapshotBucket: evidence.bucket,
+          identitySnapshotUrl: null, identitySnapshotAt: new Date().toISOString()});
+        await prisma.$executeRaw`
+          UPDATE "Session" SET metadata = COALESCE(metadata, '{}') || ${identityPatch}::jsonb
+          WHERE id = ${id}
+        `;
       }
 
       return res.json({ success: true, stored: true });
@@ -1657,6 +1635,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       return res.status(500).json({ error: "Failed to load identity snapshot" });
     }
   });
+
+  app.use("/api", createSessionPauseRouter({prisma, auth: authMiddleware}));
 
   app.get("/api/sessions/:id/next", authMiddleware, async (req, res) => {
     try {
@@ -4268,6 +4248,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           prisma.session.findUnique({ where: { id }, select: { currentTheta: true, status: true, metadata:true } }),
         ]);
         if ((session?.metadata as any)?.sessionType==='FIXED_FORM') return res.status(409).json({error:'Use the fixed-form section completion endpoint'});
+        if (session?.status === 'PAUSED' || session?.status === 'EXPIRED') return res.status(409).json({error:'This assessment is paused or expired'});
         if (!existingReport && session?.currentTheta != null && session.status !== "COMPLETED") {
           try {
             const { AssessmentService } = await import("./src/lib/assessment-engine/server-engine.js");
@@ -4278,10 +4259,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         }
       }
 
-      await prisma.session.update({
-        where: { id },
+      const completion = await prisma.session.updateMany({
+        where: { id, status: {notIn: ['PAUSED', 'EXPIRED']} },
         data: { status: "COMPLETED", completedAt: new Date() },
       });
+      if (!completion.count) return res.status(409).json({error: 'This assessment cannot be completed in its current state'});
 
       const { WebhookService } = await import("./src/lib/ecosystem/webhook-service.js");
       await WebhookService.dispatchTestCompleted(id);

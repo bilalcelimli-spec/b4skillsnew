@@ -1,3 +1,4 @@
+import {createSessionPauseService} from '../src/lib/assessment-engine/session-pause-service';
 /** Real production delivery and scoring against an isolated localhost database only. */
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
@@ -259,4 +260,24 @@ describe.runIf(process.env.B4SKILLS_ARBITRATION_DB_TEST === '1')('PostgreSQL ada
     await expect(AssessmentService.launchSession(candidateId, orgId, 'Primary (7-10)')).rejects.toThrow('eligible ACTIVE operational');
     expect(await db.session.count({ where: { organizationId: orgId } })).toBe(before);
   });
+  it('serializes pause and resume requests, rejects paused answers and resumes the same adaptive question after a day', async () => {
+    const session = await makeSession({});
+    const first = await AssessmentService.getNextItem(session.id);
+    const pausedAt = new Date(Date.now()-24*3600000);
+    await db.session.update({where:{id:session.id},data:{startedAt:new Date(pausedAt.getTime()-60000)}});
+    const pause = createSessionPauseService(db);
+    await Promise.all([pause.change(session.id,candidateId,'pause',pausedAt),pause.change(session.id,candidateId,'pause',pausedAt)]);
+    await expect(AssessmentService.getNextItem(session.id)).rejects.toMatchObject({statusCode:409});
+    await expect(AssessmentService.submitResponse(session.id,first.item!.id,'A',10000)).rejects.toMatchObject({statusCode:409});
+    expect(await db.response.count({where:{sessionId:session.id}})).toBe(0);
+    await Promise.all([pause.resume(session.id,candidateId),pause.resume(session.id,candidateId)]);
+    const next = await AssessmentService.getNextItem(session.id);
+    expect(next.item!.id).toBe(first.item!.id);
+    expect(next.elapsedMs).toBeGreaterThanOrEqual(60000);
+    expect(next.elapsedMs).toBeLessThan(65000);
+    await AssessmentService.submitResponse(session.id,next.item!.id,'A',10000);
+    expect(await db.response.count({where:{sessionId:session.id}})).toBe(1);
+    await expect(pause.pause(session.id,candidateId)).rejects.toMatchObject({statusCode:409});
+  });
+
 });

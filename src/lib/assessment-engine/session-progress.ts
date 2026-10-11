@@ -1,3 +1,4 @@
+import { effectiveSessionStart, pauseInfo } from './session-pause';
 import { getProfile } from '../product-lines/profiles';
 import { thetaToCefr } from '../cefr/cefr-framework';
 import { shouldExcludeResponseFromAbility } from '../scoring/score-evidence';
@@ -27,7 +28,7 @@ export function buildSessionProgress(session: any) {
   const answered = Object.values(sectionCounts).reduce((sum, count) => sum + count, 0);
   const theta = scoredCount && typeof session.theta === 'number' && Number.isFinite(session.theta) ? session.theta : null;
   return {
-    startedAt: session.startedAt, organizationId: session.organizationId, status: session.status,
+    serverNow: new Date().toISOString(), startedAt: effectiveSessionStart(session), pause: pauseInfo(session), organizationId: session.organizationId, status: session.status,
     maxDurationMs: diagnostic ? DIAGNOSTIC_WALL_CLOCK_MS : profile.maxDurationMs,
     sectionOrder, sectionCounts, sectionLimits, skillProgress, skills,
     progress: answered, scoredCount, pendingCount: answered - scoredCount,

@@ -7,7 +7,7 @@ import {DiagnosticService,SKILLS} from '../diagnostic-service';
 beforeEach(()=>vi.clearAllMocks());
 function fixture(){
  const skills=Object.fromEntries(SKILLS.map(skill=>[skill,{theta:0,sem:1,answered:skill==='WRITING'?4:5,items:Array.from({length:5},(_,n)=>({itemId:`${skill}-${n}`,skill,type:skill==='WRITING'?'WRITING_PROMPT':'MULTIPLE_CHOICE',irtA:1,irtB:0,irtC:0,cefrLevel:'B1',answered:skill!=='WRITING'||n<4,score:skill==='WRITING'&&n===4?undefined:0}))}]));
- let session:any={id:'session',metadata:{sessionType:'DIAGNOSTIC',diagnosticState:{sessionId:'session',candidateId:'candidate',orgId:'org',startedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+600000).toISOString(),totalAnswered:29,complete:false,skills}}};
+ let session:any={id:'session',status:'IN_PROGRESS',metadata:{sessionType:'DIAGNOSTIC',diagnosticState:{sessionId:'session',candidateId:'candidate',orgId:'org',startedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+600000).toISOString(),totalAnswered:29,complete:false,skills}}};
  session.responses=Object.values(skills).flatMap((st:any)=>st.items.filter((item:any)=>item.answered).map((item:any)=>({itemId:item.itemId,score:item.score,item:{skill:item.skill},metadata:{},isPretest:false})));
  mocks.find.mockImplementation(async()=>structuredClone(session));
  mocks.update.mockImplementation(async({data}:any)=>{session={...session,...data};return structuredClone(session)});

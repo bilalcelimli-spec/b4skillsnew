@@ -1,3 +1,5 @@
+import {createSessionPauseRouter} from '../src/routes/session-pause';
+import {createSessionPauseService} from '../src/lib/assessment-engine/session-pause-service';
 /** Explicit opt-in: only disposable localhost PostgreSQL, never DATABASE_URL. */
 import {randomUUID} from 'node:crypto';
 import {PrismaClient} from '@prisma/client';
@@ -62,6 +64,10 @@ describe.runIf(process.env.B4SKILLS_ARBITRATION_DB_TEST==='1')('PostgreSQL fixed
  it('runs authenticated HTTP launch, answer persistence and reporting against PostgreSQL',async()=>{
   await code();
   const app=express();app.use(express.json());
+  app.use('/api',createSessionPauseRouter({prisma:db,auth:(req:any,res:any,next:any)=>{
+    if(!req.headers.authorization)return res.sendStatus(401);
+    req.user={id:req.headers.authorization==='other'?'other-student':candidate};next();
+  }}));
   app.use('/api',createOzgunKidsRouter({prisma:db,databaseAvailable:()=>true,
    auth:(req:any,res:any,next:any)=>{if(!req.headers.authorization)return res.sendStatus(401);req.user={id:candidate,email,role:'CANDIDATE',organizationId:org};next();},
    checkRole:roles=>(req:any,res:any,next:any)=>roles.includes(req.user?.role)?next():res.sendStatus(403),
@@ -77,8 +83,42 @@ describe.runIf(process.env.B4SKILLS_ARBITRATION_DB_TEST==='1')('PostgreSQL fixed
    const started=await fetch(endpoint+'/start',{method:'POST',headers,body:'{}'});expect((await started.json()).questions).toHaveLength(24);
    const answered=await fetch(endpoint+'/answer',{method:'POST',headers,body:JSON.stringify({number:1,answer:'A'})});expect(answered.status).toBe(200);
    expect(((await db.session.findUniqueOrThrow({where:{id:sessionId}})).metadata as any).fixedForm.answers).toEqual({'1':'A'});
+   const pauseUrl=`${base}/sessions/${sessionId}/pause`,resumeUrl=`${base}/sessions/${sessionId}/resume`;
+   expect((await fetch(pauseUrl,{method:'POST'})).status).toBe(401);
+   expect((await fetch(pauseUrl,{method:'POST',headers:{...headers,authorization:'other'}})).status).toBe(403);
+   expect((await fetch(pauseUrl,{method:'POST',headers,body:JSON.stringify({questionNumber:8})})).status).toBe(200);
+   expect((await fetch(endpoint+'/answer',{method:'POST',headers,body:JSON.stringify({number:2,answer:'B'})})).status).toBe(409);
+   expect((await fetch(resumeUrl,{method:'POST',headers})).status).toBe(200);
+   expect((await fetch(pauseUrl,{method:'POST',headers})).status).toBe(409);
    for(let sectionIndex=0;sectionIndex<4;sectionIndex++)expect((await fetch(endpoint+'/advance',{method:'POST',headers,body:JSON.stringify({sectionIndex})})).status).toBe(200);
    const result=await fetch(endpoint,{headers});expect((await result.json()).report).toMatchObject({correct:1,blank:95,keyConfirmed:true,cefrLevel:null,certificateAvailable:false});
   }finally{await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
  });
+ it('freezes a fixed-form section across a 24-hour pause and restores answers with only one exit',async()=>{
+  const {sessionId}=await launch();await service.start(sessionId);await service.answer(sessionId,1,'B');
+  const stored=await db.session.findUniqueOrThrow({where:{id:sessionId}}),metadata=stored.metadata as any;
+  const pausedAt=new Date(Date.now()-86400000);
+  metadata.fixedForm.sectionStartedAt=new Date(pausedAt.getTime()-60000).toISOString();
+  await db.session.update({where:{id:sessionId},data:{metadata,startedAt:new Date(pausedAt.getTime()-60000)}});
+  const pause=createSessionPauseService(db);
+  await pause.change(sessionId,candidate,'pause',pausedAt,12);
+  const paused=await service.read(sessionId);expect(paused.status).toBe('PAUSED');expect(paused.sectionIndex).toBe(0);expect(paused.questions).toHaveLength(0);
+  await expect(service.answer(sessionId,2,'D')).rejects.toMatchObject({status:409});
+  await expect(service.advance(sessionId,0)).rejects.toMatchObject({status:409});
+  await pause.resume(sessionId,candidate);
+  const resumed=await service.read(sessionId);expect(resumed.status).toBe('IN_PROGRESS');expect(resumed.currentQuestionNumber).toBe(12);expect(resumed.answers).toEqual({'1':'B'});expect(resumed.sectionIndex).toBe(0);
+  expect(Date.parse(resumed.sectionDeadline!)-Date.now()).toBeGreaterThan(18*60000);
+  await service.answer(sessionId,2,'D');expect((await service.read(sessionId)).answers).toEqual({'1':'B','2':'D'});
+  await expect(pause.pause(sessionId,candidate)).rejects.toMatchObject({statusCode:409});
+ });
+ it('persists expiry when a student returns at the 48-hour limit',async()=>{
+  const {sessionId}=await launch();await service.start(sessionId);
+  const pause=createSessionPauseService(db);await pause.pause(sessionId,candidate);
+  const stored=await db.session.findUniqueOrThrow({where:{id:sessionId}});
+  const deadline=new Date((stored.metadata as any).examPause.resumeUntil);
+  await expect(pause.change(sessionId,candidate,'resume',deadline)).rejects.toMatchObject({statusCode:410});
+  expect((await db.session.findUniqueOrThrow({where:{id:sessionId}})).status).toBe('EXPIRED');
+  await expect(service.start(sessionId)).rejects.toMatchObject({status:409});
+ });
+
 });

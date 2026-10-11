@@ -1,3 +1,4 @@
+import { PausedAssessmentNotice } from './AssessmentContinuation';
 import { OzgunKidsPlayer } from "./OzgunKidsPlayer";
 import { OZGUN_PRODUCT } from "../lib/fixed-forms/ozgun-kids";
 import { ExitAssessmentControl } from "./ExitAssessmentControl";
@@ -73,7 +74,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
   const [sectionIndex, setSectionIndex] = useState<number>(0);
   // Restore per-section answer counts from persisted server responses.
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({});
-  const exitControl = onCancel ? <ExitAssessmentControl floating={showFaceCapture || showPractice || !!error} disabled={submitting || (!sessionReady && !error)} onExit={() => {
+  const exitControl = onCancel ? <ExitAssessmentControl sessionId={sessionId} pauseUsed={status?.pause?.used} floating={showFaceCapture || showPractice || !!error} disabled={submitting || (!sessionReady && !error)} onExit={() => {
     activeRef.current = false;
     onCancel();
   }} /> : null;
@@ -115,9 +116,19 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
       try {
         if (initialSessionId) {
           const statusRes = await fetch(`/api/sessions/${encodeURIComponent(initialSessionId)}/status`, { credentials: "include" });
-          const existing = await statusRes.json();
+          let existing = await statusRes.json();
           if (!activeRef.current) return;
           if (!statusRes.ok) throw new Error(existing.error ?? "Could not resume assessment");
+          if (existing.status === 'PAUSED') {
+            const resumed = await fetch(`/api/sessions/${encodeURIComponent(initialSessionId)}/resume`, {method: 'POST', credentials: 'include'});
+            const result = await resumed.json();
+            if (!resumed.ok) throw new Error(result.error ?? 'Could not resume assessment');
+            const refreshed = await fetch(`/api/sessions/${encodeURIComponent(initialSessionId)}/status`, {credentials: 'include'});
+            existing = await refreshed.json();
+            if (!refreshed.ok) throw new Error(existing.error ?? 'Could not resume assessment');
+            if (!activeRef.current) return;
+          }
+          setStatus(existing);
           if (existing.sessionType === 'FIXED_FORM') {setSessionId(initialSessionId);setFixedSession(true);setLoading(false);return;}
           if (existing.status === "COMPLETED") { onComplete(existing.theta ?? null, initialSessionId); return; }
           if (existing.status !== "IN_PROGRESS") throw new Error("This assessment cannot be resumed in its current state");
@@ -174,12 +185,12 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
   // signals stop (psychometric criteria met) or TIME_LIMIT_EXCEEDED.
   // No client-side hard stop based on time.
   useEffect(() => {
-    if (loading || !sessionId || finished) return;
+    if (loading || !sessionId || finished || status?.status === 'PAUSED') return;
     const timer = setInterval(() => {
       setElapsedSeconds(Math.floor((Date.now() - sessionStartRef.current) / 1000));
     }, 1000);
     return () => clearInterval(timer);
-  }, [loading, sessionId, finished]);
+  }, [loading, sessionId, finished, status?.status]);
 
   // Applies the result of a /next fetch to state (shared between normal flow and pre-fetched transition)
   const applyNextData = (data: any, sid: string) => {
@@ -195,6 +206,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
     }
     // Sync elapsed time from server response (authoritative for reconnect cases)
     if (typeof data.elapsedMs === "number") {
+      sessionStartRef.current = Date.now() - data.elapsedMs;
       setElapsedSeconds(Math.floor(data.elapsedMs / 1000));
     }
     if (typeof data.maxDurationMs === "number") {
@@ -311,6 +323,10 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
       const data = await res.json();
       if (!activeRef.current || request !== statusRequestRef.current) return;
       setStatus(data);
+      if (data.startedAt && data.serverNow && data.status === 'IN_PROGRESS') {
+        const elapsed = Date.parse(data.serverNow) - Date.parse(data.startedAt);
+        if (Number.isFinite(elapsed)) sessionStartRef.current = Date.now() - Math.max(0, elapsed);
+      }
       if (data.sectionCounts) setSectionCounts(data.sectionCounts);
     } catch {
       if (activeRef.current && request === statusRequestRef.current) setStatusError(true);
@@ -318,11 +334,11 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
   };
 
   useEffect(() => {
-    if (!showInsights || !sessionId) return;
+    if (!sessionId || !sessionReady || finished) return;
     void fetchStatus(sessionId);
     const timer = setInterval(() => void fetchStatus(sessionId), 10000);
     return () => clearInterval(timer);
-  }, [showInsights, sessionId]);
+  }, [sessionId, sessionReady, finished]);
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -402,6 +418,8 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
   };
 
   if (fixedSession && sessionId) return <OzgunKidsPlayer organizationId={organizationId} initialSessionId={sessionId} onSessionStarted={onSessionStarted} onComplete={onComplete} onCancel={onCancel}/>;
+
+  if (status?.status === 'PAUSED') return <PausedAssessmentNotice pause={status.pause} onDashboard={onCancel ? () => {activeRef.current=false;onCancel();} : undefined}/>;
 
   if (error) {
     const isCodeRequired = error.includes("exam code");

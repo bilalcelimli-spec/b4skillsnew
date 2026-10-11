@@ -116,4 +116,29 @@ describe('Özgün Kids delivery',()=>{
   expect(state.answers).toEqual({'1':'B'});
  });
 
+ it('resumes a paused fixed form before displaying its questions',async()=>{
+  const {state,fetchMock}=harness();state.status='PAUSED';state.pause={used:true};state.answers={'1':'B'};
+  const original=fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async(url,init)=>{
+   if(url.endsWith('/resume'))state.status='IN_PROGRESS';
+   return original(url,init);
+  });
+  render(<OzgunKidsPlayer organizationId="org" initialSessionId="original" onComplete={vi.fn()} onCancel={vi.fn()}/>);
+  expect((await screen.findByRole('radio',{name:'Option B: She'})).getAttribute('aria-checked')).toBe('true');
+  expect(fetchMock.mock.calls.filter(([url])=>url.endsWith('/resume'))).toHaveLength(1);
+  expect(screen.getByRole('button',{name:'Exit allowance used'}).hasAttribute('disabled')).toBe(true);
+ });
+
+ it('shows a pause notice when another window pauses the attempt, without exposing answer controls',async()=>{
+  const {state}=harness();state.status='IN_PROGRESS';const exit=vi.fn();
+  vi.useFakeTimers();
+  await act(async()=>{render(<OzgunKidsPlayer organizationId="org" initialSessionId="original" onComplete={vi.fn()} onCancel={exit}/>);});
+  expect(screen.getByRole('radio',{name:'Option B: She'})).toBeTruthy();
+  state.status='PAUSED';state.pause={used:true,resumeUntil:new Date(Date.now()+48*3600000).toISOString()};
+  await act(async()=>{await vi.advanceTimersByTimeAsync(10000);});vi.useRealTimers();
+  expect(screen.getByRole('heading',{name:'Your exam is paused'})).toBeTruthy();
+  expect(screen.queryByRole('radio')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Back to dashboard'}));expect(exit).toHaveBeenCalledOnce();
+ });
+
 });

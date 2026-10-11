@@ -1,3 +1,4 @@
+import { effectiveSessionStart } from './session-pause';
 import { createOzgunKidsService } from "../fixed-forms/ozgun-kids-service";
 import {sessionDeadlineReached} from './session-deadline';
 import { buildSessionProgress } from "./session-progress";
@@ -434,7 +435,7 @@ export const AssessmentService = {
       return DiagnosticService.delivery(sessionId);
     }
     if (!session || session.status !== SessionStatus.IN_PROGRESS) {
-      throw new Error("Invalid session");
+      throw AppError.conflict("Invalid session");
     }
 
     const meta = (session.metadata as any) ?? {};
@@ -455,8 +456,8 @@ export const AssessmentService = {
       return { stop: true, reason, finalTheta: completed?.scoreReport?.isVerified ? completed.theta : null };
     };
     if (session.startedAt) {
-      const elapsedMs = Date.now() - session.startedAt.getTime();
-      if (sessionDeadlineReached(session.startedAt,profile.maxDurationMs)) {
+      const elapsedMs = Date.now() - effectiveSessionStart(session)!.getTime();
+      if (sessionDeadlineReached(effectiveSessionStart(session),profile.maxDurationMs)) {
         logger.info(
           { sessionId, elapsedMs, maxDurationMs: profile.maxDurationMs, profileName: profile.name },
           "TIME_LIMIT_EXCEEDED — finalizing session"
@@ -517,17 +518,13 @@ export const AssessmentService = {
 
       const nextSkill = activeSectionOrder[newSectionIndex];
       // Persist new section index and completed section stats in metadata
-      await prisma.session.update({
-        where: { id: sessionId },
-        data: {
-          metadata: {
-            ...meta,
-            sectionIndex: newSectionIndex,
-            [`${currentSkill}_theta`]: ability.theta,
-            [`${currentSkill}_sem`]: skillSem,
-          }
-        }
-      });
+      const sectionPatch = JSON.stringify({sectionIndex: newSectionIndex,
+        [`${currentSkill}_theta`]: ability.theta, [`${currentSkill}_sem`]: skillSem});
+      const advanced = await prisma.$executeRaw`
+        UPDATE "Session" SET metadata = COALESCE(metadata, '{}') || ${sectionPatch}::jsonb
+        WHERE id = ${sessionId} AND status = 'IN_PROGRESS'
+      `;
+      if (!advanced) throw AppError.conflict('This assessment is not in progress');
 
       return {
         stop: false,
@@ -586,16 +583,12 @@ export const AssessmentService = {
 
       // Persist track assignment on the first call after routing completes
       if (mstPhase.shouldAssignTrack && mstPhase.trackLabel) {
-        await prisma.session.update({
-          where: { id: sessionId },
-          data: {
-            metadata: {
-              ...meta,
-              mstTrack: mstPhase.trackLabel,
-              mstRoutingTheta: mstPhase.routingTheta,
-            }
-          }
-        });
+        const trackPatch = JSON.stringify({mstTrack: mstPhase.trackLabel, mstRoutingTheta: mstPhase.routingTheta});
+        const assigned = await prisma.$executeRaw`
+          UPDATE "Session" SET metadata = COALESCE(metadata, '{}') || ${trackPatch}::jsonb
+          WHERE id = ${sessionId} AND status = 'IN_PROGRESS'
+        `;
+        if (!assigned) throw AppError.conflict('This assessment is not in progress');
         // Update local meta so the track filter below sees the new value
         meta.mstTrack = mstPhase.trackLabel;
       }
@@ -802,7 +795,7 @@ export const AssessmentService = {
 
     // Compute elapsed time to send alongside the item so the UI can render
     // an accurate progress indicator without a separate status round-trip.
-    const elapsedMs = session.startedAt ? Date.now() - session.startedAt.getTime() : 0;
+    const elapsedMs = session.startedAt ? Date.now() - effectiveSessionStart(session)!.getTime() : 0;
 
     return {
       stop: false,
@@ -839,7 +832,7 @@ export const AssessmentService = {
     }
 
     const maxDurationMs=getProfile((session.metadata as any)?.productLine).maxDurationMs;
-    if(sessionDeadlineReached(session.startedAt,maxDurationMs)) {
+    if(sessionDeadlineReached(effectiveSessionStart(session),maxDurationMs)) {
       await this.finalizeSession(sessionId,session.theta,{stopReason:'TIME_LIMIT_EXCEEDED'});
       throw new AppError(409,'TIME_LIMIT_EXCEEDED','Assessment time limit reached; the late answer was not saved');
     }
@@ -919,7 +912,7 @@ export const AssessmentService = {
       await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
       const latest = await tx.session.findUnique({ where: { id: sessionId },
         include: { responses: { include: { item: true } } } });
-      if (sessionDeadlineReached(latest?.startedAt, maxDurationMs))
+      if (sessionDeadlineReached(effectiveSessionStart(latest), maxDurationMs))
         throw new AppError(409, 'TIME_LIMIT_EXCEEDED', 'Assessment time limit reached; the late answer was not saved');
       if ((latest?.metadata as Record<string, unknown> | null)?.currentItemId !== itemId ||
           latest?.status !== SessionStatus.IN_PROGRESS || latest.responses.some(r => r.itemId === itemId)) {
@@ -1083,6 +1076,7 @@ export const AssessmentService = {
 
     if ((session?.metadata as any)?.sessionType==='FIXED_FORM') throw AppError.conflict('Fixed forms cannot be finalized as adaptive assessments');
     if (!session) throw new Error("Session not found");
+    if (session.status === "PAUSED" || session.status === "EXPIRED") throw AppError.conflict("This assessment is paused or expired");
     const itemDict = Object.fromEntries(session.responses.filter(r => r.item).map(r => [r.itemId, dbItemToEngineItem(r.item)]));
     const state = toEngineState(session);
     const estimate = estimateTheta(state.responses, itemDict, engine.getConfig().priorMean ?? 0,

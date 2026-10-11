@@ -1,3 +1,4 @@
+import { AssessmentResumeCard } from './components/AssessmentContinuation';
 import { OZGUN_PRODUCT, assessmentDisplayName } from "./lib/fixed-forms/ozgun-kids";
 import { hasFinalResult, historyStatus, historySkills } from "./lib/reporting/candidate-history";
 import { useTranslation } from "react-i18next";
@@ -728,16 +729,14 @@ export default function App() {
               </div>
             </header>
 
-            {recentSessions.filter(session => session.status === 'IN_PROGRESS' || (session.status === 'SCHEDULED' && session.metadata?.sessionType === 'FIXED_FORM')).map(session => (
-              <Card key={session.id} className="mb-4 border-indigo-200">
-                <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
-                  <div><p className="font-bold text-slate-800">{assessmentDisplayName(session.metadata?.productLine ?? 'Assessment')}</p><p className="text-xs text-slate-500">{t('exam.exitTimerNotice', {defaultValue:'Your exam timer continues while you are away.'})}</p></div>
-                  <Button onClick={() => {
-                    setPreTestReady(true);
-                    setActiveSession({sessionId:session.id,orgId:session.organizationId ?? userProfile?.organizationId,productLine:session.metadata?.productLine});
-                  }}>{t('exam.resume', {defaultValue:'Resume exam'})}</Button>
-                </CardContent>
-              </Card>
+            {recentSessions.filter(session => session.status === 'IN_PROGRESS' || session.status === 'PAUSED' || (session.status === 'SCHEDULED' && session.metadata?.sessionType === 'FIXED_FORM')).map(session => (
+              <AssessmentResumeCard key={session.id}
+                title={assessmentDisplayName(session.metadata?.productLine ?? 'Assessment')}
+                status={session.status} pause={session.metadata?.examPause}
+                onResume={() => {
+                  setPreTestReady(true);
+                  setActiveSession({sessionId:session.id,orgId:session.organizationId ?? userProfile?.organizationId,productLine:session.metadata?.productLine});
+                }}/>
             ))}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

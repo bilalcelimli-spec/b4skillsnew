@@ -113,7 +113,7 @@
   "exam": {
     "exit": "Exit exam",
     "exitTitle": "Leave this exam?",
-    "exitDescription": "Submitted answers are saved. Your exam timer will keep running. You can resume this attempt from the dashboard while time remains. Unsubmitted answers or recordings may be lost.",
+    "exitDescription": "You can leave once per exam. Your remaining time will be preserved, and you must resume from the dashboard within 48 hours. Submitted answers are saved; unsubmitted answers and recordings may be lost.",
     "stay": "Stay in exam",
     "insightsTitle": "Exam progress",
     "progressError": "Progress could not be loaded. Your exam can continue.",
@@ -122,6 +122,15 @@
     "estimatedLevel": "Provisional level: {{level}}",
     "scoringCounts": "{{scored}} scored · {{pending}} awaiting scoring",
     "resume": "Resume exam",
-    "exitTimerNotice": "Your exam timer continues while you are away."
+    "exitTimerNotice": "You may leave once and resume within 48 hours.",
+    "pauseUsed": "Exit allowance used",
+    "pauseError": "Could not pause the exam. Please try again.",
+    "resumeDeadline": "Resume before {{date}}. Your remaining exam time is preserved.",
+    "resumeExpired": "The 48-hour resume window has expired. This attempt can no longer be resumed.",
+    "noMorePauses": "Your exit allowance has been used. Complete this attempt without another pause.",
+    "resumeRemaining": "{{hours}}h {{minutes}}m left to resume",
+    "pausedTitle": "Your exam is paused",
+    "pausedElsewhere": "This attempt was paused in another window. Return to the dashboard to resume it.",
+    "backToDashboard": "Back to dashboard"
   }
 }

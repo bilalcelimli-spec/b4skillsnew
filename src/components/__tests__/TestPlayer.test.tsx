@@ -17,7 +17,7 @@ vi.mock("../ItemRenderer", () => ({ ItemRenderer: ({ item, onResponse, disabled 
 vi.mock("motion/react", () => ({ motion: { div: ({ children }: any) => <div>{children}</div> }, AnimatePresence: ({ children }: any) => children }));
 
 describe("TestPlayer response persistence", () => {
-  afterEach(() => { cleanup(); vi.unstubAllGlobals(); sessionStorage.clear(); vi.restoreAllMocks(); });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); sessionStorage.clear(); vi.restoreAllMocks(); vi.useRealTimers(); });
   it('sends monitor events using the server validation contract', async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith('/launch')) return { ok: true, json: async () => ({ sessionId: 'exam-cuid' }) };
@@ -161,7 +161,7 @@ describe("TestPlayer response persistence", () => {
     fireEvent.click(screen.getByRole('button',{name:'Verify'}));
     fireEvent.click(screen.getByRole('button',{name:'Exit exam'}));
     fireEvent.click(screen.getAllByRole('button',{name:'Exit exam'})[1]);
-    expect(onExit).toHaveBeenCalledTimes(1);expect(onComplete).not.toHaveBeenCalled();
+    await waitFor(()=>expect(onExit).toHaveBeenCalledTimes(1));expect(onComplete).not.toHaveBeenCalled();
     expect(sessionStorage.getItem(writingDraftKey('existing','draft-item'))).toBe('Unsubmitted draft');
     expect(fetchMock.mock.calls.some(([url])=>url.endsWith('/complete')||url.endsWith('/launch'))).toBe(false);
   });
@@ -171,14 +171,44 @@ describe("TestPlayer response persistence", () => {
     const next = new Promise(resolve=>{resolveNext=resolve;});
     const onComplete=vi.fn(),onExit=vi.fn();
     vi.stubGlobal('fetch',vi.fn(async(url:string)=>url.endsWith('/status')
-      ? {ok:true,json:async()=>({status:'IN_PROGRESS'})} : next));
+      ? {ok:true,json:async()=>({status:'IN_PROGRESS'})} : url.endsWith('/pause') ? {ok:true,json:async()=>({status:'PAUSED'})} : next));
     render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="existing" onComplete={onComplete} onCancel={onExit}/>);
     await screen.findByRole('button',{name:'Verify'});
     fireEvent.click(screen.getByRole('button',{name:'Exit exam'}));
     fireEvent.click(screen.getAllByRole('button',{name:'Exit exam'})[1]);
-    await act(async()=>{resolveNext({ok:true,json:async()=>({stop:true,finalTheta:1})});});
     await waitFor(()=>expect(onExit).toHaveBeenCalledOnce());
+    await act(async()=>{resolveNext({ok:true,json:async()=>({stop:true,finalTheta:1})});});
     expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('resumes a paused attempt before fetching a question and disables a second exit',async()=>{
+    let resumed=false;
+    const fetchMock=vi.fn(async(url:string)=>{
+      if(url.endsWith('/resume')) {resumed=true;return {ok:true,json:async()=>({status:'IN_PROGRESS'})};}
+      if(url.endsWith('/status')) return {ok:true,json:async()=>({status:resumed?'IN_PROGRESS':'PAUSED',pause:{used:true},startedAt:new Date().toISOString()})};
+      expect(resumed).toBe(true);
+      return {ok:true,json:async()=>({item:{id:'saved-question',skill:'READING'}})};
+    });
+    vi.stubGlobal('fetch',fetchMock);
+    render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="existing" onComplete={vi.fn()} onCancel={vi.fn()}/>);
+    await screen.findByRole('button',{name:'Verify'});
+    expect(screen.getByRole('button',{name:'Exit allowance used'}).hasAttribute('disabled')).toBe(true);
+    expect(fetchMock.mock.calls.some(([url])=>url.endsWith('/launch'))).toBe(false);
+  });
+
+  it('detects a pause from another window even while analytics is closed',async()=>{
+    let paused=false;const exit=vi.fn();
+    vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url.endsWith('/status')
+      ? {status:paused?'PAUSED':'IN_PROGRESS',pause:{used:paused,resumeUntil:new Date(Date.now()+48*3600000).toISOString()}}
+      : {item:{id:'saved-question',skill:'READING'}}})));
+    vi.useFakeTimers();
+    await act(async()=>{render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="existing" onComplete={vi.fn()} onCancel={exit}/>);});
+    await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'Verify'}));});
+    expect(screen.getByText('saved-question')).toBeTruthy();paused=true;
+    await act(async()=>{await vi.advanceTimersByTimeAsync(10000);});vi.useRealTimers();
+    expect(screen.getByRole('heading',{name:'Your exam is paused'})).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'Send essay'})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Back to dashboard'}));expect(exit).toHaveBeenCalledOnce();
   });
 
 });

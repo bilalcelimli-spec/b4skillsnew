@@ -113,7 +113,7 @@
   "exam": {
     "exit": "Sınavdan çık",
     "exitTitle": "Sınavdan çıkılsın mı?",
-    "exitDescription": "Gönderilmiş cevaplarınız kaydedildi. Sınav süreniz işlemeye devam edecek. Süre dolmadığı sürece panelden aynı sınava dönebilirsiniz. Henüz göndermediğiniz cevaplar veya ses kayıtları kaybolabilir.",
+    "exitDescription": "Her sınavda bir kez çıkış yapabilirsiniz. Kalan sınav süreniz korunur; 48 saat içinde panelden aynı sınava devam etmelisiniz. Gönderilmiş cevaplarınız kaydedilir; henüz göndermediğiniz cevaplar ve ses kayıtları kaybolabilir.",
     "stay": "Sınavda kal",
     "insightsTitle": "Sınav ilerlemesi",
     "progressError": "İlerleme bilgileri yüklenemedi. Sınavınıza devam edebilirsiniz.",
@@ -122,6 +122,15 @@
     "estimatedLevel": "Geçici seviye: {{level}}",
     "scoringCounts": "{{scored}} değerlendirildi · {{pending}} değerlendirme bekliyor",
     "resume": "Sınava devam et",
-    "exitTimerNotice": "Sınavdan uzaktayken süre işlemeye devam eder."
+    "exitTimerNotice": "Bir kez çıkış yapıp 48 saat içinde sınava devam edebilirsiniz.",
+    "pauseUsed": "Çıkış hakkı kullanıldı",
+    "pauseError": "Sınav duraklatılamadı. Lütfen tekrar deneyin.",
+    "resumeDeadline": "{{date}} tarihine kadar devam edin. Kalan sınav süreniz korunuyor.",
+    "resumeExpired": "48 saatlik devam süresi doldu. Bu sınava artık devam edemezsiniz.",
+    "noMorePauses": "Çıkış hakkınızı kullandınız. Sınavı tekrar duraklatmadan tamamlayın.",
+    "resumeRemaining": "Devam etmek için {{hours}} sa {{minutes}} dk kaldı",
+    "pausedTitle": "Sınavınız duraklatıldı",
+    "pausedElsewhere": "Bu sınav başka bir pencerede duraklatıldı. Devam etmek için panele dönün.",
+    "backToDashboard": "Panele dön"
   }
 }

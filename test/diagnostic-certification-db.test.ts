@@ -1,3 +1,4 @@
+import {createSessionPauseService} from '../src/lib/assessment-engine/session-pause-service';
 /** Opt-in disposable localhost DB only; never reads DATABASE_URL. */
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
@@ -85,4 +86,21 @@ describe.runIf(process.env.B4SKILLS_ARBITRATION_DB_TEST==='1')('PostgreSQL diagn
   const stored=await db.session.findUniqueOrThrow({where:{id:session.id},include:{scoreReport:true}});
   expect(stored.status).toBe('SCORING');expect(stored.completedAt).not.toBeNull();expect(stored.scoreReport!.isVerified).toBe(false);
  });
+ it('preserves diagnostic progress and time across a one-day pause',async()=>{
+  const session=await makeSession(true),metadata=session.metadata as any;
+  const pausedAt=new Date(Date.now()-86400000);
+  metadata.diagnosticState.startedAt=new Date(pausedAt.getTime()-60000).toISOString();
+  metadata.diagnosticState.expiresAt=new Date(pausedAt.getTime()+600000).toISOString();
+  await db.session.update({where:{id:session.id},data:{startedAt:new Date(pausedAt.getTime()-60000),metadata}});
+  const pause=createSessionPauseService(db);
+  await pause.change(session.id,candidateId,'pause',pausedAt);
+  await expect(DiagnosticService.delivery(session.id)).rejects.toMatchObject({statusCode:409});
+  await expect(DiagnosticService.respond(session.id,items[0].id,'A',100)).rejects.toMatchObject({statusCode:409});
+  expect(await db.response.count({where:{sessionId:session.id}})).toBe(0);
+  await pause.resume(session.id,candidateId);
+  const next=await DiagnosticService.delivery(session.id);expect(next.stop).toBe(false);expect(next.item.id).toBe(items[0].id);
+  const result=await DiagnosticService.respond(session.id,next.item.id,'A',100);expect(result.itemsAnswered).toBe(1);
+  await expect(pause.pause(session.id,candidateId)).rejects.toMatchObject({statusCode:409});
+ });
+
 });

@@ -1,3 +1,4 @@
+import { PausedAssessmentNotice } from './AssessmentContinuation';
 import React, {useEffect,useRef,useState} from 'react';
 import {OZGUN_TITLE,OZGUN_MEDIA,OZGUN_SECTIONS,type FixedAnswers} from '../lib/fixed-forms/ozgun-kids';
 import {ExitAssessmentControl} from './ExitAssessmentControl';
@@ -42,7 +43,7 @@ export function OzgunKidsPlayer(props:Props) {
       if (currentSection.current >= 0 && result.section && result.status === 'IN_PROGRESS') {
         setTransition({completed: OZGUN_SECTIONS[currentSection.current]?.label ?? '', next: result.section.label});
       }
-      currentSection.current=result.sectionIndex;setNumber(result.section?.first??1);setAnswers(result.answers??{});failed.current={};setSaveErrors({});
+      currentSection.current=result.sectionIndex;setNumber(result.currentQuestionNumber??result.section?.first??1);setAnswers(result.answers??{});failed.current={};setSaveErrors({});
     } else if(pendingRef.current===0) setAnswers({...result.answers,...failed.current});
     setData(result);
   }
@@ -55,7 +56,13 @@ export function OzgunKidsPlayer(props:Props) {
         const launch=await request('/api/fixed-forms/ozgun-kids/launch',{organizationId:props.organizationId});
         launchedSession.current=launch.sessionId;
       }
-      return request(`/api/sessions/${encodeURIComponent(launchedSession.current!)}/fixed-form`);
+      const base = `/api/sessions/${encodeURIComponent(launchedSession.current!)}`;
+      let result = await request(`${base}/fixed-form`);
+      if (result.status === 'PAUSED') {
+        await request(`${base}/resume`, {});
+        result = await request(`${base}/fixed-form`);
+      }
+      return result;
     })();
     init.current.then(result=>{
       if(!alive.current)return;
@@ -119,13 +126,19 @@ export function OzgunKidsPlayer(props:Props) {
     const timer = setTimeout(() => setTransition(null), 1500);
     return () => clearTimeout(timer);
   }, [transition]);
+  useEffect(() => {
+    const element = audio.current;
+    if (data?.status === 'PAUSED') setPlaying(false);
+    return () => {element?.pause();};
+  }, [data?.status, data?.sectionIndex]);
   const counts = Object.fromEntries(OZGUN_SECTIONS.map(section => [section.skill,
     Array.from({length: 24}, (_, index) => section.first + index).filter(n => answers[String(n)]).length]));
-  const exitControl = props.onCancel && <ExitAssessmentControl floating={data?.status === 'SCHEDULED'} disabled={pending>0||busy} onExit={()=>{alive.current=false;props.onCancel?.();}}/>;
+  const exitControl = props.onCancel && <ExitAssessmentControl questionNumber={number} sessionId={data?.status==='IN_PROGRESS' ? data.sessionId : undefined} pauseUsed={data?.pause?.used} floating={data?.status === 'SCHEDULED'} disabled={pending>0||busy||Object.keys(saveErrors).length>0} onExit={()=>{alive.current=false;props.onCancel?.();}}/>;
   const advance = () => {
     if (window.confirm(data.sectionIndex===3?'Sınavı bitirmek istiyor musunuz? Boş sorular 0 puan alır.':'Bu bölümü bitirmek istiyor musunuz? Bu bölüme dönemezsiniz.')) void action('advance',{sectionIndex:data.sectionIndex});
   };
   const question=data?.questions?.find((q:any)=>q.number===number);
+  if (data?.status === 'PAUSED') return <PausedAssessmentNotice pause={data.pause} onDashboard={props.onCancel ? () => {alive.current=false;props.onCancel?.();} : undefined}/>;
   if (data?.status === 'SCHEDULED') return <>
     {exitControl}
     {error && <div role="alert" className="fixed bottom-4 left-4 right-4 z-50 rounded-xl bg-red-50 border border-red-200 p-4 text-red-800">{error}</div>}

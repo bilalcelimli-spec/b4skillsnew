@@ -198,3 +198,47 @@ test('initial resume failure retries in place with the same session',async({page
  await expect(page.getByRole('radio',{name:'Option B: She'})).toBeVisible();
  expect(reads).toBe(2);
 });
+
+test('one-time exit saves position and resume restores the fixed-form question',async({page})=>{
+ let paused=false,used=false,resumeQuestion=1,pauses=0,resumes=0;
+ const answers:FixedAnswers={'1':'B'};
+ const view=()=>({sessionId:'fixture-fixed',status:paused?'PAUSED':'IN_PROGRESS',serverNow:new Date().toISOString(),sectionIndex:0,section:OZGUN_SECTIONS[0],currentQuestionNumber:resumeQuestion,
+  sectionDeadline:new Date(Date.now()+19*60000).toISOString(),questions:paused?[]:content.questions.slice(0,24),answers,report:null,pause:{used,resumeUntil:new Date(Date.now()+48*3600000).toISOString()}});
+ await page.route('**/api/sessions/fixture-fixed/fixed-form',route=>route.fulfill({json:view()}));
+ await page.route('**/api/sessions/fixture-fixed/pause',async route=>{
+  pauses++;resumeQuestion=route.request().postDataJSON().questionNumber;paused=true;used=true;
+  await route.fulfill({json:{status:'PAUSED'}});
+ });
+ await page.route('**/api/sessions/fixture-fixed/resume',async route=>{resumes++;paused=false;await route.fulfill({json:{status:'IN_PROGRESS'}});});
+ await page.route('**/api/proctoring/**',route=>route.fulfill({json:{success:true}}));
+ await page.goto('/test/e2e/fixtures/ozgun-kids.html?mode=resume');
+ await page.getByRole('button',{name:'Soru 8',exact:true}).click();
+ await page.getByRole('button',{name:'Exit exam',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('48 hours');
+ await page.getByRole('dialog').getByRole('button',{name:'Exit exam',exact:true}).click();
+ await expect(page.getByText('Dashboard',{exact:true})).toBeVisible();
+ expect(pauses).toBe(1);expect(resumeQuestion).toBe(8);
+ await page.reload({waitUntil:'domcontentloaded'});
+ await expect(page.getByRole('heading',{name:content.questions[7].prompt,exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Exit allowance used'})).toBeDisabled();
+ expect(resumes).toBe(1);
+ await page.getByRole('button',{name:'Soru 1',exact:true}).click();
+ await expect(page.getByRole('radio',{name:'Option B: She'})).toHaveAttribute('aria-checked','true');
+});
+
+test('an open exam shows a clear notice when paused from another window',async({page})=>{
+ await page.clock.install();
+ let paused=false;
+ const resumeUntil=new Date(Date.now()+48*3600000).toISOString();
+ await page.route('**/api/sessions/fixture-fixed/fixed-form',route=>route.fulfill({json:{sessionId:'fixture-fixed',status:paused?'PAUSED':'IN_PROGRESS',serverNow:new Date().toISOString(),sectionIndex:0,section:OZGUN_SECTIONS[0],
+  sectionDeadline:new Date(Date.now()+20*60000).toISOString(),questions:paused?[]:content.questions.slice(0,24),answers:{},report:null,pause:{used:paused,resumeUntil}}}));
+ await page.route('**/api/proctoring/**',route=>route.fulfill({json:{success:true}}));
+ await page.goto('/test/e2e/fixtures/ozgun-kids.html?mode=resume');
+ await expect(page.getByRole('radio',{name:'Option B: She'})).toBeVisible();
+ paused=true;await page.clock.fastForward(11000);
+ await expect(page.getByRole('heading',{name:'Your exam is paused'})).toBeVisible();
+ await expect(page.getByRole('radio')).toHaveCount(0);
+ await expect(page.getByText(/left to resume/)).toBeVisible();
+ await page.getByRole('button',{name:'Back to dashboard',exact:true}).click();
+ await expect(page.getByText('Dashboard',{exact:true})).toBeVisible();
+});

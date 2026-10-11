@@ -1,3 +1,4 @@
+import { pauseInfo } from '../assessment-engine/session-pause';
 import { OZGUN_QUESTIONS, OZGUN_PASSAGES } from './ozgun-kids-content.server';
 import { createHash } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
@@ -30,11 +31,13 @@ export function createOzgunKidsService(prisma: PrismaClient) {
   }
   function view(session:any,state:FixedFormState,now:Date) {
     const section=OZGUN_SECTIONS[state.sectionIndex];
+    const resumeQuestion = state.resumeQuestion ?? 0;
     return {sessionType:'FIXED_FORM',formId:OZGUN_FORM_ID,sessionId:session.id,productLine:OZGUN_PRODUCT,
-      organizationId:session.organizationId,status:session.status,startedAt:session.startedAt,completedAt:session.completedAt,
+      organizationId:session.organizationId,status:session.status,pause:pauseInfo(session,now.getTime()),startedAt:session.startedAt,completedAt:session.completedAt,
+      currentQuestionNumber:section && Number.isInteger(resumeQuestion) && resumeQuestion>=section.first && resumeQuestion<=section.last ? resumeQuestion : section?.first ?? null,
       serverNow:now.toISOString(),sectionIndex:state.sectionIndex,section:section ?? null,
       sectionDeadline:section && state.sectionStartedAt ? new Date(new Date(state.sectionStartedAt).getTime()+section.minutes*60000).toISOString():null,
-      questions:section && session.status!=='SCHEDULED' ? OZGUN_QUESTIONS.filter(q=>q.skill===section.skill).map(q=>({...q,...('passageId' in q ? {passage:OZGUN_PASSAGES[q.passageId!]} : {})})):[],
+      questions:section && session.status!=='SCHEDULED' && session.status!=='PAUSED' ? OZGUN_QUESTIONS.filter(q=>q.skill===section.skill).map(q=>({...q,...('passageId' in q ? {passage:OZGUN_PASSAGES[q.passageId!]} : {})})):[],
       answers:state.answers,listeningStartedAt:state.listeningStartedAt ?? null,
       report:state.report ? {...state.report,securityHold:session.status==='FLAGGED'}:null};
   }
@@ -44,6 +47,10 @@ export function createOzgunKidsService(prisma: PrismaClient) {
       const session:any=await db.session.findUnique({where:{id:sessionId}});
       if(!session || session.metadata?.sessionType!=='FIXED_FORM' || session.metadata?.fixedForm?.formId!==OZGUN_FORM_ID)
         throw new FixedFormError('Özgün Placement sınavı bulunamadı.',404);
+      if(session.status==='PAUSED') {
+        if(action==='read') return view(session,session.metadata.fixedForm,new Date());
+        throw new FixedFormError('Sınav duraklatıldı. Önce sınava devam edin.',409);
+      }
       if(!['SCHEDULED','IN_PROGRESS','COMPLETED','FLAGGED'].includes(session.status)) throw new FixedFormError('Sınav bu durumda kullanılamaz.',409);
       const now=new Date(), original=structuredClone(session.metadata.fixedForm) as FixedFormState;
       const state=advanceExpiredSections(original,now);

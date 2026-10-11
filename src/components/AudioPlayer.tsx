@@ -48,9 +48,13 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const playPendingRef = useRef(false);
+  const playbackGeneration = useRef(0);
   const [audioLoadError, setAudioLoadError] = useState(false);
   const [speed, setSpeed] = useState<number>(() => {
-    try { const saved = localStorage.getItem("linguadapt_audio_speed"); return saved ? parseFloat(saved) : 1; } catch { return 1; }
+    try {
+      const saved = Number(localStorage.getItem("linguadapt_audio_speed"));
+      return [0.75, 1, 1.25].includes(saved) ? saved : 1;
+    } catch { return 1; }
   });
 
   const playsRemaining = maxPlays > 0 ? maxPlays - playCount : Infinity;
@@ -64,6 +68,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     setAudioLoadError(false);
     setAutoplayBlocked(false);
     setCountdown(autoPlay ? countdownSeconds : null);
+    playPendingRef.current = false;
+    return () => { playbackGeneration.current++; };
   }, [src, autoPlay, countdownSeconds]);
 
   useEffect(() => () => {
@@ -163,6 +169,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const handlePlay = async () => {
     if (!canPlay || !audioRef.current || playPendingRef.current) return;
     playPendingRef.current = true;
+    const generation = playbackGeneration.current;
+    const audio = audioRef.current;
     setAudioLoadError(false);
     if (showWaveform) setupAudioContext();
     try {
@@ -174,10 +182,13 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       if (audioCtxRef.current?.state === "suspended") {
         await audioCtxRef.current.resume();
       }
-      await audioRef.current.play();
+      if (generation !== playbackGeneration.current) return;
+      await audio.play();
+      if (generation !== playbackGeneration.current) return;
       setAutoplayBlocked(false);
       setIsPlaying(true);
     } catch (err) {
+      if (generation !== playbackGeneration.current) return;
       console.warn("Audio playback failed:", err);
       setIsPlaying(false);
       const name = (err as DOMException)?.name;
@@ -189,7 +200,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         setAudioLoadError(true);
       }
     } finally {
-      playPendingRef.current = false;
+      if (generation === playbackGeneration.current) playPendingRef.current = false;
     }
   };
 
@@ -275,7 +286,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         src={src}
         preload="metadata"
         onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
-        onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
+        onLoadedMetadata={() => {
+          const value = audioRef.current?.duration ?? 0;
+          setDuration(Number.isFinite(value) && value > 0 ? value : 0);
+        }}
+        onPause={() => setIsPlaying(false)}
         onEnded={handleEnded}
         onError={() => {
           setIsPlaying(false);
@@ -321,7 +336,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         onClick={(e) => {
           if (!audioRef.current || !canPlay || !Number.isFinite(duration) || duration <= 0) return;
           const rect = e.currentTarget.getBoundingClientRect();
-          const pct = (e.clientX - rect.left) / rect.width;
+          if (rect.width <= 0) return;
+          const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
           audioRef.current.currentTime = pct * duration;
         }}
         role="slider"

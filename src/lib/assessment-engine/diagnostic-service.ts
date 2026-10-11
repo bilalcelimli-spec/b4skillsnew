@@ -1,3 +1,4 @@
+import { AppError } from '../errors/app-error';
 /**
  * Diagnostic Test Engine
  * ─────────────────────────────────────────────────────────────────────────────
@@ -74,6 +75,7 @@ export interface DiagnosticSessionState {
 async function loadState(sessionId: string): Promise<DiagnosticSessionState | null> {
   const session = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!session) return null;
+  if (session.status === "PAUSED") throw AppError.conflict("This assessment is paused or expired");
   const meta = session.metadata as any;
   return meta?.diagnosticState ?? null;
 }
@@ -136,12 +138,13 @@ export class DiagnosticService {
     const session=await prisma.session.findUnique({where:{id:sessionId},include:{scoreReport:true}});
     const state=(session?.metadata as any)?.diagnosticState as DiagnosticSessionState|undefined;
     if(!session||!state)throw new Error('Diagnostic session not found');
+    if(session.status==='PAUSED'||session.status==='EXPIRED')throw AppError.conflict('This assessment is paused or expired');
     if(!state.complete&&Date.now()>=new Date(state.expiresAt).getTime()) {
       await prisma.$transaction(async tx=>{
         await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
         const current=await tx.session.findUnique({where:{id:sessionId}}),meta=(current?.metadata??{}) as any;
-        if(current&&meta.diagnosticState&&!meta.diagnosticState.complete)await tx.session.update({where:{id:sessionId},data:{
-          status:current.status==='FLAGGED'?'FLAGGED':'SCORING',completedAt:new Date(meta.diagnosticState.expiresAt),
+        if(current&&current.status==='IN_PROGRESS'&&meta.diagnosticState&&!meta.diagnosticState.complete)await tx.session.update({where:{id:sessionId},data:{
+          status:'SCORING',completedAt:new Date(meta.diagnosticState.expiresAt),
           metadata:{...meta,diagnosticState:{...meta.diagnosticState,complete:true}},
         }});
       });
@@ -249,9 +252,9 @@ export class DiagnosticService {
         await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
         const current = await tx.session.findUnique({where:{id:sessionId}});
         const meta = (current?.metadata ?? {}) as any;
-        if (current && meta.diagnosticState && !meta.diagnosticState.complete) {
+        if (current && current.status === 'IN_PROGRESS' && meta.diagnosticState && !meta.diagnosticState.complete) {
           await tx.session.update({where:{id:sessionId},data:{
-            status:current.status === 'FLAGGED' ? 'FLAGGED' : 'SCORING', completedAt:new Date(meta.diagnosticState.expiresAt),
+            status:'SCORING', completedAt:new Date(meta.diagnosticState.expiresAt),
             metadata:{...meta,diagnosticState:{...meta.diagnosticState,complete:true}},
           }});
         }
@@ -296,11 +299,14 @@ export class DiagnosticService {
       await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
       const current = await tx.session.findUnique({where:{id:sessionId}});
       const currentState = (current?.metadata as any)?.diagnosticState as DiagnosticSessionState | undefined;
+      if (!current || current.status !== 'IN_PROGRESS') throw AppError.conflict('This assessment is not in progress');
       if (currentState && Date.now() >= new Date(currentState.expiresAt).getTime()) {
         throw new DiagnosticReportNotReadyError('Diagnostic time limit reached; the late answer was not saved');
       }
       if (!currentState || currentState.complete || DiagnosticService._nextItem(currentState)?.itemId !== itemId ||
           await tx.response.count({where:{sessionId,itemId}}) > 0) throw new Error("Response must match the current unanswered item");
+      state.startedAt = currentState.startedAt;
+      state.expiresAt = currentState.expiresAt;
       // A rating may have completed while this answer was being graded. Keep
       // the current stored state and apply only this newly accepted answer.
       for (const skill of SKILLS) state.skills[skill] = structuredClone(currentState.skills[skill]);
