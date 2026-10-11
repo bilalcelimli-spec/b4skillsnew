@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {OzgunKidsPlayer} from '../OzgunKidsPlayer';
 import {OZGUN_QUESTIONS} from '../../lib/fixed-forms/ozgun-kids-content.server';
@@ -9,7 +9,7 @@ vi.mock('../PracticeMode',()=>({PracticeMode:({onComplete,multipleChoiceOnly}:an
 vi.mock('../ProctoringMonitor',()=>({ProctoringMonitor:()=>null}));
 vi.mock('../LanguageSwitcher',()=>({LanguageSwitcher:()=>null}));
 vi.mock('react-i18next' ,()=>({useTranslation:()=>({t:(key:string,options:any)=>options?.defaultValue??key})}));
-afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();});
+afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();vi.useRealTimers();});
 function harness(failures=0){
  const state:any={sessionId:'original',status:'SCHEDULED',sectionIndex:0,section:{first:1,last:24,label:'Grammar'},sectionDeadline:null,questions:OZGUN_QUESTIONS.slice(0,24),answers:{},serverNow:new Date().toISOString()};
  let answerCalls=0;
@@ -80,4 +80,40 @@ describe('Özgün Kids delivery',()=>{
   await waitFor(()=>expect(screen.getByRole('button',{name:'Bölümü bitir ve devam et'}).hasAttribute('disabled')).toBe(false));
   expect(screen.queryByRole('alert')).toBeNull();
  });
+ it('keeps failed-save retry available after a successful background refresh',async()=>{
+  const {state}=harness(1);state.status='IN_PROGRESS';
+  render(<OzgunKidsPlayer organizationId="org" initialSessionId="original" onComplete={vi.fn()}/>);
+  fireEvent.click(await screen.findByRole('radio',{name:'Option B: She'}));
+  await screen.findByRole('button',{name:'Tekrar dene'});
+  vi.useFakeTimers();
+  await act(async()=>{await vi.advanceTimersByTimeAsync(10000);});
+  vi.useRealTimers();
+  expect(screen.getByRole('button',{name:'Tekrar dene'})).toBeTruthy();
+  expect(screen.getByRole('button',{name:'Bölümü bitir ve devam et'}).hasAttribute('disabled')).toBe(true);
+  fireEvent.click(screen.getByRole('button',{name:'Tekrar dene'}));
+  await waitFor(()=>expect(state.answers).toEqual({'1':'B'}));
+  await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull());
+ });
+ it('retries the same launched session when its initial read fails, without reloading or launching again',async()=>{
+  const {fetchMock}=harness();const original=fetchMock.getMockImplementation()!;
+  let reads=0;
+  fetchMock.mockImplementation(async(url,init)=>{
+   if(url.endsWith('/fixed-form') && ++reads===1)throw new TypeError('Temporary connection failure');
+   return original(url,init);
+  });
+  const started=vi.fn();render(<OzgunKidsPlayer organizationId="org" onSessionStarted={started} onComplete={vi.fn()}/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Tekrar dene'}));
+  await screen.findByRole('button',{name:'Fotoğrafı tamamla'});
+  expect(fetchMock.mock.calls.filter(([url])=>url.endsWith('/launch'))).toHaveLength(1);
+  expect(started).toHaveBeenCalledExactlyOnceWith('original');
+ });
+ it('prevents clearing an answer after the section deadline',async()=>{
+  const {state,fetchMock}=harness();state.status='IN_PROGRESS';state.sectionDeadline=new Date(Date.now()-1000).toISOString();state.answers={'1':'B'};
+  render(<OzgunKidsPlayer organizationId="org" initialSessionId="original" onComplete={vi.fn()}/>);
+  const clear=await screen.findByRole('button',{name:'Cevabı temizle'});
+  expect(clear.hasAttribute('disabled')).toBe(true);fireEvent.click(clear);
+  expect(fetchMock.mock.calls.filter(([url])=>url.endsWith('/answer'))).toHaveLength(0);
+  expect(state.answers).toEqual({'1':'B'});
+ });
+
 });

@@ -1,9 +1,8 @@
 import { buildScoringPrompt } from "../scoring/task-context.js";
 import { ScoringOrchestrator } from '../scoring/scoring-orchestrator.js';
 import { productiveScoringMode } from '../assessment-engine/productive-response.js';
-import { scoreStructuredResponse } from '../assessment-engine/structured-response.js';
-import { scoreBlankResponse } from '../assessment-engine/blank-response.js';
-import { scoreFreemiumResponse } from './freemium-response-scoring.js';
+import { scoreObjectiveResponse, UnscorableObjectiveError } from '../assessment-engine/objective-response.js';
+import type { SkillType } from '../assessment-engine/types.js';
 
 export interface FreemiumEvaluation {
   score: number | null;
@@ -21,10 +20,14 @@ export async function evaluateFreemiumResponse(
   const content = item.content ?? {};
   const mode = productiveScoringMode(item.skill, item.type, content, answer);
   if (!mode) {
-    if (item.type === 'DRAG_DROP') return {score:scoreStructuredResponse(content,answer),kind:'objective',status:'scored'};
-    if (item.type === 'FILL_IN_BLANKS' && content.blanks?.length) return {score:scoreBlankResponse(content.blanks,answer),kind:'objective',status:'scored'};
-    const objective = scoreFreemiumResponse(item,answer);
-    return {score:objective === null ? null : objective ? 1 : 0,kind:'objective',status:objective === null ? 'unavailable' : 'scored'};
+    try {
+      const score = scoreObjectiveResponse({ id: 'unshuffled', skill: item.skill as SkillType, type: item.type,
+        metadata: content, params: { a: 1, b: 0, c: 0 } }, '', answer, false);
+      return { score, kind: 'objective', status: 'scored' };
+    } catch (error) {
+      if (error instanceof UnscorableObjectiveError) return { score: null, kind: 'objective', status: 'unavailable' };
+      throw error;
+    }
   }
   const prompt = buildScoringPrompt(content);
   let timer: ReturnType<typeof setTimeout> | undefined;

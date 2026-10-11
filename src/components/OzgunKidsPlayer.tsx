@@ -26,10 +26,11 @@ export function OzgunKidsPlayer(props:Props) {
   const offset=useRef(0),failed=useRef<Record<string,any>>({});
   const edits=useRef<Record<string,number>>({});
   const lastServerTime=useRef(0), actionPending=useRef(false);
+  const launchedSession=useRef(props.initialSessionId),initializing=useRef(false);
   async function request(url:string,body?:unknown) {
     const response=await fetch(url,{credentials:'include',...(body!==undefined?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(15000)});
-    const result=await response.json();
-    if(!response.ok)throw new Error(result.error??'İşlem tamamlanamadı.');
+    const result=await response.json().catch(()=>null);
+    if(!response.ok || !result)throw new Error(result?.error??'Bağlantı kurulamadı. Lütfen tekrar deneyin.');
     return result;
   }
   function apply(result:any) {
@@ -45,17 +46,26 @@ export function OzgunKidsPlayer(props:Props) {
     } else if(pendingRef.current===0) setAnswers({...result.answers,...failed.current});
     setData(result);
   }
-  useEffect(()=>{
-    alive.current=true;
+  function initialize() {
+    if (initializing.current) return;
+    initializing.current=true;
+    setError(null);
     if(!init.current) init.current=(async()=>{
-      const launch=props.initialSessionId?{sessionId:props.initialSessionId}:await request('/api/fixed-forms/ozgun-kids/launch',{organizationId:props.organizationId});
-      return request(`/api/sessions/${encodeURIComponent(launch.sessionId)}/fixed-form`);
+      if(!launchedSession.current) {
+        const launch=await request('/api/fixed-forms/ozgun-kids/launch',{organizationId:props.organizationId});
+        launchedSession.current=launch.sessionId;
+      }
+      return request(`/api/sessions/${encodeURIComponent(launchedSession.current!)}/fixed-form`);
     })();
     init.current.then(result=>{
       if(!alive.current)return;
       apply(result);
       if(!notified.current){notified.current=true;props.onSessionStarted?.(result.sessionId);}
-    }).catch(e=>{if(alive.current)setError(e.message);});
+    }).catch(e=>{if(alive.current)setError(e.message);}).finally(()=>{initializing.current=false;});
+  }
+  useEffect(()=>{
+    alive.current=true;
+    initialize();
     return()=>{alive.current=false;audio.current?.pause();};
   },[]);
   useEffect(()=>{
@@ -85,6 +95,7 @@ export function OzgunKidsPlayer(props:Props) {
     try {const result=await request(`${base}/${name}`,body);apply(result);return result;}catch(e){setError((e as Error).message);return null;}finally{actionPending.current=false;setBusy(false);}
   }
   function save(n:number,answer:any) {
+    if (!alive.current || busy || data?.status!=='IN_PROGRESS' || remaining===0) return;
     const revision=(edits.current[String(n)]??0)+1;
     edits.current[String(n)]=revision;
     setAnswers(previous=>({...previous,[String(n)]:answer}));
@@ -141,7 +152,7 @@ export function OzgunKidsPlayer(props:Props) {
         <p className="text-xs text-slate-500 mb-4">Sonuçlar sınav tamamlandıktan sonra gösterilir. Writing ve Speaking bu sınavda ölçülmez.</p>
         <div className="grid grid-cols-2 gap-3">{OZGUN_SECTIONS.map(section => <div key={section.skill} className="bg-white p-3 rounded-xl border border-indigo-100"><h3 className="text-xs font-bold text-slate-700">{section.label}</h3><p className="text-sm text-indigo-700 mt-1">{counts[section.skill]} / 24</p></div>)}</div>
       </section>}
-      {error&&<div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">{error} <Button variant="outline" size="sm" onClick={()=>{if(Object.keys(saveErrors).length)Object.entries(saveErrors).forEach(([n,answer])=>save(Number(n),answer));else if(!data){init.current=null;window.location.reload();}else void refresh();}}>Tekrar dene</Button></div>}
+      {(error||Object.keys(saveErrors).length>0)&&<div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">{error ?? 'Bazı cevaplar kaydedilemedi. Lütfen tekrar deneyin.'} <Button variant="outline" size="sm" onClick={()=>{if(Object.keys(saveErrors).length)Object.entries(saveErrors).forEach(([n,answer])=>save(Number(n),answer));else if(!data){if(!initializing.current){init.current=null;initialize();}}else void refresh();}}>Tekrar dene</Button></div>}
       {!data&&!error&&<p role="status">Sınav hazırlanıyor…</p>}
       {data?.status==='IN_PROGRESS'&&data.section&&(transition ? <section className="flex flex-col items-center justify-center py-24 text-center">
         <CheckCircle2 size={64} className="text-indigo-600 mb-6"/><p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Section {data.sectionIndex} of 4 Complete</p>
@@ -166,7 +177,7 @@ export function OzgunKidsPlayer(props:Props) {
               selected={answers[String(number)] ? Object.keys(question.options).indexOf(answers[String(number)]!) : null}
               onSelect={index => save(number, Object.keys(question.options)[index])} disabled={busy || remaining === 0}/>
 
-            <Button variant="ghost" size="sm" onClick={()=>save(number,null)}>Cevabı temizle</Button>
+            <Button variant="ghost" size="sm" disabled={busy || remaining===0} onClick={()=>save(number,null)}>Cevabı temizle</Button>
             <div className="flex justify-between gap-3"><Button variant="outline" disabled={number===data.section.first} onClick={()=>setNumber(number-1)}>Önceki</Button><Button disabled={pending>0||busy||Object.keys(saveErrors).length>0} onClick={()=>number===data.section.last ? advance() : setNumber(number+1)}>{number===data.section.last ? (data.sectionIndex===3 ? "Sınavı bitir" : "Bölümü bitir ve devam et") : "Sonraki"}</Button></div>
           </section>
         </div>}

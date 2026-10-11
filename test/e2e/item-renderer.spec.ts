@@ -98,3 +98,25 @@ for (const width of [320, 1280]) {
     await expect(page.getByText('Back to dashboard')).toBeVisible();
   });
 }
+
+for (const width of [320, 1280]) {
+  test(`legacy listening gaps render one input per blank at ${width}px`, async ({page}) => {
+    await page.setViewportSize({width,height:800});
+    await page.route('**/fixture-audio.wav',route=>route.fulfill({status:204}));
+    await page.goto('/test/e2e/fixtures/item-renderer.html?mode=listening-gaps');
+    await expect(page.getByRole('textbox')).toHaveCount(3);
+    await page.getByRole('textbox',{name:'Blank 1',exact:true}).fill('short');
+    await page.getByRole('textbox',{name:'Blank 2',exact:true}).fill('brown');
+    await page.getByRole('textbox',{name:'Blank 3',exact:true}).fill('shorts');
+    await page.getByRole('button',{name:'Confirm Answer'}).click();
+    await expect(page.getByLabel('Submitted answer')).toHaveText('"short|brown|shorts"');
+  });
+  test(`eight choices preserve the submitted option ID at ${width}px`, async ({page}) => {
+    await page.setViewportSize({width,height:800});
+    await page.goto('/test/e2e/fixtures/item-renderer.html?mode=eight-options');
+    await expect(page.getByRole('radio')).toHaveCount(8);
+    await page.getByRole('radio').last().click();
+    await page.getByRole('button',{name:'Confirm Answer'}).click();
+    await expect(page.getByLabel('Submitted answer')).toHaveText('"H"');
+  });
+}

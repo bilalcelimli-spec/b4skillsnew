@@ -4,8 +4,8 @@ import { buildSessionProgress } from "./session-progress";
 import { buildScoringPrompt } from "../scoring/task-context.js";
 import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence } from "../scoring/score-evidence.js";
 import { estimateTheta } from "./estimator.js";
+import { adaptiveItemWhere, sectionAbility, sectionItemBudget } from "./adaptive-policy.js";
 import { AssessmentEngine } from "./engine";
-import { selectNextItem } from "./selector.js";
 import { getCATSelector, ShadowItem } from "../selection/cat-selector.js";
 import { SequencingContext } from "../selection/sequencing-rules.js";
 import { getProfile } from "../product-lines/profiles.js";
@@ -15,9 +15,7 @@ import { prisma } from "../prisma";
 import { stripAnswerKeys } from "../security/answer-sanitizer.js";
 import { capItemsPerPassage } from "./passage-cap.js";
 import { shuffleMcqOptions, seededFisherYates } from "./mcq-options.js";
-import { scoreFreemiumResponse } from "../product-lines/freemium-response-scoring.js";
-import { scoreStructuredResponse } from "./structured-response.js";
-import { scoreBlankResponse } from "./blank-response.js";
+import { scoreObjectiveResponse } from "./objective-response.js";
 import { productiveScoringMode } from "./productive-response.js";
 import { validateItemBeforeSave } from "../validation/item-schema.js";
 import { AppError } from "../errors/app-error.js";
@@ -94,6 +92,7 @@ function dbItemToEngineItem(u: {
   tags?: string[];
   exposureCount?: number;
   iqScore?: number | null;
+  cefrLevel?: string;
 }): Item {
   const c = (u.content as Record<string, unknown> | null) || {};
   const ar = c.aReceptive;
@@ -115,6 +114,7 @@ function dbItemToEngineItem(u: {
     // Pass-through for diversity filtering (not part of IRT computation)
     tags: u.tags ?? [],
     exposureCount: u.exposureCount ?? 0,
+    cefrLevel: u.cefrLevel,
   } as any;
 }
 
@@ -358,33 +358,14 @@ export const AssessmentService = {
     const itemCountsBySkill = await Promise.all(
       profile.sectionOrder.map(async (skill) => {
         const count = await prisma.item.count({
-          where: { skill: skill as any, status: { in: ["ACTIVE", "PRETEST"] } },
+          where: adaptiveItemWhere(profile, skill),
         });
         const cfg = profile.sectionConfig[skill as string] ?? SECTION_CONFIG[skill as string];
         const minRequired = cfg?.minItems ?? 1;
         return { skill, count, minRequired, sufficient: count >= minRequired };
       })
     );
-    // Q3 2026: WRITING/SPEAKING are now mandatory skills in every profile.
-    // Per-skill coverage gaps are still tolerated for productive skills because
-    // the CAT loop handles empty pools with a graceful NO_ITEMS_LEFT_IN_SECTION
-    // force-advance — but we DO emit a loud warning so admins notice the gap.
-    // Receptive skills with insufficient pool will block launch (a freemium
-    // user must not get a useless 3-question result).
-    const PRODUCTIVE_SKILLS = ["WRITING", "SPEAKING"];
-    const insufficientCoreSections = itemCountsBySkill.filter(
-      (s) => !s.sufficient && !PRODUCTIVE_SKILLS.includes(s.skill as string)
-    );
-    const insufficientProductiveSections = itemCountsBySkill.filter(
-      (s) => !s.sufficient && PRODUCTIVE_SKILLS.includes(s.skill as string)
-    );
-    if (insufficientProductiveSections.length > 0) {
-      logger.warn(
-        { profileName: profile.name, insufficientProductiveSections },
-        "Item bank has insufficient WRITING/SPEAKING items — those sections will be skipped at runtime. " +
-        "Run `npm run verify:coverage` and seed productive items to restore full 6-skill coverage."
-      );
-    }
+    const insufficientCoreSections = itemCountsBySkill.filter(section => !section.sufficient);
     if (insufficientCoreSections.length > 0) {
       logger.error(
         { profileName: profile.name, insufficientCoreSections },
@@ -392,7 +373,7 @@ export const AssessmentService = {
       );
       throw new Error(
         `Item bank is insufficient for profile "${profile.name}". ` +
-        `The following sections need more ACTIVE/PRETEST items: ` +
+        `The following sections need more eligible ACTIVE operational items: ` +
         insufficientCoreSections
           .map((s) => `${s.skill} (has ${s.count}, needs ${s.minRequired})`)
           .join(", ") +
@@ -444,7 +425,7 @@ export const AssessmentService = {
     const engine = await getEngine();
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
-      include: { responses: { include: { item: { select: { skill: true } } } } }
+      include: { responses: { orderBy: { order: "asc" }, include: { item: true } } }
     });
 
     if ((session?.metadata as any)?.sessionType === 'FIXED_FORM') throw AppError.conflict('Use the fixed-form assessment endpoint');
@@ -499,34 +480,7 @@ export const AssessmentService = {
     const currentSkill = activeSectionOrder[sectionIndex];
     const sectionCfg = activeSectionConfig[currentSkill as string] ?? SECTION_CONFIG[currentSkill as string];
 
-    // Guard: if no sectionConfig exists for this skill, skip the section rather than
-    // crashing with a TypeError on sectionCfg.minItems. This can happen when a
-    // product-line profile is missing a config entry for a skill in its sectionOrder.
-    if (!sectionCfg) {
-      logger.error(
-        { sessionId, skill: currentSkill, profileName: profile.name, sectionIndex },
-        "No sectionConfig found for skill — skipping section to prevent TypeError"
-      );
-      const newSectionIndex = sectionIndex + 1;
-      if (newSectionIndex >= activeSectionOrder.length) {
-        return finish("ALL_SECTIONS_COMPLETE");
-      }
-      const nextSkill = activeSectionOrder[newSectionIndex];
-      await prisma.session.update({
-        where: { id: sessionId },
-        data: { metadata: { ...meta, sectionIndex: newSectionIndex } }
-      });
-      return {
-        stop: false,
-        sectionTransition: true,
-        completedSection: currentSkill as string,
-        nextSection: nextSkill as string,
-        sectionIndex: newSectionIndex,
-        totalSections: activeSectionOrder.length,
-        sectionProgress: 0,
-        reason: "MISSING_SECTION_CONFIG",
-      };
-    }
+    if (!sectionCfg) throw new AppError(503, "ASSESSMENT_CONFIGURATION_ERROR", "Assessment section configuration is unavailable");
 
     // Count non-pretest responses for the current skill
     const sectionResponses = session.responses.filter(
@@ -534,16 +488,20 @@ export const AssessmentService = {
     );
     const sectionCount = sectionResponses.length;
 
-    // Per-skill SEM from skill profiles (falls back to global SEM)
-    const skillSem = state.skillProfiles?.[currentSkill]?.sem ?? state.sem;
+    // Use evidence for this skill; a new section starts with prior uncertainty.
+    const ability = sectionAbility(state, currentSkill, state.responses.length === 0 ? state.theta : engine.getConfig().priorMean ?? 0, engine.getConfig().priorSd ?? 1);
+    const skillSem = ability.sem;
+    const selectionState: SessionState = { ...state, ...ability };
 
     // Check if current section is complete
     // An async rating can change SEM after a task was served. The task remains
     // owed to the candidate until answered, even if the section now meets SEM.
     const hasOutstandingItem = typeof meta.currentItemId === "string" && meta.currentItemId.length > 0 && !state.usedItemIds.has(meta.currentItemId);
+    const sectionMaxItems = sectionItemBudget(profile, sectionIndex,
+      session.responses.filter(response => !response.isPretest).length, sectionCount);
     const sectionDone =
       !hasOutstandingItem && sectionCount >= sectionCfg.minItems &&
-      (skillSem <= sectionCfg.semThreshold || sectionCount >= sectionCfg.maxItems);
+      (skillSem <= sectionCfg.semThreshold || sectionCount >= sectionMaxItems);
 
     if (sectionDone) {
       logger.info(
@@ -565,7 +523,7 @@ export const AssessmentService = {
           metadata: {
             ...meta,
             sectionIndex: newSectionIndex,
-            [`${currentSkill}_theta`]: session.theta,
+            [`${currentSkill}_theta`]: ability.theta,
             [`${currentSkill}_sem`]: skillSem,
           }
         }
@@ -609,20 +567,9 @@ export const AssessmentService = {
     }
 
     const whereClause: any = {
-      status: { in: ["ACTIVE", "PRETEST"] },
+      ...adaptiveItemWhere(profile, currentSkill),
       id: { notIn: Array.from(crossSessionUsedIds) },
-      skill: currentSkill as string,
     };
-
-    // Exam source tag filter: only apply when profile has specific sources
-    // ("general" is the catch-all — never use it as a restrictive tag).
-    const specificSources = profile.examSources.filter((s) => s !== "general");
-    if (specificSources.length > 0) {
-      whereClause.OR = [
-        { tags: { hasSome: specificSources } },
-        { tags: { isEmpty: true } },   // untagged items are always eligible
-      ];
-    }
 
     // ── MST ROUTING (Junior Suite, Academia) ─────────────────────────────────
     // When the profile has an MST config, resolve the current phase and:
@@ -675,45 +622,9 @@ export const AssessmentService = {
     }
     const itemPool: Item[] = dbItems.map((di) => dbItemToEngineItem(di));
 
-    // ── FAZ 1 — ANCHOR ITEM INJECTION ────────────────────────────────────────
-    // For equating purposes, inject up to 2 anchor items per section whenever
-    // they haven't been administered yet. Anchor items are force-included in
-    // the pool so the CAT selector will always encounter them; they are tagged
-    // isPretest=false so they count toward the operational count but recorded
-    // in session metadata for separate equating analysis.
-    const usedIds = Array.from(state.usedItemIds);
-    // Wrap in try/catch: if the DB schema is behind on migrations (isAnchor column
-    // not yet added), anchor injection fails silently rather than crashing getNextItem.
-    const anchorDbItems = await prisma.item.findMany({
-      where: {
-        isAnchor: true,
-        skill: currentSkill as any,
-        status: "ACTIVE",
-        // notIn must be an array (never undefined) to avoid a Prisma validation error
-        id: { notIn: usedIds },
-      },
-      take: 2,
-      orderBy: { exposureCount: "asc" },  // LRU: prefer least-recently-used anchors
-    }).catch((err) => {
-      logger.warn({ err: String(err), skill: currentSkill, sessionId }, "anchor injection skipped — likely missing isAnchor column; run migration 007");
-      return [] as typeof anchorDbItems;
-    });
-    if (anchorDbItems.length > 0) {
-      const anchorEngineItems = anchorDbItems.map((di) => dbItemToEngineItem(di));
-      // Prepend anchor items — CAT selector will see them first and they will
-      // naturally be selected if not already in usedItemIds.
-      itemPool.unshift(...anchorEngineItems.filter((ai) => !itemPool.some((p) => p.id === ai.id)));
-      // Track anchor administration in session metadata for equating audit
-      const existingAnchorLog: string[] = (meta as any).anchorAdministered ?? [];
-      const newAnchorIds = anchorEngineItems.map((i) => i.id);
-      const updatedAnchorLog = Array.from(new Set([...existingAnchorLog, ...newAnchorIds]));
-      if (updatedAnchorLog.length !== existingAnchorLog.length) {
-        await prisma.session.update({
-          where: { id: sessionId },
-          data: { metadata: { ...(meta as any), anchorAdministered: updatedAnchorLog } },
-        });
-      }
-    }
+    // Anchors follow the same source, CEFR, track and repeat filters as other items.
+    // Their administration is recorded only after the selected item is claimed.
+    const anchorIds = new Set(dbItems.filter(item => item.isAnchor).map(item => item.id));
 
     // ── WARM-UP FILTERING ─────────────────────────────────────────────────────
     // For the first N items across all sections, restrict to easier items so
@@ -722,7 +633,7 @@ export const AssessmentService = {
       if (item.isPretest) return false;
       if (totalNonPretestResponses < profile.warmupItems) {
         // Warm-up window: only items with b ≤ θ + offset
-        return item.params.b <= state.theta + profile.warmupDifficultyOffset;
+        return item.params.b <= ability.theta + profile.warmupDifficultyOffset;
       }
       return true;
     });
@@ -746,7 +657,8 @@ export const AssessmentService = {
     );
 
     // ── CAT SELECTION helpers — must be declared BEFORE content-tag block uses itemById ──
-    const itemById = new Map<string, Item>(itemPool.map((i) => [i.id, i]));
+    const administeredItems: Item[] = session.responses.map(response => dbItemToEngineItem(response.item));
+    const itemById = new Map<string, Item>([...itemPool, ...administeredItems].map(item => [item.id, item]));
 
     // ── CONTENT-TAG DIVERSITY + ITEM-TYPE ROTATION ────────────────────────────
     // 1. Collect tags and item types from the last 3 items administered in this
@@ -807,11 +719,6 @@ export const AssessmentService = {
     }
 
     // ── CAT SELECTION (composite α/β/γ/δ + shadow-test + sequencing) ─────────
-    // Build administeredItems from pool (items already used in this session)
-    const administeredItems: Item[] = session.responses
-      .map((r) => itemById.get(r.itemId))
-      .filter((i): i is Item => i != null);
-
     const seqCtx: SequencingContext = {
       administeredItems,
       responses: state.responses,
@@ -834,45 +741,16 @@ export const AssessmentService = {
     }
     const catResult = outstandingItem ? { item: outstandingItem } : await catSelector.selectNext(
       catPool as ShadowItem[],
-      state,
+      selectionState,
       seqCtx,
       profile.blueprint,
       engine.getConfig().useRlSelector === true,
     );
     const nextItem = catResult?.item ?? null;
     if (!nextItem) {
-      // No more items in this section — force advance
-      logger.warn(
-        {
-          sessionId,
-          skill: currentSkill,
-          profileName: profile.name,
-          sectionIndex,
-          sectionCount,
-          usedItemCount: state.usedItemIds.size,
-        },
-        "NO_ITEMS_LEFT_IN_SECTION: item bank exhausted or empty for this skill — force-advancing. " +
-        "Check item bank coverage for this profile and ensure sufficient ACTIVE items exist per section."
-      );
-      const newSectionIndex = sectionIndex + 1;
-      if (newSectionIndex >= activeSectionOrder.length) {
-        return finish("ALL_SECTIONS_COMPLETE");
-      }
-      const nextSkill = activeSectionOrder[newSectionIndex];
-      await prisma.session.update({
-        where: { id: sessionId },
-        data: { metadata: { ...meta, sectionIndex: newSectionIndex } }
-      });
-      return {
-        stop: false,
-        sectionTransition: true,
-        completedSection: currentSkill as string,
-        nextSection: nextSkill as string,
-        sectionIndex: newSectionIndex,
-        totalSections: activeSectionOrder.length,
-        sectionProgress: sectionCount,
-        reason: "NO_ITEMS_LEFT_IN_SECTION",
-      };
+      // A missing pool is an availability problem, never evidence of proficiency.
+      logger.error({ sessionId, skill: currentSkill, sectionCount, profileName: profile.name }, "Adaptive item pool exhausted");
+      throw new AppError(503, "ASSESSMENT_ITEMS_UNAVAILABLE", "No eligible assessment tasks are currently available. Please retry or contact your administrator.");
     }
 
     // ── DB EXPOSURE COUNT SYNC ────────────────────────────────────────────────
@@ -913,6 +791,13 @@ export const AssessmentService = {
         AND COALESCE(metadata->>'currentItemId','') = ${typeof meta.currentItemId==='string'?meta.currentItemId:''}
     `;
     if (claimedItem === 0) return this.getNextItem(sessionId);
+    if (!outstandingItem && anchorIds.has(nextItem.id)) {
+      await prisma.$executeRaw`
+        UPDATE "Session" SET metadata = jsonb_set(metadata, '{anchorAdministered}',
+          COALESCE(metadata->'anchorAdministered', '[]'::jsonb) || ${JSON.stringify([nextItem.id])}::jsonb)
+        WHERE id = ${sessionId} AND metadata->>'currentItemId' = ${nextItem.id}
+      `;
+    }
     const candidateSafeContent = stripAnswerKeys(safeContent);
 
     // Compute elapsed time to send alongside the item so the UI can render
@@ -977,25 +862,8 @@ export const AssessmentService = {
 
     if (scoringMode) {
       aiResult = { requiresHumanReview: true, pendingAsyncScore: true };
-    } else if (item.type === "DRAG_DROP") {
-      score = scoreStructuredResponse(item.metadata ?? {}, value);
-    } else if (item.type === "FILL_IN_BLANKS" && Array.isArray(item.metadata?.blanks) && item.metadata.blanks.length > 0) {
-      score = scoreBlankResponse(item.metadata.blanks, value);
     } else {
-      const metadata = item.metadata ?? {};
-      const shuffle = shuffleMcqOptions(metadata.options, metadata.correctAnswer, sessionId, itemId);
-      const rawOptions = shuffle?.shuffledOptions ?? metadata.options;
-      const options = Array.isArray(rawOptions) ? rawOptions.map(option => typeof option === "string" ? option : String(option.text)) : undefined;
-      const flaggedIndex = Array.isArray(rawOptions) ? rawOptions.findIndex(option => typeof option === "object" && option?.isCorrect === true) : -1;
-      const normalizedValue = options?.length && typeof value === "string" && /^[A-Z]$/i.test(value.trim())
-        ? value.trim().toUpperCase().charCodeAt(0) - 65 : value;
-      const objective = scoreFreemiumResponse({skill:String(item.skill),type:item.type ?? "",content:{...metadata,
-        options, correctIndex: shuffle ? undefined : metadata.correctIndex ?? (flaggedIndex >= 0 ? flaggedIndex : undefined),
-        correctOption: shuffle ? undefined : metadata.correctOption,
-        correctAnswer: shuffle?.newCorrectAnswer ?? metadata.correctAnswer,
-      }}, normalizedValue);
-      if (objective === null) throw new Error("Item has no supported answer key or response format");
-      score = objective ? 1 : 0;
+      score = scoreObjectiveResponse(item, sessionId, value);
     }
 
     const state = toEngineState(session);
@@ -1045,30 +913,25 @@ export const AssessmentService = {
           : 0,
     };
 
-    // Update session state using the engine
-    const rawState = engine.processResponse(state, response, itemDict);
-
-      // Theta bounds guard: NaN or out-of-range theta is a sign of numerical instability
-      const newTheta = rawState.theta;
-      if (!Number.isFinite(newTheta) || newTheta < -6 || newTheta > 6) {
-        logger.warn(
-          { sessionId, itemId, rawTheta: newTheta },
-          "Theta out of bounds — clamping to [-6, 6]"
-        );
-        rawState.theta = Math.max(-6, Math.min(6, Number.isFinite(newTheta) ? newTheta : 0));
+    // Re-read graded responses under the session lock. An AI grade may arrive
+    // after the initial request snapshot; never overwrite that newer estimate.
+    const { savedResponse, newState } = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+      const latest = await tx.session.findUnique({ where: { id: sessionId },
+        include: { responses: { include: { item: true } } } });
+      if (sessionDeadlineReached(latest?.startedAt, maxDurationMs))
+        throw new AppError(409, 'TIME_LIMIT_EXCEEDED', 'Assessment time limit reached; the late answer was not saved');
+      if ((latest?.metadata as Record<string, unknown> | null)?.currentItemId !== itemId ||
+          latest?.status !== SessionStatus.IN_PROGRESS || latest.responses.some(r => r.itemId === itemId)) {
+        throw AppError.conflict("Response must match the current unanswered item");
       }
-      const newState = rawState;
-            
-            // Persist response and update session
-            const [savedResponse] = await prisma.$transaction(async tx => {
-              await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
-              const latest = await tx.session.findUnique({where:{id:sessionId}});
-              if(sessionDeadlineReached(latest?.startedAt,maxDurationMs))
-                throw new AppError(409,'TIME_LIMIT_EXCEEDED','Assessment time limit reached; the late answer was not saved');
-              if ((latest?.metadata as Record<string, unknown> | null)?.currentItemId !== itemId ||
-                  latest?.status !== SessionStatus.IN_PROGRESS || await tx.response.count({where:{sessionId,itemId}}) > 0) {
-                throw AppError.conflict("Response must match the current unanswered item");
-              }
+      const latestItems = Object.fromEntries(latest.responses.filter(r => r.item)
+        .map(r => [r.itemId, dbItemToEngineItem(r.item)]));
+      const newState = engine.processResponse(toEngineState(latest), response, { ...latestItems, [item.id]: item });
+      if (!Number.isFinite(newState.theta) || newState.theta < -6 || newState.theta > 6) {
+        logger.warn({ sessionId, itemId, rawTheta: newState.theta }, "Theta out of bounds — clamping to [-6, 6]");
+        newState.theta = Math.max(-6, Math.min(6, Number.isFinite(newState.theta) ? newState.theta : 0));
+      }
               const saved = await tx.response.create({
                 data: {
                   sessionId,
@@ -1087,7 +950,7 @@ export const AssessmentService = {
           latencyMs: typeof clientLatencyMs === 'number' && clientLatencyMs > 0 ? clientLatencyMs : 0,
           rtZScore: rtZ,
           rtFlag: rtFlag,
-          order: session.responses.length + 1,
+          order: latest.responses.length + 1,
           metadata: aiResult ? {
             aiFeedback: (aiResult as any).feedback,
             confidence: (aiResult as any).confidence,
@@ -1127,7 +990,7 @@ export const AssessmentService = {
           } as unknown as Prisma.InputJsonValue,
         }
       });
-      return [saved];
+      return { savedResponse: saved, newState };
     }).catch(async error=>{
       if(error instanceof AppError&&error.code==='TIME_LIMIT_EXCEEDED')
         await this.finalizeSession(sessionId,session.theta,{stopReason:'TIME_LIMIT_EXCEEDED'});

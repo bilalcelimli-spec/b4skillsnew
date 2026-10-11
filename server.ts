@@ -39,6 +39,7 @@ import { AITutorBody, SpeakingMultimodalBody } from "./src/lib/security/schemas/
 import { CodeRedemptionError, redeemExamCode } from "./src/lib/security/exam-code-redemption.js";
 import { GenerateCodesBody, RedeemCodeBody, ValidateCodeBody } from "./src/lib/security/schemas/codes.js";
 import { recordFreemiumScore, type FreemiumSkillBreakdown } from "./src/lib/product-lines/freemium-response-scoring.js";
+import { pickPlacementItem, placementPrecisionReached, PLACEMENT_SKILLS, PLACEMENT_MIN_PER_SKILL, PLACEMENT_MAX_PER_SKILL } from "./src/lib/product-lines/placement-selection.js";
 import { evaluateFreemiumResponse } from "./src/lib/product-lines/freemium-productive-scoring.js";
 import { estimateTheta as estimatePlacementTheta } from "./src/lib/assessment-engine/estimator.js";
 import { thetaToCefr as placementThetaToCefr } from "./src/lib/cefr/cefr-framework.js";
@@ -542,7 +543,10 @@ async function startServer() {
 
       return res.json({ token: newAccess });
     } catch (err: any) {
-      return res.status(401).json({ error: 'Tokens invalid or expired' });
+      if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.TokenExpiredError || err instanceof jwt.NotBeforeError) {
+        return res.status(401).json({ error: 'Tokens invalid or expired' });
+      }
+      return res.status(503).json({ error: 'Session refresh is temporarily unavailable. Please try again.' });
     }
   });
 
@@ -5805,6 +5809,7 @@ ${codeSection}
     itemsAdministered: number; maxItems: number;
     name: string; email: string;
     skillBreakdown: Record<string, FreemiumSkillBreakdown>;
+    skillProfiles: Record<string, { theta: number; sem: number }>;
     responses: PlacementResponse[];
     itemMeta: Record<string, PlacementItem>;
     scoringInProgress: boolean;
@@ -5825,65 +5830,18 @@ ${codeSection}
   // Freemium placement now covers ALL 6 macro skills (Q3 2026 expansion).
   // Productive tasks are rubric-scored from actual text/audio. Unavailable or
   // disputed evaluations are withheld from ability estimation.
-  const FREEMIUM_PLACEMENT_SKILLS = ["GRAMMAR", "VOCABULARY", "READING", "LISTENING", "WRITING", "SPEAKING"];
+  const FREEMIUM_PLACEMENT_SKILLS = PLACEMENT_SKILLS;
 
   // Each skill must collect at least this many items before the test may stop —
   // ensures the 6-skill breakdown isn't lopsided toward whatever the IRT loop
   // happened to favour. With 6 skills × 2 = 12 minimum responses out of 36 max.
-  const FREEMIUM_MIN_ITEMS_PER_SKILL = 2;
+  const FREEMIUM_MIN_ITEMS_PER_SKILL = PLACEMENT_MIN_PER_SKILL;
 
   // Hard cap per skill: prevents WRITING/SPEAKING from dominating the session
   // when the item bank happens to cluster productive items near the candidate's θ.
   // Receptive skills (GRAMMAR/VOCABULARY/READING/LISTENING) can go up to the cap;
   // productive skills are also bounded here (they have longer response latency).
-  const FREEMIUM_MAX_ITEMS_PER_SKILL = 4;
-
-  const pickNextPlacementItem = (allItems: any[], usedIds: Set<string>, theta: number, skillBreakdown: Record<string, any> = {}) => {
-    // Pre-compute per-skill counts so the cap check is O(1) per item
-    const skillCounts: Record<string, number> = {};
-    for (const s of FREEMIUM_PLACEMENT_SKILLS) skillCounts[s] = 0;
-    Object.entries(skillBreakdown).forEach(([s, data]) => { skillCounts[s] = (data as any).total ?? 0; });
-
-    const available = allItems.filter(
-      it =>
-        !usedIds.has(it.id) &&
-        it.active !== false &&
-        FREEMIUM_PLACEMENT_SKILLS.includes(it.skill) &&
-        (skillCounts[it.skill] ?? 0) < FREEMIUM_MAX_ITEMS_PER_SKILL
-    );
-    if (!available.length) return null;
-
-    // ── Skill-coverage guard ──────────────────────────────────────────────
-    // If any skill in the placement set still hasn't met the per-skill
-    // minimum, force-pick from those under-served skills first. Otherwise
-    // pure IRT selection ignores WRITING/SPEAKING (item info is lower than
-    // for receptive MCQs at moderate θ), and the productive sections never
-    // appear in the freemium result.
-    // (skillCounts already computed above for the cap filter)
-
-    const underServed = FREEMIUM_PLACEMENT_SKILLS.filter(
-      s => skillCounts[s] < FREEMIUM_MIN_ITEMS_PER_SKILL && available.some(it => it.skill === s)
-    );
-
-    let set: any[];
-    if (underServed.length > 0) {
-      // Prefer the under-served skill with the fewest items so far, then IRT-pick.
-      const targetSkill = underServed.sort((a, b) => skillCounts[a] - skillCounts[b])[0];
-      set = available.filter(it => it.skill === targetSkill);
-    } else {
-      // All skills met the minimum — fall back to the original "min-count + 1" balancing.
-      const values = Object.values(skillCounts);
-      const minSkillCount = values.length > 0 ? Math.min(...values as number[]) : 0;
-      const balancedAvailable = available.filter(it => (skillCounts[it.skill] || 0) <= minSkillCount + 1);
-      set = balancedAvailable.length > 0 ? balancedAvailable : available;
-    }
-
-    return set.reduce((best, it) => {
-      const diff = Math.abs((it.irtB ?? it.difficulty ?? 0) - theta);
-      const bestDiff = Math.abs((best.irtB ?? best.difficulty ?? 0) - theta);
-      return diff < bestDiff ? it : best;
-    });
-  };
+  const FREEMIUM_MAX_ITEMS_PER_SKILL = PLACEMENT_MAX_PER_SKILL;
 
   // Strip answer-revealing fields before sending an item to the client
   const stripAnswers = (item: any) => {
@@ -5956,7 +5914,7 @@ ${codeSection}
 
       const pId = "placement-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
       const startTheta = 0.0;
-      const firstItem = pickNextPlacementItem(allItems, new Set(), startTheta, {});
+      const firstItem = pickPlacementItem(allItems, new Set());
       if (!firstItem) return res.status(503).json({ error: "No items available" });
 
       placementSessions[pId] = {
@@ -5964,7 +5922,7 @@ ${codeSection}
         usedIds: new Set([firstItem.id]),
         itemsAdministered: 0, maxItems: FREEMIUM_PLACEMENT_SKILLS.length * FREEMIUM_MAX_ITEMS_PER_SKILL,
         name: guestName, email: guestEmail ?? "",
-        skillBreakdown: {}, responses: [], itemMeta: {}, currentItemId: firstItem.id, scoringInProgress: false,
+        skillBreakdown: {}, skillProfiles: {}, responses: [], itemMeta: {}, currentItemId: firstItem.id, scoringInProgress: false,
         createdAt: Date.now(),
       };
 
@@ -6012,6 +5970,9 @@ ${codeSection}
         const estimate = estimatePlacementTheta(sess.responses, sess.itemMeta, 0, 1, { useGrmProductive: true });
         sess.theta = estimate.theta;
         sess.sem = estimate.sem;
+        sess.skillProfiles[item.skill] = estimatePlacementTheta(
+          sess.responses.filter(response => sess.itemMeta[response.itemId]?.skill === item.skill),
+          sess.itemMeta, 0, 1, { useGrmProductive: true });
       }
       sess.currentItemId = "";
       sess.itemsAdministered++;
@@ -6024,7 +5985,7 @@ ${codeSection}
         s => (sess.skillBreakdown[s]?.total ?? 0) >= FREEMIUM_MIN_ITEMS_PER_SKILL
       );
       const reachedMax = sess.itemsAdministered >= sess.maxItems;
-      const semOk = sess.sem < 0.35;
+      const semOk = placementPrecisionReached(sess.skillBreakdown, sess.skillProfiles);
       const done = reachedMax || (allSkillsCovered && semOk);
 
       if (done) {
@@ -6061,7 +6022,7 @@ ${codeSection}
         return res.json({ complete: true, result });
       }
 
-      const nextItem = pickNextPlacementItem(sess.items, sess.usedIds, sess.theta, sess.skillBreakdown);
+      const nextItem = pickPlacementItem(sess.items, sess.usedIds, sess.skillBreakdown, sess.skillProfiles);
       if (!nextItem) {
         const cefrLevel = thetaToCefr(sess.theta);
         const ciLow = sess.theta - 1.645 * sess.sem;

@@ -3,8 +3,7 @@
  *
  * Unified item selection pipeline for Computerised Adaptive Testing sessions.
  * Composes:
- *   1. Shadow-test assembly (van der Linden, 2005) — guarantees blueprint
- *      feasibility at every step
+ *   1. Greedy shadow-test assembly for remaining blueprint slots
  *   2. Composite scoring  — Fisher Information + exposure penalty + blueprint
  *      urgency + recency penalty (α/β/γ/δ weights)
  *   3. Sympson-Hetter exposure control — probabilistic gating per stratum
@@ -25,7 +24,8 @@ import { ProductLineProfile } from "../product-lines/profiles.js";
 import { hybridSelectTopK } from "../psychometrics/kl-information.js";
 import { selectItemRL, buildRlState, type RlItem } from "../psychometrics/rl-item-selection.js";
 import {
-  selectItemDaveyParshall,
+  acceptItem,
+  thetaToStratumDp,
   recordSelection,
   createExposureStore,
   updateAlphas,
@@ -103,23 +103,23 @@ export class CATSelector {
     blueprint?: BlueprintConstraint[],
     useRlSelector = false,
   ): Promise<CATSelectorResult | null> {
-    const activeBlueprint = blueprint ?? this.profile.blueprint;
     const { theta, usedItemIds } = state;
-
-    // ── Step 1: Shadow-test assembly ────────────────────────────────────────
-    // Assembles a complete shadow test satisfying blueprint and exposure limits.
+    // Used items are absent from delivery pools. Recover history from the session,
+    // otherwise blueprint counts, set continuity and KL/MFI switching stay at zero.
+    const validPool = pool.filter(item => !usedItemIds.has(item.id) &&
+      (item.status === undefined || item.status === "ACTIVE" || item.status === "PRETEST") &&
+      Number.isFinite(item.params.a) && item.params.a > 0 && Number.isFinite(item.params.b) &&
+      Number.isFinite(item.params.c) && item.params.c >= 0 && item.params.c < 1);
+    const sequencedPool = applySequencingRules(validPool, seqCtx) as ShadowItem[];
+    const skills = new Set(pool.map(item => item.skill));
+    const history = seqCtx.administeredItems.filter(item => skills.has(item.skill) && !item.isPretest);
+    const activeBlueprint = (blueprint ?? this.profile.blueprint).filter(constraint => skills.has(constraint.skill));
+    const totalLength = Math.min(this.profile.globalMaxItems,
+      activeBlueprint.reduce((sum, constraint) => sum + constraint.maxCount, 0) || this.profile.globalMaxItems);
     const { nextItem: shadowCandidate, shadowTest } = constructShadowTest(
-      pool,
-      theta,
-      usedItemIds,
-      {
-        totalLength: this.profile.globalMaxItems,
-        blueprint: activeBlueprint,
-        maxPerCefrLevel: 5, // cap CEFR-level saturation
-        maxExposureRate: this.profile.maxExposureRate,
-      }
+      [...history, ...sequencedPool], theta, usedItemIds,
+      { totalLength, blueprint: activeBlueprint, maxExposureRate: this.profile.maxExposureRate }
     );
-
     if (!shadowCandidate) return null;
 
     // ── RL selector (optional) ───────────────────────────────────────────────
@@ -139,10 +139,7 @@ export class CATSelector {
           ? rlStore.getConditionalExposureRateSync(it.id, rlStratum)
           : rlStore.getExposureRateSync(it.id),
       }));
-      const responseSummary = [...usedItemIds].map((id) => {
-        const it = pool.find((i) => i.id === id);
-        return { skill: (it?.skill as string) ?? "UNKNOWN" };
-      });
+      const responseSummary = history.map(item => ({ skill: item.skill as string }));
       const rlState = buildRlState(state.theta, state.sem ?? 1.0, responseSummary);
       const rlItem = selectItemRL(rlState, rlPool, usedItemIds);
       if (rlItem) {
@@ -157,7 +154,7 @@ export class CATSelector {
       }
       // Fall through to composite if RL returns null
     }
-    const available = shadowTest.filter((i) => !usedItemIds.has(i.id));
+    let available = shadowTest.filter((i) => !usedItemIds.has(i.id));
     if (available.length === 0) return null;
 
     const store = await getExposureStore();
@@ -165,49 +162,20 @@ export class CATSelector {
     const stratumN = store.getStratumTotalSync(stratum);
     const useConditional = stratumN >= DEFAULT_MIN_STRATUM_N;
 
-    // ── Step 2a: Davey-Parshall α-gate (primary exposure control) ───────────
-    // Each candidate item is probabilistically accepted based on its per-stratum
-    // α value. Items exceeding k_max exposure are gated out; the highest-Fisher-
-    // information accepted item is returned directly. Fall through to composite
-    // scoring only when D-P rejects every candidate (extremely rare).
-    {
-      const dpCandidate = selectItemDaveyParshall(
-        available,
-        theta,
-        { store: _dpStore, kMax: this.profile.maxExposureRate },
-        usedItemIds
-      );
-      if (dpCandidate) {
-        recordSelection(_dpStore, dpCandidate.id, stratum, available.map(i => i.id));
-        if (_dpStore.sessionsSinceLastUpdate >= 100) updateAlphas(_dpStore);
-        await store.recordExposure(dpCandidate.id, theta);
-        const seqResult = applySequencingRules([dpCandidate], seqCtx);
-        const finalItem = seqResult.length > 0 ? seqResult[0]! : dpCandidate;
-        return {
-          item: finalItem,
-          shadowTestSize: shadowTest.length,
-          compositeScore: information(theta, finalItem.params),
-          selectionStrategy: "composite",
-        };
-      }
-    }
+    // Gate candidates before scoring, using the D-P store's seven-stratum scale.
+    // Its scale differs from the five-stratum conditional ExposureStore scale.
+    const dpStratum = thetaToStratumDp(theta);
+    const accepted = available.filter(item => acceptItem(_dpStore, item.id, dpStratum));
+    const eligibleIds = available.map(item => item.id);
+    if (accepted.length) available = accepted;
 
-    // Current skill counts from administered items
     const skillCounts: Partial<Record<SkillType, number>> = {};
-    for (const itemId of usedItemIds) {
-      const item = pool.find((i) => i.id === itemId);
-      if (item) {
-        skillCounts[item.skill] = (skillCounts[item.skill] ?? 0) + 1;
-      }
-    }
+    for (const item of history) skillCounts[item.skill] = (skillCounts[item.skill] ?? 0) + 1;
 
-    // ── Step 3: Composite score with hybrid KL/MFI pre-ranking (D-P fallback) ──
-    // Reached only when Davey-Parshall rejects all candidates (extremely rare).
-    // Uses KL-info pre-ranking + Fisher info composite with blueprint urgency.
-    const operationalAdministered = [...usedItemIds].filter(id => {
-      const it = pool.find(i => i.id === id);
-      return it && !it.isPretest;
-    }).length;
+    // ── Step 3: Composite score with hybrid KL/MFI pre-ranking ──
+    // Rank accepted items using current precision and operational response history.
+    const scoredIds = new Set(state.responses.filter(response => !response.isPretest).map(response => response.itemId));
+    const operationalAdministered = history.filter(item => scoredIds.has(item.id)).length;
     const currentSem = state.sem ?? 1.0;
 
     const { method: selectionMethod, items: klPreRanked } = hybridSelectTopK(
@@ -262,18 +230,18 @@ export class CATSelector {
 
     scored.sort((a, b) => b.composite - a.composite);
 
-    // Keep top-5 candidates
-    const topCandidates = scored.slice(0, Math.min(5, scored.length)).map((s) => s.item);
+    // Randomise only among near-optimal items. An unrestricted top-five lottery
+    // can span the entire bank in small productive sections and erase adaptation.
+    const topCandidates = scored.filter(candidate => candidate.composite >= scored[0].composite * .95)
+      .slice(0, 5).map(candidate => candidate.item);
 
-    // ── Step 4: Sequencing rules ─────────────────────────────────────────────
-    const sequenced = applySequencingRules(topCandidates, seqCtx);
-    const finalCandidates = sequenced.length > 0 ? sequenced : topCandidates;
-
-    // ── Step 5: Random selection from final candidates ───────────────────────
-    const chosen = finalCandidates[Math.floor(Math.random() * finalCandidates.length)];
+    // Sequencing has already been applied to the full pool, before shortlisting.
+    const chosen = topCandidates[Math.floor(Math.random() * topCandidates.length)];
     const chosenScore = scored.find((s) => s.item.id === chosen.id)?.composite ?? 0;
 
-    // Record exposure
+    // Record the item actually delivered using the same stratum used for gating.
+    recordSelection(_dpStore, chosen.id, dpStratum, eligibleIds);
+    if (_dpStore.sessionsSinceLastUpdate >= 100) updateAlphas(_dpStore, this.profile.maxExposureRate);
     await store.recordExposure(chosen.id, theta);
 
     return {

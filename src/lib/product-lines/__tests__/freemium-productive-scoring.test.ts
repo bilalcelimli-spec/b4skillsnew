@@ -14,6 +14,16 @@ describe('six-skill response pipeline', () => {
     expect((await evaluateFreemiumResponse(item,0)).score).toBe(0);
     expect(scorer.writing).not.toHaveBeenCalled();
   });
+  it('scores legacy gap formats consistently without shuffling the public or diagnostic form',async () => {
+    const dropdown = {skill:'GRAMMAR',type:'FILL_IN_BLANKS',content:{prompt:'The Earth ____ around the Sun.',
+      options:['go','going','goes','went'],correctIndex:2,correctAnswer:'C'}};
+    expect((await evaluateFreemiumResponse(dropdown,'C')).score).toBe(1);
+    expect((await evaluateFreemiumResponse(dropdown,'goes')).score).toBe(1);
+    expect((await evaluateFreemiumResponse(dropdown,'go')).score).toBe(0);
+    const listening = {skill:'LISTENING',type:'FILL_IN_BLANKS',content:{prompt:'Hair: ______; Colour: ______',correctAnswer:'short|brown'}};
+    expect((await evaluateFreemiumResponse(listening,'short|brown')).score).toBe(1);
+    expect((await evaluateFreemiumResponse(listening,'brown|short')).score).toBe(0);
+  });
   it('uses the actual essay and returns fractional rubric credit',async () => {
     const evaluation = await evaluateFreemiumResponse(writing,'My family lives in London.');
     expect(scorer.writing).toHaveBeenCalledWith('My family lives in London.',writing.content.prompt);

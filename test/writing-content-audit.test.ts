@@ -50,3 +50,12 @@ it('includes only the specifically quarantined recordings when retrying', () => 
   expect(inAudioRepairScope({ ...item, metadata: {} }, true)).toBe(false);
   expect(inAudioRepairScope({ ...item, skill: 'WRITING' }, true)).toBe(false);
 });
+
+it('rejects an absent following passage and flags a summary longer than its source', () => {
+  expect(writingContentFindings({ prompt: 'Summarise the following passage in 50–80 words:', wordRange: { min: 50, max: 80 } })
+    .map(f => f.rule)).toContain('WRITING_SOURCE_MISSING');
+  expect(writingContentFindings({ prompt: 'Summarise the following passage in 50–80 words:\n\nA short source with only eight simple words.', wordRange: { min: 50, max: 80 } })
+    .map(f => f.rule)).toContain('WRITING_SUMMARY_NOT_SHORTER_THAN_SOURCE');
+  expect(writingContentFindings({ prompt: 'Summarise the following passage in 10–20 words.', passage: 'word '.repeat(40), wordRange: { min: 10, max: 20 } })
+    .filter(f => f.severity === 'BLOCKER' || f.severity === 'REVIEW')).toEqual([]);
+});

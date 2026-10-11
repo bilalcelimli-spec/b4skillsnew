@@ -28,6 +28,7 @@
 
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma.js";
+import { adaptiveItemWhere } from "../src/lib/assessment-engine/adaptive-policy.js";
 import { PRODUCT_LINE_PROFILES } from "../src/lib/product-lines/profiles.js";
 
 // ── CLI flags ────────────────────────────────────────────────────────────────
@@ -100,9 +101,8 @@ async function main(): Promise<void> {
       for (const cefrLevel of cefrLevels) {
         const have = await prisma.item.count({
           where: {
-            skill: skillStr as any,
+            ...adaptiveItemWhere(profile, skill),
             cefrLevel: cefrLevel as any,
-            status: { in: ["ACTIVE", "PRETEST"] as any },
           },
         });
         const ok = have >= need;

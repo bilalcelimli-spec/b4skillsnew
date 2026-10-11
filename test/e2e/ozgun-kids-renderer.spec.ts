@@ -161,3 +161,40 @@ for(const width of [320,1280])for(const scenario of ['balanced','advanced','hold
   await expect(page.getByText('Dashboard',{exact:true})).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('failed answer remains retryable after a successful background poll',async({page})=>{
+ await page.clock.install();
+ const answers:FixedAnswers={};let fail=true,reads=0;
+ const view=()=>({sessionId:'fixture-fixed',status:'IN_PROGRESS',serverNow:new Date().toISOString(),sectionIndex:0,section:OZGUN_SECTIONS[0],sectionDeadline:new Date(Date.now()+20*60000).toISOString(),questions:content.questions.slice(0,24),answers,report:null});
+ await page.route('**/api/sessions/fixture-fixed/fixed-form**',async route=>{
+  if(route.request().url().endsWith('/answer')){
+   if(fail){fail=false;return route.fulfill({status:503,json:{error:'Temporary save failure'}});}
+   const body=route.request().postDataJSON();answers[String(body.number)]=body.answer;
+  }else reads++;
+  await route.fulfill({json:view()});
+ });
+ await page.route('**/api/proctoring/**',route=>route.fulfill({json:{success:true}}));
+ await page.goto('/test/e2e/fixtures/ozgun-kids.html?mode=resume');
+ await page.getByRole('radio',{name:'Option B: She'}).click();
+ await expect(page.getByRole('button',{name:'Tekrar dene'})).toBeVisible();
+ await page.clock.fastForward(11000);
+ await expect.poll(()=>reads).toBeGreaterThan(1);
+ await expect(page.getByRole('button',{name:'Tekrar dene'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Bölümü bitir ve devam et'})).toBeDisabled();
+ await page.getByRole('button',{name:'Tekrar dene'}).click();
+ await expect(page.getByRole('button',{name:'Bölümü bitir ve devam et'})).toBeEnabled();
+ expect(answers).toEqual({'1':'B'});
+ await expect(page.getByRole('button',{name:'Tekrar dene'})).toHaveCount(0);
+});
+test('initial resume failure retries in place with the same session',async({page})=>{
+ let reads=0;
+ await page.route('**/api/sessions/fixture-fixed/fixed-form',async route=>{
+  if(++reads===1)return route.fulfill({status:503,json:{error:'Temporary connection failure'}});
+  await route.fulfill({json:{sessionId:'fixture-fixed',status:'IN_PROGRESS',serverNow:new Date().toISOString(),sectionIndex:0,section:OZGUN_SECTIONS[0],sectionDeadline:new Date(Date.now()+20*60000).toISOString(),questions:content.questions.slice(0,24),answers:{},report:null}});
+ });
+ await page.route('**/api/proctoring/**',route=>route.fulfill({json:{success:true}}));
+ await page.goto('/test/e2e/fixtures/ozgun-kids.html?mode=resume');
+ await page.getByRole('button',{name:'Tekrar dene'}).click();
+ await expect(page.getByRole('radio',{name:'Option B: She'})).toBeVisible();
+ expect(reads).toBe(2);
+});

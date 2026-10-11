@@ -36,6 +36,8 @@ export type CachedItem = {
   exposureCount: number;
   /** Item Quality Score (0–100) — soft quality signal in CAT composite scoring */
   iqScore: number | null;
+  cefrLevel: string;
+  isAnchor: boolean;
 };
 
 interface CacheEntry {
@@ -112,6 +114,8 @@ export async function getCachedItems(
       tags: true,
       exposureCount: true,
       iqScore: true,
+      cefrLevel: true,
+      isAnchor: true,
     },
   })) as CachedItem[];
 
@@ -164,6 +168,10 @@ export async function getItemsByIds(itemIds: string[]): Promise<CachedItem[]> {
         status: true,
         isPretest: true,
         iqScore: true,
+        cefrLevel: true,
+        isAnchor: true,
+        tags: true,
+        exposureCount: true,
       },
     })) as CachedItem[];
     for (const row of rows) found.set(row.id, row);

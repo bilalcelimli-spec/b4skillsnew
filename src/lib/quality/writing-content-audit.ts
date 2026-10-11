@@ -27,10 +27,19 @@ export function writingContentFindings(value: unknown): AuditFinding[] {
   }
   const summaryOfExternalSource = /\b(?:summari[sz]e|summary)\b/i.test(prompt)
     && /\b(?:read (?:an? |the )?(?:article|essay|text|report)|summary of (?:the|this) (?:article|essay|text|report)|summari[sz]e (?:the main (?:arguments|points) of )?(?:the|this) (?:article|essay|text)|author['’]s|essay above)\b/i.test(prompt);
-  const supplied = [c.passage, c.input, c.stimulus].some(v => typeof v === 'string' && v.trim())
+  const inlinePassage = /\bsummari[sz]e the following passage\b[^:]*:\s*([\s\S]+)/i.exec(prompt)?.[1]?.trim();
+  const supplied = [c.passage, c.input, c.stimulus, inlinePassage].some(v => typeof v === 'string' && v.trim())
     || /\bkey information\b[\s\S]*\b(?:developer|claims|concerns)\b/i.test(prompt);
   if (summaryOfExternalSource && !supplied)
     add('WRITING_SOURCE_MISSING', 'BLOCKER', 'Task requires summarising an external source, but no rendered passage/input/stimulus or explicit inline source data is present.', 'Recover and verify the original source; exclude the task from delivery until then.');
+  if (/\bsummari[sz]e the following passage\b/i.test(prompt)) {
+    if (!supplied && !findings.some(f => f.rule === 'WRITING_SOURCE_MISSING'))
+      add('WRITING_SOURCE_MISSING', 'BLOCKER', 'The following passage is requested but no source is supplied.', 'Supply the original passage before delivery.');
+    const source = [c.passage, c.input, c.stimulus, inlinePassage].find(v => typeof v === 'string' && v.trim());
+    const words = typeof source === 'string' ? source.match(/\b[\p{L}\p{N}]+(?:['’–-][\p{L}\p{N}]+)*/gu)?.length ?? 0 : 0;
+    if (words && effective.min >= words)
+      add('WRITING_SUMMARY_NOT_SHORTER_THAN_SOURCE', 'REVIEW', `Required minimum=${effective.min}; source words=${words}.`, 'Set a summary length below the source length and review the exemplar.');
+  }
   return findings;
 }
 

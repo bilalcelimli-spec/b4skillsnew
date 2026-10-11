@@ -38,6 +38,15 @@ describe('background scoring persistence', () => {
     mocks.writing.mockRejectedValue(new Error('Provider failure'));
     await expect(enqueueScoringJob(job)).rejects.toThrow('Provider failure');
     expect(mocks.update.mock.calls[0][0].data).toMatchObject({score:null,adjustedScore:null,isCorrect:null,metadata:{scoreFailed:true}});
+    expect(mocks.refresh).toHaveBeenCalledWith('session');
+    expect(mocks.enqueue).toHaveBeenCalledOnce();
+  });
+  it('still routes a provider failure to review if refreshing its report also fails', async () => {
+    mocks.writing.mockRejectedValue(new Error('Provider failure'));
+    mocks.refresh.mockRejectedValue(new Error('Report temporarily unavailable'));
+    await expect(enqueueScoringJob(job)).rejects.toThrow('Provider failure');
+    expect(mocks.enqueue).toHaveBeenCalledOnce();
+    expect(getScoringQueueStats()).toMatchObject({activeCount:0,queueDepth:0});
   });
   it('preserves original task metadata after AI scoring', async () => {
     await enqueueScoringJob(job);

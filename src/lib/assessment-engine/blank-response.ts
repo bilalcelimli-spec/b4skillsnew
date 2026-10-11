@@ -1,5 +1,5 @@
 /** Numbered and plain markers each represent one gap. */
-export const normalizeBlankScaffold = (text: string) => text.replace(/___(?:\[?\d+\]?___)?/g, "___");
+export const normalizeBlankScaffold = (text: string) => text.replace(/_{3,}(?:\[?\d+\]?_{3,})?/g, "___");
 
 export function scoreBlankResponse(blanks: Array<{ acceptableAnswers?: string[] }>, value: unknown): number {
   if (typeof value !== "string") throw new Error("Invalid blank response");

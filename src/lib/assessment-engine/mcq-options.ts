@@ -41,7 +41,7 @@ export function shuffleMcqOptions(
   itemId: string,
 ): { shuffledOptions: { id: string; text: string }[]; newCorrectAnswer: string } | null {
   if (!Array.isArray(options) || options.length === 0) return null;
-  if (!/^[A-Da-d]$/.test(correctAnswer)) return null;
+  if (!/^[A-Za-z]$/.test(correctAnswer) || options.length > 26) return null;
   const hasIdText = options.every(
     (o) => typeof o === "object" && o !== null && typeof (o as any).id === "string" && typeof (o as any).text === "string",
   );
@@ -49,7 +49,7 @@ export function shuffleMcqOptions(
 
   const seed = `${sessionId}:${itemId}`;
   const shuffled = seededFisherYates(options as { id: string; text: string }[], seed);
-  const LABELS = ["A", "B", "C", "D"];
+  const LABELS = options.map((_, index) => String.fromCharCode(65 + index));
   const originalCorrectId = correctAnswer.toUpperCase();
   const newCorrectIndex = shuffled.findIndex((o) => o.id.toUpperCase() === originalCorrectId);
   if (newCorrectIndex === -1) return null;

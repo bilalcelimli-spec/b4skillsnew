@@ -184,6 +184,10 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
           metadata: { scoringMode: job.skill, asyncScored: true, pendingAsyncScore: false, requiresHumanReview: true, scoreFailed: true, aiUnavailable: true, failureReason: (err as Error).message } as any,
       });
       if (!persisted) { await resolveHumanGrade(job); return; }
+      // Failure is a terminal queue outcome too. Clear stale pending indicators
+      // in an already completed report while keeping the grade unverified.
+      try { await refreshScoredSession(job.sessionId); }
+      catch (refreshErr) { logger.error({ refreshErr, sessionId: job.sessionId }, "async-scoring: failure report refresh failed"); }
       await RatingQueueService.enqueue({
         sessionId: job.sessionId,
         itemId: job.itemId,

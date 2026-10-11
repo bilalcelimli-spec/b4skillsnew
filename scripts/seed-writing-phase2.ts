@@ -22,6 +22,7 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 import { validateOrExit } from "./_validation-helper.js";
+import { reviewedWritingRevision } from "../src/lib/quality/reviewed-writing-revisions.js";
 const SEED_TAG = "seed-writing-phase2";
 
 const RUBRIC = {
@@ -596,14 +597,24 @@ async function main() {
   }
 
   let inserted = 0;
-  const validItems = validateOrExit(items, "seed-writing-phase2");
+  const pendingReview = new Set<string>();
+  const prepared = items.map(item => {
+    const revision = reviewedWritingRevision(item.content);
+    if (!revision) return item;
+    if (revision.substantive) pendingReview.add(revision.next.prompt);
+    return { ...item, content: { ...item.content, ...revision.next } };
+  });
+  const validItems = validateOrExit(prepared, "seed-writing-phase2");
   for (const item of validItems) {
     await prisma.item.create({
       data: {
         skill: "WRITING",
         cefrLevel: item.cefrLevel as any,
         type: "WRITING_PROMPT",
-        status: "ACTIVE",
+        status: pendingReview.has(item.content.prompt) ? "REVIEW" : "ACTIVE",
+        ...(pendingReview.has(item.content.prompt) ? { pipelineStage: "EDITING", metadata: {
+          humanReviewRequired: true, validationEvidenceStatus: "PENDING_AFTER_CONTENT_REVISION",
+        } } : {}),
         difficulty: item.difficulty,
         discrimination: item.discrimination,
         guessing: 0,

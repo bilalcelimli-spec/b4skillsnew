@@ -10,6 +10,8 @@ const mode = new URLSearchParams(location.search).get("mode") ?? "reading";
 const passage = Array.from({ length: 12 }, (_, i) => `Paragraph ${i + 1}. The community garden provides a quiet place for local residents to meet, learn and grow fresh vegetables together.`).join("\n\n");
 const variants: Record<string, any> = {
   reading: { skill: "READING", type: "MULTIPLE_CHOICE", content: { readingText: passage, question: "Why do people visit the community garden?", options: ["To meet neighbours and learn about gardening.", "To avoid all contact with local residents.", "To buy equipment from a commercial shop.", "To attend a weekly meeting about an exceptionallylongwordwithoutspaces".repeat(2)] } },
+  "listening-gaps": { skill: "LISTENING", type: "FILL_IN_BLANKS", content: { prompt: "Hair: ______\nColour: ______\nClothes: ______", audioUrl: "/fixture-audio.wav" } },
+  "eight-options": { skill: "READING", type: "MULTIPLE_CHOICE", content: { prompt: "Choose the eighth option.", options: Array.from({length:8},(_,n)=>({id:String.fromCharCode(65+n),text:`Answer ${n+1}`})) } },
   grammar: { skill: "GRAMMAR", type: "FILL_IN_BLANKS", content: { prompt: "Complete the sentence", scaffold: "She ___1___ home and ___[2]___ dinner.", wordBank: ["walks", "cooks", "away"] } },
   vocabulary: { skill: "VOCABULARY", type: "FILL_IN_BLANKS", content: { prompt: "Choose a word", passage: "The room was ___1___.", options: ["enormous", "tiny", "quiet", "dark"] } },
   open: { skill: "GRAMMAR", type: "FILL_IN_BLANKS", content: { prompt: "She ___1___ home." } },

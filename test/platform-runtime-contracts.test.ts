@@ -56,3 +56,30 @@ it('does not refresh or redirect on external 401 and returns auth failures direc
   await apiFetch('https://external.example/unauthorized');await apiFetch('/api/auth/login');
   expect(fetcher).toHaveBeenCalledTimes(2);expect(expired).not.toHaveBeenCalled();
 });
+
+it.each([503,429])('keeps the exam open when token refresh is temporarily unavailable (%s)',async status=>{
+ let available=false;
+ const fetcher=vi.fn(async(input:RequestInfo|URL)=>input==='/api/auth/refresh'
+  ? new Response('{}',{status:available?200:status}) : new Response('{}',{status:available?200:401}));
+ const expired=vi.fn(),apiFetch=createAuthenticatedFetch(fetcher,expired);
+ const first=await apiFetch('/api/sessions/exam/status');
+ expect(first.status).toBe(503);expect(expired).not.toHaveBeenCalled();
+ expect((await first.json()).error).toContain('try again');
+ available=true;expect((await apiFetch('/api/sessions/exam/status')).status).toBe(200);
+});
+it('does not redirect on a network error during token refresh and can recover on the next request',async()=>{
+ let available=false;
+ const fetcher=vi.fn(async(input:RequestInfo|URL)=>{
+  if(input==='/api/auth/refresh'){if(!available)throw new TypeError('Offline');return new Response('{}');}
+  return new Response('{}',{status:fetcher.mock.calls.filter(([url])=>url==='/api/auth/refresh').length>=2?200:401});
+ });
+ const expired=vi.fn(),apiFetch=createAuthenticatedFetch(fetcher,expired);
+ expect((await apiFetch('/api/sessions/exam/status')).status).toBe(503);
+ available=true;expect((await apiFetch('/api/sessions/exam/status')).status).toBe(200);
+ expect(expired).not.toHaveBeenCalled();
+});
+it('still redirects exactly once when refresh credentials are definitively rejected',async()=>{
+ const fetcher=vi.fn(async()=>new Response('{}',{status:401}));const expired=vi.fn(),apiFetch=createAuthenticatedFetch(fetcher,expired);
+ await Promise.all([apiFetch('/api/one'),apiFetch('/api/two')]);await apiFetch('/api/three');
+ expect(expired).toHaveBeenCalledTimes(1);
+});
