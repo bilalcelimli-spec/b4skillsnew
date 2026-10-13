@@ -1,3 +1,4 @@
+import { SCORING_MAX_RETRIES, SCORING_MAX_RETRY_DELAY_MS } from "../scoring/ai-scoring-policy.js";
 /**
  * Circuit Breaker for Gemini API
  *
@@ -35,6 +36,8 @@ export interface CircuitBreakerOptions {
   baseDelayMs?: number;
   /** Maximum delay cap (ms). Default: 30_000 */
   maxDelayMs?: number;
+  /** Decline a retry if the server asks us to wait longer than this budget. */
+  maxRetryAfterMs?: number;
   /** Called on state transitions for observability. */
   onStateChange?: (from: CircuitState, to: CircuitState, reason: string) => void;
   /** Called on each retry attempt. */
@@ -95,6 +98,7 @@ export class CircuitBreaker {
   private readonly maxRetries: number;
   private readonly baseDelayMs: number;
   private readonly maxDelayMs: number;
+  private readonly maxRetryAfterMs: number;
   private readonly onStateChange?: CircuitBreakerOptions["onStateChange"];
   private readonly onRetry?: CircuitBreakerOptions["onRetry"];
 
@@ -107,6 +111,7 @@ export class CircuitBreaker {
     this.maxRetries = options.maxRetries ?? 3;
     this.baseDelayMs = options.baseDelayMs ?? 1_000;
     this.maxDelayMs = options.maxDelayMs ?? 30_000;
+    this.maxRetryAfterMs = options.maxRetryAfterMs ?? Infinity;
     this.onStateChange = options.onStateChange;
     this.onRetry = options.onRetry;
   }
@@ -189,6 +194,10 @@ export class CircuitBreaker {
 
         // Calculate backoff delay
         const retryAfterMs = extractRetryAfterMs(err);
+        if (retryAfterMs !== null && retryAfterMs > this.maxRetryAfterMs) {
+          this.recordFailure();
+          throw err; // Do not retry sooner than the provider permits.
+        }
         const backoffMs = Math.min(
           this.baseDelayMs * Math.pow(2, attempt),
           this.maxDelayMs
@@ -270,6 +279,9 @@ const BREAKER_DEFAULTS: CircuitBreakerOptions = {
 
 export const geminiScoringBreaker = new CircuitBreaker("gemini-scoring", {
   ...BREAKER_DEFAULTS,
+  maxRetries: SCORING_MAX_RETRIES,
+  maxDelayMs: SCORING_MAX_RETRY_DELAY_MS,
+  maxRetryAfterMs: SCORING_MAX_RETRY_DELAY_MS,
   onStateChange: makeOnStateChange("gemini-scoring"),
   onRetry: makeOnRetry("gemini-scoring"),
 });

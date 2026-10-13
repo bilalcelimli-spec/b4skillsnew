@@ -1,3 +1,4 @@
+import { SCORING_MODEL, scoringFailureCode } from "./ai-scoring-policy.js";
 import { AIScore, GeminiScoringService } from "./gemini-scoring-service.js";
 import {
   assessWritingIntegrity,
@@ -31,9 +32,10 @@ export interface OrchestratedScore {
   scoringPasses: ScoringPass[];
   /** Pre-scoring integrity report; populated for every response. */
   integrity?: IntegrityReport;
+  failureCode?: string;
 }
 
-const MODEL_NAME = "gemini-2.5-flash";
+const MODEL_NAME = SCORING_MODEL;
 const CONFIDENCE_THRESHOLD = 0.7;
 const AGREEMENT_THRESHOLD = 0.15;
 
@@ -174,6 +176,7 @@ function buildUnavailableScore(
     score: 0.5,            // withheld — human reviewer will override
     requiresHumanReview: true,
     reviewReasons: [reason],
+    failureCode: scoringFailureCode(error),
     agreementDelta: 0,
     scoreSource: "ai_unavailable",
     model: MODEL_NAME,

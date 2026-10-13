@@ -1,3 +1,5 @@
+import { SecretsManager } from "../secrets/secrets-manager.js";
+import { SCORING_MODEL, SCORING_REQUEST_TIMEOUT_MS } from "./ai-scoring-policy.js";
 import { validateAIScore } from "./validate-ai-score.js";
 import { GoogleGenAI, Type } from "@google/genai";
 import { buildCefrRubricPrompt, type CefrLevel } from "../cefr/cefr-framework.js";
@@ -11,8 +13,18 @@ import { geminiScoringBreaker } from "../ai/circuit-breaker.js";
  * Handles transcription, CEFR-aligned scoring, and detailed feedback.
  */
 
-// Initialize Gemini with the platform-provided API key
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "", httpOptions: { timeout: 20_000, retryOptions: { attempts: 1 } } });
+// Resolve after startup secret loading, and replace the client after key rotation.
+let cachedClient: { key: string; client: GoogleGenAI } | undefined;
+export function isGeminiScoringConfigured(): boolean {
+  return Boolean(SecretsManager.get("GEMINI_API_KEY")?.trim());
+}
+function scoringClient(): GoogleGenAI {
+  const key = SecretsManager.get("GEMINI_API_KEY")?.trim();
+  if (!key) throw new Error("Gemini scoring API key is not configured");
+  if (!cachedClient || cachedClient.key !== key) cachedClient = { key, client: new GoogleGenAI({ apiKey: key,
+    httpOptions: { timeout: SCORING_REQUEST_TIMEOUT_MS, retryOptions: { attempts: 1 } } }) };
+  return cachedClient.client;
+}
 
 export interface AIScore {
   score: number;           // Normalized 0.0 to 1.0
@@ -85,8 +97,8 @@ async function scoreSpeakingInternal(
   const cefrRubricBlock = targetCefr ? buildCefrRubricPrompt(targetCefr, "speaking") : "";
   const cefrScoringKnowledge = targetCefr ? buildCefrScoringKnowledge(targetCefr, "speaking") : "";
   const skillAddendum = targetCefr ? buildSkillAwarePromptAddendum("SPEAKING" as MacroSkill, targetCefr) : "";
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+  const response = await scoringClient().models.generateContent({
+    model: SCORING_MODEL,
     contents: [
       {
         text: `
@@ -107,9 +119,10 @@ Instructions:
    - grammaticalAccuracy: correctness of grammatical structures (0-10).
    - discourseStructure: organization and flow of ideas (0-10).
 3. Score the response against the CEFR rubric provided above.
-4. Normalised score: A1=0.10, A2=0.28, B1=0.46, B2=0.65, C1=0.82, C2=1.0
-5. Sub-scores for Grammar, Vocabulary, Fluency, Coherence, and Task Relevance (0-10).
-6. 3–5 specific corrections with original text, suggestion, type and explanation.
+4. confidence must be a decimal between 0 and 1, never a percentage.
+5. Normalised score: A1=0.10, A2=0.28, B1=0.46, B2=0.65, C1=0.82, C2=1.0
+6. Sub-scores for Grammar, Vocabulary, Fluency, Coherence, and Task Relevance (0-10).
+7. 3–5 specific corrections with original text, suggestion, type and explanation.
 
 Return JSON with these exact fields:
 {
@@ -140,34 +153,37 @@ Return JSON with these exact fields:
     ],
     config: {
       systemInstruction: buildSystemInstruction(mode),
+      thinkingConfig: { thinkingBudget: 1024 },
+      maxOutputTokens: 4096,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          score: { type: Type.NUMBER },
-          cefrLevel: { type: Type.STRING },
+          score: { type: Type.NUMBER, minimum: 0, maximum: 1 },
+          cefrLevel: { type: Type.STRING, enum: ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"] },
           feedback: { type: Type.STRING },
-          confidence: { type: Type.NUMBER },
+          confidence: { type: Type.NUMBER, minimum: 0, maximum: 1 },
           transcript: { type: Type.STRING },
           rubricScores: {
             type: Type.OBJECT,
             properties: {
-              grammar: { type: Type.NUMBER },
-              vocabulary: { type: Type.NUMBER },
-              fluency: { type: Type.NUMBER },
-              coherence: { type: Type.NUMBER },
-              taskRelevance: { type: Type.NUMBER }
-            }
+              grammar: { type: Type.NUMBER, minimum: 0, maximum: 10 },
+              vocabulary: { type: Type.NUMBER, minimum: 0, maximum: 10 },
+              fluency: { type: Type.NUMBER, minimum: 0, maximum: 10 },
+              coherence: { type: Type.NUMBER, minimum: 0, maximum: 10 },
+              taskRelevance: { type: Type.NUMBER, minimum: 0, maximum: 10 }
+            },
+            required: ["grammar", "vocabulary", "fluency", "coherence", "taskRelevance"]
           },
           speakingFeatures: {
             type: Type.OBJECT,
             properties: {
               speechRate: { type: Type.NUMBER },
               pauseDuration: { type: Type.NUMBER },
-              pronunciationClarity: { type: Type.NUMBER },
-              lexicalDiversity: { type: Type.NUMBER },
-              grammaticalAccuracy: { type: Type.NUMBER },
-              discourseStructure: { type: Type.NUMBER }
+              pronunciationClarity: { type: Type.NUMBER, minimum: 0, maximum: 10 },
+              lexicalDiversity: { type: Type.NUMBER, minimum: 0, maximum: 10 },
+              grammaticalAccuracy: { type: Type.NUMBER, minimum: 0, maximum: 10 },
+              discourseStructure: { type: Type.NUMBER, minimum: 0, maximum: 10 }
             },
             required: ["speechRate", "pauseDuration", "pronunciationClarity", "lexicalDiversity", "grammaticalAccuracy", "discourseStructure"]
           },
@@ -189,14 +205,16 @@ Return JSON with these exact fields:
     }
   });
 
+  if (response.candidates?.[0]?.finishReason === "MAX_TOKENS") throw new Error("Incomplete AI scoring result");
+  if (!response.text?.trim()) throw new Error("Empty AI scoring result");
   return validateAIScore(JSON.parse(response.text));
 }
 
 async function scoreWritingInternal(text: string, prompt: string, mode: ScoreMode, targetCefr?: CefrLevel): Promise<AIScore> {
   const cefrScoringKnowledge = targetCefr ? buildCefrScoringKnowledge(targetCefr, "writing") : "";
   const skillAddendum = targetCefr ? buildSkillAwarePromptAddendum("WRITING" as MacroSkill, targetCefr) : "";
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+  const response = await scoringClient().models.generateContent({
+    model: SCORING_MODEL,
     contents: `
 Evaluate the candidate WRITING response to the following prompt:
 "${prompt}"
@@ -210,9 +228,10 @@ Candidate Response:
 
 Instructions:
 1. Score against the CEFR rubric provided above.
-2. Normalised score: A1=0.10, A2=0.28, B1=0.46, B2=0.65, C1=0.82, C2=1.0
-3. Sub-scores for Grammar, Vocabulary, Coherence, and Task Relevance (0–10).
-4. 3–5 specific corrections with original text, suggestion, type and explanation.
+2. confidence must be a decimal between 0 and 1, never a percentage.
+3. Normalised score: A1=0.10, A2=0.28, B1=0.46, B2=0.65, C1=0.82, C2=1.0
+4. Sub-scores for Grammar, Vocabulary, Coherence, and Task Relevance (0–10).
+5. 3–5 specific corrections with original text, suggestion, type and explanation.
 
 Return JSON:
 {
@@ -226,22 +245,25 @@ Return JSON:
     `,
     config: {
       systemInstruction: buildSystemInstruction(mode),
+      thinkingConfig: { thinkingBudget: 1024 },
+      maxOutputTokens: 4096,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          score: { type: Type.NUMBER },
-          cefrLevel: { type: Type.STRING },
+          score: { type: Type.NUMBER, minimum: 0, maximum: 1 },
+          cefrLevel: { type: Type.STRING, enum: ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"] },
           feedback: { type: Type.STRING },
-          confidence: { type: Type.NUMBER },
+          confidence: { type: Type.NUMBER, minimum: 0, maximum: 1 },
           rubricScores: {
             type: Type.OBJECT,
             properties: {
-              grammar: { type: Type.NUMBER },
-              vocabulary: { type: Type.NUMBER },
-              coherence: { type: Type.NUMBER },
-              taskRelevance: { type: Type.NUMBER }
-            }
+              grammar: { type: Type.NUMBER, minimum: 0, maximum: 10 },
+              vocabulary: { type: Type.NUMBER, minimum: 0, maximum: 10 },
+              coherence: { type: Type.NUMBER, minimum: 0, maximum: 10 },
+              taskRelevance: { type: Type.NUMBER, minimum: 0, maximum: 10 }
+            },
+            required: ["grammar", "vocabulary", "coherence", "taskRelevance"]
           },
           corrections: {
             type: Type.ARRAY,
@@ -261,6 +283,8 @@ Return JSON:
     }
   });
 
+  if (response.candidates?.[0]?.finishReason === "MAX_TOKENS") throw new Error("Incomplete AI scoring result");
+  if (!response.text?.trim()) throw new Error("Empty AI scoring result");
   return validateAIScore(JSON.parse(response.text));
 }
 

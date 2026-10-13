@@ -33,6 +33,7 @@ it('ignores a late review response after switching to a different stage and item
  }));
  render(<ContentFactoryReviewQueue/>);fireEvent.click(await screen.findByRole('button',{name:'Approve'}));
  fireEvent.click(screen.getByRole('button',{name:'Submit Review'}));
+ await waitFor(()=>expect(resolvePost).toBeTypeOf('function'));
  fireEvent.click(screen.getByRole('button',{name:'Language Review'}));
  await screen.findByText('Next prompt.');
  resolvePost({ok:true,json:async()=>({review:{id:'saved'}})});

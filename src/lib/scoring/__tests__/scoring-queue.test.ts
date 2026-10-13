@@ -29,6 +29,7 @@ describe('background scoring persistence', () => {
     const first=mocks.update.mock.calls[0][0].data.metadata;
     const second=mocks.update.mock.calls[1][0].data.metadata;
     expect(first.reportRefreshPending).toBe(true);
+    expect(first.scoringPolicyVersion).toBe('2026-10-14.1');
     expect(first.reportRefreshVersion).toEqual(expect.any(String));
     expect(second.reportRefreshVersion).not.toBe(first.reportRefreshVersion);
   });
@@ -204,4 +205,21 @@ it('retries a failed database scan on the next healthy probe', async () => {
   expect(await recoverPendingScoringJobs()).toBe(1);
   await drainScoringQueue(1000);
   expect(mocks.writing).toHaveBeenCalledOnce();
+});
+
+it('accepts a valid AI result after the old 30-second cutoff', async () => {
+  vi.useFakeTimers();
+  try {
+    mocks.writing.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve(decision), 59_000)));
+    const submitted = enqueueScoringJob(job);
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(await submitted).toMatchObject({ score: .8, requiresHumanReview: false });
+    expect(mocks.update.mock.calls[0][0].data).toMatchObject({ score: .8, metadata: { scoreFailed: false, aiUnavailable: false } });
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
+});
+it('persists safe actionable provider categories without turning an outage into a grade', async () => {
+  mocks.writing.mockResolvedValue({ ...decision, scoreSource: 'ai_unavailable', requiresHumanReview: true, failureCode: 'AI_RATE_LIMITED' });
+  await enqueueScoringJob(job);
+  expect(mocks.update.mock.calls[0][0].data).toMatchObject({ score: null, metadata: { failureCode: 'AI_RATE_LIMITED' } });
 });

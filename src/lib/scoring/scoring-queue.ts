@@ -17,6 +17,7 @@
  * logged so ops can scale the instance or add a dedicated scoring worker.
  */
 
+import { SCORING_JOB_TIMEOUT_MS, SCORING_POLICY_VERSION, scoringFailureCode } from "./ai-scoring-policy.js";
 import { randomUUID } from "node:crypto";
 import { buildScoringPrompt } from "./task-context.js";
 import { productiveScoringMode } from "../assessment-engine/productive-response.js";
@@ -32,7 +33,7 @@ const configuredConcurrency = Number(process.env.AI_SCORE_CONCURRENCY ?? "8");
 const MAX_CONCURRENT_AI = Number.isFinite(configuredConcurrency) && configuredConcurrency >= 1
   ? Math.floor(configuredConcurrency) : 8;
 const QUEUE_WARN_SIZE = 200;
-const AI_TIMEOUT_MS = 30_000;
+const AI_TIMEOUT_MS = SCORING_JOB_TIMEOUT_MS;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ async function persistScoringResult(responseId: string, data: Record<string, any
   if (current.humanScore != null) return false;
   const result = await prisma.response.updateMany({
     where:{id:responseId,humanScore:null},
-    data:{...data,metadata:{...((current.metadata as Record<string,unknown>) ?? {}),...data.metadata,reportRefreshPending:true,reportRefreshVersion:randomUUID()}},
+    data:{...data,metadata:{...((current.metadata as Record<string,unknown>) ?? {}),...data.metadata,scoringPolicyVersion:SCORING_POLICY_VERSION,reportRefreshPending:true,reportRefreshVersion:randomUUID()}},
   });
   return result.count === 1;
 }
@@ -137,6 +138,7 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
               scoreSource: scoringDecision?.scoreSource,
               reviewReasons: scoringDecision?.reviewReasons,
               agreementDelta: scoringDecision?.agreementDelta,
+              failureCode: scoringDecision?.failureCode ?? null,
               model: scoringDecision?.model,
               modelVersion: scoringDecision?.modelVersion,
               scoringPasses: scoringDecision?.scoringPasses,
@@ -182,7 +184,7 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
     try {
       const persisted = await persistScoringResult(job.responseId, {
           score: null, adjustedScore: null, isCorrect: null,
-          metadata: { scoringMode: job.skill, asyncScored: true, pendingAsyncScore: false, requiresHumanReview: true, scoreFailed: true, aiUnavailable: true, failureReason: (err as Error).message } as any,
+          metadata: { scoringMode: job.skill, asyncScored: true, pendingAsyncScore: false, requiresHumanReview: true, scoreFailed: true, aiUnavailable: true, failureCode: scoringFailureCode(err), failureReason: scoringFailureCode(err) } as any,
       });
       if (!persisted) { await resolveHumanGrade(job); return; }
       // Failure is a terminal queue outcome too. Clear stale pending indicators

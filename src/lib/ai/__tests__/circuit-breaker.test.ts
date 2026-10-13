@@ -264,3 +264,10 @@ describe("CircuitBreaker — healthSnapshot", () => {
     expect(new Date(snap.opensUntil!).getTime()).toBeGreaterThan(Date.now());
   });
 });
+
+it('declines a Retry-After beyond the job budget instead of retrying early or outliving the job', async () => {
+  const breaker = new CircuitBreaker('bounded-scoring', { maxRetries: 1, maxRetryAfterMs: 5000 });
+  const operation = vi.fn().mockRejectedValue(new Error('429 retry-after: 60'));
+  await expect(breaker.execute(operation)).rejects.toThrow('429');
+  expect(operation).toHaveBeenCalledOnce();
+});

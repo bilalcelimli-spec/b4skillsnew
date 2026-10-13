@@ -1,3 +1,4 @@
+import { isGeminiScoringConfigured } from "./src/lib/scoring/gemini-scoring-service.js";
 import { createSessionPauseRouter } from './src/routes/session-pause';
 import "dotenv/config";
 import {AppError} from "./src/lib/errors/app-error.js";
@@ -1371,8 +1372,8 @@ async function startServer() {
     }
 
     // 3. AI scoring — lightweight env check (actual probe would be expensive)
-    const aiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
-    checks.aiScoring = { status: aiKey ? "up" : "degraded", detail: aiKey ? "API key configured" : "No AI API key — AI scoring unavailable" };
+    const aiKey = isGeminiScoringConfigured();
+    checks.aiScoring = { status: aiKey ? "up" : "degraded", detail: aiKey ? "Gemini API key configured (not a provider health probe)" : "Gemini API key missing — AI scoring unavailable" };
 
     // 4. Memory / process uptime
     const mem = process.memoryUsage();
