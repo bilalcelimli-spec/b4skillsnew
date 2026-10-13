@@ -1,7 +1,7 @@
 /** Read-only DB access. Writes a local, private report; never changes item eligibility. */
 import { config } from 'dotenv';
 import { PrismaClient } from '@prisma/client';
-import { createHash } from 'node:crypto';
+import { itemReviewHash } from '../src/lib/content-factory/item-review-snapshot.js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { buildEvidenceQueue, type AuditItem } from '../src/lib/quality/item-evidence-audit.js';
@@ -18,15 +18,16 @@ async function main() {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: { id: true, itemCode: true, type: true, skill: true, cefrLevel: true, status: true, version: true,
         content: true, metadata: true, construct: true, subskill: true, descriptorRef: true, evidenceStatement: true,
-        estimatedResponseTimeSec: true, itemReviews: { select: { reviewerId: true, verdict: true } },
+        estimatedResponseTimeSec: true, tags:true,provenance:true,securityClass:true,ageSuitability:true,culturalLoad:true,englishVariant:true,register:true,genre:true,topic:true,
+        itemReviews: { select: { reviewerId: true, verdict: true, reviewType:true, createdAt:true, id:true,itemVersion:true,contentHash:true } },
         _count: { select: { responses: true, calibrationRuns: true } } },
     });
     if (!page.length) break;
     items.push(...page); cursor = page.at(-1)!.id;
     if (page.length < 100) break;
   }
-  const hashes = new Map(items.map(item => [item.id, createHash('sha256').update(JSON.stringify(item.content)).digest('hex')]));
-  const queue = buildEvidenceQueue(items).map(row => ({ ...row, contentHash: hashes.get(row.itemId) }));
+  const hashes = new Map(items.map(item => [item.id, itemReviewHash(item)]));
+  const queue = buildEvidenceQueue(items).map(row => ({ ...row, reviewContentHash: hashes.get(row.itemId) }));
   const byRule: Record<string, number> = {}, coverage: Record<string, number> = {};
   for (const item of items) {
     const cell = `${item.status}/${item.skill}/${item.cefrLevel}/${item.type}`;
@@ -41,7 +42,7 @@ async function main() {
   const directory = path.resolve('reports/item-evidence');
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const reportPath = path.join(directory, `audit-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-  writeFileSync(reportPath, JSON.stringify({ policyVersion: '1.0', generatedAt: new Date().toISOString(),
+  writeFileSync(reportPath, JSON.stringify({ policyVersion: '1.1', generatedAt: new Date().toISOString(),
     limitations: ['Static checks are not expert approval or validation.', 'Audio is not played or fetched.',
       'Missing evidence means unlocated in recognized fields, not proof that work never occurred.',
       'Snapshot spans paginated reads; do not treat it as an atomic release gate.',

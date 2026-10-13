@@ -1,4 +1,5 @@
 /** Read-only first-phase checks. No automatic approval or empirical validity claims. */
+import { itemReviewHash, type ReviewSnapshot } from '../content-factory/item-review-snapshot.js';
 import { speakerLabels } from '../audio/speaker-labels.js';
 import { writingContentFindings, writingWordRange } from './writing-content-audit.js';
 export type Severity = 'BLOCKER' | 'REVIEW' | 'EVIDENCE_GAP';
@@ -8,7 +9,7 @@ export interface AuditFinding {
   evidence: string;
   action: string;
 }
-export interface AuditItem {
+export interface AuditItem extends ReviewSnapshot {
   id: string;
   itemCode?: string | null;
   type: string;
@@ -23,7 +24,7 @@ export interface AuditItem {
   descriptorRef?: string | null;
   evidenceStatement?: string | null;
   estimatedResponseTimeSec?: number | null;
-  itemReviews?: { reviewerId: string; verdict: string }[];
+  itemReviews?: { reviewerId: string; verdict: string; reviewType?:string;id?:string;createdAt?:Date|string;itemVersion?:number|null;contentHash?:string|null }[];
   _count?: { responses: number; calibrationRuns: number };
 }
 export function record(value: unknown): Record<string, any> {
@@ -108,9 +109,20 @@ export function auditItemEvidence(item: AuditItem): AuditFinding[] {
   if (missing.length) add('CONSTRUCT_MAPPING_INCOMPLETE', 'EVIDENCE_GAP', `Missing item fields: ${missing.join(', ')}.`, 'Document the target construct and descriptor mapping; a CEFR label alone is insufficient.');
   if (!populated(m.source) && !populated(m.license) && !populated(c.source) && !populated(c.license))
     add('RIGHTS_EVIDENCE_UNLOCATED', 'EVIDENCE_GAP', 'No source/license evidence found in recognized content/metadata fields; original authorship may be documented elsewhere.', 'Record authorship or source and usage rights.');
-  const approvals = new Set((item.itemReviews || []).filter(r => r.verdict === 'APPROVE').map(r => r.reviewerId));
-  if (approvals.size < 2) add('DUAL_REVIEW_EVIDENCE_MISSING', 'EVIDENCE_GAP', `${approvals.size} distinct approving reviewers recorded.`, 'Obtain two independent reviews and adjudicate disagreements.');
-  else add('REVIEW_VERSION_UNVERIFIED', 'EVIDENCE_GAP', 'Review records do not bind approval to a content version/hash.', 'Confirm both approvals cover the current content and record version-bound evidence.');
+  const hash=itemReviewHash(item);
+  const reviews=item.itemReviews ?? [];
+  const current=reviews.filter(r=>r.itemVersion===item.version&&r.contentHash===hash&&text(r.reviewerId));
+  const latest=new Map<string,typeof current[number]>();
+  for(const review of [...current].sort((a,b)=>+(new Date(a.createdAt??0))-+(new Date(b.createdAt??0))||(a.id??'').localeCompare(b.id??'')))
+    latest.set(JSON.stringify([review.reviewerId,review.reviewType??'UNSPECIFIED']),review);
+  const approvals=new Set([...latest.values()].filter(r=>r.verdict==='APPROVE').map(r=>r.reviewerId));
+  if(approvals.size<2){
+    add('DUAL_REVIEW_EVIDENCE_MISSING','EVIDENCE_GAP',`${approvals.size} distinct approving reviewers bound to the current version and content hash.`, 'Obtain two independent current-version reviews and adjudicate disagreements.');
+    if(reviews.some(r=>r.verdict==='APPROVE'&&(r.itemVersion!==item.version||r.contentHash!==hash)))
+      add('REVIEW_VERSION_UNVERIFIED','EVIDENCE_GAP','Existing approvals are legacy, stale or for a different content snapshot.','Review the current snapshot; do not backfill old records as approvals.');
+  }
+  if([...latest.values()].some(r=>r.verdict!=='APPROVE'))
+    add('CURRENT_REVIEW_OBJECTION','EVIDENCE_GAP','The latest current-version decision from at least one reviewer requests revision or rejection.','Resolve the objection through documented independent review; an earlier approval cannot override it.');
   if (m.paramSource !== 'calibrated' || !item._count?.calibrationRuns)
     add('EMPIRICAL_CALIBRATION_UNVERIFIED', 'EVIDENCE_GAP', `paramSource=${text(m.paramSource) || 'unrecorded'}; calibrationRuns=${item._count?.calibrationRuns ?? 'unknown'}; responses=${item._count?.responses ?? 'unknown'} (not unique candidates).`, 'Collect pilot coverage and assess fit, uncertainty and fairness; no automatic calibration claim.');
   return findings;

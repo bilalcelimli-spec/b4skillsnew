@@ -125,18 +125,21 @@ export const ItemPipelineBody = z.object({
 }).strict();
 
 export const ItemReviewBody = z.object({
-  reviewType: z.string().max(50).optional(),
+  reviewType: z.enum(["LANGUAGE_REVIEW", "CEFR_REVIEW", "FAIRNESS_REVIEW", "MODERATION"]),
+  expectedVersion: z.number().int().positive(),
+  expectedContentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  expectedStage: PipelineStage,
   verdict: z.enum(["APPROVE", "MINOR_REVISION", "MAJOR_REVISION", "REJECT"]),
-  stageTarget: PipelineStage.optional(),
-  notes: z.string().max(5_000).optional(),
+  stageTarget: PipelineStage.nullable().optional(),
+  notes: z.string().max(5_000).nullable().optional(),
   revisionsReq: z.array(z.string().max(500)).max(20).optional(),
-  constructClarity: z.number().int().min(1).max(5).nullable().optional(),
-  cefrFit: z.number().int().min(1).max(5).nullable().optional(),
-  cefrFitLabel: z.string().max(10).nullable().optional(),
-  languageNaturalness: z.number().int().min(1).max(5).nullable().optional(),
-  distractorQuality: z.number().int().min(1).max(5).nullable().optional(),
-  fairnessScore: z.number().int().min(1).max(5).nullable().optional(),
-  ambiguityRisk: z.number().int().min(1).max(5).nullable().optional(),
+  constructClarity: z.number().int().min(0).max(100).nullable().optional(),
+  cefrFit: z.number().int().min(0).max(100).nullable().optional(),
+  cefrFitLabel: z.enum(["BELOW_TARGET","TARGET_FIT","ABOVE_TARGET","UNCERTAIN"]).nullable().optional(),
+  languageNaturalness: z.number().int().min(0).max(100).nullable().optional(),
+  distractorQuality: z.number().int().min(0).max(100).nullable().optional(),
+  fairnessScore: z.number().int().min(0).max(100).nullable().optional(),
+  ambiguityRisk: z.number().int().min(0).max(100).nullable().optional(),
 }).strict();
 
 export const ItemContentPatchBody = z.object({

@@ -594,6 +594,8 @@ model ItemReview {
   itemId        String
   item          Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
+  itemVersion   Int?     // Null for legacy reviews; never backfilled as an approval
+  contentHash   String?  // SHA-256 of the reviewed content and construct snapshot
   reviewType    String   // LANGUAGE_REVIEW | CEFR_REVIEW | FAIRNESS_REVIEW | MODERATION
   reviewerId    String   // User.id of the reviewer
   verdict       String   // APPROVE | MINOR_REVISION | MAJOR_REVISION | REJECT
@@ -616,6 +618,7 @@ model ItemReview {
   @@index([itemId])
   @@index([reviewerId])
   @@index([reviewType, verdict])
+  @@index([itemId, itemVersion])
   @@index([createdAt])
 }
 

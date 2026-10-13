@@ -92,6 +92,62 @@ try{
  await db.license.create({data:{organizationId:org,type:'ENTERPRISE',credits:1000,expiresAt:new Date(Date.now()+86400000)}});
  log=openSync('/tmp/b4skills-all-exams-server.log','w');
  await startAuditServer();
+ await check('Version-bound expert reviews accept UI scores and serialize review/edit races',async()=>{
+  const people={};
+  for(const role of ['LANGUAGE_REVIEWER','CEFR_REVIEWER','MODERATOR','ITEM_WRITER']){
+   const user=await db.user.create({data:{email:`${randomUUID()}@local-audit.test`,role,organizationId:org}});
+   people[role]={id:user.id,cookie:'accessToken='+jwt.sign({userId:user.id},secret,{expiresIn:'1h'})};
+  }
+  const make=()=>db.item.create({data:{organizationId:org,type:'MULTIPLE_CHOICE',skill:'GRAMMAR',cefrLevel:'B1',
+   status:'DRAFT',pipelineStage:'LANGUAGE_REVIEW',tags:['general'],content:{prompt:'Choose.',options:['First','Second'],correctAnswer:'A'}}});
+  const inspect=async id=>(await ok('/api/items?stage=LANGUAGE_REVIEW',undefined,staff)).find(row=>row.id===id);
+  const form=(row,reviewType='LANGUAGE_REVIEW',stageTarget='CEFR_REVIEW')=>({reviewType,verdict:'APPROVE',stageTarget,notes:null,
+   expectedVersion:row.version,expectedContentHash:row.reviewContentHash,expectedStage:row.pipelineStage,constructClarity:70,cefrFit:100,
+   cefrFitLabel:'ABOVE_TARGET',languageNaturalness:70,distractorQuality:0,fairnessScore:80,ambiguityRisk:0});
+  const item=await make(),stale=await inspect(item.id);
+  await ok(`/api/items/${item.id}/content`,{content:{...item.content,prompt:'Edited prompt.'}},staff,'PATCH');
+  assert.equal((await request(`/api/items/${item.id}/review`,form(stale),people.LANGUAGE_REVIEWER.cookie)).response.status,409);
+  assert.equal(await db.itemReview.count({where:{itemId:item.id}}),0,'Stale review creates no record');
+  const current=await inspect(item.id),body=form(current),reviewPath=`/api/items/${item.id}/review`;
+  assert.equal(current.version,2);
+  assert.equal((await request(reviewPath,body,people.CEFR_REVIEWER.cookie)).response.status,403,'Wrong specialist cannot approve another review type');
+  const racing=await Promise.all([request(reviewPath,body,people.LANGUAGE_REVIEWER.cookie),request(reviewPath,body,people.LANGUAGE_REVIEWER.cookie)]);
+  assert.deepEqual(racing.map(result=>result.response.status).sort(),[200,409]);
+  const recorded=await db.itemReview.findMany({where:{itemId:item.id}});
+  assert.equal(recorded.length,1);assert.equal(recorded[0].reviewerId,people.LANGUAGE_REVIEWER.id);
+  assert.equal(recorded[0].itemVersion,2);assert.equal(recorded[0].contentHash,current.reviewContentHash);assert.equal(recorded[0].ambiguityRisk,0);
+  assert.equal((await request(`/api/items/${item.id}/content`,{content:item.content},staff,'PATCH')).response.status,409,'An edit cannot bypass the new stage after approval');
+  let row={...current,pipelineStage:'CEFR_REVIEW'};
+  assert.equal((await request(reviewPath,form(row,'CEFR_REVIEW','LIVE'),people.CEFR_REVIEWER.cookie)).response.status,400,'Review cannot jump directly to LIVE');
+  await ok(reviewPath,form(row,'CEFR_REVIEW','FAIRNESS_REVIEW'),people.CEFR_REVIEWER.cookie);
+  row={...row,pipelineStage:'FAIRNESS_REVIEW'};
+  await ok(reviewPath,form(row,'FAIRNESS_REVIEW','MODERATION'),people.MODERATOR.cookie);
+  row={...row,pipelineStage:'MODERATION'};
+  await ok(reviewPath,form(row,'MODERATION','APPROVED_FOR_PILOT'),people.MODERATOR.cookie);
+  const final=await db.item.findUniqueOrThrow({where:{id:item.id}});
+  assert.equal(final.pipelineStage,'APPROVED_FOR_PILOT');assert.equal(final.status,'DRAFT','Review is not automatic activation or calibration');
+  for(const verdict of ['MINOR_REVISION','MAJOR_REVISION','REJECT']){
+   const revision=await make(),snapshot=await inspect(revision.id);
+   await ok(`/api/items/${revision.id}/review`,{...form(snapshot),verdict,stageTarget:null,revisionsReq:['Clarify the stem']},people.LANGUAGE_REVIEWER.cookie);
+   assert.equal((await db.item.findUniqueOrThrow({where:{id:revision.id}})).pipelineStage,verdict==='REJECT'?'FLAGGED':'EDITING');
+   if(verdict!=='REJECT'){
+    const feedback=(await ok('/api/items?stage=EDITING',undefined,people.ITEM_WRITER.cookie)).find(row=>row.id===revision.id);
+    assert.deepEqual(feedback.itemReviews[0].revisionsReq,['Clarify the stem'],'Authors can read the requested changes');
+    const path=`/api/items/${revision.id}/pipeline`;
+    assert.equal((await request(path,{stage:'LIVE'},people.ITEM_WRITER.cookie)).response.status,403,'Authors cannot publish through re-submission');
+    await ok(path,{stage:'LANGUAGE_REVIEW'},people.ITEM_WRITER.cookie);
+    assert.equal((await request(path,{stage:'LANGUAGE_REVIEW'},people.ITEM_WRITER.cookie)).response.status,409,'Re-submission cannot advance twice');
+   }
+  }
+  const raceItem=await make(),snapshot=await inspect(raceItem.id);
+  const collision=await Promise.all([request(`/api/items/${raceItem.id}/review`,form(snapshot),people.LANGUAGE_REVIEWER.cookie),
+   request(`/api/items/${raceItem.id}/content`,{content:{...raceItem.content,prompt:'Race edit.'}},staff,'PATCH')]);
+  assert.deepEqual(collision.map(result=>result.response.status).sort(),[200,409],'Edit and review cannot both commit against a stale snapshot');
+  const raced=await db.item.findUniqueOrThrow({where:{id:raceItem.id},include:{itemReviews:true}});
+  assert.equal(raced.itemReviews.length,raced.version===1?1:0);
+  const legacy=await db.itemReview.create({data:{itemId:item.id,reviewerId:admin,reviewType:'LANGUAGE_REVIEW',verdict:'APPROVE',revisionsReq:[]}});
+  assert.equal(legacy.itemVersion,null);assert.equal(legacy.contentHash,null,'Legacy records are not retroactively approved for current content');
+ });
  for(const product of products)await check(product+' complete/save/resume/report',async()=>{
   const user=await candidate(product),launch=await ok('/api/sessions/launch',{productLine:product},user.cookie),id=launch.sessionId;
   const observed=new Set();let complete=false,finalTheta;

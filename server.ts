@@ -4,6 +4,8 @@ import {AppError} from "./src/lib/errors/app-error.js";
 import {productForRedeemedCode} from "./src/lib/security/exam-code-product.js";
 import { OZGUN_PRODUCT, assessmentDisplayName } from "./src/lib/fixed-forms/ozgun-kids.js";
 import { createOzgunKidsService } from "./src/lib/fixed-forms/ozgun-kids-service.js";
+import { itemReviewHash } from "./src/lib/content-factory/item-review-snapshot.js";
+import { submitItemReview } from "./src/lib/content-factory/item-review-service.js";
 import { ensureReportShareToken } from "./src/lib/reporting/report-sharing.js";
 import { hasFinalResult } from "./src/lib/reporting/candidate-history.js";
 // Observability bootstrap — Sentry + OpenTelemetry. Must run before any other import that might throw.
@@ -1997,7 +1999,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           take: Math.min(parseInt(limit) || 50, 100),
           skip: parseInt(offset) || 0,
           select: {
-            id: true, itemCode: true, type: true, skill: true, cefrLevel: true,
+            id: true, itemCode: true, type: true, skill: true, cefrLevel: true, version: true, descriptorRef: true,
             status: true, pipelineStage: true, iqScore: true, subskill: true,
             genre: true, topic: true, construct: true, evidenceStatement: true,
             content: true, tags: true, difficulty: true, discrimination: true,
@@ -2008,15 +2010,15 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
             itemReviews: {
               orderBy: { createdAt: "desc" },
               take: 3,
-              select: { id: true, reviewType: true, verdict: true, notes: true, createdAt: true },
+              select: { id: true, reviewType: true, verdict: true, notes: true, revisionsReq:true, createdAt: true, itemVersion: true, contentHash: true },
             },
           },
         });
-        return res.json(items);
+        return res.json(items.map(item=>({...item,reviewContentHash:itemReviewHash(item)})));
       }
 
       const items = await AssessmentService.getAllItems(parseInt(limit) || 50, parseInt(offset) || 0);
-      res.json(items);
+      res.json(items.map(item=>({...item,reviewContentHash:itemReviewHash(item)})));
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch items" });
     }
@@ -2756,19 +2758,21 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         const { id } = req.params;
         const { content, reason } = body;
 
-        const item = await prisma.item.findUnique({
+        const updated = await prisma.$transaction(async tx=>{
+        await tx.$queryRaw`SELECT id FROM "Item" WHERE id = ${id} FOR UPDATE`;
+        const item = await tx.item.findUnique({
           where: { id },
           select: { pipelineStage: true, version: true, metadata: true },
         });
-        if (!item) return res.status(404).json({ error: "Item not found" });
+        if (!item) throw AppError.notFound("Item not found");
 
         const editableStages = ["AI_DRAFT", "HUMAN_DRAFT", "EDITING", "LANGUAGE_REVIEW"];
         if (!editableStages.includes(item.pipelineStage as string)) {
-          return res.status(409).json({ error: `Item in stage ${item.pipelineStage} is not editable. Only ${editableStages.join(", ")} are editable.` });
+          throw AppError.conflict(`Item in stage ${item.pipelineStage} is not editable. Only ${editableStages.join(", ")} are editable.`);
         }
 
         const existingMeta = (item.metadata ?? {}) as Record<string, unknown>;
-        const updated = await prisma.item.update({
+        return tx.item.update({
           where: { id },
           data: {
             content: content as any,
@@ -2782,8 +2786,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           },
           select: { id: true, version: true, pipelineStage: true, content: true },
         });
+        });
         res.json(updated);
       } catch (err) {
+        if(err instanceof AppError)return res.status(err.statusCode).json({error:err.message,code:err.code});
         console.error("[items/:id/content]", err);
         res.status(500).json({ error: "Content update failed" });
       }
@@ -3218,49 +3224,11 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       try {
         const body = validate(ItemReviewBody, req.body, res);
         if (!body) return;
-        const { id } = req.params;
-        const reviewerId = req.user.userId;
-        const { reviewType, verdict, stageTarget, notes, revisionsReq,
-          constructClarity, cefrFit, cefrFitLabel, languageNaturalness,
-          distractorQuality, fairnessScore, ambiguityRisk } = body;
-
-        const review = await prisma.itemReview.create({
-          data: {
-            itemId: id, reviewerId, reviewType, verdict,
-            stageTarget: stageTarget ?? null,
-            notes: notes ?? null,
-            revisionsReq: revisionsReq ?? [],
-            constructClarity: constructClarity ?? null,
-            cefrFit: cefrFit ?? null,
-            cefrFitLabel: cefrFitLabel ?? null,
-            languageNaturalness: languageNaturalness ?? null,
-            distractorQuality: distractorQuality ?? null,
-            fairnessScore: fairnessScore ?? null,
-            ambiguityRisk: ambiguityRisk ?? null,
-          },
-        });
-
-        // Advance or revert pipeline stage based on verdict
-        if (verdict === "APPROVE" && stageTarget) {
-          await prisma.item.update({
-            where: { id },
-            data: { pipelineStage: stageTarget as any },
-          });
-        } else if (verdict === "MINOR_REVISION" || verdict === "MAJOR_REVISION") {
-          // Return item to EDITING so the author can address feedback
-          await prisma.item.update({
-            where: { id },
-            data: { pipelineStage: "EDITING" as any },
-          });
-        } else if (verdict === "REJECT") {
-          await prisma.item.update({
-            where: { id },
-            data: { pipelineStage: "FLAGGED" as any },
-          });
-        }
+        const review = await submitItemReview(prisma,req.params.id,{id:req.user.id,role:req.user.role},body);
 
         return res.json({ review });
       } catch (err) {
+        if(err instanceof AppError)return res.status(err.statusCode).json({error:err.message,code:err.code});
         console.error("[items/:id/review]", err);
         res.status(500).json({ error: "Failed to submit review" });
       }
@@ -3269,20 +3237,30 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   // POST /api/items/:id/pipeline — advance or set pipelineStage
   app.post("/api/items/:id/pipeline",
-    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN"]),
-    async (req, res) => {
+    checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "CONTENT_ADMIN", "ITEM_WRITER"]),
+    async (req:any, res) => {
       try {
         const body = validate(ItemPipelineBody, req.body, res);
         if (!body) return;
         const { id } = req.params;
         const { stage } = body;
-        const item = await prisma.item.update({
+        const item = await prisma.$transaction(async tx=>{
+        await tx.$queryRaw`SELECT id FROM "Item" WHERE id = ${id} FOR UPDATE`;
+        const current=await tx.item.findUnique({where:{id},select:{pipelineStage:true}});
+        if(!current)throw AppError.notFound('Item not found');
+        if(req.user.role==='ITEM_WRITER'){
+          if(stage!=='LANGUAGE_REVIEW')throw AppError.forbidden('Item writers can only submit revisions for language review.');
+          if(current.pipelineStage!=='EDITING')throw AppError.conflict('Only an item awaiting revision can be re-submitted.');
+        }
+        return tx.item.update({
           where: { id },
           data: { pipelineStage: stage as any },
           select: { id: true, pipelineStage: true, status: true },
         });
+        });
         return res.json(item);
       } catch (err) {
+        if(err instanceof AppError)return res.status(err.statusCode).json({error:err.message,code:err.code});
         res.status(500).json({ error: "Failed to update pipeline stage" });
       }
     }

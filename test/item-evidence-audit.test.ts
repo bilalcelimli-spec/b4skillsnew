@@ -71,3 +71,22 @@ describe('item evidence audit', () => {
     expect(rules(item({ skill: 'LISTENING', content: { prompt: 'Listen.', audioUrl: '/a.wav', ttsScript: '[Speaker A]: Hello.\n[Speaker B]: Hi.' } }))).toContain('LEGACY_BRACKETED_DIALOGUE');
   });
 });
+
+import {itemReviewHash} from '../src/lib/content-factory/item-review-snapshot';
+it('recognizes two independent approvals for the exact current snapshot without approving publication',()=>{
+ const source=item();source.itemReviews=['a','b'].map(reviewerId=>({reviewerId,verdict:'APPROVE',itemVersion:source.version,contentHash:itemReviewHash(source)}));
+ expect(rules(source)).not.toContain('DUAL_REVIEW_EVIDENCE_MISSING');expect(rules(source)).not.toContain('REVIEW_VERSION_UNVERIFIED');
+ expect(buildEvidenceQueue([source])[0].decision).toBe('PENDING_REVIEW_AND_EVIDENCE');
+});
+it('invalidates review evidence after either a version or unversioned content change',()=>{
+ const source=item();source.itemReviews=['a','b'].map(reviewerId=>({reviewerId,verdict:'APPROVE',itemVersion:1,contentHash:itemReviewHash(source)}));
+ expect(rules({...source,version:2})).toContain('REVIEW_VERSION_UNVERIFIED');
+ expect(rules({...source,content:{...source.content as object,prompt:'Different prompt.'}})).toContain('DUAL_REVIEW_EVIDENCE_MISSING');
+});
+it('uses the latest decision per reviewer and review type instead of reviving a revoked approval',()=>{
+ const source=item(),hash=itemReviewHash(source);
+ source.itemReviews=[{reviewerId:'a',verdict:'APPROVE',createdAt:'2026-10-01',itemVersion:1,contentHash:hash},
+ {reviewerId:'a',verdict:'REJECT',createdAt:'2026-10-02',itemVersion:1,contentHash:hash},
+ {reviewerId:'b',verdict:'APPROVE',itemVersion:1,contentHash:hash}];
+ expect(rules(source)).toContain('DUAL_REVIEW_EVIDENCE_MISSING');expect(rules(source)).toContain('CURRENT_REVIEW_OBJECTION');
+});

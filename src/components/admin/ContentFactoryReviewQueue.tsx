@@ -8,7 +8,7 @@
  *           → MODERATION → APPROVED_FOR_PILOT
  * Each stage uses POST /api/items/:id/review with dimension scores + verdict.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, XCircle,
   RotateCcw, Eye, Layers, BookOpen, Headphones, PenLine, Mic,
@@ -21,6 +21,8 @@ import {
 interface ReviewItem {
   id: string;
   itemCode: string | null;
+  version: number;
+  reviewContentHash: string;
   type: string;
   skill: string;
   cefrLevel: string;
@@ -42,7 +44,7 @@ interface ReviewItem {
   englishVariant: string | null;
   provenance: string | null;
   createdAt: string;
-  itemReviews: Array<{ id: string; reviewType: string; verdict: string; notes: string | null; revisionsReq: string[] | null; createdAt: string }>;
+  itemReviews: Array<{ id: string; reviewType: string; verdict: string; notes: string | null; revisionsReq: string[] | null; createdAt: string; itemVersion?: number | null; contentHash?: string | null }>;
 }
 
 interface DimensionScores {
@@ -62,7 +64,7 @@ type DeviceSize = "desktop" | "tablet" | "mobile";
 
 const PIPELINE_STAGES = [
   { stage: "EDITING",        label: "Needs Revision",  next: "LANGUAGE_REVIEW",    reviewType: "LANGUAGE_REVIEW",  role: "ITEM_WRITER" },
-  { stage: "AI_DRAFT",       label: "AI Drafts",       next: "LANGUAGE_REVIEW",    reviewType: "LANGUAGE_REVIEW",  role: "Any reviewer" },
+  { stage: "AI_DRAFT",       label: "AI Drafts",       next: "LANGUAGE_REVIEW",    reviewType: "LANGUAGE_REVIEW",  role: "LANGUAGE_REVIEWER" },
   { stage: "LANGUAGE_REVIEW",label: "Language Review", next: "CEFR_REVIEW",        reviewType: "LANGUAGE_REVIEW",  role: "LANGUAGE_REVIEWER" },
   { stage: "CEFR_REVIEW",    label: "CEFR Review",     next: "FAIRNESS_REVIEW",    reviewType: "CEFR_REVIEW",      role: "CEFR_REVIEWER" },
   { stage: "FAIRNESS_REVIEW",label: "Fairness Review", next: "MODERATION",         reviewType: "FAIRNESS_REVIEW",  role: "MODERATOR" },
@@ -245,7 +247,7 @@ function DimensionSlider({ label, value, onChange, hint }: {
           {value}
         </span>
       </div>
-      <input type="range" min={0} max={100} step={5} value={value}
+      <input aria-label={label} type="range" min={0} max={100} step={5} value={value}
         onChange={(e) => onChange(+e.target.value)}
         className={`w-full h-1.5 rounded-full ${color}`}
       />
@@ -308,8 +310,20 @@ export function ContentFactoryReviewQueue() {
 
   const stageCfg = STAGE_CONFIG[activeStage];
   const item = items[currentIdx] ?? null;
+  const advanceTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const listGeneration=useRef(0);
+  const viewKey=`${activeStage}:${item?.id}:${item?.version}:${item?.reviewContentHash}`;
+  const currentView=useRef(viewKey);currentView.current=viewKey;
+  useEffect(()=>()=>{listGeneration.current++;if(advanceTimer.current)clearTimeout(advanceTimer.current);},[]);
+  useEffect(()=>{
+    if(advanceTimer.current){clearTimeout(advanceTimer.current);advanceTimer.current=null;}
+    setVerdict(null);setNotes("");setRevisionsReq("");setSubmitOk(false);setSubmitErr(null);
+    setDims({constructClarity:70,cefrFit:70,cefrFitLabel:"TARGET_FIT",languageNaturalness:70,distractorQuality:70,fairnessScore:80,ambiguityRisk:10});
+    setEditing(false);setEditErr(null);
+  },[activeStage,item?.id,item?.version,item?.reviewContentHash]);
 
   const fetchItems = useCallback(async (stage: string) => {
+    const generation=++listGeneration.current;
     setLoading(true);
     setCurrentIdx(0);
     setVerdict(null);
@@ -320,11 +334,11 @@ export function ContentFactoryReviewQueue() {
     try {
       const resp = await fetch(`/api/items?stage=${stage}&limit=50`, { credentials: "include" });
       const data = await resp.json();
-      setItems(Array.isArray(data) ? data : []);
+      if(generation===listGeneration.current)setItems(Array.isArray(data) ? data : []);
     } catch {
-      setItems([]);
+      if(generation===listGeneration.current)setItems([]);
     } finally {
-      setLoading(false);
+      if(generation===listGeneration.current)setLoading(false);
     }
   }, []);
 
@@ -332,6 +346,7 @@ export function ContentFactoryReviewQueue() {
 
   const handleSubmit = async () => {
     if (!item || !verdict) return;
+    const submittedView=viewKey;
     setSubmitting(true);
     setSubmitOk(false);
     setSubmitErr(null);
@@ -343,6 +358,9 @@ export function ContentFactoryReviewQueue() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
+          expectedVersion:item.version,
+          expectedContentHash:item.reviewContentHash,
+          expectedStage:item.pipelineStage,
           reviewType: stageCfg?.reviewType ?? "LANGUAGE_REVIEW",
           verdict,
           stageTarget,
@@ -357,13 +375,15 @@ export function ContentFactoryReviewQueue() {
           ambiguityRisk: dims.ambiguityRisk,
         }),
       });
+      const d = await resp.json();
+      if(currentView.current!==submittedView)return;
       if (!resp.ok) {
-        const d = await resp.json();
         setSubmitErr(d.error ?? "Submit failed");
       } else {
         setSubmitOk(true);
         // Advance to next item after short delay
-        setTimeout(() => {
+        advanceTimer.current=setTimeout(() => {
+          if(currentView.current!==submittedView)return;
           setSubmitOk(false);
           setVerdict(null);
           setNotes("");
@@ -377,7 +397,7 @@ export function ContentFactoryReviewQueue() {
         }, 800);
       }
     } catch (e) {
-      setSubmitErr((e as Error).message);
+      if(currentView.current===submittedView)setSubmitErr((e as Error).message);
     } finally {
       setSubmitting(false);
     }
@@ -435,9 +455,9 @@ export function ContentFactoryReviewQueue() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
           {/* Left — Item preview */}
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             {/* Nav bar */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button onClick={() => setCurrentIdx((i) => Math.max(0, i - 1))} disabled={currentIdx === 0}
                 className="p-1 rounded border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-30">
                 <ChevronLeft size={13} />
@@ -501,13 +521,14 @@ export function ContentFactoryReviewQueue() {
                   <ClipboardList size={10} /> Prior Reviews
                 </p>
                 {item.itemReviews.map((r) => (
-                  <div key={r.id} className="flex items-center gap-2 text-[10px] py-1 border-b border-[var(--border)] last:border-0">
+                  <div key={r.id} className="flex flex-wrap items-center gap-2 text-[10px] py-1 border-b border-[var(--border)] last:border-0">
                     <span className={`px-1.5 py-0.5 rounded font-medium ${
                       r.verdict === "APPROVE" ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700" :
                       r.verdict === "REJECT" ? "bg-red-100 dark:bg-red-900/40 text-red-700" :
                       "bg-amber-100 dark:bg-amber-900/40 text-amber-700"
                     }`}>{r.verdict}</span>
                     <span className="text-[var(--muted)]">{r.reviewType}</span>
+                    <span className="text-[var(--muted)]">{r.itemVersion != null && r.contentHash === item.reviewContentHash && r.itemVersion === item.version ? `Current v${r.itemVersion}` : r.itemVersion != null ? `Earlier/different v${r.itemVersion}` : 'Legacy · version unverified'}</span>
                     {r.notes && <span className="text-[var(--muted)] truncate">{r.notes}</span>}
                     <span className="ml-auto text-[var(--muted)] shrink-0">{new Date(r.createdAt).toLocaleDateString()}</span>
                   </div>
@@ -559,6 +580,7 @@ export function ContentFactoryReviewQueue() {
                 <div className="flex gap-2">
                   <button
                     onClick={async () => {
+                      const editedView=viewKey;
                       setEditSaving(true);
                       setEditErr(null);
                       try {
@@ -570,13 +592,14 @@ export function ContentFactoryReviewQueue() {
                           body: JSON.stringify({ content: parsed, reason: "Manual edit during review" }),
                         });
                         const d = await r.json();
+                        if(currentView.current!==editedView)return;
                         if (!r.ok) { setEditErr(d.error ?? "Save failed"); return; }
                         setEditing(false);
                         // Refresh item in list
                         const updated = await fetch(`/api/items?stage=${activeStage}&limit=50`, { credentials: "include" }).then((r) => r.json());
-                        if (Array.isArray(updated)) setItems(updated);
+                        if (currentView.current===editedView && Array.isArray(updated)) setItems(updated);
                       } catch (e) {
-                        setEditErr((e as Error).message);
+                        if(currentView.current===editedView)setEditErr((e as Error).message);
                       } finally {
                         setEditSaving(false);
                       }
@@ -641,7 +664,7 @@ export function ContentFactoryReviewQueue() {
             {/* Notes */}
             <div>
               <label className="block text-xs font-medium text-[var(--foreground)] mb-1">Reviewer Notes</label>
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+              <textarea aria-label="Reviewer Notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
                 placeholder="Optional observations for the item writer…"
                 className="w-full text-xs px-2 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none" />
             </div>
@@ -650,7 +673,7 @@ export function ContentFactoryReviewQueue() {
             {(verdict === "MINOR_REVISION" || verdict === "MAJOR_REVISION") && (
               <div>
                 <label className="block text-xs font-medium text-[var(--foreground)] mb-1">Revision Requests (one per line)</label>
-                <textarea value={revisionsReq} onChange={(e) => setRevisionsReq(e.target.value)} rows={3}
+                <textarea aria-label="Revision Requests" value={revisionsReq} onChange={(e) => setRevisionsReq(e.target.value)} rows={3}
                   placeholder={"e.g.\nDistractor B is too similar to correct answer\nPassage too short for B2 inference task"}
                   className="w-full text-xs px-2 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none" />
               </div>
@@ -699,7 +722,7 @@ export function ContentFactoryReviewQueue() {
                 )}
                 <button
                   onClick={async () => {
-                    setSubmitting(true);
+                    const submittedView=viewKey;setSubmitting(true);setSubmitErr(null);
                     try {
                       const r = await fetch(`/api/items/${item.id}/pipeline`, {
                         method: "POST",
@@ -707,17 +730,25 @@ export function ContentFactoryReviewQueue() {
                         credentials: "include",
                         body: JSON.stringify({ stage: "LANGUAGE_REVIEW" }),
                       });
+                      if(currentView.current!==submittedView)return;
                       if (r.ok) {
                         setSubmitOk(true);
-                        setTimeout(async () => {
-                          const updated = await fetch(`/api/items?stage=EDITING&limit=50`, { credentials: "include" }).then((r) => r.json());
-                          if (Array.isArray(updated)) setItems(updated);
+                        advanceTimer.current=setTimeout(async () => {
+                          if(currentView.current!==submittedView)return;
+                          try {
+                            const response=await fetch(`/api/items?stage=EDITING&limit=50`, { credentials: "include" });
+                            if(!response.ok)throw new Error('List refresh failed');
+                            const updated=await response.json();
+                            if (currentView.current===submittedView && Array.isArray(updated)) setItems(updated);
+                          } catch {
+                            if(currentView.current===submittedView)setSubmitErr('Revision was sent, but the list could not be refreshed. Use Refresh to reload it.');
+                          }
                         }, 1000);
                       } else {
                         const d = await r.json();
                         setSubmitErr(d.error ?? "Failed");
                       }
-                    } catch (e) { setSubmitErr((e as Error).message); }
+                    } catch (e) { if(currentView.current===submittedView)setSubmitErr((e as Error).message); }
                     finally { setSubmitting(false); }
                   }}
                   disabled={submitting || submitOk}
@@ -727,6 +758,7 @@ export function ContentFactoryReviewQueue() {
                    submitOk ? <><CheckCircle2 size={13} /> Re-submitted!</> :
                    "Submit for Re-review →"}
                 </button>
+                {submitErr && <p role="alert" className="text-xs text-red-500">{submitErr}</p>}
               </div>
             ) : (
               <>
@@ -752,7 +784,7 @@ export function ContentFactoryReviewQueue() {
                 </button>
 
                 {submitErr && (
-                  <p className="text-xs text-red-500 flex items-center gap-1"><AlertTriangle size={12} />{submitErr}</p>
+                  <p role="alert" className="text-xs text-red-500 flex items-center gap-1"><AlertTriangle size={12} />{submitErr}</p>
                 )}
 
                 {/* Stage advance info */}
