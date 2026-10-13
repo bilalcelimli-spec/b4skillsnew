@@ -642,7 +642,8 @@ export function ContentFactoryDashboard() {
         credentials: "include",
       });
                   const d = await r.json();
-                  toast({ title: "Pilot promotion complete", description: `Promoted ${d.promoted ?? 0} items to PILOT (PRETEST) status.`, variant: "success" });
+                  if (!r.ok) throw new Error(d.error ?? "Promotion failed");
+                  toast({ title: "Pilot promotion complete", description: `Promoted ${d.promoted ?? 0} items to PILOT (PRETEST). ${d.blocked?.length ?? 0} items held for review.`, variant: "success" });
                   setMonitorData(null);
                   setMonitorLoading(true);
                   fetch("/api/content/monitor", { credentials: "include" }).then((r) => r.json()).then(setMonitorData).finally(() => setMonitorLoading(false));

@@ -147,7 +147,43 @@ try{
   assert.equal(raced.itemReviews.length,raced.version===1?1:0);
   const legacy=await db.itemReview.create({data:{itemId:item.id,reviewerId:admin,reviewType:'LANGUAGE_REVIEW',verdict:'APPROVE',revisionsReq:[]}});
   assert.equal(legacy.itemVersion,null);assert.equal(legacy.contentHash,null,'Legacy records are not retroactively approved for current content');
+  await db.item.update({where:{id:item.id},data:{pipelineStage:'EDITING'}}); // Synthetic keys must not enter the delivery pool.
  });
+ await check('Pilot admission preserves metadata and atomically enforces current expert evidence',async()=>{
+  const reviewer=await db.user.create({data:{email:`${randomUUID()}@local-audit.test`,role:'MODERATOR',organizationId:org}});
+  const make=async(suffix,changes={})=>db.item.create({data:{organizationId:org,type:'MULTIPLE_CHOICE',skill:'GRAMMAR',cefrLevel:'B1',
+   status:'DRAFT',pipelineStage:'APPROVED_FOR_PILOT',content:{prompt:'Pilot '+suffix,options:['First','Second'],correctIndex:0},
+   metadata:{source:'Controlled author',license:'Local audit fixture',paramSource:'prior',nested:{preserve:true}},...changes}});
+  const good=await make('eligible'),legacy=await make('legacy'),stale=await make('stale'),suspended=await make('suspended',{isSuspended:true}),
+   objection=await make('objection'),broken=await make('broken',{content:{prompt:'Broken key',options:['First','Second'],correctIndex:99}});
+  const fixtures=[good,legacy,stale,suspended,objection,broken],ids=fixtures.map(item=>item.id);
+  const snapshots=await ok('/api/items?stage=APPROVED_FOR_PILOT',undefined,staff);
+  for(const item of fixtures){
+   const hash=snapshots.find(row=>row.id===item.id).reviewContentHash;
+   for(const [index,reviewType] of ['LANGUAGE_REVIEW','CEFR_REVIEW','FAIRNESS_REVIEW','MODERATION'].entries())
+    await db.itemReview.create({data:{itemId:item.id,reviewerId:index%2?reviewer.id:admin,reviewType,verdict:'APPROVE',revisionsReq:[],
+     itemVersion:item.id===legacy.id?null:item.version,contentHash:item.id===legacy.id?null:hash}});
+   if(item.id===objection.id)await db.itemReview.create({data:{itemId:item.id,reviewerId:reviewer.id,reviewType:'MODERATION',
+    verdict:'MAJOR_REVISION',revisionsReq:['Clarify'],itemVersion:item.version,contentHash:hash,createdAt:new Date(Date.now()+1000)}});
+  }
+  await db.item.update({where:{id:stale.id},data:{content:{...stale.content,prompt:'Changed after expert approval'}}});
+  const preview=await ok('/api/content/pilot/promote?dryRun=true',{},staff);
+  assert(preview.candidates.some(row=>row.id===good.id));
+  for(const held of fixtures.slice(1))assert(preview.blocked.some(row=>row.id===held.id),'Unsafe item held in preview');
+  assert.equal((await db.item.findUniqueOrThrow({where:{id:good.id}})).status,'DRAFT','Preview has no writes');
+  const runs=await Promise.all([ok('/api/content/pilot/promote',{},staff),ok('/api/content/pilot/promote',{},staff)]);
+  assert.equal(runs.flatMap(run=>run.ids).filter(id=>id===good.id).length,1,'Concurrent requests promote exactly once');
+  const promoted=await db.item.findUniqueOrThrow({where:{id:good.id}});
+  assert.equal(promoted.status,'PRETEST');assert.equal(promoted.pipelineStage,'PILOT');assert.equal(promoted.isPretest,true);
+  assert.equal(promoted.metadata.source,'Controlled author');assert.equal(promoted.metadata.license,'Local audit fixture');
+  assert.equal(promoted.metadata.paramSource,'prior');assert.deepEqual(promoted.metadata.nested,{preserve:true});
+  assert.equal(promoted.metadata.pilotAdmission.itemVersion,good.version);
+  assert.equal(promoted.metadata.pilotAdmission.contentHash,snapshots.find(row=>row.id===good.id).reviewContentHash);
+  for(const held of fixtures.slice(1))assert.equal((await db.item.findUniqueOrThrow({where:{id:held.id}})).status,'DRAFT');
+  // Keep synthetic keys out of the later delivery scenarios.
+  await db.itemReview.deleteMany({where:{itemId:{in:ids}}});await db.item.deleteMany({where:{id:{in:ids}}});
+ });
+
  for(const product of products)await check(product+' complete/save/resume/report',async()=>{
   const user=await candidate(product),launch=await ok('/api/sessions/launch',{productLine:product},user.cookie),id=launch.sessionId;
   const observed=new Set();let complete=false,finalTheta;

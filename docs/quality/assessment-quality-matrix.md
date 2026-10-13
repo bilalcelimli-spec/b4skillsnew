@@ -1,6 +1,6 @@
 # B4Skills sınav kalite matrisi
 
-Güncelleme: 13 Ekim 2026. Sorumlular aşağıda rol olarak atanmıştır; insan ataması henüz yapılmamıştır.
+Güncelleme: 14 Ekim 2026. Sorumlular aşağıda rol olarak atanmıştır; insan ataması henüz yapılmamıştır.
 
 ## Kanıtların anlamı
 
@@ -236,3 +236,25 @@ Kapsam: onaylanmış cevapların uygulama sürecinin ani kesintisinden sonra kor
 Kapsam: çevrimiçi uzman inceleme akışı, revizyon dönüşü ve sürüm kanıtı. Canlı bankanın uzmanlarca incelenmesi, kullanım hakkı/medya/pilot kanıtlarının tamamlanması ve bütün ayrı yayın/aktivasyon yollarının ortak yayın kapısında birleştirilmesi açık işlerdir. QG-004'ün üretim envanteri ve ölçme kanıtı bu teknik teslimle kapatılmaz.
 
 13 Ekim yerel doğrulama: **2292 genel test geçti**; 68 atlama ve 2 todo ayrıca kayıtlıdır. **38/38 gerçek HTTP/PostgreSQL senaryosu** ve **10/10 mobil/masaüstü uzman inceleme/yeniden gönderim tarayıcı senaryosu** geçti. Gerçek test; uzman rolü, 0–100/null sözleşmesi, eski snapshot reddi, çift onay, düzenleme/onay yarışı, revizyon taleplerinin yazara görünmesi, yazarın sınırlı dönüş yetkisi ve legacy alanların null kalmasını kapsar. Birim testleri aşama yazma hatasında rollback'i, son kararın eski onayı geçersiz kılmasını, geç liste/inceleme cevaplarını ve başarılı yeniden gönderim sonrası liste yenileme hatasını da kapsar. Tip kontrolü (1536 MiB Node heap sınırı), tam client/SSR/server/Prisma derlemesi ve betik/diff kontrolleri başarılı. İlk mobil koşu inceleme geçmişinde yatay taşmayı yakaladı; layout düzeltmesinden sonra son koşu geçirildi. Migration yalnızca localhost geçici DB'de uygulandı; harici AI/e-posta ve canlı DB kullanılmadı. Test PostgreSQL'i kapatıldı.
+
+
+## QG-015 — pilot kabulü, atomik aktarım ve kaynak kaydının korunması
+
+- Bulunan hata: pilot aktarımı metadata'yı pilotStartedAt/promotedBy ile değiştiriyor; kaynak, hak, paramSource ve diğer kanıtlar siliniyordu. Aday listesi okunduktan sonra içerik/aşama değişse bile eski liste üzerinden aktarım yapılabiliyor, iki ayrı yazma kısmi işlem bırakabiliyordu.
+- Aktarım soru satırlarını sabit kimlik sırasıyla kilitler, yalnızca kilitlenmiş kimliklerin güncel içerik ve incelemelerini okur. Kabul kontrolü, PRETEST/isPretest/PILOT değişikliği ve mevcut metadata'ya kabul kaydı ekleme tek transaction içindedir. Yazma hatası batch'i geri alır; eşzamanlı istekler aynı soruyu iki kez aktaramaz.
+- DRAFT/REVIEW + APPROVED_FOR_PILOT ve güvenli durum gerekir. Güncel soru sürümü/özetine bağlı dört uzman inceleme türü, en az iki farklı onaylayan kullanıcı ve çözülmemiş itiraz bulunmaması aranır. Statik içerik BLOCKER bulguları kabulü durdurur. Eski onay, yalnızca pipeline etiketi veya çevrimdışı checklist yeni kabul kapısını geçirmez.
+- Önizleme ve aktarım aynı kabul kurallarını kullanır; uygun sorular ile neden kodları bulunan engellenen sorular ayrı döner. Önizleme hata aldığında boş başarı diye gösterilmez; işlem HTTP hatasını başarı bildirimi saymaz. Admin engellenenlerin nedenlerini önizlemede görebilir.
+- Kapsam bu pilot API'sidir. Kaynak hakkı, gerçek insan medya kontrolü, uzman bağımsızlığı ve ampirik kalibrasyon ayrıca kanıtlanmalıdır. Diğer ACTIVE/LIVE yollarının ortak yayın kapısına birleştirilmesi ve büyük bankalarda partileme/yük incelemesi açık kalır. Yeni migration gerekmez.
+
+Dağıtım kaydı: önceki teslimin migration 010 dosyası, önceki commit/push/migration isteği üzerine yapılandırılmış Supabase hedefinde uygulandı ve doğrulandı. QG-015 geliştirme/test işlemleri yalnızca izole localhost veritabanını kullanır; canlı soru bankasına aktarım yapılmaz.
+
+14 Ekim yerel doğrulama: **2314 genel test geçti**, 68 test atlandı ve 2 todo kaldı; **39/39 gerçek HTTP/PostgreSQL senaryosu** ve **55 odaklı pilot/inceleme/kanıt/arayüz testi** geçti. Yeni HTTP senaryosu önizlemenin yazmamasını, güncel dört onayı olan sorunun kabulünü, legacy/değişmiş/askıdaki/itirazlı/bozuk anahtarlı soruların engellenmesini, eşzamanlı iki aktarımda tek kabulü ve kaynak/parametre metadatasının korunmasını doğrular. Birim testleri batch yazma hatasında rollback'i, tek kişinin dört onayının yetersizliğini, her uzman türünün zorunluluğunu, ele geçirilmiş/emekli/aktif sorunun reddini ve önizleme sonrası değişikliğin yeniden kontrolünü kapsar. Arayüz testleri engel nedenlerini, HTTP hatasının başarı sayılmamasını ve yeniden denemeyi kapsar; bu teslimde yeni gerçek tarayıcı senaryosu çalıştırılmadı. Tip kontrolü, client/SSR/server derlemeleri ve sözdizimi/diff kontrolleri başarılı. Client/SSR çıktıları çalışan denetim sunucusunun dist dosyalarını etkilememek için /tmp altında oluşturuldu. Yeni ve izole localhost veritabanı kullanıldı; harici AI/e-posta ve canlı soru bankası kullanılmadı. Test PostgreSQL'i kapatıldı.
+
+## QG-016 — İngilizce arayüzde Türkçe büyük harf dönüşümü
+
+- Kaynak taramasında İngilizce kelimelere yazılmış hatalı İ bulunmadı; Türkçe içerikler ve İTÜ/Özgün gibi özel adlar korundu. Ana neden: i18n'nin Türkçe tarayıcı/tercih dilini HTML'e aktarması ve İngilizce arayüzün `uppercase` ile i→İ dönüşümünü miras almasıydı.
+- İngilizce uygulama gövdesine, ortak sınav chrome'una ve soru içeriğine `lang=en` eklendi. Türkçe Özgün ekranı/raporu ve Türkçe SEO metinleri `lang=tr`; çevrilen analytics etiketi seçili dil ile işaretlenir. Özgün içindeki İngilizce soru, seçenek, bölüm ve Recording etiketleri kendi dilinde kalır. Dil seçimi, çeviri kaynakları, RTL ve kaynak metinler değiştirilmedi.
+- İngilizce adaptif rapordaki “PDF İndir” düğmesi “Download PDF” olarak hizalandı.
+- Yeni zorunlu tarayıcı senaryosu Türkçe tarayıcı ayarında 320/1280 px için SIGN IN/LISTENING/WRITING gibi İngilizce dönüşümleri, Türkçede İNGİLİZCE dönüşümünü, dil değişimini ve özel adların korunmasını doğrular. Bu bir transliterasyon veya kullanıcı/soru verisinin topluca değiştirilmesi değildir; migration gerekmez.
+
+14 Ekim doğrulaması: **61 ilgili bileşen testi** geçti; 45 tarayıcı senaryosunun 43'ü ilk koşuda, kalan ikisi ayrı tekrar kontrollerinde geçti. İlk koşu eşzamanlı derleme altında iki zaman aşımı verdi. Fotoğraf sonrası soruyu bekleyen test, üç saniyelik geri sayım + sunucu onayı + geçiş için mevcut kamera testleriyle aynı 20 saniyelik hazırlık sınırına alındı; cevap kurtarma davranışı kontrolü korundu ve son koşu geçti. Yeni iki dil senaryosu ilk ve geniş koşuda başarılıydı. Son tip kontrolü ve üretim client derlemesi başarılı; diff kontrolü temiz. Canlı siteye dağıtım yapılmadı.

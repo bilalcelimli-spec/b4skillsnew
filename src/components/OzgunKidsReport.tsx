@@ -28,7 +28,7 @@ export function OzgunKidsReport({report,candidateName,completedAt,onClose}:{repo
   const status = report.securityHold ? 'Güvenlik incelemesinde' : !report.keyConfirmed ? 'Ön sonuç · anahtar kontrolü gerekli' : 'Kur kararı için öğretmen değerlendirmesi gerekli';
   const names = (sections: typeof report.sections) => sections.map(section => OZGUN_SKILL_GUIDANCE[section.skill]?.title ?? section.label).join(', ');
 
-  return <main data-testid="ozgun-score-report" className="ozgun-kids-report mx-auto max-w-6xl space-y-6 p-4 sm:p-6 text-slate-900 break-words">
+  return <main lang="tr" data-testid="ozgun-score-report" className="ozgun-kids-report mx-auto max-w-6xl space-y-6 p-4 sm:p-6 text-slate-900 break-words">
     <style>{`@media print {
       @page { size: A4; margin: 12mm; }
       .ozgun-kids-report { max-width: none; padding: 0; font-size: 10pt; }
@@ -43,7 +43,7 @@ export function OzgunKidsReport({report,candidateName,completedAt,onClose}:{repo
 
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <p className="text-xs font-bold tracking-widest text-indigo-600 uppercase mb-2">B4Skills · Öğrenci değerlendirme raporu</p>
+        <p className="text-xs font-bold tracking-widest text-indigo-600 uppercase mb-2"><span lang="en">B4Skills</span> · Öğrenci değerlendirme raporu</p>
         <h1 className="text-2xl sm:text-3xl font-black tracking-tight">{OZGUN_TITLE} sonuçları</h1>
         <p className="text-sm text-slate-500 mt-2">{candidateName || 'Öğrenci'}{date && Number.isFinite(date.getTime()) ? ` · ${date.toLocaleDateString('tr-TR',{day:'numeric',month:'long',year:'numeric'})}` : ''} · 96 soru · 4 bölüm</p>
       </div>

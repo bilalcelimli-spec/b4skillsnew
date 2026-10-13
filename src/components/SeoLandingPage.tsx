@@ -109,6 +109,7 @@ const SOCIAL_PROOF = [
 
 export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing }) => {
   const m = META[variant];
+  const contentLanguage = variant === "ingilizce-seviye-testi" ? "tr" : "en";
 
   useEffect(() => {
     document.title = m.title;
@@ -136,10 +137,10 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
         <div className="max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest text-white/80 mb-6">
             {m.icon}
-            <span>{m.audience}</span>
+            <span lang={contentLanguage}>{m.audience}</span>
           </div>
-          <h1 className="text-4xl md:text-6xl font-black leading-tight mb-6">{m.h1}</h1>
-          <p className="text-lg text-white/70 max-w-2xl mx-auto mb-10">{m.sub}</p>
+          <h1 lang={contentLanguage} className="text-4xl md:text-6xl font-black leading-tight mb-6">{m.h1}</h1>
+          <p lang={contentLanguage} className="text-lg text-white/70 max-w-2xl mx-auto mb-10">{m.sub}</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
               onClick={onStart}
@@ -176,7 +177,7 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
           {m.bullets.map((b) => (
             <div key={b} className="flex items-start gap-3 p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
               <CheckCircle2 size={18} className="shrink-0 mt-0.5 text-emerald-500" />
-              <span className="text-sm font-medium text-slate-700">{b}</span>
+              <span lang={contentLanguage} className="text-sm font-medium text-slate-700">{b}</span>
             </div>
           ))}
         </div>
@@ -184,8 +185,8 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
 
       {/* CTA bottom */}
       <section className="bg-gradient-to-br from-[#0f172a] to-[#1e1b4b] text-white py-16 px-6 text-center">
-        <h2 className="text-3xl font-black mb-4">{m.h1}</h2>
-        <p className="text-white/60 mb-8 max-w-md mx-auto text-sm">{m.sub}</p>
+        <h2 lang={contentLanguage} className="text-3xl font-black mb-4">{m.h1}</h2>
+        <p lang={contentLanguage} className="text-white/60 mb-8 max-w-md mx-auto text-sm">{m.sub}</p>
         <button
           onClick={onStart}
           className="inline-flex items-center gap-2 px-8 py-4 bg-[#9b276c] hover:bg-[#7d1f56] text-white font-black rounded-2xl transition-colors text-sm"

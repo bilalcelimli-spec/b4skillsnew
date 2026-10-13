@@ -13,7 +13,7 @@ export const SECTION_COLORS: Record<string, string> = {
 };
 
 export function AssessmentHeader({ children }: { children: React.ReactNode }) {
-  return <header className="bg-white border-b border-slate-200 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 flex-wrap sticky top-0 z-10">
+  return <header lang="en" className="bg-white border-b border-slate-200 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 flex-wrap sticky top-0 z-10">
     <div className="flex min-w-0 items-center gap-2 sm:gap-6">
       <div className="bg-[#9b276c] justify-center text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight flex items-center">
         <span style={{ textShadow: '0 0 8px rgba(253, 224, 71, 0.8), 0 0 15px rgba(253, 224, 71, 0.4)' }}>b4skills</span>
@@ -26,7 +26,7 @@ export function AssessmentHeader({ children }: { children: React.ReactNode }) {
 }
 
 export function AssessmentSections({ order, index, counts }: { order: readonly string[]; index: number; counts: Record<string, number> }) {
-  return <nav className="bg-white border-b border-slate-100 px-3 sm:px-6 py-2 flex items-center gap-2 overflow-x-auto" aria-label="Test section progress">
+  return <nav lang="en" className="bg-white border-b border-slate-100 px-3 sm:px-6 py-2 flex items-center gap-2 overflow-x-auto" aria-label="Test section progress">
     {order.map((skill, i) => <div key={skill} className="flex items-center gap-1.5 shrink-0">
       <div aria-current={i === index ? 'step' : undefined} className={cn(
         'flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full transition-all',
@@ -40,13 +40,13 @@ export function AssessmentSections({ order, index, counts }: { order: readonly s
   </nav>;
 }
 
-export function AssessmentFooter({ sessionId, connection = 'Connected to Adaptive Engine', detail = 'Real-time Psychometric Sync' }: { sessionId?: string | null; connection?: string; detail?: string }) {
-  return <footer className="bg-white border-t border-slate-200 px-4 sm:px-8 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-3">
+export function AssessmentFooter({ sessionId, connection = 'Connected to Adaptive Engine', detail = 'Real-time Psychometric Sync', contentLanguage = 'en' }: { sessionId?: string | null; connection?: string; detail?: string; contentLanguage?: string }) {
+  return <footer lang="en" className="bg-white border-t border-slate-200 px-4 sm:px-8 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-3">
     <div className="flex flex-wrap min-w-0 items-center gap-4">
-      <div className="flex items-center gap-2 text-xs text-slate-500"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />{connection}</div>
+      <div className="flex items-center gap-2 text-xs text-slate-500"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /><span lang={contentLanguage}>{connection}</span></div>
       <div className="hidden sm:block h-4 w-px bg-slate-200" />
       <div className="text-xs text-slate-500 font-mono break-all" aria-label="Exam ID">Exam ID: {sessionId ?? 'Preparing…'}</div>
     </div>
-    <div className="hidden md:flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><Activity size={12} />{detail}</div>
+    <div className="hidden md:flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><Activity size={12} /><span lang={contentLanguage}>{detail}</span></div>
   </footer>;
 }

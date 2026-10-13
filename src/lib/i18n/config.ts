@@ -118,6 +118,9 @@ export function applyLangMeta(code: string): void {
   const lang = LANG_MAP[code] ?? LANG_MAP["en"];
   const html = document.documentElement;
   html.setAttribute("lang", code);
+  // The shell is English; translated regions declare their own language.
+  // Otherwise Turkish browser detection uppercases English i as dotted İ.
+  document.body.setAttribute("lang", "en");
   html.setAttribute("dir",  lang.dir);
   document.body.style.fontFamily = lang.font ?? "";
 }

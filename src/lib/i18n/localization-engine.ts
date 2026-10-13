@@ -82,6 +82,7 @@ export class LocalizationEngine {
       const config = LOCALE_CONFIGS[locale];
       document.documentElement.dir = config?.direction ?? "ltr";
       document.documentElement.lang = locale;
+      document.body.setAttribute("lang", "en");
     }
   }
 
@@ -93,6 +94,7 @@ export class LocalizationEngine {
       const config = LOCALE_CONFIGS[locale];
       document.documentElement.dir = config?.direction ?? "ltr";
       document.documentElement.lang = locale;
+      document.body.setAttribute("lang", "en");
     }
   }
 

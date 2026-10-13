@@ -134,7 +134,8 @@ test('saved-answer conflict recovers the next question without another submissio
  });
  await page.goto('/test/e2e/fixtures/item-renderer.html?mode=exam',{waitUntil:'domcontentloaded'});
  await page.getByRole('button',{name:'Take Photo',exact:true}).click();
- await expect(page.getByRole('form',{name:'First question'})).toBeVisible();
+ // Camera countdown, upload confirmation and the advance animation precede the form.
+ await expect(page.getByRole('form',{name:'First question'})).toBeVisible({timeout:20000});
  await page.getByRole('radio').first().click();
  await page.getByRole('button',{name:'Confirm Answer'}).click();
  await expect(page.getByRole('form',{name:'Next question'})).toBeVisible();

@@ -31,3 +31,15 @@ SHA-256 girdisi `b4skills-item-review-v1` şema adı, soru türü, beceri, CEFR 
 Migration `010_item_review_snapshot`, ItemReview'a nullable itemVersion/contentHash alanlarını ekler. Mevcut kayıtların sürümü/özeti geriye dönük doldurulmaz; geçmiş boyut puanları yeniden ölçeklenmez. Yeni sunucu bu kolonları kullanmadan önce migration uygulanmalıdır. Uygulamanın mevcut migration dağıtım yolu kullanılır; bu çalışma canlı veritabanına migration uygulamaz.
 
 Salt okunur `audit:item-evidence` raporu 1.1 sözleşmesinde `reviewContentHash` üretir. İki farklı kullanıcıdan güncel sürüm/özet için onay aranır. Aynı kişinin tekrarları ikinci uzman sayılmaz. İncelemeci ve inceleme türü başına en son karar kullanılır; güncel bir revizyon/ret itirazı ayrıca işaretlenir. Bu teknik kontrol gerçek uzman bağımsızlığı veya onaylanmış psikometrik geçerlik iddiası değildir. Audit kararı bu kayıtlarla otomatik yayın onayına dönüşmez.
+
+## Pilot kabul kapısı — 14 Ekim
+
+`POST /api/content/pilot/promote` artık aşama etiketini tek başına yeterli saymaz. DRAFT/REVIEW durumunda, APPROVED_FOR_PILOT aşamasında ve askıya alınmamış/ele geçirilmemiş sorular için güncel sürüm ve içerik özetine bağlı dört tür onay (dil, CEFR, fairness, moderation), en az iki farklı onaylayan kullanıcı ve çözülmemiş güncel itiraz bulunmaması gerekir. Kişi/tür başına son karar geçerlidir. Statik içerik denetimindeki BLOCKER bulguları da kabulü durdurur; EVIDENCE_GAP bulguları otomatik kalibrasyon veya insan medya kontrolü olarak kapatılmaz.
+
+`?dryRun=true` yazmadan `candidates`, `count` ve `blocked: [{id, itemCode, reasons}]` döndürür. Önizleme rezervasyon değildir; gerçek işlem kanıtları kilit altında yeniden okur. Gerçek işlem aynı yanıtta `promoted`, `ids`, `blocked` döndürür. Engellenen kayıtların içeriği, durumu ve metadatası korunur. Veritabanı hatasında HTTP 500 alınır ve bu batch'in bütün yazmaları geri alınır; önceden tamamlanmış başka batch'ler geri alınmaz.
+
+Pilot başlangıç zamanı, işlemi yapan kullanıcı, kabul politikası sürümü, soru sürümü ve içerik özeti mevcut metadata korunarak PRETEST/isPretest/PILOT değişikliğiyle aynı transaction içinde kaydedilir. Eşzamanlı aktarımlar aynı soruyu iki kez kabul edemez. Kilitlenen kimliklerin dışındaki, sonradan aşamaya giren sorular bir sonraki isteğe kalır. Bu uç yol bütün uygun soruları tek transaction içinde ele alır (30 saniyelik transaction sınırı); büyük bankalarda partileme/yük doğrulaması ayrıca gerekir.
+
+Bu ilk pilot kabul politikası ampirik parametre, eşik geçerliği, medya byte bütünlüğü, kaynak hakkı veya gerçek uzman bağımsızlığı onayı değildir. Legacy/çevrimdışı checklist onayı tek başına yeni kapıyı geçirmez; uzmanlar güncel soru sürümünü çevrimiçi incelemelidir. Diğer ACTIVE/LIVE aktarma betikleri ve yönetici yollarının tek yayın kapısına alınması açık iştir.
+
+Dağıtım kaydı: `010_item_review_snapshot`, önceki commit/push/migration isteği üzerine yapılandırılmış Supabase hedefinde başarıyla uygulandı; kolonlar ve indeks doğrulandı. Bu kayıt yukarıdaki 13 Ekim yerel test kapsamından ayrıdır. Pilot kabul değişikliği yeni migration gerektirmez.

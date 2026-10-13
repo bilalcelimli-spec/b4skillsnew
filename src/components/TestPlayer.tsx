@@ -42,7 +42,7 @@ interface TestPlayerProps {
 }
 
 const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidateId, productLine, startingSkill, initialSessionId, onSessionStarted, onComplete, onCancel }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [fixedSession, setFixedSession] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentItem, setCurrentItem] = useState<Item | null>(null);
@@ -553,7 +553,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
             onClick={() => setShowInsights(!showInsights)}
           >
             <Activity size={16} />
-            {t("admin.analytics")}
+            <span lang={i18n?.resolvedLanguage ?? i18n?.language ?? 'en'}>{t("admin.analytics")}</span>
           </Button>
 
           {exitControl}

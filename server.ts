@@ -6,6 +6,7 @@ import { OZGUN_PRODUCT, assessmentDisplayName } from "./src/lib/fixed-forms/ozgu
 import { createOzgunKidsService } from "./src/lib/fixed-forms/ozgun-kids-service.js";
 import { itemReviewHash } from "./src/lib/content-factory/item-review-snapshot.js";
 import { submitItemReview } from "./src/lib/content-factory/item-review-service.js";
+import { promotePilotItems } from "./src/lib/content-factory/pilot-promotion.js";
 import { ensureReportShareToken } from "./src/lib/reporting/report-sharing.js";
 import { hasFinalResult } from "./src/lib/reporting/candidate-history.js";
 // Observability bootstrap — Sentry + OpenTelemetry. Must run before any other import that might throw.
@@ -2944,40 +2945,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         if (!dbAvailable) return res.status(503).json({ error: "Database required" });
         const dryRun = String(req.query.dryRun ?? req.body?.dryRun) === "true";
 
-        const candidates = await prisma.item.findMany({
-          where: { pipelineStage: "APPROVED_FOR_PILOT" as any },
-          select: { id: true, skill: true, cefrLevel: true, subskill: true, itemCode: true, iqScore: true },
-        });
-
-        if (dryRun) return res.json({ dryRun: true, candidates, count: candidates.length });
-
-        // Promote: set status=PRETEST, isPretest=true, pipelineStage=PILOT
-        // The assessment engine picks up PRETEST items and embeds them silently in live sessions.
-        const ids = candidates.map((c) => c.id);
-        await prisma.item.updateMany({
-          where: { id: { in: ids } },
-          data: {
-            status: "PRETEST",
-            isPretest: true,
-            pipelineStage: "PILOT" as any,
-            metadata: undefined, // keep existing metadata
-          },
-        });
-
-        // Log each promotion in metadata
-        for (const item of candidates) {
-          await prisma.item.update({
-            where: { id: item.id },
-            data: {
-              metadata: {
-                pilotStartedAt: new Date().toISOString(),
-                promotedBy: req.user?.id ?? "system",
-              } as any,
-            },
-          });
-        }
-
-        res.json({ promoted: ids.length, ids, message: "Items are now PRETEST — will be embedded as silent pretests in live sessions" });
+        res.json(await promotePilotItems(prisma, req.user.id, dryRun));
       } catch (err) {
         console.error("[content/pilot/promote]", err);
         res.status(500).json({ error: "Pilot promotion failed" });

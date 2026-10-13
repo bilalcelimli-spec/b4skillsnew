@@ -113,7 +113,7 @@ export const ExamCodeManager: React.FC<{ orgId?: string }> = ({ orgId }) => {
               </select>
             </div>
 
-            {productLine===OZGUN_PRODUCT&&<section className="space-y-3 rounded-xl bg-pink-50 border border-pink-100 p-4">
+            {productLine===OZGUN_PRODUCT&&<section lang="tr" className="space-y-3 rounded-xl bg-pink-50 border border-pink-100 p-4">
               <h4 className="font-bold">{OZGUN_TITLE}</h4>
               <p className="text-sm">96 sabit soru · Grammar 20 dk, Vocabulary 15 dk, Reading 35 dk, Listening 32 dk. Toplam 105 dk (3 dk açıklama dahil). Writing/Speaking yoktur; rapor doğru/yanlış/boş sayılarını gösterir.</p>
               <p className="text-xs">Soru sırasına uygun paylaşılan cevap anahtarı yüklüdür. Kurumunuz için düzenleyebilirsiniz. Geçici kur önerileri ve 16 soruluk düzey kümeleri raporda gösterilir; bunlar doğrulanmış CEFR sınırları değildir. Otomatik yerleştirme veya yeterlilik sertifikası üretilmez.</p>

@@ -114,16 +114,23 @@ function PilotDryRunCard() {
   const [loading, setLoading] = useState(false);
   const [candidates, setCandidates] = useState<Array<{ id: string; itemCode: string | null; skill: string; cefrLevel: string; iqScore: number | null }> | null>(null);
 
+  const [blocked, setBlocked] = useState<Array<{ id: string; itemCode: string | null; reasons: string[] }>>([]);
+  const [error, setError] = useState<string | null>(null);
+
   const runDryRun = async () => {
     setLoading(true);
     setCandidates(null);
+    setBlocked([]);
+    setError(null);
     try {
       const r = await fetch("/api/content/pilot/promote?dryRun=true", { method: "POST",
         credentials: "include",
       });
       const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Pilot preview failed");
       setCandidates(d.candidates ?? []);
-    } catch { setCandidates([]); }
+      setBlocked(d.blocked ?? []);
+    } catch (err) { setError(err instanceof Error ? err.message : "Pilot preview failed"); }
     finally { setLoading(false); }
   };
 
@@ -147,10 +154,16 @@ function PilotDryRunCard() {
         {loading ? <><RefreshCw size={11} className="animate-spin" /> Checking…</> : <><Play size={11} /> Preview candidates</>}
       </button>
 
+      {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+      {blocked.length > 0 && <div className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
+        <p>{blocked.length} items held for review:</p>
+        {blocked.slice(0, 20).map(item => <p key={item.id} className="break-words">{item.itemCode ?? item.id}: {item.reasons.join(", ")}</p>)}
+        {blocked.length > 20 && <p>…and {blocked.length - 20} more</p>}
+      </div>}
       {candidates !== null && (
         candidates.length === 0 ? (
           <div className="flex items-center gap-2 text-xs text-[var(--muted)] p-2.5 rounded-lg border border-[var(--border)]">
-            <CheckCircle2 size={13} className="text-emerald-500" /> No items in APPROVED_FOR_PILOT stage.
+            <CheckCircle2 size={13} className="text-emerald-500" /> No eligible items for pilot promotion.
           </div>
         ) : (
           <div className="rounded-lg border border-purple-200 dark:border-purple-800 overflow-hidden">

@@ -877,7 +877,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   }; // end renderItem
 
   return (
-    <>
+    <div lang="en" className="contents">
       {renderCodeBadge()}
       {modes.length > 1 && (
         <fieldset className="mb-5 p-4 rounded-xl border border-slate-200">
@@ -891,6 +891,6 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
         </fieldset>
       )}
       {renderItem()}
-    </>
+    </div>
   );
 };

@@ -314,7 +314,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
             title="Download PDF report"
             className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-400 rounded-lg px-3 py-1.5 transition-colors"
           >
-            <Printer size={14} /> PDF İndir
+            <Printer size={14} /> Download PDF
           </a>
         </div>
         {/* CEFR badge */}
