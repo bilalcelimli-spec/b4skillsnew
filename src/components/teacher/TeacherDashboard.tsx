@@ -1,3 +1,4 @@
+import { AssessmentProductOptions } from "../AssessmentProductOptions";
 import { assessmentDisplayName } from '../../lib/fixed-forms/ozgun-kids';
 import React, { useCallback, useEffect, useState } from "react";
 import { useToast } from "../../hooks/useToast.js";
@@ -242,11 +243,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         body: JSON.stringify({
           classId: newAssign.classId || undefined,
           productLine: newAssign.productLine,
-          openAt: newAssign.openAt || undefined,
-          dueAt: newAssign.dueAt || undefined,
+          openAt: newAssign.openAt ? new Date(newAssign.openAt).toISOString() : undefined,
+          dueAt: newAssign.dueAt ? new Date(newAssign.dueAt).toISOString() : undefined,
         }),
       });
-      if (res.ok) { setNewAssign({ classId: "", productLine: "General English", openAt: "", dueAt: "" }); fetchAssignments(); }
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Assignment could not be created.');
+      setNewAssign({ classId: "", productLine: "General English", openAt: "", dueAt: "" });
+      fetchAssignments();
+    } catch (error: any) {
+      toast({title: 'Assignment failed', description: error.message, variant: 'error'});
     } finally {
       setCreatingAssign(false);
     }
@@ -548,13 +554,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <select
-                value={newAssign.productLine}
+                aria-label="Assessment product"
+                  value={newAssign.productLine}
                 onChange={e => setNewAssign(a => ({ ...a, productLine: e.target.value }))}
                 style={{ flex: "1 1 180px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
               >
-                {["General English","15-Min Diagnostic","Academia","Corporate","Primary","Junior"].map(pl => (
-                  <option key={pl} value={pl}>{pl === "15-Min Diagnostic" ? "Rapid Diagnostic (30–40 min)" : pl}</option>
-                ))}
+                <AssessmentProductOptions includeFixed={false}/>
               </select>
               <input
                 type="datetime-local"

@@ -1,9 +1,38 @@
 import { z } from "zod";
-import { CuidLike, NonEmptyString } from "./common.js";
+import { CuidLike, Email } from "./common.js";
+
+import { resolveAssessmentProduct } from '../../product-lines/assessment-catalog';
+import { OZGUN_PRODUCT } from '../../fixed-forms/ozgun-kids';
+
+export const AssessmentProduct = z.string().trim().min(1).max(200).transform((value, ctx) => {
+  const resolved = resolveAssessmentProduct(value);
+  if (resolved) return resolved;
+  ctx.addIssue({code: 'custom', message: 'Unknown assessment product'});
+  return z.NEVER;
+});
+
+export const SendExamInviteBody = z.object({
+  email: Email,
+  name: z.string().trim().max(200).optional(),
+  productLine: AssessmentProduct,
+  organizationId: CuidLike.optional(),
+  expiresInDays: z.number().int().min(1).max(365).optional(),
+}).strict();
+
+const LocalOrOffsetDate = z.string().datetime({offset: true, local: true});
+export const CreateAssignmentBody = z.object({
+  classId: CuidLike.optional(),
+  productLine: AssessmentProduct.refine(value => value !== OZGUN_PRODUCT, 'Fixed forms require an exam code'),
+  title: z.string().trim().max(200).optional(),
+  openAt: LocalOrOffsetDate.optional(),
+  dueAt: LocalOrOffsetDate.optional(),
+  maxAttempts: z.number().int().min(1).max(100).optional(),
+}).strict().refine(body => !body.openAt || !body.dueAt || Date.parse(body.dueAt) > Date.parse(body.openAt),
+  {message: 'Due date must be after opening date', path: ['dueAt']});
 
 export const GenerateCodesBody = z.object({
   productLineId: CuidLike.optional(),
-  productLine: z.string().trim().max(200).optional(),
+  productLine: AssessmentProduct.optional(),
   organizationId: CuidLike.optional(),
   quantity: z.number().int().min(1).max(10_000),
   expiresAt: z.string().datetime().optional(),

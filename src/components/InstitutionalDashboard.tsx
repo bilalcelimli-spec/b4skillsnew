@@ -1,3 +1,4 @@
+import { AssessmentProductOptions } from "./AssessmentProductOptions";
 import React, { useRef, useState, useEffect } from "react";
 import { useToast } from "../hooks/useToast.js";
 import { Card, CardContent, CardHeader } from "./ui/Card";
@@ -672,12 +673,11 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
                 />
                 <select
                   className="flex-1 min-w-[160px] h-10 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  aria-label="Assessment product"
                   value={inviteProductLine}
                   onChange={e => setInviteProductLine(e.target.value)}
                 >
-                  {["General English","15-Min Diagnostic","Academia","Corporate","Primary","Junior"].map(pl => (
-                    <option key={pl} value={pl}>{pl === "15-Min Diagnostic" ? "Rapid Diagnostic (30–40 min)" : pl}</option>
-                  ))}
+                  <AssessmentProductOptions/>
                 </select>
                 <Button
                   onClick={handleSendInvite}

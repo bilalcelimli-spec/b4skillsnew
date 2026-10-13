@@ -38,7 +38,7 @@ import { CreateWebhookBody, BrandingPatchBody, UpdateSettingsBody, SsoConfigBody
 import { ProctoringAuditBody, ProctoringEventBody } from "./src/lib/security/schemas/proctoring.js";
 import { AITutorBody, SpeakingMultimodalBody } from "./src/lib/security/schemas/ai.js";
 import { CodeRedemptionError, redeemExamCode } from "./src/lib/security/exam-code-redemption.js";
-import { GenerateCodesBody, RedeemCodeBody, ValidateCodeBody } from "./src/lib/security/schemas/codes.js";
+import { GenerateCodesBody, RedeemCodeBody, ValidateCodeBody, SendExamInviteBody, CreateAssignmentBody } from "./src/lib/security/schemas/codes.js";
 import { recordFreemiumScore, type FreemiumSkillBreakdown } from "./src/lib/product-lines/freemium-response-scoring.js";
 import { pickPlacementItem, placementPrecisionReached, PLACEMENT_SKILLS, PLACEMENT_MIN_PER_SKILL, PLACEMENT_MAX_PER_SKILL } from "./src/lib/product-lines/placement-selection.js";
 import { evaluateFreemiumResponse } from "./src/lib/product-lines/freemium-productive-scoring.js";
@@ -3812,8 +3812,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // POST /api/codes/send-invite — generate a single exam code and email it to a candidate
   app.post("/api/codes/send-invite", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
     try {
-      const { email, name, productLine, organizationId: bodyOrgId, expiresInDays } = req.body;
-      if (!email || !productLine) return res.status(400).json({ error: "email and productLine required" });
+      const body = validate(SendExamInviteBody, req.body, res);
+      if (!body) return;
+      const { email, name, productLine, organizationId: bodyOrgId, expiresInDays } = body;
       const orgId = bodyOrgId || req.user?.organizationId;
       if (!orgId) return res.status(400).json({ error: "organizationId required" });
       if (req.user?.role === "INST_ADMIN" && req.user?.organizationId !== orgId)
@@ -4482,34 +4483,32 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const sr = session.scoreReport as any;
       const { buildAssessmentReport } = await import('./src/lib/reporting/assessment-report-model.js');
       const reportState = buildAssessmentReport(session, APP_BASE_URL);
-      const profiles = diagnostic.skillProfiles ?? sessionMeta.skillProfiles ?? {};
-      const skillScores = Object.entries(profiles as Record<string, any>)
-        .filter(([skill, profile]) => Number.isFinite(profile.theta) && Number.isFinite(profile.sem) &&
-          session.responses.some((response: any) => response.item?.skill === skill.toUpperCase() && !shouldExcludeResponseFromAbility(response)))
-        .map(([skill, profile]) => ({skill:skill.toUpperCase(),theta:profile.theta,sem:profile.sem,
-          cefrLevel:profile.cefr ?? profile.cefrLevel ?? thetaToCefr(profile.theta),
-          ciLo:thetaToCefr(profile.theta - 1.96 * profile.sem),ciHi:thetaToCefr(profile.theta + 1.96 * profile.sem)}));
+      const skillScores = reportState.skills
+        .filter(skill => skill.cefr !== null && skill.theta !== null && skill.sem !== null)
+        .map(skill => ({skill:skill.skill,theta:skill.theta!,sem:skill.sem!,
+          cefrLevel:skill.cefr!,
+          ciLo:thetaToCefr(skill.theta! - 1.96 * skill.sem!),ciHi:thetaToCefr(skill.theta! + 1.96 * skill.sem!)}));
 
       res.json({
         sessionId: id,
         candidateId:     session.candidateId,
         candidateName:   session.candidate?.name ?? session.candidate?.email ?? undefined,
         organizationId:  session.organizationId,
-        completedAt:     (session.completedAt ?? session.updatedAt ?? new Date()).toISOString(),
+        completedAt: session.completedAt?.toISOString() ?? null,
         finalTheta: theta,
         finalSem:   sem,
         beps,
         cefrLevel:  level,
-        stopReason: diagnostic.stopReason ?? sessionMeta.stopReason ?? "COMPLETED",
+        stopReason: diagnostic.stopReason ?? sessionMeta.stopReason ?? session.status,
         totalItems: responses.length,
         skillScores,
         responses,
         canDo: reportState.status === 'Completed' ? getCanDo(level) : [],
         scoringComplete: !reportState.provisional,
         reportStatus: reportState.status,
-        hasScoredEvidence: session.responses.some((response: any) => !shouldExcludeResponseFromAbility(response)),
+        hasScoredEvidence: session.responses.some((response: any) => !response.isPretest && !shouldExcludeResponseFromAbility(response)),
         integrityRisk: sessionMeta.integrityRisk ?? "LOW",
-        productLine:   diagnostic.productLine ?? sessionMeta.productLine ?? undefined,
+        productLine: reportState.productLine,
         certificateId: reportState.certificateId,
         hasPendingAI: buildScoringStatus(session.responses).pendingCount > 0,
       });
@@ -7355,7 +7354,7 @@ ${codeSection}
         const result = await DiagnosticService.respond(req.params.id, itemId, value, Number(latencyMs ?? 0));
         return res.json(result);
       } catch (err: any) {
-        return res.status(400).json({ error: err.message });
+        return res.status(err instanceof AppError ? err.statusCode : 400).json({ error: err.message });
       }
     });
 
@@ -7366,7 +7365,7 @@ ${codeSection}
         const report = await DiagnosticService.getReport(req.params.id);
         return res.json(report);
       } catch (err: any) {
-        return res.status(err instanceof DiagnosticReportNotReadyError ? 409 : 404).json({ error: err.message });
+        return res.status(err instanceof AppError ? err.statusCode : err instanceof DiagnosticReportNotReadyError ? 409 : 404).json({ error: err.message });
       }
     });
   }
@@ -7838,8 +7837,9 @@ ${codeSection}
   app.post("/api/teacher/assignments", checkRole(teacherRoles), async (req: any, res) => {
     try {
       const user = req.user as { userId: string; role: string };
-      const { classId, productLine, title, openAt, dueAt, maxAttempts } = req.body;
-      if (!productLine) return res.status(400).json({ error: "productLine required" });
+      const body = validate(CreateAssignmentBody, req.body, res);
+      if (!body) return;
+      const { classId, productLine, title, openAt, dueAt, maxAttempts } = body;
       let orgId: string | null = null;
       if (classId) {
         const cls = await prisma.class.findUnique({ where: { id: classId } });

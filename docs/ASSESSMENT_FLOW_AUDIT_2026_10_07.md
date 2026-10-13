@@ -1,5 +1,7 @@
 # Assessment flow audit — 2026-10-07
 
+> Historical snapshot. For current product coverage and the 13 October regression results, see [assessment quality matrix](quality/assessment-quality-matrix.md). Express currently includes writing and speaking; its four-skill description below is historical.
+
 The audit used disposable localhost PostgreSQL databases and the real bundled Express server. Production data, credentials and deployed services were not changed. CI item-bank fixtures supplied controlled objective answers. External AI credentials were deliberately blank, so productive tasks exercised integrity checks, unavailable-provider handling and human-review requirements without making paid grading calls.
 
 ## Verified flows

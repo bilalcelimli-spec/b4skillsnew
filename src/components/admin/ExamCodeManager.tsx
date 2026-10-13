@@ -1,3 +1,4 @@
+import { AssessmentProductOptions } from "../AssessmentProductOptions";
 import { OZGUN_PRODUCT, OZGUN_MEDIA, OZGUN_TITLE } from "../../lib/fixed-forms/ozgun-kids";
 import React, { useState, useEffect } from "react";
 import { useToast } from "../../hooks/useToast.js";
@@ -108,16 +109,7 @@ export const ExamCodeManager: React.FC<{ orgId?: string }> = ({ orgId }) => {
                 onChange={(e) => setProductLine(e.target.value)}
                 className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
               >
-                <option value={OZGUN_PRODUCT}>{OZGUN_TITLE}</option>
-                <option value="General English">General English</option>
-                <option value="Primary (7-10)">Primary (7-10)</option>
-                <option value="Junior Suite (11-14)">Junior Suite (11-14)</option>
-                <option value="15-Min Diagnostic">Rapid Diagnostic (30–40 min)</option>
-                <option value="Express Assessment (30-Min)">Express Assessment (30-Min)</option>
-                <option value="Academia">Academia</option>
-                <option value="Corporate">Corporate</option>
-                <option value="Language Schools">Language Schools</option>
-                <option value="Specialized / Integrated Skills">Specialized / Integrated Skills</option>
+                <AssessmentProductOptions/>
               </select>
             </div>
 

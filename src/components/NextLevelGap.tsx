@@ -12,7 +12,6 @@ import {
   nextCefrLevel,
   getCanDo,
   CEFR_META,
-  CEFR_THETA_THRESHOLDS,
   type CefrLevel,
   type SkillDomain,
 } from "../lib/cefr/cefr-framework";
@@ -51,82 +50,44 @@ interface GapItem {
   targetLevel: CefrLevel;
   gap: number;     // theta distance to next threshold
   canDo: string;
+  uncertain: boolean;
   priority: number;
 }
 
-function computeGaps(skillScores: Record<string, SkillScore>, overallTheta: number | null | undefined): GapItem[] {
-  const safeTheta = overallTheta ?? 0;
-  const overallLevel = thetaToCefr(safeTheta);
-  const target = nextCefrLevel(overallLevel);
-  if (!target) return [];
-
+function computeGaps(skillScores: Record<string, SkillScore>): GapItem[] {
   const items: GapItem[] = [];
-
-  const skills = Object.keys(skillScores).length > 0
-    ? Object.keys(skillScores)
-    : ["reading", "listening", "writing", "speaking"];
-
-  for (const skill of skills) {
-    const score = skillScores[skill];
-    const theta = score?.theta ?? safeTheta;
-    const currentLevel = thetaToCefr(theta);
-    const skillTarget = nextCefrLevel(currentLevel) ?? target;
-
-    // Distance from current theta to the lower boundary of next level
-    const thresholdKey = skillTarget === "C2" ? "C1" : skillTarget;
-    const nextThreshold = CEFR_THETA_THRESHOLDS[thresholdKey] ?? 4;
-    const gap = Math.max(0, nextThreshold - theta);
-
+  for (const [skill, score] of Object.entries(skillScores)) {
+    if (!Number.isFinite(score.theta) || !Number.isFinite(score.sem) || score.sem < 0) continue;
+    const currentLevel = thetaToCefr(score.theta);
+    const skillTarget = nextCefrLevel(currentLevel);
+    if (!skillTarget) continue;
+    // CEFR_THETA_THRESHOLDS contains upper boundaries; the target needs its lower boundary.
+    const nextThreshold = CEFR_META[skillTarget].theta.min;
+    const gap = Math.max(0, nextThreshold - score.theta);
     const domain = SKILL_DOMAIN_MAP[skill];
     const canDos = domain ? getCanDo(skillTarget, domain) : [];
-    const canDo = canDos[0]?.descriptors[0] ?? `Reach ${skillTarget} in ${skill}`;
-
-    items.push({
-      skill,
-      currentLevel,
-      targetLevel: skillTarget,
-      gap,
-      canDo,
-      priority: gap,
-    });
+    items.push({skill,currentLevel,targetLevel:skillTarget,gap,priority:gap,
+      uncertain:score.theta + 1.96 * score.sem >= nextThreshold,
+      canDo:canDos[0]?.descriptors[0] ?? `Develop ${skill} toward ${skillTarget}`});
   }
-
-  // Sort by gap descending (biggest deficit first), return top 5
-  return items.sort((a, b) => b.priority - a.priority).slice(0, 5);
+  return items.sort((a,b)=>b.priority-a.priority).slice(0,5);
 }
 
-export function NextLevelGap({ skillScores, overallTheta, className }: Props) {
-  const overallLevel = thetaToCefr(overallTheta ?? 0);
-  const target = nextCefrLevel(overallLevel);
-
-  if (!target) {
-    return (
-      <div className={cn("rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center", className)}>
-        <p className="text-emerald-700 font-bold text-sm">You have reached C2 — the highest CEFR level.</p>
-      </div>
-    );
-  }
-
-  const gaps = computeGaps(skillScores, overallTheta);
-  const targetMeta = CEFR_META[target];
-
+export function NextLevelGap({ skillScores, className }: Props) {
+  const measured = Object.values(skillScores).filter(score => Number.isFinite(score.theta) && Number.isFinite(score.sem) && score.sem >= 0);
+  if (!measured.length) return <p className={cn('text-sm text-slate-500',className)}>No measured skill estimates are available for development targets.</p>;
+  const gaps = computeGaps(skillScores);
+  if (!gaps.length) return <p className={cn('text-sm text-slate-500',className)}>Reported skills are at C2. Maintain and extend these skills.</p>;
   return (
     <div className={cn("space-y-4", className)}>
       <div className="flex items-center gap-3">
         <ArrowUpCircle size={18} className="text-indigo-500 flex-shrink-0" />
         <div>
-          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">
-            Path to {target}
-          </h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">{targetMeta?.summary}</p>
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Suggested skill targets</h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">Learning goals based on measured skills and provisional platform boundaries. Distances are not predicted gains or completion percentages.</p>
         </div>
       </div>
-
-      <div className="space-y-3">
-        {gaps.map((item, i) => (
-          <GapRow key={item.skill} item={item} index={i} />
-        ))}
-      </div>
+      <div className="space-y-3">{gaps.map((item,i)=><GapRow key={item.skill} item={item} index={i}/>)}</div>
     </div>
   );
 }
@@ -135,8 +96,6 @@ function GapRow({ item, index }: { item: GapItem; index: number }) {
   const label = SKILL_LABELS[item.skill] ?? item.skill;
   const isUrgent = index === 0;
 
-  // Visual progress: treat 0 gap as 100%, max gap ~3 theta units
-  const progressPct = Math.round(Math.max(0, Math.min(100, (1 - item.gap / 3) * 100)));
 
   return (
     <motion.div
@@ -156,18 +115,10 @@ function GapRow({ item, index }: { item: GapItem; index: number }) {
             {item.currentLevel} → {item.targetLevel}
           </span>
         </div>
-        <span className="text-[10px] font-black text-slate-500">{progressPct}%</span>
+        <span className="text-[10px] font-mono text-slate-500">{item.gap.toFixed(2)} θ to next band</span>
       </div>
 
-      {/* Progress bar */}
-      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden mb-2">
-        <motion.div
-          className={cn("h-full rounded-full", isUrgent ? "bg-indigo-500" : "bg-slate-400")}
-          initial={{ width: 0 }}
-          animate={{ width: `${progressPct}%` }}
-          transition={{ delay: index * 0.06 + 0.15, duration: 0.5, ease: "easeOut" }}
-        />
-      </div>
+      {item.uncertain && <p className="text-[11px] text-amber-700 mb-2">The model-based 95% interval overlaps the target boundary. Confirm with additional evidence.</p>}
 
       <p className="text-[11px] text-slate-500 leading-relaxed line-clamp-2">{item.canDo}</p>
     </motion.div>

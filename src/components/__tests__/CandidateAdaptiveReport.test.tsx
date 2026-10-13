@@ -1,16 +1,19 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+const gaps = vi.hoisted(() => ({render: vi.fn((_props: any) => null)}));
+vi.mock('../NextLevelGap', () => ({NextLevelGap: gaps.render}));
+vi.mock('../LearningPathView', () => ({LearningPathView: () => null}));
 const scoring = vi.hoisted(() => ({ hook: vi.fn(() => ({ state: 'complete' })) }));
 vi.mock('../../hooks/useScoringStatus', () => ({ useScoringStatus: scoring.hook }));
 vi.mock('../../hooks/useToast.js', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('../AITutorOverlay', () => ({ AITutorOverlay: () => <div>AI tutor</div> }));
 import { CandidateAdaptiveReport } from '../CandidateAdaptiveReport';
 const base = { sessionId: 'session', completedAt: '', finalTheta: 0, finalSem: 1, cefrLevel: 'B1',
-  totalItems: 1, responses: [], skillScores: [], stopReason: 'ALL_SECTIONS_COMPLETE',
+  totalItems: 1, responses: [], skillScores: [] as Array<{skill:string;theta:number;sem:number;cefrLevel:string;ciLo:string;ciHi:string}>, stopReason: 'ALL_SECTIONS_COMPLETE',
   scoringComplete: false, reportStatus: 'Provisional', hasScoredEvidence: false, hasPendingAI: false };
-function show(data: typeof base) {
+function show(data: typeof base & {productLine?:string}) {
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => data })));
   render(<CandidateAdaptiveReport sessionId="session" />);
 }
@@ -51,4 +54,14 @@ it('ignores a late response from the previous session when switching reports', a
   await new Promise(resolve => setTimeout(resolve, 0));
   expect(screen.queryByText('Previous student — Adaptive Report')).toBeNull();
   expect(screen.getByText('Current student — Adaptive Report')).toBeTruthy();
+});
+
+it('shows product identity and same-band uncertainty without claiming zero error',async()=>{
+ show({...base,productLine:'Express Assessment (30-Min)',hasScoredEvidence:true,scoringComplete:true,reportStatus:'Completed',
+  skillScores:[{skill:'READING',theta:0,sem:.1,cefrLevel:'B1',ciLo:'B1',ciHi:'B1'}]});
+ expect(await screen.findByText('Express Assessment (30–46 Min)')).toBeTruthy();
+ expect(screen.getByText(/same band, not zero uncertainty/)).toBeTruthy();
+ expect(screen.queryByText('95% CI: ±0')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Insights'}));
+ expect(gaps.render.mock.calls.at(-1)?.[0]).toMatchObject({skillScores:{reading:{theta:0,sem:.1}}});
 });

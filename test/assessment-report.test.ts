@@ -78,3 +78,16 @@ describe('evidence-aware candidate reports', () => {
     expect(pdf.length).toBeGreaterThan(15000);
   });
 });
+
+it('does not report a stale skill estimate when its only response was a pretest item',()=>{
+ const report=build(session({responses:[{score:1,isPretest:true,item:{skill:'READING'}}],
+  scoreReport:{diagnosticReport:{skillProfiles:{READING:{theta:2,sem:.2,cefr:'C1'}}}}}));
+ expect(report.skills[0]).toMatchObject({theta:null,sem:null,cefr:null,count:0,state:'Not assessed'});
+});
+it('uses scored live metadata consistently when the report snapshot has no skill profiles',()=>{
+ const report=build(session({metadata:{skillProfiles:{READING:{theta:1,sem:.4}}},responses:[{score:1,item:{skill:'READING'}}],scoreReport:null}));
+ expect(report.skills[0]).toMatchObject({theta:1,sem:.4,cefr:'B2',count:1});
+});
+it('uses the current customer-facing name without changing the stored product key',()=>{
+ expect(build(session({metadata:{productLine:'Express Assessment (30-Min)'}})).productLine).toBe('Express Assessment (30–46 Min)');
+});

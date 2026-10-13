@@ -309,8 +309,8 @@ export const ProctoringMonitor: React.FC<ProctoringMonitorProps> = ({ sessionId,
         )}
       </AnimatePresence>
 
-      {/* Mini Monitor View (Draggable in a real app) */}
-      <div className="fixed bottom-3 right-3 sm:bottom-6 sm:right-6 z-50 flex flex-col gap-3">
+      {/* Read-only preview must not intercept exam navigation beneath it. */}
+      <div className="pointer-events-none fixed bottom-3 right-3 sm:bottom-6 sm:right-6 z-50 flex flex-col gap-3">
         <div className="relative w-24 h-16 sm:w-48 sm:h-32 bg-slate-900 rounded-2xl overflow-hidden border-2 border-slate-800 shadow-2xl group">
           <video 
             ref={videoRef} 

@@ -2,15 +2,17 @@ import { OZGUN_PRODUCT, OZGUN_TITLE } from "../lib/fixed-forms/ozgun-kids";
 /**
  * AssessmentModeSelector
  *
- * Displays the five b4skills assessment modes as selectable cards.
+ * Displays the b4skills assessment modes as selectable cards.
  * Each card shows time, skills covered, purpose, and maps to a
  * product-line name consumed by server-engine.ts.
  */
 
 import { useEffect, useRef } from "react";
 import { motion } from "motion/react";
-import { Clock, Zap, BarChart2, BookOpen, TrendingUp, ShieldCheck, ChevronRight } from "lucide-react";
+import { Clock, Zap, BarChart2, BookOpen, ShieldCheck, ChevronRight } from "lucide-react";
 import { cn } from "../lib/utils";
+import { assessmentPresentation } from "../lib/product-lines/assessment-presentation";
+import { PRODUCT_LINE_PROFILES, resolveProfileName } from "../lib/product-lines/profiles";
 
 export interface AssessmentMode {
   id: string;
@@ -25,14 +27,12 @@ export interface AssessmentMode {
   recommended?: boolean;
 }
 
-const MODES: AssessmentMode[] = [
-  {id:'ozgun-kids-form-a',label:OZGUN_TITLE,tagline:'96 soruluk sabit sınav',time:'105 dakika',skills:['Grammar','Vocabulary','Reading','Listening'],purpose:'Kitapçıktaki soru sırası, bölüm süreleri ve dinleme kayıtlarıyla uygulanır.',icon:<BookOpen size={22}/>,accent:'bg-pink-600',productLine:OZGUN_PRODUCT},
+const MODE_CARDS: Omit<AssessmentMode, "time" | "skills">[] = [
+  {id:'ozgun-kids-form-a',label:OZGUN_TITLE,tagline:'96 soruluk sabit sınav',purpose:'Kitapçıktaki soru sırası, bölüm süreleri ve dinleme kayıtlarıyla uygulanır.',icon:<BookOpen size={22}/>,accent:'bg-pink-600',productLine:OZGUN_PRODUCT},
   {
     id: "quick-check",
     label: "Rapid Diagnostic",
     tagline: "Fast six-skill profile",
-    time: "30 – 40 min",
-    skills: ["Vocabulary", "Grammar", "Reading", "Listening", "Writing", "Speaking"],
     purpose: "Get an adaptive CEFR profile across all six skills with short productive tasks.",
     icon: <Zap size={22} />,
     accent: "bg-amber-500",
@@ -42,9 +42,7 @@ const MODES: AssessmentMode[] = [
     id: "standard-placement",
     label: "Standard Placement",
     tagline: "Course placement",
-    time: "30 – 40 min",
-    skills: ["Reading", "Listening", "Grammar", "Vocabulary"],
-    purpose: "The most common mode for language schools and universities. Measures 4 skills with adaptive precision.",
+    purpose: "Course placement across six sections, including writing and speaking.",
     icon: <BarChart2 size={22} />,
     accent: "bg-indigo-500",
     productLine: "Express Assessment (30-Min)",
@@ -54,8 +52,6 @@ const MODES: AssessmentMode[] = [
     id: "complete-4-skill",
     label: "Complete 4-Skill",
     tagline: "Full proficiency assessment",
-    time: "50 – 70 min",
-    skills: ["Reading", "Listening", "Speaking", "Writing", "Grammar", "Vocabulary"],
     purpose: "Flagship b4skills assessment. Includes AI-scored speaking and writing for a full CEFR profile.",
     icon: <BookOpen size={22} />,
     accent: "bg-emerald-500",
@@ -65,25 +61,18 @@ const MODES: AssessmentMode[] = [
     id: "academic",
     label: "Academic English",
     tagline: "University & IELTS pathway",
-    time: "50 – 65 min",
-    skills: ["Academic Reading", "Listening", "Essay Writing", "Spoken Production", "Grammar"],
     purpose: "Designed for university admissions and academic placement. Higher weighting on extended writing and inference.",
     icon: <ShieldCheck size={22} />,
     accent: "bg-violet-500",
     productLine: "Academia",
   },
-  {
-    id: "progress-check",
-    label: "Progress Check",
-    tagline: "Measure improvement",
-    time: "15 – 25 min",
-    skills: ["Reading", "Listening", "Grammar", "Vocabulary"],
-    purpose: "Compare current ability against a previous b4skills assessment. Uses anchor items for statistically comparable results.",
-    icon: <TrendingUp size={22} />,
-    accent: "bg-teal-500",
-    productLine: "Express Assessment (30-Min)",
-  },
+
 ];
+
+const MODES: AssessmentMode[] = MODE_CARDS.map(mode => {
+  const facts = assessmentPresentation(mode.productLine);
+  return {...mode, time: `${facts.duration} min`, skills: facts.skills};
+});
 
 interface Props {
   onSelect: (productLine: string) => void;
@@ -93,22 +82,33 @@ interface Props {
 
 export function AssessmentModeSelector({ onSelect, allowedProductLine, className }: Props) {
   const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
-  const filtered = allowedProductLine
-    ? MODES.filter((m) => norm(m.productLine) === norm(allowedProductLine))
+  const assignedProduct = resolveProfileName(allowedProductLine) ?? allowedProductLine;
+  const matched = assignedProduct
+    ? MODES.filter((m) => norm(m.productLine) === norm(assignedProduct))
     : [];
+  const assignedProfile = Object.values(PRODUCT_LINE_PROFILES).find(profile => assignedProduct && norm(profile.name) === norm(assignedProduct));
+  const filtered: AssessmentMode[] = matched.length ? matched : assignedProfile ? [{
+    id: assignedProfile.name, label: assignedProfile.displayName ?? assignedProfile.name,
+    tagline: "Assigned assessment", time: `${assessmentPresentation(assignedProfile.name).duration} min`,
+    skills: assessmentPresentation(assignedProfile.name).skills, purpose: "Start the assessment assigned to your exam code.",
+    icon: <BookOpen size={22}/>, accent: "bg-indigo-500", productLine: assignedProfile.name,
+  }] : [];
   // If the code restricts to a specific product line that matches exactly one mode,
   // auto-start immediately so the candidate lands directly in the exam.
   const visible = filtered.length > 0 ? filtered : MODES.filter(mode=>mode.productLine!==OZGUN_PRODUCT);
 
   // Auto-start when there is exactly one allowed mode (code-entry candidates)
-  const autoStartRef = useRef(false);
+  const assignedName = filtered.length === 1 ? filtered[0].productLine : null;
+  const autoStartRef = useRef<string | null>(null);
   useEffect(() => {
-    if (filtered.length === 1 && !autoStartRef.current) {
-      autoStartRef.current = true;
-      onSelect(filtered[0].productLine);
+    if (!assignedName) {autoStartRef.current = null; return;}
+    if (autoStartRef.current !== assignedName) {
+      autoStartRef.current = assignedName;
+      onSelect(assignedName);
     }
-  }, [filtered.length]);
+  }, [assignedName, onSelect]);
 
+  if (assignedProduct && filtered.length === 0) return <p role="alert">The assigned assessment is unavailable. Please contact your institution.</p>;
   if (filtered.length === 1) return null; // auto-starting, hide selector
 
   return (

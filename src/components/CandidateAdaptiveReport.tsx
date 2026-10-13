@@ -1,3 +1,4 @@
+import { assessmentDisplayName } from '../lib/fixed-forms/ozgun-kids';
 import { OzgunKidsReport } from "./OzgunKidsReport";
 import { useScoringStatus } from "../hooks/useScoringStatus";
 import { CEFR_LEVELS } from "../lib/cefr/cefr-framework";
@@ -62,11 +63,12 @@ interface ResponseEntry {
 }
 
 interface AdaptiveReport {
+  productLine?: string;
   sessionId: string;
   candidateId?: string;
   candidateName?: string;
   organizationId?: string;
-  completedAt: string;
+  completedAt: string | null;
   finalTheta: number;
   finalSem: number;
   cefrLevel: string;
@@ -278,6 +280,8 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
             <h2 className="text-xl font-semibold text-slate-800">
               {report.candidateName ?? "Candidate"} — Adaptive Report
             </h2>
+            {report.productLine && <p className="text-sm text-slate-600">{assessmentDisplayName(report.productLine)}</p>}
+            {report.reportStatus && <p className="text-xs text-slate-500">Status: {report.reportStatus}</p>}
             <p className="text-sm text-slate-400">
               {report.completedAt ? new Date(report.completedAt).toLocaleString() : "—"} · {report.totalItems} items · {report.stopReason}
             </p>
@@ -352,7 +356,8 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
                     </span>
                     {/* CI */}
                     <span className="text-[10px] text-slate-400 flex-shrink-0">
-                      {ciSame ? "95% CI: ±0" : `95% CI: ${s.ciLo.replace("_"," ")}–${s.ciHi.replace("_"," ")}`}
+                      Model-based 95% band: {ciSame ? s.ciLo.replace("_"," ") : `${s.ciLo.replace("_"," ")}–${s.ciHi.replace("_"," ")}`}
+                      {ciSame && ' (same band, not zero uncertainty)'}
                     </span>
                     <span className="text-[10px] font-mono text-slate-400 ml-auto flex-shrink-0">
                       θ {s.theta >= 0 ? "+" : ""}{s.theta.toFixed(2)} ±{(s.sem ?? 0).toFixed(2)}
@@ -448,7 +453,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
           <div className="border border-slate-200 rounded-xl p-5 bg-white">
             <NextLevelGap
               skillScores={Object.fromEntries(
-                report.skillScores.map((s) => [s.skill.toLowerCase(), { theta: s.theta, sem: 0.3 }])
+                report.skillScores.map((s) => [s.skill.toLowerCase(), { theta: s.theta, sem: s.sem }])
               )}
               overallTheta={report.finalTheta}
             />

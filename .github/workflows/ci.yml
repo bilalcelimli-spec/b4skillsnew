@@ -162,11 +162,79 @@ jobs:
           path: dist/
           retention-days: 7
 
+  # Real HTTP flows are release gates, separate from mocked unit tests.
+  assessment-flows:
+    name: All Assessment Flows (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/all_exams_ci?connection_limit=3
+      DIRECT_URL: postgresql://postgres:postgres@127.0.0.1:5432/all_exams_ci?connection_limit=3
+      B4SKILLS_FLOW_AUDIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/all_exams_ci?connection_limit=3
+      MIGRATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/all_exams_ci?connection_limit=3
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: all_exams_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - name: Prepare disposable assessment database
+        run: |
+          npm run db:migrate
+          npm run db:seed:ci
+      - run: npm run build:server
+      - name: Verify every assessment over real HTTP
+        run: npm run audit:assessment-flows
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: assessment-flow-results
+          path: /tmp/b4skills-all-exams-flow-results.json
+          retention-days: 14
+
+  assessment-browser:
+    name: Assessment Browser Regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:item-renderer
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: assessment-browser-results
+          path: test-results/
+          retention-days: 7
+
   # ─────────────────────────────────────────────────────────────────────────────
   docker:
     name: Docker Build Check
     runs-on: ubuntu-latest
-    needs: [type-check, test, seed-quality, item-validation, build]
+    needs: [type-check, test, seed-quality, item-validation, build, assessment-flows, assessment-browser]
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:

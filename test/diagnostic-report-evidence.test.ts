@@ -46,3 +46,17 @@ describe('diagnostic report after human review',()=>{
   await expect(DiagnosticService.getReport('exam')).rejects.toThrow('under review');
  });
 });
+
+describe('diagnostic inactive-attempt guards',()=>{
+ it.each(['PAUSED','EXPIRED'])('rejects %s before item lookup, grading or report generation',async status=>{
+  session.status=status;
+  session.metadata.diagnosticState.complete=false;
+  session.metadata.diagnosticState.skills[SKILLS[0]].items[0].answered=false;
+  session.metadata.diagnosticState.expiresAt=new Date(Date.now()+60000).toISOString();
+  await expect(DiagnosticService.respond('exam',SKILLS[0]+'0','A',100)).rejects.toMatchObject({statusCode:409});
+  await expect(DiagnosticService.delivery('exam')).rejects.toMatchObject({statusCode:409});
+  await expect(DiagnosticService.getReport('exam')).rejects.toMatchObject({statusCode:409});
+  expect(db.update).not.toHaveBeenCalled();
+  expect(db.report).not.toHaveBeenCalled();
+ });
+});

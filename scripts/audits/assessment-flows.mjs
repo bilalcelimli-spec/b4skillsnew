@@ -24,6 +24,53 @@ async function candidate(product){const {codes}=await ok('/api/codes/generate',{
  const {response,data}=await request('/api/codes/redeem',{code:codes[0],email:`${randomUUID()}@local-audit.test`,name:'Audit',surname:'Candidate'});assert(response.ok,JSON.stringify(data));
  return {id:data.candidateId,cookie:response.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ')};
 }
+async function verifyLockedAttempt(id,cookie){
+ const prefix=`/api/sessions/${id}`;
+ const before=await db.session.findUniqueOrThrow({where:{id},include:{responses:true}});
+ const meta=before.metadata,diagnostic=meta.sessionType==='DIAGNOSTIC',fixed=meta.sessionType==='FIXED_FORM';
+ const actions=fixed?[
+  [prefix+'/fixed-form/start',{}],
+  [prefix+'/fixed-form/answer',{number:1,answer:'A'}],
+  [prefix+'/fixed-form/advance',{sectionIndex:0}],
+  [prefix+'/fixed-form/listen',{}],
+ ]:[
+  [prefix+'/next',undefined],
+  [prefix+'/respond',{itemId:diagnostic?Object.values(meta.diagnosticState.skills)[0].items[0].itemId:meta.currentItemId,value:'A',latencyMs:1000}],
+ ];
+ if(diagnostic){
+  actions.push([`/api/sessions/diagnostic/${id}/respond`,actions[1][1]]);
+  actions.push([`/api/sessions/diagnostic/${id}/report`,undefined]);
+ }
+ actions.push([prefix+'/complete',{}]);
+ for(const [path,body] of actions){
+  const {response}=await request(path,body,cookie);
+  assert.equal(response.status,409,`${before.status} blocks ${path} with a state conflict`);
+ }
+ if(fixed){const view=await request(prefix+'/fixed-form',undefined,cookie);
+  if(before.status==='PAUSED'){assert.equal(view.response.status,200);assert.equal(view.data.questions.length,0,'Paused form reveals no questions');}
+  else assert.equal(view.response.status,409,'Expired form is inaccessible');
+ }
+ const after=await db.session.findUniqueOrThrow({where:{id},include:{responses:true}});
+ assert.equal(after.status,before.status,'Blocked operations preserve lifecycle');
+ assert.deepEqual(after.metadata,before.metadata,'Blocked operations preserve progress and clocks');
+ assert.equal(after.responses.length,before.responses.length,'Blocked operations create no responses');
+ assert.equal(await db.scoreReport.count({where:{sessionId:id}}),0,'Blocked operations cannot create a final report');
+}
+async function verifyPause(id,cookie,currentItemId){
+ const prefix=`/api/sessions/${id}`;
+ const paused=await ok(prefix+'/pause',{},cookie);assert.equal(paused.status,'PAUSED');
+ const deadline=paused.pause.resumeUntil;
+ assert.equal(new Date(deadline)-new Date(paused.pause.pausedAt),48*60*60*1000,'Exactly 48 hours');
+ const retried=await ok(prefix+'/pause',{},cookie);assert.equal(retried.pause.resumeUntil,deadline,'Retry cannot extend deadline');
+ assert.equal((await request(prefix+'/pause',{},staff)).response.status,403,'Staff cannot consume candidate pause');
+ const before=await db.response.count({where:{sessionId:id}});
+ await verifyLockedAttempt(id,cookie);
+ const resumed=await ok(prefix+'/resume',{},cookie);assert.equal(resumed.status,'IN_PROGRESS');assert.equal(resumed.pause.canPause,false);
+ assert.equal((await ok(prefix+'/resume',{},cookie)).status,'IN_PROGRESS','Resume retry is idempotent');
+ assert.equal((await request(prefix+'/pause',{},cookie)).response.status,409,'Only one pause');
+ assert.equal(await db.response.count({where:{sessionId:id}}),before,'Pause never changes answers');
+ if(currentItemId)assert.equal((await ok(prefix+'/next',undefined,cookie)).item.id,currentItemId,'Resume preserves current question');
+}
 function valueFor(item){if(item.skill==='WRITING')return 'x';if(item.skill==='SPEAKING')return audio;
  const content=item.metadata??item.content;const options=content.options;const index=options.findIndex(option=>(typeof option==='string'?option:option.text).startsWith('Correct response'));assert(index>=0,'Controlled objective fixture required');return String.fromCharCode(65+index);}
 const staff='accessToken='+jwt.sign({userId:admin},secret,{expiresIn:'1h'});
@@ -41,6 +88,7 @@ try{
    const next=await ok(`/api/sessions/${id}/next`,undefined,user.cookie);
    if(next.stop){complete=true;finalTheta=next.finalTheta;break;}if(next.sectionTransition)continue;
    assert(next.item?.id,'Next item');observed.add(next.item.skill);
+   if(i===0)await verifyPause(id,user.cookie,next.item.id);
    const repeat=await ok(`/api/sessions/${id}/next`,undefined,user.cookie);assert.equal(repeat.item?.id,next.item.id,'Resume preserves served question');
    const result=await ok(`/api/sessions/${id}/respond`,{itemId:next.item.id,value:valueFor(next.item),latencyMs:30000},user.cookie);
    if(['WRITING','SPEAKING'].includes(next.item.skill))assert.notEqual(result.isCorrect,true,'Never full credit for ungraded production');
@@ -53,6 +101,68 @@ try{
   const pdf=await request(`/api/sessions/${id}/report.pdf`,undefined,user.cookie);assert.equal(pdf.response.status,200);assert(pdf.response.headers.get('content-type').includes('pdf'));
   const outsider=await db.user.create({data:{email:`${randomUUID()}@local-audit.test`,role:'CANDIDATE',organizationId:org}});
   const denied=await request(`/api/sessions/${id}/status`,undefined,'accessToken='+jwt.sign({userId:outsider.id},secret));assert.equal(denied.response.status,403);
+ });
+ for(const product of [...products,'Fixed Diagnostic (30 items)','Özgün Kids — Form A (96 soru)'])await check(product+' expired-resume protection',async()=>{
+  const diagnostic=product==='Fixed Diagnostic (30 items)',fixed=product==='Özgün Kids — Form A (96 soru)';
+  const user=await candidate(diagnostic?'15-Min Diagnostic':product);
+  const launch=await ok(fixed?'/api/fixed-forms/ozgun-kids/launch':diagnostic?'/api/sessions/diagnostic/launch':'/api/sessions/launch',fixed?{organizationId:org}:diagnostic?{}:{productLine:product},user.cookie);
+  const id=launch.sessionId,prefix=`/api/sessions/${id}`;
+  if(fixed)await ok(prefix+'/fixed-form/start',{},user.cookie);
+  else await ok(prefix+'/next',undefined,user.cookie);
+  await ok(prefix+'/pause',{},user.cookie);
+  const stored=await db.session.findUniqueOrThrow({where:{id}});
+  const metadata=stored.metadata,deadline=new Date(Date.now()-1000);
+  metadata.examPause={...metadata.examPause,pausedAt:new Date(deadline.getTime()-48*3600000).toISOString(),resumeUntil:deadline.toISOString()};
+  await db.session.update({where:{id},data:{metadata}});
+  await verifyLockedAttempt(id,user.cookie);
+  const result=await request(prefix+'/resume',{},user.cookie);assert.equal(result.response.status,410);
+  assert.equal((await db.session.findUniqueOrThrow({where:{id}})).status,'EXPIRED','Expiry persists');
+  await verifyLockedAttempt(id,user.cookie);
+  assert.equal((await request(prefix+'/resume',{},user.cookie)).response.status,409,'Repeated resume cannot revive expiry');
+ });
+ await check('Assignment and invitation product validation without sending messages',async()=>{
+  const beforeCodes=await db.examCode.count({where:{organizationId:org}}),beforeAssignments=await db.assignment.count({where:{organizationId:org}});
+  for(const productLine of ['Unknown exam','__proto__','']){
+   assert.equal((await request('/api/codes/generate',{organizationId:org,productLine,quantity:1},staff)).response.status,400);
+   // Invalid products are rejected before any mail dispatch can occur.
+   assert.equal((await request('/api/codes/send-invite',{organizationId:org,productLine,email:'invalid-product@local-audit.test'},staff)).response.status,400);
+   assert.equal((await request('/api/teacher/assignments',{productLine},staff)).response.status,400);
+  }
+  assert.equal((await request('/api/teacher/assignments',{productLine:'General English',openAt:'2026-10-14T12:00:00Z',dueAt:'2026-10-13T12:00:00Z'},staff)).response.status,400);
+  assert.equal(await db.examCode.count({where:{organizationId:org}}),beforeCodes,'Invalid input creates no code');
+  assert.equal(await db.assignment.count({where:{organizationId:org}}),beforeAssignments,'Invalid input creates no assignment');
+  for(const productLine of products){
+   const {response,data}=await request('/api/teacher/assignments',{productLine},staff);
+   assert.equal(response.status,201);assert.equal(data.productLine,productLine);assert.equal(data.organizationId,org);
+  }
+ });
+ await check('Legacy Primary and Junior codes select the assigned child profile',async()=>{
+  for(const [alias,canonical] of [['Primary','Primary (7-10)'],['Junior','Junior Suite (11-14)']]){
+   const user=await candidate(alias),account=await db.user.findUniqueOrThrow({where:{id:user.id}});
+   await db.examCode.updateMany({where:{usedByEmail:account.email,organizationId:org},data:{productLine:alias}});
+   const launch=await ok('/api/sessions/launch',{productLine:canonical},user.cookie);
+   const stored=await db.session.findUniqueOrThrow({where:{id:launch.sessionId}});
+   assert.equal(stored.metadata.productLine,canonical,'Legacy child code cannot silently select General English');
+  }
+ });
+ await check('Reports exclude pretest-only and pending skill evidence',async()=>{
+  const user=await candidate('15-Min Diagnostic'),{sessionId}=await ok('/api/sessions/launch',{productLine:'15-Min Diagnostic'},user.cookie);
+  const next=await ok(`/api/sessions/${sessionId}/next`,undefined,user.cookie);
+  await ok(`/api/sessions/${sessionId}/respond`,{itemId:next.item.id,value:valueFor(next.item),latencyMs:1000},user.cookie);
+  const stored=await db.session.findUniqueOrThrow({where:{id:sessionId}}),skill=next.item.skill;
+  await db.session.update({where:{id:sessionId},data:{metadata:{...stored.metadata,skillProfiles:{[skill]:{theta:2,sem:.2}}}}});
+  await db.response.updateMany({where:{sessionId},data:{isPretest:true}});
+  let report=await ok(`/api/sessions/${sessionId}/adaptive-report`,undefined,user.cookie);
+  assert.equal(report.hasScoredEvidence,false,'Pretest response is not candidate ability evidence');
+  assert.equal(report.skillScores.length,0,'Stale profiles cannot report an unmeasured skill');
+  assert.equal(report.completedAt,null,'An unfinished exam has no invented completion timestamp');
+  assert.equal(report.productLine,'Rapid Diagnostic (30–40 Min)','Report identifies the assigned product');
+  await db.response.updateMany({where:{sessionId},data:{isPretest:false}});
+  const other=await db.item.findFirstOrThrow({where:{skill,status:'ACTIVE',id:{not:next.item.id}}});
+  await db.response.create({data:{sessionId,itemId:other.id,value:'Pending answer',score:null,isPretest:false,order:2,metadata:{requiresHumanReview:true}}});
+  report=await ok(`/api/sessions/${sessionId}/adaptive-report`,undefined,user.cookie);
+  assert.equal(report.hasScoredEvidence,true);assert.equal(report.scoringComplete,false);
+  assert.equal(report.skillScores.some(score=>score.skill===skill),false,'Pending skill levels are withheld consistently with PDF');
  });
  await check('Adaptive late-answer rejection',async()=>{
   const user=await candidate('General English'),{sessionId}=await ok('/api/sessions/launch',{productLine:'General English'},user.cookie);
@@ -87,7 +197,7 @@ try{
   assert.equal(replies.filter(result=>result.response.ok).length,1);assert.equal(replies.find(result=>!result.response.ok).response.status,402);assert.equal(await db.session.count({where:{organizationId:target}}),1);assert.equal(await db.paymentTransaction.count({where:{organizationId:target,creditsAdded:-1}}),1);
  });
  await check('30-item diagnostic complete and pending evidence report',async()=>{
-  const user=await candidate('15-Min Diagnostic');let next=await ok('/api/sessions/diagnostic/launch',{},user.cookie);const id=next.sessionId;let item=next.firstItem;const resumed=await ok(`/api/sessions/${id}/next`,undefined,user.cookie);assert.equal(resumed.item.id,item.itemId,'Diagnostic resume keeps its own blueprint');
+  const user=await candidate('15-Min Diagnostic');let next=await ok('/api/sessions/diagnostic/launch',{},user.cookie);const id=next.sessionId;let item=next.firstItem;const resumed=await ok(`/api/sessions/${id}/next`,undefined,user.cookie);assert.equal(resumed.item.id,item.itemId,'Diagnostic resume keeps its own blueprint');await verifyPause(id,user.cookie,item.itemId);
   for(let i=0;i<30;i++){assert(item);if(i===0){await ok(`/api/sessions/${id}/respond`,{itemId:item.itemId,value:valueFor(item),latencyMs:30000},user.cookie);const resumed=await ok(`/api/sessions/${id}/next`,undefined,user.cookie);item={...resumed.item,itemId:resumed.item.id};continue;}next=await ok(`/api/sessions/diagnostic/${id}/respond`,{itemId:item.itemId,value:valueFor(item),latencyMs:30000},user.cookie);item=next.nextItem;}
   assert.equal(next.complete,true);assert.equal(await db.response.count({where:{sessionId:id}}),30);
   const stored=await db.session.findUniqueOrThrow({where:{id},include:{scoreReport:true}});assert(['SCORING','COMPLETED'].includes(stored.status));
@@ -102,6 +212,7 @@ try{
   const endpoint=`/api/sessions/${sessionId}/fixed-form`;
   assert.equal((await ok(endpoint,undefined,user.cookie)).questions.length,0);
   assert.equal((await ok(endpoint+'/start',{},user.cookie)).questions.length,24);
+  await verifyPause(sessionId,user.cookie);
   await ok(endpoint+'/answer',{number:1,answer:config.answerKey[0]},user.cookie);
   assert.equal((await ok(`/api/sessions/${sessionId}/status`,undefined,user.cookie)).answers['1'],config.answerKey[0]);
   for(let sectionIndex=0;sectionIndex<4;sectionIndex++)await ok(endpoint+'/advance',{sectionIndex},user.cookie);

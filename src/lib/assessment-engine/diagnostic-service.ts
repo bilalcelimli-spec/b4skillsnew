@@ -75,7 +75,7 @@ export interface DiagnosticSessionState {
 async function loadState(sessionId: string): Promise<DiagnosticSessionState | null> {
   const session = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!session) return null;
-  if (session.status === "PAUSED") throw AppError.conflict("This assessment is paused or expired");
+  if (session.status === "PAUSED" || session.status === "EXPIRED") throw AppError.conflict("This assessment is paused or expired");
   const meta = session.metadata as any;
   return meta?.diagnosticState ?? null;
 }

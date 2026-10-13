@@ -1,8 +1,8 @@
 import React from "react";
 import { Clock, Mic, Camera, BookOpen, Headphones, PenLine, MessageSquare, ShieldCheck, XCircle, Wifi } from "lucide-react";
 import { RubricPreview } from "./RubricPanel.js";
-import { OZGUN_PRODUCT, OZGUN_SECTIONS, OZGUN_TITLE } from "../lib/fixed-forms/ozgun-kids";
-import { getProfile } from "../lib/product-lines/profiles.js";
+import { OZGUN_SECTIONS } from "../lib/fixed-forms/ozgun-kids";
+import { assessmentPresentation } from "../lib/product-lines/assessment-presentation";
 
 interface PreTestBriefingProps {
   productLine?: string;
@@ -20,11 +20,8 @@ const SKILL_ICONS: Record<string, React.ReactNode> = {
 };
 
 export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, onStart, onCancel }) => {
-  const profile = getProfile(productLine);
-  const fixed = productLine === OZGUN_PRODUCT;
-  const title = fixed ? OZGUN_TITLE : profile.displayName ?? profile.name;
-  const duration = fixed ? "105 min" : `${profile.estimatedDurationMin[0]}–${profile.estimatedDurationMin[1]} min`;
-  const skills = (fixed ? OZGUN_SECTIONS.map(section => section.skill) : profile.sectionOrder).map((skill) => skill.charAt(0) + skill.slice(1).toLowerCase());
+  const {fixed, title, duration: minutes, skills, resumeHours} = assessmentPresentation(productLine);
+  const duration = `${minutes} min`;
   const needsMic = skills.includes("Speaking");
   const needsCamera = true;
 
@@ -55,7 +52,7 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
             <div className="flex-1 bg-indigo-50 border border-indigo-100 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-1">
                 <Clock size={16} className="text-indigo-500" />
-                <span className="text-xs font-bold text-indigo-600 uppercase tracking-wide">Duration</span>
+                <span className="text-xs font-bold text-indigo-600 uppercase tracking-wide">{fixed ? "Timed sections" : "Estimated duration"}</span>
               </div>
               <p className="text-2xl font-black text-indigo-700">{duration}</p>
               <p className="text-xs text-indigo-400 mt-0.5">{fixed ? "96 questions · 4 timed sections" : "Adaptive — stops early when confident"}</p>
@@ -83,13 +80,13 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
               {skills.includes("Writing") && (
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 text-indigo-400 font-bold">→</span>
-                  Short writing tasks scored by AI across 6 dimensions within 48 hours
+                  Writing tasks assessed against the rubric below. Some responses require human review.
                 </li>
               )}
               {skills.includes("Speaking") && (
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 text-indigo-400 font-bold">→</span>
-                  Spoken responses recorded and scored by AI across 7 dimensions within 48 hours
+                  Spoken responses are recorded and assessed against the rubric below. Some responses require human review.
                 </li>
               )}
               <li className="flex items-start gap-2">
@@ -140,7 +137,7 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
           <div className="flex items-start gap-2 text-xs text-slate-500">
             <ShieldCheck size={14} className="text-emerald-500 flex-shrink-0 mt-0.5" />
             <span>
-              {fixed ? "Submitted answers are saved. Leaving or disconnecting does not pause section timers. Resume the same attempt while time remains. Preparation does not start the exam timer." : "Do not refresh or close the tab during the test. If disconnected, your progress is saved and you can resume within 30 minutes. Results and certificate will be issued after all sections are scored."}
+              Submitted answers are saved. Use “Exit exam” once to pause and resume the same attempt within {resumeHours} hours. Closing the tab or losing connection does not pause the timer. Unsubmitted text or recordings may need to be entered again. {fixed ? "Preparation does not start the exam timer." : "Final results are available after required scoring and review are complete."}
             </span>
           </div>
         </div>

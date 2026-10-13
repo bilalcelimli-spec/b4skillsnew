@@ -1,16 +1,18 @@
 // @vitest-environment jsdom
 
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { OZGUN_PRODUCT } from "../../lib/fixed-forms/ozgun-kids";
 import { PreTestBriefing } from "../PreTestBriefing.js";
+
+afterEach(cleanup);
 
 describe("PreTestBriefing", () => {
   it("uses the shared briefing with the fixed exam's actual skills, timings and policies", () => {
     render(<PreTestBriefing productLine={OZGUN_PRODUCT} onStart={vi.fn()} onCancel={vi.fn()}/>);
     expect(screen.getByRole('heading', {name:'Özgün Placement'})).toBeTruthy();
-    expect(screen.getByText('105 min')).toBeTruthy();
+    expect(screen.getByText('102 min')).toBeTruthy();
     expect(screen.getByText('96 questions · 4 timed sections')).toBeTruthy();
     expect(screen.queryByText('Microphone required')).toBeNull();
     expect(screen.queryByText('Adaptive — stops early when confident')).toBeNull();
@@ -39,4 +41,14 @@ describe("PreTestBriefing", () => {
     fireEvent.click(screen.getByRole("button", { name: /Start Test/i }));
     expect(onStart).toHaveBeenCalledOnce();
   });
+});
+
+it.each(['15-Min Diagnostic','Express Assessment (30-Min)'])('explains the one-time pause and pending review for %s',productLine=>{
+ render(<PreTestBriefing productLine={productLine} onStart={vi.fn()} onCancel={vi.fn()}/>);
+ expect(screen.getByText(/resume the same attempt within 48 hours/)).toBeTruthy();
+ expect(screen.getByText(/Closing the tab or losing connection does not pause/)).toBeTruthy();
+ expect(screen.queryByText(/resume within 30 minutes/)).toBeNull();
+ expect(screen.queryByText(/certificate will be issued/)).toBeNull();
+ expect(screen.getByText('Writing')).toBeTruthy();
+ expect(screen.getByText('Speaking')).toBeTruthy();
 });

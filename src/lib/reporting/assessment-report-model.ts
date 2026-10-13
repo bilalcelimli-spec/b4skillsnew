@@ -1,3 +1,4 @@
+import { assessmentDisplayName } from '../fixed-forms/ozgun-kids';
 import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence, scoringRequirements } from "../scoring/score-evidence.js";
 import { CEFR_META, thetaToBeps, thetaToCefr, type CefrLevel } from '../cefr/cefr-framework.js';
 
@@ -45,7 +46,7 @@ export function buildAssessmentReport(session: ReportSession, baseUrl: string, n
   const review = session.status === 'FLAGGED' || diagnostic.securityFlag === true;
   const provisional = pending || diagnostic.scoringComplete !== true || sr.isVerified !== true || (session.responses !== undefined && !hasCompleteScoringEvidence(responses, scoringRequirements(meta))) || !completedAt || !session.scoreReport || !['COMPLETED', 'EXPIRED'].includes(session.status);
   const status = expired ? 'Expired' : review ? 'Under review' : provisional ? 'Provisional' : 'Completed';
-  const profiles = Object.fromEntries(Object.entries(record(diagnostic.skillProfiles)).map(([key, value]) => [key.toUpperCase(), record(value)]));
+  const profiles = Object.fromEntries(Object.entries(record(diagnostic.skillProfiles ?? meta.skillProfiles)).map(([key, value]) => [key.toUpperCase(), record(value)]));
   const skills = REPORT_SKILLS.map(skill => {
     const profile = profiles[skill] ?? {};
     const matching = responses.filter(r => r.item?.skill?.toUpperCase() === skill);
@@ -53,14 +54,15 @@ export function buildAssessmentReport(session: ReportSession, baseUrl: string, n
       const m = record(r.metadata);
       return !r.isPretest && shouldExcludeResponseFromAbility(r);
     });
-    const skillTheta = finite(profile.theta) ? profile.theta : null;
+    const hasEvidence = session.responses === undefined || matching.some(r => !r.isPretest && !shouldExcludeResponseFromAbility(r));
+    const skillTheta = hasEvidence && finite(profile.theta) ? profile.theta : null;
     // Never substitute the overall ability for an unmeasured skill.
-    const skillLevel = level(profile.cefrLevel) ?? level(profile.cefr) ?? (skillTheta !== null ? thetaToCefr(skillTheta) : null);
+    const skillLevel = hasEvidence ? level(profile.cefrLevel) ?? level(profile.cefr) ?? (skillTheta !== null ? thetaToCefr(skillTheta) : null) : null;
     return {
       skill, theta: skillTheta, cefr: skillPending ? null : skillLevel,
-      sem: finite(profile.sem) && profile.sem >= 0 ? profile.sem : null,
+      sem: hasEvidence && finite(profile.sem) && profile.sem >= 0 ? profile.sem : null,
       count: session.responses ? matching.filter(r => !r.isPretest).length : null,
-      state: skillPending ? 'Scoring pending' : skillLevel ? 'Reported' : matching.length ? 'Result unavailable' : 'Not assessed',
+      state: skillPending ? 'Scoring pending' : skillLevel ? 'Reported' : matching.some(r => !r.isPretest) ? 'Result unavailable' : 'Not assessed',
     };
   });
   const certificateId = sr.isVerified === true && typeof sr.certificateUrl === 'string' && !!date(diagnostic.certificateIssuedAt) && typeof sr.id === 'string' && !provisional && !review && !expired ? sr.id : null;
@@ -68,7 +70,7 @@ export function buildAssessmentReport(session: ReportSession, baseUrl: string, n
     sessionId: session.id, reportId: typeof sr.id === 'string' ? sr.id : null,
     candidateName: session.candidate?.name?.trim() || 'Candidate',
     candidateEmail: session.candidate?.email || null,
-    productLine: typeof diagnostic.productLine === 'string' ? diagnostic.productLine : typeof meta.productLine === 'string' ? meta.productLine : 'English Assessment',
+    productLine: assessmentDisplayName(typeof diagnostic.productLine === 'string' ? diagnostic.productLine : typeof meta.productLine === 'string' ? meta.productLine : 'English Assessment'),
     completedAt, validUntil, generatedAt: now, status, provisional, cefr, theta,
     sem: sem ?? null, beps: theta === null ? null : thetaToBeps(theta),
     interval: theta !== null && sem !== undefined ? {

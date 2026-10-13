@@ -379,6 +379,7 @@ const DIAGNOSTIC_15: ProductLineProfile = {
  */
 const EXPRESS_30: ProductLineProfile = {
   name: "Express Assessment (30-Min)",
+  displayName: "Express Assessment (30–46 Min)",
   cefrRange: ["A1", "C1"],
   ageRange: [14, 99],
   sectionOrder: [
@@ -758,14 +759,16 @@ export const PRODUCT_LINE_PROFILES: Record<ProductLineName, ProductLineProfile> 
  * Resolve the profile for a session.
  * Falls back to General English when productLine is unknown or missing.
  */
+/** Resolve persisted legacy aliases without silently selecting another exam. */
+export function resolveProfileName(productLine?: string | null): ProductLineName | null {
+  if (typeof productLine !== 'string') return null;
+  const normalized = productLine.trim().toLowerCase();
+  const aliases: Record<string, ProductLineName> = {
+    general: 'General English', primary: 'Primary (7-10)', junior: 'Junior Suite (11-14)',
+  };
+  return Object.hasOwn(aliases, normalized) ? aliases[normalized]
+    : (Object.keys(PRODUCT_LINE_PROFILES) as ProductLineName[]).find(name => name.toLowerCase() === normalized) ?? null;
+}
 export function getProfile(productLine?: string | null): ProductLineProfile {
-  if (productLine && productLine in PRODUCT_LINE_PROFILES) {
-    return PRODUCT_LINE_PROFILES[productLine as ProductLineName];
-  }
-  // Geriye dönük uyumluluk: eski exam code'lar "General" değeriyle üretilmişti.
-  if (productLine === "General") {
-    return PRODUCT_LINE_PROFILES["General English"];
-  }
-  // Bilinmeyen veya boş productLine → General English (önceki 15-Min Diagnostic yerine)
-  return PRODUCT_LINE_PROFILES["General English"];
+  return PRODUCT_LINE_PROFILES[resolveProfileName(productLine) ?? 'General English'];
 }

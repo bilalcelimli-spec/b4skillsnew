@@ -162,9 +162,9 @@ const ProductLinesView: React.FC<{ onNavigate: (tab: Tab) => void }> = ({ onNavi
           onNavigate={onNavigate}
         />
         <LineConfigCard 
-          title="15-Minute Diagnostic" icon={<Zap/>} color="bg-amber-50 text-amber-600"
-          desc="Lead-gen universal tool. Pure CAT starting at B1. High IRT discrimination items only."
-          tags={["High 'a' Parameter", "Fast Convergence", "Max 20 Items"]}
+          title={assessmentDisplayName("15-Min Diagnostic")} icon={<Zap/>} color="bg-amber-50 text-amber-600"
+          desc="Six-section diagnostic with short writing and speaking tasks and multistage routing."
+          tags={["Six Sections", "Multistage Routing", "30–40 Min"]}
           onNavigate={onNavigate}
         />
       </div>
