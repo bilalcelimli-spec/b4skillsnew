@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   testDir: ".",
-  testMatch: ["code-entry-renderer.spec.ts", "item-renderer.spec.ts", "certificate-renderer.spec.ts", "ozgun-kids-renderer.spec.ts", "adaptive-report-renderer.spec.ts", "shared-report-renderer.spec.ts", "workspace-flow.spec.ts"],
+  testMatch: ["code-entry-renderer.spec.ts", "item-renderer.spec.ts", "certificate-renderer.spec.ts", "ozgun-kids-renderer.spec.ts", "adaptive-report-renderer.spec.ts", "shared-report-renderer.spec.ts", "workspace-flow.spec.ts", "freemium-recovery.spec.ts"],
   use: { baseURL: "http://127.0.0.1:4174", browserName: "chromium", permissions: ["microphone", "camera"], launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] } },
   workers: 2,
   reporter: "list",

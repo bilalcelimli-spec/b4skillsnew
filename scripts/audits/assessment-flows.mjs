@@ -73,14 +73,25 @@ async function verifyPause(id,cookie,currentItemId){
 }
 function valueFor(item){if(item.skill==='WRITING')return 'x';if(item.skill==='SPEAKING')return audio;
  const content=item.metadata??item.content;const options=content.options;const index=options.findIndex(option=>(typeof option==='string'?option:option.text).startsWith('Correct response'));assert(index>=0,'Controlled objective fixture required');return String.fromCharCode(65+index);}
+async function startAuditServer(){
+ child=spawn(process.execPath,['dist/server.js'],{env:{...process.env,NODE_ENV:'test',DISABLE_HMR:'true',PORT:'39482',DATABASE_URL:database,DIRECT_URL:database,JWT_SECRET:secret,REFRESH_SECRET:secret+'-refresh',AWS_SECRET_ARN:'',SENTRY_DSN:'',OTEL_SDK_DISABLED:'true',REDIS_URL:'',GEMINI_API_KEY:'',GOOGLE_API_KEY:'',OPENAI_API_KEY:'',ANTHROPIC_API_KEY:''},stdio:['ignore',log,log]});
+ let ready=false;for(let i=0;i<100;i++){try{if((await request('/api/health')).response.ok){ready=true;break;}}catch{}if(child.exitCode!==null||child.signalCode!==null)throw Error('Local audit server exited');await new Promise(resolve=>setTimeout(resolve,200));}assert(ready,'Server readiness');
+}
+async function crashAuditServer(){
+ const current=child;
+ await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(Error('Audit child did not stop')),10000);
+  current.once('exit',()=>{clearTimeout(timer);resolve();});
+  current.kill('SIGKILL');
+ });
+}
 const staff='accessToken='+jwt.sign({userId:admin},secret,{expiresIn:'1h'});
 try{
  await db.organization.create({data:{id:org,name:'Disposable all-exam audit',slug:org}});
  await db.user.create({data:{id:admin,email:`${admin}@local-audit.test`,role:'SUPER_ADMIN',organizationId:org}});
  await db.license.create({data:{organizationId:org,type:'ENTERPRISE',credits:1000,expiresAt:new Date(Date.now()+86400000)}});
  log=openSync('/tmp/b4skills-all-exams-server.log','w');
- child=spawn(process.execPath,['dist/server.js'],{env:{...process.env,NODE_ENV:'test',DISABLE_HMR:'true',PORT:'39482',DATABASE_URL:database,DIRECT_URL:database,JWT_SECRET:secret,REFRESH_SECRET:secret+'-refresh',AWS_SECRET_ARN:'',SENTRY_DSN:'',OTEL_SDK_DISABLED:'true',REDIS_URL:'',GEMINI_API_KEY:'',GOOGLE_API_KEY:'',OPENAI_API_KEY:'',ANTHROPIC_API_KEY:''},stdio:['ignore',log,log]});
- let ready=false;for(let i=0;i<100;i++){try{if((await request('/api/health')).response.ok){ready=true;break;}}catch{}if(child.exitCode!==null)throw Error('Local audit server exited');await new Promise(resolve=>setTimeout(resolve,200));}assert(ready,'Server readiness');
+ await startAuditServer();
  for(const product of products)await check(product+' complete/save/resume/report',async()=>{
   const user=await candidate(product),launch=await ok('/api/sessions/launch',{productLine:product},user.cookie),id=launch.sessionId;
   const observed=new Set();let complete=false,finalTheta;
@@ -348,6 +359,72 @@ try{
    assert.equal(response.metadata.requiresHumanReview,true);
   }
   assert.equal(await db.ratingTask.count({where:{response:{sessionId:{in:ids}}}}),105,'Failed AI scoring is visible for human review');
+ });
+ await check('Abrupt restart preserves all 11 persistent assessment flows and one-time pause rights',async()=>{
+  const cases=[];
+  for(const [index,product] of [...products,'Fixed Diagnostic (30 items)','Özgün Kids — Form A (96 soru)'].entries()){
+   const fixed=product==='Özgün Kids — Form A (96 soru)',diagnostic=product==='Fixed Diagnostic (30 items)';
+   const user=await candidate(diagnostic?'15-Min Diagnostic':product);
+   const endpoint=fixed?'/api/fixed-forms/ozgun-kids/launch':diagnostic?'/api/sessions/diagnostic/launch':'/api/sessions/launch';
+   const body=fixed?{organizationId:org}:diagnostic?{}:{productLine:product};
+   const launch=await ok(endpoint,body,user.cookie),id=launch.sessionId,prefix=`/api/sessions/${id}`;
+   let nextItemId;
+   if(fixed){
+    await ok(prefix+'/fixed-form/start',{},user.cookie);
+    const config=await ok('/api/fixed-forms/ozgun-kids/config',undefined,staff);
+    await ok(prefix+'/fixed-form/answer',{number:1,answer:config.answerKey[0]},user.cookie);
+   }else{
+    const next=await ok(prefix+'/next',undefined,user.cookie);
+    await ok(prefix+'/respond',{itemId:next.item.id,value:valueFor(next.item),latencyMs:30000},user.cookie);
+    nextItemId=(await ok(prefix+'/next',undefined,user.cookie)).item.id;
+   }
+   if(index%2===0)await ok(prefix+'/pause',{},user.cookie);
+   const stored=await db.session.findUniqueOrThrow({where:{id},include:{responses:{orderBy:{id:'asc'}}}});
+   const status=await ok(prefix+'/status',undefined,user.cookie);
+   assert(fixed?status.answers['1']:status.answeredItemIds.length===1,'Server confirms the saved answer before crashing');
+   cases.push({user,id,prefix,fixed,diagnostic,product,nextItemId,stored});
+  }
+  const preview=await ok('/api/assessment/placement/start',{});
+  const credits=(await db.license.findFirstOrThrow({where:{organizationId:org}})).credits;
+  const sessionCount=await db.session.count({where:{organizationId:org}});
+  await crashAuditServer();
+  await startAuditServer();
+  for(const row of cases){
+   const after=await db.session.findUniqueOrThrow({where:{id:row.id},include:{responses:{orderBy:{id:'asc'}}}});
+   assert.equal(after.status,row.stored.status,'Restart preserves active/paused lifecycle');
+   assert.deepEqual(after.responses,row.stored.responses,'Every acknowledged answer survives abrupt shutdown');
+   assert.deepEqual(after.metadata,row.stored.metadata,'Progress, clocks, current item and pause deadline survive restart');
+   assert.equal(+after.startedAt,+row.stored.startedAt,'Restart does not reset the attempt start');
+   if(row.stored.status==='PAUSED'){
+    await verifyLockedAttempt(row.id,row.user.cookie);
+    const resumed=await ok(row.prefix+'/resume',{},row.user.cookie);
+    assert.equal(resumed.pause.canPause,false,'A crash cannot grant an extra pause');
+    assert.equal((await request(row.prefix+'/pause',{},row.user.cookie)).response.status,409);
+   }
+   if(row.fixed){const view=await ok(row.prefix+'/fixed-form',undefined,row.user.cookie);
+    assert.equal(view.answers['1'],row.stored.metadata.fixedForm.answers['1']);
+   }else{
+    const view=await ok(row.prefix+'/next',undefined,row.user.cookie);
+    assert.equal(view.item.id,row.nextItemId,'Resume delivers the same unanswered question');
+    const original=row.stored.responses[0];
+    const duplicate={itemId:original.itemId,value:original.value,latencyMs:30000};
+    assert.equal((await request(row.prefix+'/respond',duplicate,row.user.cookie)).response.status,409,`${row.product}: duplicate answer is an operational conflict`);
+    if(row.diagnostic)assert.equal((await request(`/api/sessions/diagnostic/${row.id}/respond`,duplicate,row.user.cookie)).response.status,409,'Diagnostic-specific route preserves the same conflict');
+    const preserved=await db.response.findMany({where:{sessionId:row.id},orderBy:{id:'asc'}});
+    assert.deepEqual(preserved,row.stored.responses,'Rejected duplicate cannot alter any acknowledged answer');
+   }
+  }
+  assert.equal((await db.license.findFirstOrThrow({where:{organizationId:org}})).credits,credits,'Restart/resume cannot consume another credit');
+  assert.equal(await db.session.count({where:{organizationId:org}}),sessionCount,'Restart/resume cannot create another attempt');
+  const lost=await request(`/api/assessment/placement/${preview.placementId}/respond`,{itemId:preview.firstItem.id,selectedOption:valueFor(preview.firstItem),latencyMs:30000});
+  assert.equal(lost.response.status,410,'Anonymous quick check reports lost in-memory session explicitly');
+  assert.equal(lost.data.code,'PLACEMENT_SESSION_EXPIRED');
+  assert(!lost.data.result,'A lost quick check cannot invent a result');
+  for(const invalidId of ['__proto__','constructor','toString']){
+   const missing=await request(`/api/assessment/placement/${invalidId}/respond`,{itemId:'missing',selectedOption:'A'});
+   assert.equal(missing.response.status,410,'Object property names are not valid quick-check sessions');
+   assert.equal(missing.data.code,'PLACEMENT_SESSION_EXPIRED');
+  }
  });
  await check('Freemium six-skill completion with ungraded speech',async()=>{
   const start=await ok('/api/assessment/placement/start',{});let item=start.firstItem,result;

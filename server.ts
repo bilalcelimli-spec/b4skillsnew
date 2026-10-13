@@ -5737,7 +5737,7 @@ ${codeSection}
     scoringInProgress: boolean;
     currentItemId: string;
     createdAt: number;
-  }> = {};
+  }> = Object.create(null);
 
   // Purge placement sessions older than 2 hours (abandoned tests)
   setInterval(() => {
@@ -5866,7 +5866,7 @@ ${codeSection}
     try {
       const { id } = req.params;
       const sess = placementSessions[id];
-      if (!sess) return res.status(404).json({ error: "Placement session not found" });
+      if (!sess) return res.status(410).json({ code: "PLACEMENT_SESSION_EXPIRED", error: "This quick check is no longer available. Please start a new quick check." });
 
       const { itemId, selectedOption, latencyMs } = req.body;
       const item = sess.items.find(it => it.id === itemId);

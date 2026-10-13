@@ -29,7 +29,7 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Step = "register" | "intro" | "question" | "result";
+type Step = "register" | "intro" | "question" | "result" | "expired";
 
 interface PlacementItem {
   id: string;
@@ -435,6 +435,9 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
       setCurrentItem(data.firstItem);
       setMaxItems(data.maxItems ?? 30);
       setItemsAdministered(0);
+      setResult(null);setError(null);setElapsed(0);setTestStartTime(0);setCurrentBand(null);
+      setSkillsSeen(data.firstItem?.skill ? [data.firstItem.skill] : []);
+      setCaptureEmailSent(false);setCopied(false);setShowQuitDialog(false);
       if (data.sectionOrder?.length) setSectionOrder(data.sectionOrder);
       setStep("intro");
     } catch (err: any) {
@@ -490,6 +493,13 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
         body: JSON.stringify({ itemId: currentItem.id, selectedOption: submittedAnswer, latencyMs }),
       });
       const data = await res.json();
+      if (res.status === 410 || res.status === 404) {
+        // Anonymous quick checks are ephemeral. Retrying a lost session can
+        // never save this answer; offer an explicit fresh start instead.
+        setPlacementId(null);setCurrentItem(null);setResult(null);setShowQuitDialog(false);
+        setStep("expired");
+        return;
+      }
       if (!res.ok) throw new Error(data.error ?? "Failed to submit response");
       if (data.complete) {
         if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -674,7 +684,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
           <div className="text-center">
             <div className="text-5xl mb-4">👋</div>
             <h2 className="text-2xl md:text-3xl font-black text-slate-900">Hi {name.split(" ")[0]}, you're all set!</h2>
-            <p className="text-slate-500 mt-2 text-base">Here's what to expect in your General English Test.</p>
+            <p className="text-slate-500 mt-2 text-base">Here's what to expect in your free quick check.</p>
           </div>
 
           <div className="space-y-3">
@@ -695,7 +705,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                 icon: <Clock size={22} className="text-blue-600" />,
                 bg: "bg-blue-50 border-blue-200",
                 title: "No Time Pressure",
-                body: "There's no countdown per question. Read carefully and answer when you're ready.",
+                body: "There's no countdown per question. Read carefully and answer when you're ready. This quick check cannot be resumed after it ends.",
               },
               {
                 icon: <Star size={22} className="text-amber-500" />,
@@ -1484,6 +1494,17 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
           {step === "question" && (
             <motion.div key="q" className="flex-1 flex flex-col overflow-hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
               {renderQuestion()}
+            </motion.div>
+          )}
+          {step === "expired" && (
+            <motion.div key="expired" className="flex-1 flex flex-col items-center justify-center gap-5 p-6 text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <AlertCircle size={36} className="text-amber-600" />
+              <div role="alert">
+                <h2 className="text-2xl font-black text-slate-900">Quick check ended</h2>
+                <p className="mt-3 max-w-md text-slate-600">This quick check is no longer available. Your previous answers cannot be resumed. You can start a new quick check.</p>
+              </div>
+              <button onClick={() => { setRegError(null);setStep("register"); }} className="rounded-2xl bg-slate-900 px-6 py-3 font-bold text-white">Start a new quick check</button>
+              <button onClick={onClose} className="px-6 py-3 font-bold text-slate-600">Close quick check</button>
             </motion.div>
           )}
           {step === "result" && (

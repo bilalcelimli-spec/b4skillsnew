@@ -36,3 +36,21 @@ describe('diagnostic grading uses scored evidence',()=>{
   expect(mocks.report.mock.calls.at(-1)![0].update.isVerified).toBe(false);
  });
 });
+
+describe('diagnostic response conflicts',()=>{
+ it('rejects an answered item with 409 before invoking scoring or writing a response',async()=>{
+  fixture();
+  await expect(DiagnosticService.respond('session','WRITING-3','Duplicate',10000)).rejects.toMatchObject({statusCode:409});
+  expect(mocks.grade).not.toHaveBeenCalled();expect(mocks.create).not.toHaveBeenCalled();expect(mocks.update).not.toHaveBeenCalled();
+ });
+ it('rejects an item outside the administered blueprint as a bad request',async()=>{
+  fixture();
+  await expect(DiagnosticService.respond('session','unassigned-item','Wrong item',10000)).rejects.toMatchObject({statusCode:400});
+  expect(mocks.grade).not.toHaveBeenCalled();expect(mocks.create).not.toHaveBeenCalled();
+ });
+ it('rejects a duplicate discovered under the session lock without writing again',async()=>{
+  fixture();mocks.grade.mockResolvedValue({score:0,kind:'rubric',status:'scored'});mocks.count.mockResolvedValue(1);
+  await expect(DiagnosticService.respond('session','WRITING-4','Answer',10000)).rejects.toMatchObject({statusCode:409});
+  expect(mocks.lock).toHaveBeenCalledOnce();expect(mocks.create).not.toHaveBeenCalled();expect(mocks.update).not.toHaveBeenCalled();
+ });
+});

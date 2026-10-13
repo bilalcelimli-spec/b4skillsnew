@@ -246,7 +246,7 @@ export class DiagnosticService {
   }> {
     const state = await loadState(sessionId);
     if (!state) throw new Error("Diagnostic session not found");
-    if (state.complete) throw new Error("Session already complete");
+    if (state.complete) throw AppError.conflict("Session already complete");
     if (Date.now() >= new Date(state.expiresAt).getTime()) {
       await prisma.$transaction(async tx => {
         await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
@@ -270,14 +270,14 @@ export class DiagnosticService {
       const item = state.skills[skill].items.find((i) => i.itemId === itemId);
       if (item) { foundItem = item; foundSkill = skill; break; }
     }
-    if (!foundItem || !foundSkill) throw new Error("Item not found in session");
-    if (foundItem.answered) throw new Error("Item already answered");
-    if (DiagnosticService._nextItem(state)?.itemId !== itemId) throw new Error("Response must match the current unanswered item");
+    if (!foundItem || !foundSkill) throw AppError.badRequest("Item not found in session");
+    if (foundItem.answered) throw AppError.conflict("Item already answered");
+    if (DiagnosticService._nextItem(state)?.itemId !== itemId) throw AppError.conflict("Response must match the current unanswered item");
 
     // Score — fetch item to get correct answer
     const itemRow = await prisma.item.findUnique({ where: { id: itemId } });
     const content  = (itemRow?.content ?? {}) as any;
-    if (!itemRow) throw new Error("Item not found");
+    if (!itemRow) throw AppError.notFound("Item not found");
     const input = itemRow.type === "MULTIPLE_CHOICE" && typeof value === "string" && /^[A-Z]$/i.test(value.trim())
       ? value.trim().toUpperCase().charCodeAt(0) - 65 : value;
     const options = Array.isArray(content.options) ? content.options.map((option: any) => typeof option === "string" ? option : option.text) : undefined;
@@ -304,7 +304,7 @@ export class DiagnosticService {
         throw new DiagnosticReportNotReadyError('Diagnostic time limit reached; the late answer was not saved');
       }
       if (!currentState || currentState.complete || DiagnosticService._nextItem(currentState)?.itemId !== itemId ||
-          await tx.response.count({where:{sessionId,itemId}}) > 0) throw new Error("Response must match the current unanswered item");
+          await tx.response.count({where:{sessionId,itemId}}) > 0) throw AppError.conflict("Response must match the current unanswered item");
       state.startedAt = currentState.startedAt;
       state.expiresAt = currentState.expiresAt;
       // A rating may have completed while this answer was being graded. Keep
