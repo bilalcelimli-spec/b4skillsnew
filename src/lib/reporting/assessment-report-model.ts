@@ -38,7 +38,7 @@ export function buildAssessmentReport(session: ReportSession, baseUrl: string, n
   const responses = session.responses ?? [];
   const pending = responses.some(r => {
     const m = record(r.metadata);
-    return !r.isPretest && shouldExcludeResponseFromAbility(r);
+    return !r.isPretest && (m.reportRefreshPending === true || shouldExcludeResponseFromAbility(r));
   }) || (session.responses === undefined && meta.pendingAsyncScoring === true);
   const completedAt = date(session.completedAt);
   const validUntil = date(session.validUntil);
@@ -52,7 +52,7 @@ export function buildAssessmentReport(session: ReportSession, baseUrl: string, n
     const matching = responses.filter(r => r.item?.skill?.toUpperCase() === skill);
     const skillPending = matching.some(r => {
       const m = record(r.metadata);
-      return !r.isPretest && shouldExcludeResponseFromAbility(r);
+      return !r.isPretest && (m.reportRefreshPending === true || shouldExcludeResponseFromAbility(r));
     });
     const hasEvidence = session.responses === undefined || matching.some(r => !r.isPretest && !shouldExcludeResponseFromAbility(r));
     const skillTheta = hasEvidence && finite(profile.theta) ? profile.theta : null;

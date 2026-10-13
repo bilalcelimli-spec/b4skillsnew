@@ -23,6 +23,15 @@ describe('background scoring persistence', () => {
     expect(mocks.refresh).toHaveBeenCalledWith('session');
     expect(getScoringQueueStats().activeCount).toBe(0);
   });
+  it('persists distinct report retry versions with each committed grade', async () => {
+    await enqueueScoringJob(job);
+    await enqueueScoringJob(job);
+    const first=mocks.update.mock.calls[0][0].data.metadata;
+    const second=mocks.update.mock.calls[1][0].data.metadata;
+    expect(first.reportRefreshPending).toBe(true);
+    expect(first.reportRefreshVersion).toEqual(expect.any(String));
+    expect(second.reportRefreshVersion).not.toBe(first.reportRefreshVersion);
+  });
   it('withholds the AI outage placeholder instead of recording it as a grade', async () => {
     mocks.writing.mockResolvedValue({...decision,score:.5,scoreSource:'ai_unavailable',requiresHumanReview:true});
     await enqueueScoringJob(job);
@@ -99,9 +108,100 @@ describe('background scoring persistence', () => {
 it('recovers literal JSON writing without turning it into an audio object and isolates malformed tasks', async () => {
   mocks.many.mockResolvedValue([
     {...job,id:'invalid',item:{skill:'LISTENING',type:'INTEGRATED_TASK',content:{responseFormat:'spoken'}},metadata:{},value:'wrong response format'},
-    {...job,id:'json-essay',item:{skill:'WRITING',type:'SHORT_ANSWER',content:{prompt:'Write a JSON example'}},metadata:{},value:'{"topic":"my work"}'},
+    {...job,id:'json-essay',item:{skill:'WRITING',type:'WRITING_PROMPT',content:{prompt:'Write a JSON example'}},metadata:{},value:'{"topic":"my work"}'},
   ]);
   expect(await recoverPendingScoringJobs()).toBe(1);
   await drainScoringQueue(1000);
   expect(mocks.writing).toHaveBeenCalledWith('{"topic":"my work"}','Write a JSON example');
+});
+
+const recoveryRows = (count: number, prefix = 'recovery') => Array.from({length: count}, (_, n) => ({
+  ...job, id: `${prefix}-${String(n).padStart(4, '0')}`, humanScore: null,
+  item: {skill:'WRITING',type:'WRITING_PROMPT',content:{prompt:job.prompt}},
+  metadata: {pendingAsyncScore:true},
+}));
+function persistedRecoveryRows(rows: ReturnType<typeof recoveryRows>) {
+  mocks.many.mockImplementation(async ({where, take}) => rows
+    .filter(row => row.metadata.pendingAsyncScore && (!where.id || row.id > where.id.gt)).slice(0,take));
+  mocks.update.mockImplementation(async ({where,data}) => {
+    const row = rows.find(row => row.id === where.id);
+    if (row) row.metadata = data.metadata;
+    return {count:1};
+  });
+}
+
+it('eventually recovers every submission beyond the first 100 after a restart', async () => {
+  const rows = recoveryRows(205);
+  persistedRecoveryRows(rows);
+  expect(await recoverPendingScoringJobs()).toBe(100);
+  await drainScoringQueue(1000);
+  expect(await recoverPendingScoringJobs()).toBe(100);
+  await drainScoringQueue(1000);
+  expect(await recoverPendingScoringJobs()).toBe(5);
+  await drainScoringQueue(1000);
+  expect(await recoverPendingScoringJobs()).toBe(0);
+  expect(mocks.writing).toHaveBeenCalledTimes(205);
+  expect(rows.every(row => row.metadata.pendingAsyncScore === false)).toBe(true);
+});
+
+it('continues past a full page of unusable records without blocking later tasks', async () => {
+  const rows = recoveryRows(101);
+  rows.slice(0,100).forEach(row => {row.item.skill='GRAMMAR';row.item.type='MULTIPLE_CHOICE';});
+  persistedRecoveryRows(rows);
+  expect(await recoverPendingScoringJobs()).toBe(1);
+  await drainScoringQueue(1000);
+  expect(mocks.writing).toHaveBeenCalledOnce();
+  expect(mocks.many.mock.calls[1][0].where.id.gt).toBe(rows[99].id);
+});
+
+it('retains its scan position when more than 1000 unusable records precede a valid task', async () => {
+  const rows = recoveryRows(1001);
+  rows.slice(0,1000).forEach(row => {row.item.skill='GRAMMAR';row.item.type='MULTIPLE_CHOICE';});
+  persistedRecoveryRows(rows);
+  expect(await recoverPendingScoringJobs()).toBe(0);
+  expect(mocks.many).toHaveBeenCalledTimes(10);
+  expect(await recoverPendingScoringJobs()).toBe(1);
+  await drainScoringQueue(1000);
+  expect(mocks.writing).toHaveBeenCalledOnce();
+});
+
+it('shares overlapping recovery scans instead of queuing the same submissions twice', async () => {
+  persistedRecoveryRows(recoveryRows(2));
+  const first = recoverPendingScoringJobs();
+  const second = recoverPendingScoringJobs();
+  expect(second).toBe(first);
+  expect(await first).toBe(2);
+  await drainScoringQueue(1000);
+  expect(mocks.many).toHaveBeenCalledOnce();
+  expect(mocks.writing).toHaveBeenCalledTimes(2);
+});
+
+it('bounds the recovery backlog and resumes after active scoring finishes', async () => {
+  const rows = recoveryRows(205);
+  persistedRecoveryRows(rows);
+  const resolvers: (() => void)[] = [];
+  mocks.writing.mockImplementation(() => new Promise(resolve => resolvers.push(() => resolve(decision))));
+  expect(await recoverPendingScoringJobs()).toBe(100);
+  expect(await recoverPendingScoringJobs()).toBe(100);
+  const queries = mocks.many.mock.calls.length;
+  expect(await recoverPendingScoringJobs()).toBe(0);
+  expect(mocks.many).toHaveBeenCalledTimes(queries);
+  mocks.writing.mockResolvedValue(decision);
+  await tick();
+  resolvers.splice(0).forEach(resolve => resolve());
+  await drainScoringQueue(2000);
+  expect(await recoverPendingScoringJobs()).toBe(5);
+  await drainScoringQueue(1000);
+  // Complete the cursor cycle, allowing older submissions to be reconsidered.
+  expect(await recoverPendingScoringJobs()).toBe(0);
+  expect(rows.every(row => !row.metadata.pendingAsyncScore)).toBe(true);
+});
+
+it('retries a failed database scan on the next healthy probe', async () => {
+  mocks.many.mockRejectedValueOnce(new Error('Database unavailable'));
+  await expect(recoverPendingScoringJobs()).rejects.toThrow('Database unavailable');
+  persistedRecoveryRows(recoveryRows(1));
+  expect(await recoverPendingScoringJobs()).toBe(1);
+  await drainScoringQueue(1000);
+  expect(mocks.writing).toHaveBeenCalledOnce();
 });

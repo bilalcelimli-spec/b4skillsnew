@@ -91,7 +91,7 @@ it('keeps a code-assigned candidate on the dashboard and signs out after leaving
  expect(screen.queryByRole('dialog')).toBeNull();
  fireEvent.click(screen.getAllByRole('button',{name:/Sign out/i})[0]);
  expect(await screen.findByRole('heading',{name:'Welcome back'})).toBeTruthy();
- expect(screen.getByTestId('path').textContent).toBe('/login');
+ await waitFor(()=>expect(screen.getByTestId('path').textContent).toBe('/login'));
  expect(fetchMock.mock.calls.filter(([url])=>url==='/api/auth/logout')).toHaveLength(1);
 });
 it('routes a finished pending exam to its report and closes it without restarting',async()=>{

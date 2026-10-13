@@ -120,6 +120,8 @@ async function startServer() {
   if (dbAvailable) {
     const { recoverPendingScoringJobs } = await import("./src/lib/scoring/scoring-queue.js");
     void recoverPendingScoringJobs().catch(() => console.error("Could not recover pending scoring jobs"));
+    const { recoverPendingReportRefreshes } = await import("./src/lib/scoring/score-report-refresh.js");
+    void recoverPendingReportRefreshes().catch(() => console.error("Could not recover pending report refreshes"));
   }
   const probeDatabase = createDatabaseProbe(
     async () => {
@@ -131,9 +133,16 @@ async function startServer() {
       dbAvailable = available;
       if (recovered) {
         console.log("✅ Database connectivity recovered — assessment APIs enabled");
+      }
+      // Scan each healthy probe, not just the first reconnect: a restart can
+      // leave more persisted submissions than one bounded recovery batch.
+      if (available) {
         void import("./src/lib/scoring/scoring-queue.js")
           .then(({ recoverPendingScoringJobs }) => recoverPendingScoringJobs())
           .catch(() => console.error("Could not recover pending scoring jobs"));
+        void import("./src/lib/scoring/score-report-refresh.js")
+          .then(({ recoverPendingReportRefreshes }) => recoverPendingReportRefreshes())
+          .catch(() => console.error("Could not recover pending report refreshes"));
       }
     },
   );

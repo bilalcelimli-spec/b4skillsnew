@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { refreshScoredSession } from "./score-report-refresh.js";
 import { prisma } from "../prisma";
 import { RatingStatus } from "@prisma/client";
@@ -41,7 +42,7 @@ function humanGrade(score:number, feedback:string, metadata:unknown, source:stri
   const aiUnavailable = previous.aiUnavailable === true || previous.scoreSource === 'ai_unavailable' || previous.scoreFailed === true;
   return {humanScore:score,score,adjustedScore:null,isCorrect:score>=0.5,
     metadata:{...previous,aiUnavailable,humanFeedback:feedback,scoreSource:'human',
-      requiresHumanReview:false,pendingAsyncScore:false,scoreFailed:false,irrQwk:null,finalScoreSource:source}};
+      requiresHumanReview:false,pendingAsyncScore:false,scoreFailed:false,reportRefreshPending:true,reportRefreshVersion:randomUUID(),irrQwk:null,finalScoreSource:source}};
 }
 
 export const RatingQueueService = {

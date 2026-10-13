@@ -281,6 +281,74 @@ try{
   const media=await fetch(base+'/assessments/ozgun-kids/form-a-v1/Listening_Tam_Sinav.mp3',{headers:{'user-agent':'B4SkillsLocalAudit',range:'bytes=0-31'}});
   assert.equal(media.status,206);assert.equal((await media.arrayBuffer()).byteLength,32);
  });
+ await check('Durable report refresh repairs saved grades and preserves security holds',async()=>{
+  const sessions=await db.session.findMany({where:{organizationId:org,status:'COMPLETED',scoreReport:{isNot:null}},
+   include:{responses:true,scoreReport:true},orderBy:{createdAt:'asc'},take:3});
+  assert.equal(sessions.length,3);
+  const statuses=['COMPLETED','SCORING','FLAGGED'];
+  for(let index=0;index<sessions.length;index++){
+   const session=sessions[index],diagnostic=session.scoreReport.diagnosticReport;
+   await db.$transaction(async tx=>{
+    for(const response of session.responses.filter(row=>!row.isPretest))await tx.response.update({where:{id:response.id},
+     data:{score:1,humanScore:1,isCorrect:true,metadata:{...response.metadata,scoreSource:'human',
+      pendingAsyncScore:false,asyncScored:true,requiresHumanReview:false,scoreFailed:false,
+      reportRefreshPending:true,reportRefreshVersion:randomUUID()}}});
+    await tx.session.update({where:{id:session.id},data:{status:statuses[index],
+     metadata:{...session.metadata,pendingAsyncScoring:true,pendingCount:999}}});
+    await tx.scoreReport.update({where:{sessionId:session.id},data:{isVerified:false,
+     diagnosticReport:{...diagnostic,scoringComplete:false}}});
+   });
+  }
+  const ids=sessions.map(session=>session.id),deadline=Date.now()+90_000;
+  let pending=1;
+  while(pending && Date.now()<deadline){
+   await new Promise(resolve=>setTimeout(resolve,500));
+   pending=await db.response.count({where:{sessionId:{in:ids},metadata:{path:['reportRefreshPending'],equals:true}}});
+  }
+  assert.equal(pending,0,'Persisted report retries clear after successful rebuilding');
+  for(let index=0;index<sessions.length;index++){
+   const before=sessions[index],after=await db.session.findUniqueOrThrow({where:{id:before.id},include:{responses:true,scoreReport:true}});
+   assert.equal(after.status,index===2?'FLAGGED':'COMPLETED','Report refresh cannot clear a security hold');
+   assert.equal(+after.completedAt,+before.completedAt,'Completion date remains authoritative');
+   assert.equal(after.metadata.pendingCount,0,'Report no longer contains stale pending counts');
+   assert.equal(after.metadata.pendingAsyncScoring,false);
+   assert.equal(after.responses.length,before.responses.length);
+   for(const response of after.responses){
+    assert.equal(response.value,before.responses.find(row=>row.id===response.id).value,'Report recovery preserves answers');
+    if(!response.isPretest)assert.equal(response.humanScore,1,'Report recovery preserves committed human grades');
+   }
+   if(index===2){assert.equal(after.scoreReport.isVerified,false);assert.equal(after.scoreReport.diagnosticReport.securityFlag,true);}
+  }
+ });
+ await check('Periodic recovery processes more than 100 persisted scoring submissions without reconnect',async()=>{
+  const user=await candidate('General English');
+  const item=await db.item.findFirstOrThrow({where:{skill:'WRITING',type:'WRITING_PROMPT'}});
+  const ids=Array.from({length:105},()=>randomUUID());
+  await db.session.createMany({data:ids.map(id=>({id,organizationId:org,candidateId:user.id,status:'IN_PROGRESS',
+   metadata:{productLine:'General English'}}))});
+  const value='During my last holiday I visited a small town with my family. We travelled by train and stayed with friends. Every morning we walked through the town and talked about our plans. I enjoyed the trip because we had time to spend together and learn about a new place. Next year I would like to return and explore the surrounding countryside.';
+  await db.response.createMany({data:ids.map(sessionId=>({sessionId,itemId:item.id,value,order:1,
+   metadata:{pendingAsyncScore:true,scoringMode:'WRITING'}}))});
+  // These records are inserted after startup while the database stays healthy.
+  // AI providers are disabled in this local server: recovery must preserve each
+  // answer and route unavailable scoring to review, never invent a final grade.
+  const deadline=Date.now()+90_000;
+  let pending=105;
+  while(pending && Date.now()<deadline){
+   await new Promise(resolve=>setTimeout(resolve,500));
+   pending=await db.response.count({where:{sessionId:{in:ids},metadata:{path:['pendingAsyncScore'],equals:true}}});
+  }
+  assert.equal(pending,0,'Every persisted submission is recovered across bounded batches');
+  const responses=await db.response.findMany({where:{sessionId:{in:ids}}});
+  assert.equal(responses.length,105,'Recovery neither loses nor duplicates answers');
+  for(const response of responses){
+   assert.equal(response.value,value,'Saved writing remains intact');
+   assert.equal(response.metadata.asyncScored,true);
+   assert.equal(response.score,null,'Unavailable AI cannot produce a proficiency score');
+   assert.equal(response.metadata.requiresHumanReview,true);
+  }
+  assert.equal(await db.ratingTask.count({where:{response:{sessionId:{in:ids}}}}),105,'Failed AI scoring is visible for human review');
+ });
  await check('Freemium six-skill completion with ungraded speech',async()=>{
   const start=await ok('/api/assessment/placement/start',{});let item=start.firstItem,result;
   for(let i=0;i<50;i++){result=await ok(`/api/assessment/placement/${start.placementId}/respond`,{itemId:item.id,selectedOption:valueFor(item),latencyMs:30000});if(result.complete)break;item=result.nextItem;assert(item);}

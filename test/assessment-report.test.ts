@@ -20,6 +20,14 @@ describe('evidence-aware candidate reports', () => {
     expect(r.skills[0]).toMatchObject({ theta: null, cefr: null, state: 'Result unavailable', count: 1 });
     expect(r.skills[1]).toMatchObject({ cefr: null, state: 'Not assessed', count: 0 });
   });
+  it('withholds stale verification and skill levels until the new grade reaches the report', () => {
+    const source=session();
+    source.scoreReport!.diagnosticReport={scoringComplete:true,skillProfiles:{READING:{theta:1,sem:.2}}};
+    source.responses![0].metadata={reportRefreshPending:true,scoreSource:'human'};
+    const report=build(source);
+    expect(report.status).toBe('Provisional');expect(report.certificateId).toBeNull();
+    expect(report.skills[0]).toMatchObject({cefr:null,state:'Scoring pending'});
+  });
   it('uses stored CEFR classification rather than silently changing it', () => {
     expect(build(session({ scoreReport: { overallCefr: 'B2' } })).cefr).toBe('B2');
   });

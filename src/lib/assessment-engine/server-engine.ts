@@ -1061,7 +1061,7 @@ export const AssessmentService = {
   async finalizeSession(
     sessionId: string,
     theta: number,
-    opts?: { stopReason?: string | null }
+    opts?: { stopReason?: string | null; strictAnalysis?: boolean }
   ) {
     const engine = await getEngine();
     // Serialize finalization with scoring refreshes across server processes.
@@ -1110,6 +1110,7 @@ export const AssessmentService = {
 
     let scoringComplete = false;
     const previousDiagnostic = (session.scoreReport?.diagnosticReport ?? {}) as Record<string, unknown>;
+    const securityHeld = session.status === SessionStatus.FLAGGED || sessionMeta.securityFlag === true || previousDiagnostic.securityFlag === true;
     const preservedReportFields = {
       ...(typeof previousDiagnostic.shareToken === 'string' ? {shareToken:previousDiagnostic.shareToken} : {}),
       ...(typeof previousDiagnostic.certificateIssuedAt === 'string' ? {certificateIssuedAt:previousDiagnostic.certificateIssuedAt} : {}),
@@ -1547,6 +1548,9 @@ export const AssessmentService = {
         generatedAt: new Date().toISOString(),
       };
     } catch (analysisErr) {
+      // Background repair must retain its durable retry marker on analysis
+      // failure, rather than acknowledging a minimal report as repaired.
+      if (opts?.strictAnalysis) throw analysisErr;
       scoringComplete = false;
       diagnosticReport.scoringComplete = false;
       // Analysis failed — log and proceed with minimal report so the session
@@ -1558,10 +1562,15 @@ export const AssessmentService = {
       );
     }
 
+    if (securityHeld) {
+      scoringComplete = false;
+      diagnosticReport.scoringComplete = false;
+      diagnosticReport.securityFlag = true;
+    }
     await tx.session.update({
         where: { id: sessionId },
         data: {
-          status: SessionStatus.COMPLETED,
+          status: securityHeld ? SessionStatus.FLAGGED : SessionStatus.COMPLETED,
           completedAt: session.completedAt ?? new Date(),
           theta, sem: sessionSem,
           cefrLevel: cefrLevel as any,
@@ -1606,8 +1615,8 @@ export const AssessmentService = {
       return;
     }
     const engine = await getEngine();
-    if (session.status === SessionStatus.COMPLETED) {
-      await this.finalizeSession(sessionId, session.theta);
+    if ([SessionStatus.COMPLETED, SessionStatus.SCORING, SessionStatus.FLAGGED].includes(session.status as any)) {
+      await this.finalizeSession(sessionId, session.theta, { strictAnalysis: true });
       return;
     }
     // Serialize score refresh with answers, and merge only scoring metadata.
@@ -1616,7 +1625,7 @@ export const AssessmentService = {
       await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
       const current = await tx.session.findUnique({ where: { id: sessionId }, include: { responses: { include: { item: true } } } });
       if (!current) return false;
-      if (current.status === SessionStatus.COMPLETED) return true;
+      if ([SessionStatus.COMPLETED, SessionStatus.SCORING, SessionStatus.FLAGGED].includes(current.status as any)) return true;
       const items = Object.fromEntries(current.responses.filter(r => r.item).map(r => [r.itemId, dbItemToEngineItem(r.item)]));
       const state = toEngineState(current);
       const estimate = estimateTheta(state.responses, items, engine.getConfig().priorMean ?? 0,
@@ -1633,7 +1642,7 @@ export const AssessmentService = {
       } });
       return false;
     });
-    if (ended) await this.finalizeSession(sessionId, session.theta);
+    if (ended) await this.finalizeSession(sessionId, session.theta, { strictAnalysis: true });
   },
 
   /**

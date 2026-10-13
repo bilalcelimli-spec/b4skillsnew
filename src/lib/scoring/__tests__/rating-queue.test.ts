@@ -76,7 +76,7 @@ describe('independent human rating',()=>{
   arbitration();await RatingQueueService.submitArbitration('task',.9,'Independent decision','third');
   expect(stored).toMatchObject({status:'COMPLETED',arbitrationScore:.9,arbitratorId:'third',requiresArbitration:true});
   expect(mocks.response.mock.calls[0][0].data).toMatchObject({score:expect.closeTo(1.7/3),humanScore:expect.closeTo(1.7/3),
-    metadata:{scoreSource:'human',requiresHumanReview:false,scoreFailed:false,finalScoreSource:'three_independent_ratings_average'}});
+    metadata:{scoreSource:'human',requiresHumanReview:false,scoreFailed:false,reportRefreshPending:true,reportRefreshVersion:expect.any(String),finalScoreSource:'three_independent_ratings_average'}});
   expect(mocks.refresh).toHaveBeenCalledWith('session');
  });
  it('rejects previous reviewers and an unassigned third reviewer',async()=>{

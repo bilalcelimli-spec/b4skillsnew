@@ -16,9 +16,10 @@ beforeEach(()=>{
  db.transaction.mockImplementation(async fn=>fn({$queryRaw:db.lock,session:{findUnique:db.session},scoreReport:{findUnique:db.find,update:db.update}}));
 });
 describe('certificate issuance requires authoritative assessment evidence',()=>{
- it.each(['unverified','pending','missing skill','partial skill','missing report','missing analysis','missing skill score','flagged','session flagged','expired'])('rejects %s without changing the report',async condition=>{
+ it.each(['unverified','pending','report refresh pending','missing skill','partial skill','missing report','missing analysis','missing skill score','flagged','session flagged','expired'])('rejects %s without changing the report',async condition=>{
   if(condition==='unverified')report.isVerified=false;
   if(condition==='pending')session.responses[0].metadata.requiresHumanReview=true;
+  if(condition==='report refresh pending')session.responses[0].metadata.reportRefreshPending=true;
   if(condition==='missing skill')session.responses=session.responses.filter((r:any)=>r.item.skill!=='SPEAKING');
   if(condition==='partial skill')session.responses.pop();
   if(condition==='missing report')db.find.mockResolvedValue(null);

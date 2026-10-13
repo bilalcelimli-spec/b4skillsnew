@@ -26,6 +26,12 @@ describe('public report evidence and scale',()=>{
   const incomplete=fixture();incomplete.responses!.pop();
   expect(()=>sharedReportSummary(incomplete,'',now)).toThrow('not available');
  });
+ it('withholds a previously verified report while a newer grade awaits report refresh',()=>{
+  const session=fixture();session.responses![0].metadata={reportRefreshPending:true,scoreSource:'human'};
+  expect(()=>sharedReportSummary(session,'',now)).toThrow('not available');
+  session.responses![0].metadata={reportRefreshPending:false,scoreSource:'human'};
+  expect(sharedReportSummary(session,'',now).cefr).toBe('A1');
+ });
  it('expires at the exact validity boundary',()=>{
   const source=fixture();source.validUntil=now;
   try{sharedReportSummary(source,'',now);throw Error('Expected expiry');}

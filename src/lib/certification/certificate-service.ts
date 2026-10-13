@@ -12,6 +12,7 @@ export function isCertificateReady(report: any, session: any, now = new Date()):
   if (issuedAt !== undefined && (typeof issuedAt !== 'string' || !Number.isFinite(new Date(issuedAt).getTime()) || new Date(issuedAt) > now)) return false;
   const expiry = session.validUntil ?? computeValidUntil(new Date(session.completedAt));
   if (!Number.isFinite(new Date(expiry).getTime()) || new Date(expiry) <= now) return false;
+  if ((session.responses ?? []).some((response: any) => !response.isPretest && response.metadata?.reportRefreshPending === true)) return false;
   const required = scoringRequirements(session.metadata);
   const scoreFields: Record<string,string> = {READING:'readingScore',LISTENING:'listeningScore',WRITING:'writingScore',SPEAKING:'speakingScore',GRAMMAR:'grammarScore',VOCABULARY:'vocabularyScore'};
   return hasCompleteScoringEvidence(session.responses ?? [], required) && Object.keys(required).every(skill => {

@@ -17,6 +17,7 @@
  * logged so ops can scale the instance or add a dedicated scoring worker.
  */
 
+import { randomUUID } from "node:crypto";
 import { buildScoringPrompt } from "./task-context.js";
 import { productiveScoringMode } from "../assessment-engine/productive-response.js";
 import { refreshScoredSession } from "./score-report-refresh.js";
@@ -73,7 +74,7 @@ async function persistScoringResult(responseId: string, data: Record<string, any
   if (current.humanScore != null) return false;
   const result = await prisma.response.updateMany({
     where:{id:responseId,humanScore:null},
-    data:{...data,metadata:{...((current.metadata as Record<string,unknown>) ?? {}),...data.metadata}},
+    data:{...data,metadata:{...((current.metadata as Record<string,unknown>) ?? {}),...data.metadata,reportRefreshPending:true,reportRefreshVersion:randomUUID()}},
   });
   return result.count === 1;
 }
@@ -279,31 +280,56 @@ export function drainScoringQueue(timeoutMs = 25_000): Promise<void> {
   });
 }
 
-/** Recover persisted submissions after a worker restart; old numeric placeholders stay withheld. */
-export async function recoverPendingScoringJobs(): Promise<number> {
-  const responses = await prisma.response.findMany({
-    where:{isPretest:false,humanScore:null,metadata:{path:["pendingAsyncScore"],equals:true}},
-    include:{item:true},orderBy:{createdAt:"asc"},take:100,
-  });
-  let recovered=0;
-  for (const response of responses) {
-    const metadata=(response.metadata as Record<string,unknown>) ?? {};
-    if (metadata.asyncScored === true || isScoringJobPending(response.id)) continue;
-    let value: any=response.value ?? "";
-    if (typeof value === "string" && value.startsWith("{")) {
-      try {
-        const parsed=JSON.parse(value);
-        if (parsed && typeof parsed.audio === "string" && typeof parsed.mimeType === "string") value=parsed;
-      } catch { /* Keep literal writing text. */ }
+// Keep recovery bounded without repeatedly trapping later submissions behind invalid
+// or currently active records. The cursor is only a scan position, never a grade.
+const RECOVERY_PAGE_SIZE = 100;
+const RECOVERY_MAX_PAGES = 10;
+let recoveryCursor: string | undefined;
+let recoveryInFlight: Promise<number> | undefined;
+
+/** Recover persisted submissions after restart or transient persistence failures. */
+export function recoverPendingScoringJobs(): Promise<number> {
+  if (recoveryInFlight) return recoveryInFlight;
+  recoveryInFlight = recoverPendingBatch().finally(() => { recoveryInFlight = undefined; });
+  return recoveryInFlight;
+}
+
+async function recoverPendingBatch(): Promise<number> {
+  let recovered = 0;
+  // Recovery must not fill an unbounded in-memory backlog during an outage.
+  const capacity = Math.min(RECOVERY_PAGE_SIZE, Math.max(0, QUEUE_WARN_SIZE - pendingResponseIds.size));
+  if (!capacity) return 0;
+  for (let page = 0; page < RECOVERY_MAX_PAGES; page++) {
+    const responses = await prisma.response.findMany({
+      where: { isPretest: false, humanScore: null,
+        metadata: { path: ["pendingAsyncScore"], equals: true },
+        ...(recoveryCursor ? { id: { gt: recoveryCursor } } : {}),
+      },
+      include: { item: true }, orderBy: { id: "asc" }, take: RECOVERY_PAGE_SIZE,
+    });
+    if (!responses.length) { recoveryCursor = undefined; break; }
+    for (const response of responses) {
+      recoveryCursor = response.id;
+      const metadata = (response.metadata as Record<string, unknown>) ?? {};
+      if (metadata.asyncScored === true || isScoringJobPending(response.id)) continue;
+      let value: any = response.value ?? "";
+      if (typeof value === "string" && value.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(value);
+          if (parsed && typeof parsed.audio === "string" && typeof parsed.mimeType === "string") value = parsed;
+        } catch { /* Keep literal writing text. */ }
+      }
+      const content = (response.item.content as Record<string, any>) ?? {};
+      let mode;
+      try { mode = productiveScoringMode(response.item.skill, response.item.type, content, value); }
+      catch { logger.warn({ responseId: response.id }, "async-scoring: invalid recovery submission"); continue; }
+      if (!mode) continue;
+      void enqueueScoringJob({ sessionId: response.sessionId, responseId: response.id, itemId: response.itemId,
+        skill: mode, value, prompt: buildScoringPrompt(content) }).catch(() => undefined);
+      recovered++;
+      if (recovered >= capacity) return recovered;
     }
-    const content=(response.item.content as Record<string,any>) ?? {};
-    let mode;
-    try { mode=productiveScoringMode(response.item.skill,response.item.type,content,value); }
-    catch { logger.warn({responseId:response.id}, "async-scoring: invalid recovery submission"); continue; }
-    if (!mode) continue;
-    void enqueueScoringJob({sessionId:response.sessionId,responseId:response.id,itemId:response.itemId,
-      skill:mode,value,prompt:buildScoringPrompt(content)}).catch(() => undefined);
-    recovered++;
+    if (responses.length < RECOVERY_PAGE_SIZE) { recoveryCursor = undefined; break; }
   }
   return recovered;
 }
