@@ -4237,85 +4237,23 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // Delivery/scoring owns completion. This endpoint acknowledges persisted results.
   app.post("/api/sessions/:id/complete", authMiddleware, async (req, res) => {
     const { id } = req.params;
+    res.setHeader('Cache-Control','private, no-store');
     try {
       if (!(await assertSessionOwnership(req, res, id))) return;
-
-      // If ScoreReport doesn't exist yet (timeout/dropout), run finalization before marking complete
-      if (dbAvailable) {
-        const [existingReport, session] = await Promise.all([
-          prisma.scoreReport.findUnique({ where: { sessionId: id } }),
-          prisma.session.findUnique({ where: { id }, select: { currentTheta: true, status: true, metadata:true } }),
-        ]);
-        if ((session?.metadata as any)?.sessionType==='FIXED_FORM') return res.status(409).json({error:'Use the fixed-form section completion endpoint'});
-        if (session?.status === 'PAUSED' || session?.status === 'EXPIRED') return res.status(409).json({error:'This assessment is paused or expired'});
-        if (!existingReport && session?.currentTheta != null && session.status !== "COMPLETED") {
-          try {
-            const { AssessmentService } = await import("./src/lib/assessment-engine/server-engine.js");
-            await AssessmentService.finalizeSession(id, session.currentTheta);
-          } catch (finErr) {
-            console.warn("finalizeSession fallback failed in /complete:", finErr);
-          }
-        }
-      }
-
-      const completion = await prisma.session.updateMany({
-        where: { id, status: {notIn: ['PAUSED', 'EXPIRED']} },
-        data: { status: "COMPLETED", completedAt: new Date() },
-      });
-      if (!completion.count) return res.status(409).json({error: 'This assessment cannot be completed in its current state'});
-
-      const { WebhookService } = await import("./src/lib/ecosystem/webhook-service.js");
-      await WebhookService.dispatchTestCompleted(id);
-
-      // Send results email (non-blocking — never fails the response)
-      (async () => {
-        try {
-          const sess = await (prisma.session.findUnique as any)({
-            where: { id },
-            include: {
-              candidate: { select: { email: true, name: true } },
-              scoreReport: { select: { id: true, overallCefr: true, overallScore: true, diagnosticReport: true, isVerified: true } },
-            },
-          }) as { cefrLevel?: string; candidate?: { email: string; name?: string }; scoreReport?: { id: string; overallCefr?: string; overallScore?: number; diagnosticReport?: any; isVerified?: boolean } } | null;
-          if (!sess?.candidate?.email || !hasFinalResult(sess)) return;
-          const cefr = sess.scoreReport?.overallCefr ?? sess.cefrLevel ?? "—";
-          const score = sess.scoreReport?.overallScore != null ? Math.round(sess.scoreReport.overallScore) : null;
-          const name = sess.candidate.name ?? "Candidate";
-
-          const shareToken = await ensureReportShareToken(id);
-          const certId = sess.scoreReport?.isVerified && sess.scoreReport?.diagnosticReport?.certificateIssuedAt ? sess.scoreReport.id : null;
-          const reportUrl = shareToken ? `${APP_BASE_URL}/share/${shareToken}` : `${APP_BASE_URL}/dashboard`;
-          const certUrl = certId ? `${APP_BASE_URL}/verify/${certId}` : null;
-
-          await sendEmail(
-            sess.candidate.email,
-            `Your B4Skills Results — ${cefr}`,
-            emailTemplate({
-              heading: `Your results are ready, ${name}!`,
-              body: `<p style="font-size:16px;color:#334155;line-height:1.6">You've completed your <strong>B4Skills</strong> adaptive English assessment.</p>
-                     <div style="text-align:center;margin:28px 0">
-                       <div style="display:inline-block;background:#f0f4ff;border:2px solid #c7d2fe;border-radius:16px;padding:20px 40px">
-                         <div style="font-size:40px;font-weight:900;color:#4f46e5;letter-spacing:-1px">${cefr}</div>
-                         ${score != null ? `<div style="font-size:14px;color:#6366f1;font-weight:700;margin-top:4px">Score: ${score}/100</div>` : ""}
-                       </div>
-                     </div>
-                     <p style="font-size:14px;color:#64748b;line-height:1.6">Your personalised report includes skill-by-skill CEFR levels, confidence intervals, and learning recommendations.</p>
-                     ${certUrl ? `<p style="font-size:13px;color:#64748b;margin-top:8px">🎓 Your certificate is ready — <a href="${certUrl}" style="color:#4f46e5;font-weight:700">view & verify here</a>.</p>` : ""}`,
-              ctaLabel: "View Your Full Report",
-              ctaUrl: reportUrl,
-              footer: "This report link is shareable — you can send it to universities, employers, or language programmes.",
-            }),
-          );
-        } catch (emailErr) {
-          console.error("[email] Results email failed:", emailErr);
-        }
-      })();
-
-      res.json({ status: "ok" });
-    } catch (err) {
-      res.status(500).json({ error: "Failed to complete session" });
+      if(!dbAvailable)return res.status(503).json({error:'Database unavailable'});
+      const session=await prisma.session.findUnique({where:{id},include:{scoreReport:true,responses:{select:{itemId:true,score:true,isPretest:true,metadata:true,item:{select:{skill:true}}}}}});
+      if(!session)return res.status(404).json({error:'Session not found'});
+      if((session.metadata as any)?.sessionType==='FIXED_FORM')return res.status(409).json({error:'Use the fixed-form section completion endpoint'});
+      if(!['COMPLETED','SCORING','FLAGGED'].includes(session.status))return res.status(409).json({error:'Finish the active exam through the exam player before opening its result.'});
+      const {buildAssessmentReport}=await import('./src/lib/reporting/assessment-report-model.js');
+      const report=buildAssessmentReport(session,APP_BASE_URL);
+      return res.json({status:session.status,reportStatus:report.status,scoringComplete:report.status==='Completed',reportUrl:`/report/${encodeURIComponent(id)}`});
+    } catch(error) {
+      if(error instanceof AppError)return res.status(error.statusCode).json({error:error.message,code:error.code});
+      return res.status(500).json({error:'Failed to read completion status'});
     }
   });
 
@@ -4554,41 +4492,33 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // ── POST /api/sessions/:id/share — generate a shareable results token ────────
   app.post("/api/sessions/:id/share", authMiddleware, async (req: any, res) => {
     const { id } = req.params;
+    res.setHeader('Cache-Control','private, no-store');
     try {
       if (!(await assertSessionOwnership(req, res, id))) return;
       const token = await ensureReportShareToken(id);
       if (!token) return res.status(404).json({ error: "Score report not found" });
       res.json({ token, url: `${APP_BASE_URL}/share/${token}` });
     } catch (err) {
+      if (err instanceof AppError) return res.status(err.statusCode).json({error:err.message,code:err.code});
       res.status(500).json({ error: "Failed to generate share link" });
     }
   });
 
-  // ── GET /api/share/:token — public score summary (no auth) ────────────────
+  // Public summaries contain no response content or candidate contact details.
   app.get("/api/share/:token", async (req, res) => {
     const { token } = req.params;
-    if (!token || token.length < 16) return res.status(400).json({ error: "Invalid token" });
+    res.setHeader('Cache-Control','private, no-store');
+    if (!/^[a-f0-9]{32}$/.test(token)) return res.status(400).json({ error: "Invalid token" });
     try {
-      // Full-table scan capped at 5000; for large deployments a dedicated column index is preferred.
-      const all = await (prisma.scoreReport.findMany as any)({
-        include: { session: { include: { user: { select: { name: true } } } } },
-        take: 5000,
-      }) as Array<{ sessionId: string; overallCefr: string; overallScore: number; readingScore: number; listeningScore: number; writingScore: number; speakingScore: number; createdAt: Date; diagnosticReport: unknown; session?: { user?: { name?: string } } }>;
-      const report = all.find((r) => (r.diagnosticReport as any)?.shareToken === token);
-      if (!report) return res.status(404).json({ error: "Share link not found or expired" });
-      res.json({
-        candidateName: report.session?.user?.name ?? "Candidate",
-        cefr: report.overallCefr,
-        score: report.overallScore,
-        skills: {
-          reading: report.readingScore,
-          listening: report.listeningScore,
-          writing: report.writingScore,
-          speaking: report.speakingScore,
-        },
-        completedAt: report.createdAt.toISOString(),
+      const report = await prisma.scoreReport.findFirst({
+        where:{diagnosticReport:{path:['shareToken'],equals:token}},
+        include:{session:{include:{candidate:{select:{name:true}},responses:{select:{itemId:true,score:true,isPretest:true,metadata:true,item:{select:{skill:true}}}}}}},
       });
+      if (!report) return res.status(404).json({ error: "Share link not found or expired" });
+      const { sharedReportSummary } = await import('./src/lib/reporting/shared-report.js');
+      res.json(sharedReportSummary({...report.session,scoreReport:report},APP_BASE_URL));
     } catch (err) {
+      if (err instanceof AppError) return res.status(err.statusCode).json({error:err.message,code:err.code});
       res.status(500).json({ error: "Failed to retrieve shared report" });
     }
   });
@@ -7167,6 +7097,7 @@ ${codeSection}
 
     /** Middleware: accept either JWT cookie OR API key (Bearer la_…) */
     async function reportAuth(req: any, res: any, next: any) {
+      res.setHeader('Cache-Control','private, no-store');
       // 1. Try standard JWT cookie
       const accessToken = req.cookies?.accessToken;
       if (accessToken) {

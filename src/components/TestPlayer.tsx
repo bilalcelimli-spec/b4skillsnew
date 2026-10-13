@@ -60,6 +60,11 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
   const [showInsights, setShowInsights] = useState(false);
   const [statusError, setStatusError] = useState(false);
   const activeRef = React.useRef(true);
+  const completionReported = React.useRef(false);
+  const completeAssessment = (theta: number | null, sid: string) => {
+    if(!activeRef.current || completionReported.current)return;
+    completionReported.current=true;activeRef.current=false;setFinished(true);onComplete(theta,sid);
+  };
   useEffect(() => { activeRef.current = true; return () => { activeRef.current = false; }; }, []);
   const [itemFeedback, setItemFeedback] = useState<any>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -125,7 +130,11 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
           if (existing.status === 'PAUSED') {
             const resumed = await fetch(`/api/sessions/${encodeURIComponent(initialSessionId)}/resume`, {method: 'POST', credentials: 'include', signal: AbortSignal.timeout(15000)});
             const result = await resumed.json();
-            if (!resumed.ok) throw new Error(result.error ?? 'Could not resume assessment');
+            if (!activeRef.current) return;
+            if (!resumed.ok) {
+              if(resumed.status===410)setStatus({...existing,status:'EXPIRED'});
+              throw new Error(result.error ?? 'Could not resume assessment');
+            }
             const refreshed = await fetch(`/api/sessions/${encodeURIComponent(initialSessionId)}/status`, {credentials: 'include', signal: AbortSignal.timeout(15000)});
             existing = await refreshed.json();
             if (!refreshed.ok) throw new Error(existing.error ?? 'Could not resume assessment');
@@ -133,7 +142,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
           }
           setStatus(existing);
           if (existing.sessionType === 'FIXED_FORM') {setSessionId(initialSessionId);setFixedSession(true);setLoading(false);return;}
-          if (existing.status === "COMPLETED") { onComplete(existing.theta ?? null, initialSessionId); return; }
+          if (["COMPLETED","SCORING","FLAGGED"].includes(existing.status)) { completeAssessment(null, initialSessionId); return; }
           if (existing.status !== "IN_PROGRESS") throw new Error("This assessment cannot be resumed in its current state");
           setSessionId(initialSessionId);
           setSessionReady(true);
@@ -197,7 +206,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
   // signals stop (psychometric criteria met) or TIME_LIMIT_EXCEEDED.
   // No client-side hard stop based on time.
   useEffect(() => {
-    if (loading || !sessionId || finished || status?.status === 'PAUSED') return;
+    if (loading || !sessionId || finished || status?.status === 'PAUSED' || status?.status === 'EXPIRED') return;
     const timer = setInterval(() => {
       setElapsedSeconds(Math.floor((Date.now() - sessionStartRef.current) / 1000));
     }, 1000);
@@ -209,7 +218,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
     if (!activeRef.current) return;
     if (data.stop) {
       setFinished(true);
-      if (activeRef.current) onComplete(data.finalTheta, sid);
+      if (activeRef.current) completeAssessment(data.finalTheta, sid);
       return;
     }
     if (data.currentSection) {
@@ -241,7 +250,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
 
       if (data.stop) {
         setFinished(true);
-        if (activeRef.current) onComplete(data.finalTheta, sid);
+        if (activeRef.current) completeAssessment(data.finalTheta, sid);
         return;
       }
 
@@ -279,7 +288,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
 
             if (nextData.stop) {
               setFinished(true);
-              if (activeRef.current) onComplete(nextData.finalTheta, sid);
+              if (activeRef.current) completeAssessment(nextData.finalTheta, sid);
               return;
             }
 
@@ -335,6 +344,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
       const data = await res.json();
       if (!activeRef.current || request !== statusRequestRef.current) return;
       setStatus(data);
+      if(['COMPLETED','SCORING','FLAGGED'].includes(data.status)){completeAssessment(null,sid);return;}
       if (data.startedAt && data.serverNow && data.status === 'IN_PROGRESS') {
         const elapsed = Date.parse(data.serverNow) - Date.parse(data.startedAt);
         if (Number.isFinite(elapsed)) sessionStartRef.current = Date.now() - Math.max(0, elapsed);
@@ -391,7 +401,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
         if (result.sectionCounts) setSectionCounts(result.sectionCounts);
         if (['COMPLETED', 'SCORING'].includes(result.status)) {
           try {sessionStorage.removeItem(writingDraftKey(sessionId, answeredItem.id));} catch { /* Storage unavailable */ }
-          setFinished(true);onComplete(null,sessionId);
+          setFinished(true);completeAssessment(null,sessionId);
         } else await advanceSavedAnswer(true);
         return true;
       } catch {return false;}
@@ -442,6 +452,12 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
     }
     return 0;
   };
+
+  if(status?.status==='EXPIRED')return <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
+    <h1 className="text-2xl font-bold">This exam can no longer be resumed.</h1>
+    <p className="text-slate-600">The resume window or assessment validity has expired.</p>
+    {onCancel && <Button onClick={()=>{activeRef.current=false;onCancel();}}>Return to dashboard</Button>}
+  </div>;
 
   if (fixedSession && sessionId) return <OzgunKidsPlayer organizationId={organizationId} initialSessionId={sessionId} onSessionStarted={onSessionStarted} onComplete={onComplete} onCancel={onCancel}/>;
 

@@ -6,7 +6,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import App from '../../App';
 vi.mock('../../hooks/useScoringStatus',()=>({useScoringStatus:()=>({state:'complete'})}));
 vi.mock('../CandidateAdaptiveReport',()=>({CandidateAdaptiveReport:({sessionId}:any)=><h1>Report {sessionId}</h1>}));
-vi.mock('../TestPlayer',()=>({TestPlayer:({initialSessionId,candidateId,onCancel}:any)=><><h1>Resume {initialSessionId}</h1><p>Candidate {candidateId}</p><button onClick={onCancel}>Exit fixture exam</button></>}));
+vi.mock('../TestPlayer',()=>({TestPlayer:({initialSessionId,candidateId,onCancel,onComplete}:any)=><><h1>Resume {initialSessionId}</h1><p>Candidate {candidateId}</p><button onClick={onCancel}>Exit fixture exam</button><button onClick={()=>onComplete(null,initialSessionId)}>Finish fixture exam</button><button onClick={()=>onComplete(.2,initialSessionId)}>Finish scored exam</button></>}));
 vi.mock('../admin/ContentFactoryReviewQueue',()=>({ContentFactoryReviewQueue:()=><h1>Content review queue</h1>}));
 vi.mock('../RatingDashboard',()=>({RatingDashboard:({raterId}:any)=><h1>Rater workspace {raterId}</h1>}));
 vi.mock('../CandidateProfile',()=>({CandidateProfile:()=><h1>Account settings</h1>}));
@@ -52,7 +52,7 @@ it('connects the authenticated rater identity to task actions',async()=>{
 it('returns to the dashboard after exit and resumes the same stored attempt', async()=>{
   window.history.replaceState({},'', '/exam/existing-session');
   vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url==='/api/auth/me'
-    ? {user:{uid:'candidate',email:'user@example.test',role:'CANDIDATE',organizationId:'org'}}
+    ? {user:{uid:'candidate',email:'user@example.test',role:'CANDIDATE',organizationId:'org',allowedProductLine:'15-Min Diagnostic'}}
     : url.endsWith('/history') ? [{id:'existing-session',status:'IN_PROGRESS',organizationId:'org',metadata:{productLine:'15-Min Diagnostic'}}] : []})));
   render(<MemoryRouter initialEntries={['/exam/existing-session']}><App/><LocationProbe/></MemoryRouter>);
   fireEvent.click(await screen.findByRole('button',{name:'Exit fixture exam'}));
@@ -78,4 +78,47 @@ it('starts with the server candidate identity after code redemption switches acc
   fireEvent.click(await screen.findByRole('button',{name:/Start Test/}));
   expect(await screen.findByText('Candidate new-candidate')).toBeTruthy();
   expect(screen.queryByText('Candidate old-candidate')).toBeNull();
+});
+
+it('keeps a code-assigned candidate on the dashboard and signs out after leaving',async()=>{
+ window.history.replaceState({},'', '/exam/existing-session');
+ const fetchMock=vi.fn(async(url:string)=>({ok:true,json:async()=>url==='/api/auth/me'
+  ? {user:{uid:'candidate',email:'user@example.test',role:'CANDIDATE',organizationId:'org',allowedProductLine:'15-Min Diagnostic'}}:[]}));
+ vi.stubGlobal('fetch',fetchMock);
+ render(<MemoryRouter initialEntries={['/exam/existing-session']}><App/><LocationProbe/></MemoryRouter>);
+ fireEvent.click(await screen.findByRole('button',{name:'Exit fixture exam'}));
+ await waitFor(()=>expect(screen.getByTestId('path').textContent).toBe('/dashboard'));
+ expect(screen.queryByRole('dialog')).toBeNull();
+ fireEvent.click(screen.getAllByRole('button',{name:/Sign out/i})[0]);
+ expect(await screen.findByRole('heading',{name:'Welcome back'})).toBeTruthy();
+ expect(screen.getByTestId('path').textContent).toBe('/login');
+ expect(fetchMock.mock.calls.filter(([url])=>url==='/api/auth/logout')).toHaveLength(1);
+});
+it('routes a finished pending exam to its report and closes it without restarting',async()=>{
+ open('/exam/existing-session');
+ fireEvent.click(await screen.findByRole('button',{name:'Finish fixture exam'}));
+ expect(await screen.findByRole('heading',{name:'Report existing-session'})).toBeTruthy();
+ await waitFor(()=>expect(screen.getByTestId('path').textContent).toBe('/report/existing-session'));
+ expect(screen.queryByRole('button',{name:'Exit fixture exam'})).toBeNull();
+});
+it('uses the server certificate endpoint contract after a scored finish',async()=>{
+ open('/exam/existing-session');
+ fireEvent.click(await screen.findByRole('button',{name:'Finish scored exam'}));
+ expect(await screen.findByRole('heading',{name:'Report existing-session'})).toBeTruthy();
+ const calls=(fetch as any).mock.calls.filter(([url]:[string])=>url==='/api/certificates/generate');
+ expect(calls).toHaveLength(1);
+ expect(JSON.parse(calls[0][1].body)).toEqual({sessionId:'existing-session'});
+});
+
+it('keeps logout retryable when the server rejects it',async()=>{
+ window.history.replaceState({},'', '/dashboard');let attempts=0;
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:url==='/api/auth/logout'?++attempts>1:true,json:async()=>url==='/api/auth/me'
+  ? {user:{uid:'candidate',email:'user@example.test',role:'CANDIDATE',organizationId:'org',allowedProductLine:'15-Min Diagnostic'}}:[]})));
+ render(<MemoryRouter initialEntries={['/dashboard']}><App/><LocationProbe/></MemoryRouter>);
+ fireEvent.click((await screen.findAllByRole('button',{name:/Sign out/i}))[0]);
+ expect((await screen.findByRole('alert')).textContent).toContain('Sign out could not be completed');
+ expect(screen.getByTestId('path').textContent).toBe('/dashboard');
+ fireEvent.click(screen.getAllByRole('button',{name:/Sign out/i})[0]);
+ expect(await screen.findByRole('heading',{name:'Welcome back'})).toBeTruthy();
+ expect(attempts).toBe(2);
 });

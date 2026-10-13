@@ -1,0 +1,10 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {BrowserRouter} from 'react-router-dom';
+import App from '../../../src/App';
+import {AppToastProvider} from '../../../src/hooks/useToast';
+import '../../../src/lib/i18n/config';
+import '../../../src/index.css';
+const path=new URLSearchParams(location.search).get('path')??'/exam/flow-exam';
+history.replaceState({},'',path);
+createRoot(document.getElementById('root')!).render(<BrowserRouter><AppToastProvider><App/></AppToastProvider></BrowserRouter>);

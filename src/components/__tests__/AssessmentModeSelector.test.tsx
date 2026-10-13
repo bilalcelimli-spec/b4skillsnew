@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import {cleanup, render, screen, within} from '@testing-library/react';
+import {cleanup, fireEvent, render, screen, within} from '@testing-library/react';
 import {afterEach, expect, it, vi} from 'vitest';
 import {AssessmentModeSelector} from '../AssessmentModeSelector';
 import {PRODUCT_LINE_PROFILES} from '../../lib/product-lines/profiles';
@@ -17,8 +17,10 @@ it('shows the actual Express duration and all six sections without a duplicate p
 it.each([...Object.keys(PRODUCT_LINE_PROFILES),OZGUN_PRODUCT,'General','Primary','Junior'])('opens only the assessment assigned by a %s code',product=>{
  const onSelect=vi.fn();
  render(<AssessmentModeSelector onSelect={onSelect} allowedProductLine={product}/>);
+ expect(onSelect).not.toHaveBeenCalled();
+ expect(screen.queryAllByTestId('test-card')).toHaveLength(1);
+ fireEvent.click(screen.getByTestId('test-card'));
  expect(onSelect).toHaveBeenCalledExactlyOnceWith(({General:'General English',Primary:'Primary (7-10)',Junior:'Junior Suite (11-14)'} as Record<string,string>)[product] ?? product);
- expect(screen.queryAllByTestId('test-card')).toHaveLength(0);
 });
 it('blocks unknown assigned products instead of offering unrelated exams',()=>{
  const onSelect=vi.fn();
@@ -27,12 +29,15 @@ it('blocks unknown assigned products instead of offering unrelated exams',()=>{
  expect(screen.queryAllByTestId('test-card')).toHaveLength(0);
  expect(onSelect).not.toHaveBeenCalled();
 });
-it('handles a changed assigned product once without repeating the same start',()=>{
+it('requires another explicit click after a dashboard remount or changed assignment',()=>{
  const onSelect=vi.fn();
- const {rerender}=render(<AssessmentModeSelector onSelect={onSelect} allowedProductLine="Corporate"/>);
- rerender(<AssessmentModeSelector onSelect={onSelect} allowedProductLine="Corporate"/>);
+ const view=render(<AssessmentModeSelector onSelect={onSelect} allowedProductLine="Corporate"/>);
+ expect(onSelect).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByTestId('test-card'));
+ expect(onSelect).toHaveBeenCalledExactlyOnceWith('Corporate');
+ view.unmount();
+ render(<AssessmentModeSelector onSelect={onSelect} allowedProductLine="Academia"/>);
  expect(onSelect).toHaveBeenCalledTimes(1);
- rerender(<AssessmentModeSelector onSelect={onSelect} allowedProductLine="Academia"/>);
- expect(onSelect).toHaveBeenCalledTimes(2);
+ fireEvent.click(screen.getByTestId('test-card'));
  expect(onSelect).toHaveBeenLastCalledWith('Academia');
 });

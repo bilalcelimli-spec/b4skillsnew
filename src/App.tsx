@@ -2,7 +2,7 @@ import { AssessmentResumeCard } from './components/AssessmentContinuation';
 import { OZGUN_PRODUCT, assessmentDisplayName } from "./lib/fixed-forms/ozgun-kids";
 import { hasFinalResult, historyStatus, historySkills } from "./lib/reporting/candidate-history";
 import { useTranslation } from "react-i18next";
-import React, { useState, useEffect, lazy, Suspense } from "react";
+import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useScoringStatus } from "./hooks/useScoringStatus";
 import { thetaToCefr, thetaToBeps, CEFR_META } from "./lib/cefr/cefr-framework";
@@ -21,13 +21,6 @@ const SEO_PATHS: Record<string, SeoVariant> = {
   "/cefr-english-test": "cefr-english-test",
   "/english-assessment-for-universities": "english-assessment-for-universities",
   "/english-assessment-for-companies": "english-assessment-for-companies",
-};
-const signOut = async () => {
-  try {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-  } catch { /* proceed regardless — server cleared cookie */ }
-  // Navigate to root to avoid URL sync re-setting activeTab to "admin" etc.
-  window.location.href = "/";
 };
 
 import { Button } from "./components/ui/Button";
@@ -119,6 +112,11 @@ export default function App() {
   const [showCodeEntry, setShowCodeEntry] = useState(false);
   const [activeSession, setActiveSession] = useState<{ orgId: string; sessionId: string; productLine?: string; startingSkill?: string } | null>(null);
   const [preTestReady, setPreTestReady] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const logoutPending = useRef(false);
+  const navigationGeneration = useRef(0);
+  const [reportRevision, setReportRevision] = useState(0);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"dashboard" | "admin" | "rating" | "institutional" | "teacher" | "content" | "results" | "profile" | "settings">("dashboard");
   const [testCompleted, setTestCompleted] = useState<{ theta: number; cefr: string; sessionId: string } | null>(null);
@@ -258,47 +256,57 @@ export default function App() {
 
   const startNewTest = async (productLine?: string) => {
     if (!user || !userProfile) return;
+    ++navigationGeneration.current;
+    setSelectedHistorySessionId(null);
     setTestCompleted(null);
     setCertificate(null);
     setPreTestReady(false);
     setActiveSession({ orgId: userProfile.organizationId ?? "", sessionId: "new", productLine });
+    navigate('/exam/new',{replace:true});
+  };
+
+  const returnToDashboard = () => {
+    const generation = ++navigationGeneration.current;
+    setActiveSession(null);setPreTestReady(false);setTestCompleted(null);setSelectedHistorySessionId(null);setCertificate(null);
+    setActiveTab('dashboard');navigate('/dashboard',{replace:true});
+    if (user) void fetch(`/api/candidates/${user.uid}/history`,{credentials:'include',signal:AbortSignal.timeout(10000)})
+      .then(async response=>{
+        if(!response.ok)return;
+        const sessions=await response.json();
+        if(navigationGeneration.current===generation)setRecentSessions(Array.isArray(sessions)?sessions.slice(0,20):[]);
+      }).catch(()=>{});
+  };
+
+  const signOut = async () => {
+    if(logoutPending.current)return;
+    logoutPending.current=true;setSigningOut(true);setLogoutError(null);
+    try {
+      const response=await fetch('/api/auth/logout',{method:'POST',credentials:'include',signal:AbortSignal.timeout(10000)});
+      if(!response.ok)throw new Error('Sign out could not be completed. Please try again.');
+      ++navigationGeneration.current;
+      setUser(null);setUserProfile(null);setActiveSession(null);setPreTestReady(false);setTestCompleted(null);
+      setSelectedHistorySessionId(null);setCertificate(null);setRecentSessions([]);setBranding(null);
+      setShowCodeEntry(false);setShowLanding(false);setMobileMenuOpen(false);
+      navigate('/login',{replace:true});
+    } catch(error) {
+      setLogoutError(error instanceof Error?error.message:'Sign out failed. Please try again.');
+    } finally {logoutPending.current=false;setSigningOut(false);}
   };
 
   const handleTestComplete = async (finalTheta: number | null, sessionId: string) => {
-    if (activeSession?.productLine === OZGUN_PRODUCT || finalTheta === null) {
-      setTestCompleted(null);
-      setCertificate(null);
-      setSelectedHistorySessionId(sessionId);
-      setActiveSession(null);
-      setPreTestReady(false);
-      setActiveTab('results');
-      return;
-    }
-    const theta = finalTheta ?? 0;
-    const cefr = thetaToCefr(theta);
-    setTestCompleted({ theta, cefr, sessionId });
-    setActiveSession(null);
-    setPreTestReady(false);
-    setActiveTab("results");
-
-    // Auto-generate certificate
+    const generation=++navigationGeneration.current;
+    setTestCompleted(null);setCertificate(null);setSelectedHistorySessionId(sessionId);
+    setActiveSession(null);setPreTestReady(false);setActiveTab('results');
+    navigate(`/report/${encodeURIComponent(sessionId)}`,{replace:true});
+    // Certificate issuance still requires the server's verified persisted result.
+    if(finalTheta===null || !Number.isFinite(finalTheta) || activeSession?.productLine===OZGUN_PRODUCT)return;
     try {
-      const res = await fetch("/api/certificates/generate", {
-        credentials: "include",
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionData: { sessionId, theta, cefr, organizationId: userProfile.organizationId },
-          candidateProfile: userProfile,
-          branding
-        })
+      const response=await fetch('/api/certificates/generate',{
+        credentials:'include',method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(15000),
+        body:JSON.stringify({sessionId}),
       });
-      if (!res.ok) throw new Error("Certificate generation failed");
-      const cert = await res.json();
-      setCertificate(cert);
-    } catch (err) {
-      console.error("Failed to generate certificate");
-    }
+      if(response.ok && navigationGeneration.current===generation)setReportRevision(revision=>revision+1);
+    } catch {/* The report remains available if certificate issuance needs a retry. */}
   };
 
   // Public certificate verification page — accessible without authentication
@@ -345,6 +353,10 @@ export default function App() {
         setActiveTab("dashboard");
         setShowLanding(false);
         setShowCodeEntry(false);
+        ++navigationGeneration.current;
+        setSelectedHistorySessionId(null);setTestCompleted(null);setCertificate(null);setPreTestReady(false);
+        setActiveSession({orgId,sessionId:'new',productLine});
+        navigate('/exam/new',{replace:true});
       }}
     />;
   }
@@ -458,7 +470,10 @@ export default function App() {
           <PreTestBriefing
             productLine={activeSession.productLine}
             onStart={() => setPreTestReady(true)}
-            onCancel={() => { setActiveSession(null); setPreTestReady(false); }}
+            onCancel={returnToDashboard}
+            onSignOut={() => void signOut()}
+            signingOut={signingOut}
+            logoutError={logoutError}
           />
         </Suspense>
       );
@@ -473,18 +488,7 @@ export default function App() {
           initialSessionId={activeSession.sessionId === "new" ? undefined : activeSession.sessionId}
           onSessionStarted={(sessionId) => setActiveSession(prev => prev ? { ...prev, sessionId } : prev)}
           onComplete={handleTestComplete}
-          onCancel={() => {
-            setActiveSession(null);
-            setPreTestReady(false);
-            setActiveTab("dashboard");
-            void fetch(`/api/candidates/${user.uid}/history`, { credentials: "include" })
-              .then(async response => {
-                if (!response.ok) return;
-                const sessions = await response.json();
-                setRecentSessions(Array.isArray(sessions) ? sessions.slice(0, 20) : []);
-              })
-              .catch(() => {});
-          }}
+          onCancel={returnToDashboard}
         />
       </Suspense>
     );
@@ -507,6 +511,7 @@ export default function App() {
   // Clears stale session state when the user explicitly switches away from results.
   type Tab = typeof activeTab;
   const goToTab = (tab: Tab) => {
+    ++navigationGeneration.current;
     if (tab !== "results") {
       setTestCompleted(null);
       setCertificate(null);
@@ -624,6 +629,8 @@ export default function App() {
 
       {/* Main Content */}
       <main className={cn("flex-1 overflow-y-auto min-w-0", activeTab === "admin" && isAdmin ? "p-0" : "p-6 md:p-8")}>
+        {signingOut && <p role="status" className="m-4 text-slate-600">Signing out…</p>}
+        {logoutError && <p role="alert" className="m-4 rounded-xl bg-red-50 p-4 text-red-700">{logoutError}</p>}
         {/* Mobile top bar — hidden in admin mode (admin console owns its own chrome) */}
         <div className={cn("flex items-center justify-between mb-6 md:hidden", activeTab === "admin" && isAdmin && "hidden")}>
           <button
@@ -679,12 +686,9 @@ export default function App() {
         ) : activeTab === "results" && (testCompleted?.sessionId || selectedHistorySessionId) ? (
           <Suspense fallback={<PageLoader />}>
             <CandidateAdaptiveReport
+              key={`${testCompleted?.sessionId || selectedHistorySessionId}-${reportRevision}`}
               sessionId={(testCompleted?.sessionId || selectedHistorySessionId)!}
-              onClose={() => {
-                setTestCompleted(null);
-                setSelectedHistorySessionId(null);
-                setActiveTab(testCompleted ? "dashboard" : "results");
-              }}
+              onClose={returnToDashboard}
               onRetakeSkill={(skill, orgId) => {
                 setTestCompleted(null);
                 setSelectedHistorySessionId(null);
@@ -734,6 +738,8 @@ export default function App() {
                 title={assessmentDisplayName(session.metadata?.productLine ?? 'Assessment')}
                 status={session.status} pause={session.metadata?.examPause}
                 onResume={() => {
+                  ++navigationGeneration.current;setSelectedHistorySessionId(null);setTestCompleted(null);setCertificate(null);
+                  navigate(`/exam/${encodeURIComponent(session.id)}`,{replace:true});
                   setPreTestReady(true);
                   setActiveSession({sessionId:session.id,orgId:session.organizationId ?? userProfile?.organizationId,productLine:session.metadata?.productLine});
                 }}/>

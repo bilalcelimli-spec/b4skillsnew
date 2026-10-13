@@ -274,3 +274,28 @@ describe("TestPlayer response persistence", () => {
   });
 
 });
+
+it.each(['COMPLETED','SCORING','FLAGGED'])('opens the server report for a terminal %s attempt without restarting',async status=>{
+ const onComplete=vi.fn();
+ const fetchMock=vi.fn(async()=>({ok:true,json:async()=>({status,theta:3})}));
+ vi.stubGlobal('fetch',fetchMock);
+ render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="ended-exam" onComplete={onComplete}/>);
+ await waitFor(()=>expect(onComplete).toHaveBeenCalledWith(null,'ended-exam'));
+ expect(fetchMock.mock.calls).toHaveLength(1);
+});
+it('offers a dashboard return for an expired attempt even when its pause allowance was used',async()=>{
+ const onCancel=vi.fn();
+ vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>({status:'EXPIRED',pause:{used:true}})})));
+ render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="expired-exam" onComplete={vi.fn()} onCancel={onCancel}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'Return to dashboard'}));
+ expect(onCancel).toHaveBeenCalledOnce();
+});
+
+it('opens the report once if a background status check sees completion',async()=>{
+ const onComplete=vi.fn();let statuses=0;
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url.endsWith('/status')
+  ? {status:++statuses===1?'IN_PROGRESS':'SCORING',pause:{used:false}}
+  : {item:{id:'active-item',skill:'READING'}}})));
+ render(<TestPlayer organizationId="org" candidateId="candidate" initialSessionId="background-exam" onComplete={onComplete}/>);
+ await waitFor(()=>expect(onComplete).toHaveBeenCalledExactlyOnceWith(null,'background-exam'));
+});

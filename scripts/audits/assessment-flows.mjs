@@ -164,6 +164,60 @@ try{
   assert.equal(report.hasScoredEvidence,true);assert.equal(report.scoringComplete,false);
   assert.equal(report.skillScores.some(score=>score.skill===skill),false,'Pending skill levels are withheld consistently with PDF');
  });
+ await check('Shared and external reports revalidate final evidence and expiry',async()=>{
+  const user=await candidate('General English'),completedAt=new Date(Date.now()-86400000);
+  const session=await db.session.create({data:{candidateId:user.id,organizationId:org,status:'COMPLETED',theta:3,sem:1,completedAt,
+   validUntil:new Date(Date.now()+86400000),metadata:{sessionType:'DIAGNOSTIC',productLine:'15-Min Diagnostic'}}});
+  for(const skill of ['READING','LISTENING','WRITING','SPEAKING','GRAMMAR','VOCABULARY']){
+   const items=await db.item.findMany({where:{skill,status:'ACTIVE'},take:5});assert.equal(items.length,5);
+   await db.response.createMany({data:items.map((item,n)=>({sessionId:session.id,itemId:item.id,score:1,order:n+1,value:'Private response evidence',metadata:{scoreSource:'human'}}))});
+  }
+  await db.scoreReport.create({data:{sessionId:session.id,isVerified:true,overallCefr:'A1',overallScore:50,readingScore:50,listeningScore:0,writingScore:75,speakingScore:100,
+   diagnosticReport:{scoringComplete:true,overallTheta:-2,overallSem:.2,skillProfiles:Object.fromEntries(['READING','LISTENING','WRITING','SPEAKING','GRAMMAR','VOCABULARY'].map(skill=>[skill,{theta:-2,sem:.2}]))}}});
+  const shared=await ok(`/api/sessions/${session.id}/share`,{},user.cookie);
+  const same=await ok(`/api/sessions/${session.id}/share`,{},user.cookie);assert.equal(same.token,shared.token,'Share requests reuse the token');
+  let publicResult=await request(`/api/share/${shared.token}`);assert.equal(publicResult.response.status,200);
+  assert(publicResult.response.headers.get('cache-control').includes('no-store'));
+  assert.equal(publicResult.data.completedAt,completedAt.toISOString());assert.equal(publicResult.data.skills.reading,50);assert.equal(publicResult.data.skills.listening,0);
+  assert.equal(publicResult.data.productLine,'Rapid Diagnostic (30–40 Min)');
+  assert(!JSON.stringify(publicResult.data).includes('Private response evidence'));assert(!JSON.stringify(publicResult.data).includes('local-audit.test'));
+  let external=await ok(`/api/reports/scores/${session.id}`,undefined,user.cookie);
+  assert.equal(external.meta.schema_version,'2.0.0');assert.equal(external.data.overall_theta,-2);assert.equal(external.data.overall_cefr,'A1');
+  assert(external.data.skills.every(skill=>skill.cefr_band==='A1'&&skill.responses===5));
+  for(const status of ['SCORING','FLAGGED','EXPIRED']){
+   await db.session.update({where:{id:session.id},data:{status}});
+   publicResult=await request(`/api/share/${shared.token}`);assert.equal(publicResult.response.status,status==='EXPIRED'?410:409);
+   assert.equal(publicResult.data.candidateName,undefined,'An invalid result exposes no candidate summary');
+   external=await ok(`/api/reports/scores/${session.id}`,undefined,user.cookie);
+   assert.equal(external.data.scoring_complete,false);assert.equal(external.data.overall_theta,null);assert.equal(external.data.overall_cefr,null);assert.equal(external.data.skills.length,0);
+   assert.equal((await request(`/api/sessions/${session.id}/share`,{},user.cookie)).response.status,status==='EXPIRED'?410:409);
+  }
+  await db.session.update({where:{id:session.id},data:{status:'COMPLETED',validUntil:new Date(Date.now()-1)}});
+  assert.equal((await request(`/api/share/${shared.token}`)).response.status,410,'Validity expiry is enforced');
+  await db.session.update({where:{id:session.id},data:{validUntil:new Date(Date.now()+86400000),metadata:{sessionType:'DIAGNOSTIC',securityFlag:true}}});
+  assert.equal((await request(`/api/share/${shared.token}`)).response.status,409,'Metadata security hold is enforced');
+  await db.session.update({where:{id:session.id},data:{metadata:{sessionType:'DIAGNOSTIC'}}});
+  const response=await db.response.findFirstOrThrow({where:{sessionId:session.id}});await db.response.delete({where:{id:response.id}});
+  assert.equal((await request(`/api/share/${shared.token}`)).response.status,409,'Previously verified but incomplete evidence cannot be shared');
+ });
+ await check('Completion acknowledges terminal state without completing an unfinished exam',async()=>{
+  const user=await candidate('General English'),{sessionId}=await ok('/api/sessions/launch',{productLine:'General English'},user.cookie);
+  assert.equal((await request(`/api/sessions/${sessionId}/complete`,{},user.cookie)).response.status,409);
+  assert.equal((await db.session.findUniqueOrThrow({where:{id:sessionId}})).status,'IN_PROGRESS');
+  assert.equal(await db.scoreReport.count({where:{sessionId}}),0);
+  const completedAt=new Date(Date.now()-60000);
+  for(const status of ['SCORING','FLAGGED','COMPLETED']){
+   await db.session.update({where:{id:sessionId},data:{status,completedAt}});
+   for(let retry=0;retry<2;retry++){
+    const result=await ok(`/api/sessions/${sessionId}/complete`,{},user.cookie);
+    assert.equal(result.status,status);assert.equal(result.scoringComplete,false,'A lifecycle flag is not complete scored evidence');
+    const stored=await db.session.findUniqueOrThrow({where:{id:sessionId}});
+    assert.equal(stored.status,status,'Acknowledgement preserves scoring and holds');
+    assert.equal(stored.completedAt.toISOString(),completedAt.toISOString(),'Retry preserves original completion time');
+   }
+  }
+  assert.equal(await db.response.count({where:{sessionId}}),0);assert.equal(await db.scoreReport.count({where:{sessionId}}),0);
+ });
  await check('Adaptive late-answer rejection',async()=>{
   const user=await candidate('General English'),{sessionId}=await ok('/api/sessions/launch',{productLine:'General English'},user.cookie);
   const next=await ok(`/api/sessions/${sessionId}/next`,undefined,user.cookie);

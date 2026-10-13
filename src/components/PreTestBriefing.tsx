@@ -8,6 +8,9 @@ interface PreTestBriefingProps {
   productLine?: string;
   onStart: () => void;
   onCancel: () => void;
+  onSignOut?: () => void;
+  signingOut?: boolean;
+  logoutError?: string | null;
 }
 
 const SKILL_ICONS: Record<string, React.ReactNode> = {
@@ -19,7 +22,7 @@ const SKILL_ICONS: Record<string, React.ReactNode> = {
   Vocabulary: <BookOpen size={14} />,
 };
 
-export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, onStart, onCancel }) => {
+export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, onStart, onCancel, onSignOut, signingOut, logoutError }) => {
   const {fixed, title, duration: minutes, skills, resumeHours} = assessmentPresentation(productLine);
   const duration = `${minutes} min`;
   const needsMic = skills.includes("Speaking");
@@ -142,6 +145,7 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
           </div>
         </div>
 
+        {logoutError && <p role="alert" className="px-5 py-3 text-sm text-red-700">{logoutError}</p>}
         {/* Footer */}
         <div className="flex-shrink-0 border-t border-slate-200 bg-white px-5 sm:px-6 py-4 sm:py-5 flex gap-3 shadow-[0_-8px_24px_-20px_rgba(15,23,42,0.5)]">
           <button
@@ -150,7 +154,9 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
           >
             Cancel
           </button>
+          {onSignOut && <button onClick={onSignOut} disabled={signingOut} className="text-sm font-semibold text-slate-600 px-2 disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out'}</button>}
           <button
+            disabled={signingOut}
             onClick={onStart}
             className="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm py-2.5 rounded-xl transition-colors shadow-sm"
           >

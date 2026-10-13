@@ -7,7 +7,6 @@ import { OZGUN_PRODUCT, OZGUN_TITLE } from "../lib/fixed-forms/ozgun-kids";
  * product-line name consumed by server-engine.ts.
  */
 
-import { useEffect, useRef } from "react";
 import { motion } from "motion/react";
 import { Clock, Zap, BarChart2, BookOpen, ShieldCheck, ChevronRight } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -93,23 +92,8 @@ export function AssessmentModeSelector({ onSelect, allowedProductLine, className
     skills: assessmentPresentation(assignedProfile.name).skills, purpose: "Start the assessment assigned to your exam code.",
     icon: <BookOpen size={22}/>, accent: "bg-indigo-500", productLine: assignedProfile.name,
   }] : [];
-  // If the code restricts to a specific product line that matches exactly one mode,
-  // auto-start immediately so the candidate lands directly in the exam.
   const visible = filtered.length > 0 ? filtered : MODES.filter(mode=>mode.productLine!==OZGUN_PRODUCT);
-
-  // Auto-start when there is exactly one allowed mode (code-entry candidates)
-  const assignedName = filtered.length === 1 ? filtered[0].productLine : null;
-  const autoStartRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!assignedName) {autoStartRef.current = null; return;}
-    if (autoStartRef.current !== assignedName) {
-      autoStartRef.current = assignedName;
-      onSelect(assignedName);
-    }
-  }, [assignedName, onSelect]);
-
   if (assignedProduct && filtered.length === 0) return <p role="alert">The assigned assessment is unavailable. Please contact your institution.</p>;
-  if (filtered.length === 1) return null; // auto-starting, hide selector
 
   return (
     <div className={cn("space-y-3", className)}>

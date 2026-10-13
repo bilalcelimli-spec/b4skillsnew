@@ -130,6 +130,39 @@ Kapsam: ortak rapor modeli, aday adaptif ekranı ve gelişim hedefleri. Eski rap
 
 Doğrulama: **32/32 gerçek HTTP senaryosu**, genel koşuda **2215 test**, rapor/model/hedef odaklı koşuda **29 test**, mobil/masaüstü için **6 tarayıcı kontrolü** geçti. Son tip kontrolü ve tam üretim derlemesi başarılı. Genel koşuda 68 test atlandı ve 2 todo kaldı. Mobil rapor görüntüsü ayrıca incelendi.
 
+## QG-009 — paylaşılan ve dış raporlar
+
+- Public paylaşım sorgusundaki yanlış `session.user` ilişkisi `candidate` ile düzeltildi. İlk 5000 kaydı uygulamaya getirip tarama yerine token'a göre JSON sorgusu kullanılır; kayıt sayısından kaynaklanan görünmez bağlantı sınırı kalktı.
+- Paylaşım oluşturma ve mevcut linki okuma güncel ortak rapor kanıtını doğrular. Pending, güvenlik incelemesi ve eksik kanıt 409; geçerlilik süresi dolmuş sonuç 410 döndürür. Metadatadaki güvenlik tutması ve geçerliliğin tam sınırı da uygulanır.
+- Public yanıtta gerçek tamamlanma tarihi ve güncel ürün adı kullanılır. Kimlik e-postası, cevap metni/kayıtları veya değerlendirme metadatası paylaşılmaz. Kontrol sorguları yalnızca gerekli cevap alanlarını yükler.
+- Paylaşım ekranının 0–100 beceri puanını theta gibi yorumlayan çubuk hesabı düzeltildi. Sıfır korunur; bilinmeyen/bozuk puan gösterilmez. Grammar/vocabulary ve ölçek açıklaması eklendi. Linkin başka bir sonuca geçişinde eski istekler ve hata durumu temizlenir.
+- Dış rapor API'sinin ayrı ve eski CEFR tablosu kaldırıldı. Aday/PDF modeliyle aynı theta, SEM, seviye, beceri kanıtı ve ön test kuralları kullanılır. Kesinleşmemiş/geçersiz sonuçlarda final puanlar null, beceri listesi boş döner.
+- API yanıt sözleşmesi **2.0.0** olarak sürümlendi; nullable alanlar ve tüketici uyarlaması `docs/quality/score-report-api-v2.md` içinde belgelendi. Uç yollar aynı kaldı. Harici tüketicilerin canlı uyumluluğu bu yerel testlerle doğrulanmış değildir.
+- Kurum özetleri yalnızca uygun final kanıtlardan hesaplanır; çift sayıda kayıtta ortanca iki orta değerin ortalamasıdır. Boş örneklemde ortalama/ortanca null olur. En yeni 10000 tamamlanmış oturum sınırı metadatada açıklanır.
+- API anahtar araması ilk 500 kurum sınırından çıkarıldı; tam digest sorgusu kullanılır. Bozuk saklanmış digest yetki hatası olarak reddedilir, karşılaştırma istisnası üretmez.
+- Paylaşım ve kimlik doğrulamalı dış rapor yanıtlarında `private, no-store` önbellek politikası uygulanır. Paylaşım bağlantısı bağımsız sertifika olarak etiketlenmez.
+
+Doğrulama kapsamı: final sonuç yayınlama; sonradan SCORING/FLAGGED/EXPIRED olma, geçerlilik dolması, metadata güvenlik tutması ve kanıt kaybında yayın durdurma. Testler localhost veritabanı ve kontrollü öğrenci kayıtları kullanır; e-posta gönderilmez. Büyük ölçekli sorgu/index performansı, token iptal/yenileme arayüzü ve canlı dış entegrasyon uyumu sonraki işlerdir.
+
+Son doğrulama: **33/33 gerçek HTTP senaryosu**, genel koşuda **2234 test**, odaklı rapor/ekran koşusunda **38 test**, public rapor için **8 mobil/masaüstü tarayıcı kontrolü** geçti. Tip kontrolü, tam üretim derlemesi ve son sunucu derlemesi başarılı. Genel koşuda 68 atlama ve 2 todo başarı sayılmadı. Migration gerekmez.
+
+## QG-010 — sınavdan çıkış, hesap çıkışı ve bitiş akışı
+
+Tetikleyici: Kodla atanmış ürün, dashboard'a bağlanan seçim bileşeni her mount olduğunda `onSelect` çağırıyordu. Sınavdan çıkış dashboard'u yeniden açınca aynı sınav hazırlığı kendiliğinden başlıyor, hesap çıkışı menüsü erişilemez oluyordu. Önceki çıkış regresyonu kod ataması olmayan adayla sınırlıydı; yeni testler gerçek `allowedProductLine` durumunu kapsar.
+
+- Seçim ekranı atanmış tek sınavda da kart gösterir ve açık tıklama ister. Exit/cancel/report-close yolları oturum ve sonuç geçici durumlarını temizleyip URL'yi doğrudan dashboard'a taşır.
+- Kodun ilk başarılı tesliminde kullanıcının “Start Exam” eylemi hazırlık ekranını açıkça açar. Dashboard'a dönüşler yeni sınav başlatmaz.
+- Hazırlıkta Sign out seçeneği eklendi. Hesap çıkışı tek istekle, 10 saniyelik zaman sınırıyla çalışır; sunucu başarılı olduğunda kimlik/oturum/sonuç/histori durumu temizlenip login'e gidilir. Başarısız istek kullanıcıya hata gösterir ve yeniden denenebilir. Başarısız çıkış başarılıymış gibi gösterilmez.
+- Geç gelen geçmiş/sertifika cevapları yön değiştirme veya logout sonrasında eski ekranı geri getirmez.
+- COMPLETED/SCORING/FLAGGED oturum bağlantıları hazırlığı tekrarlamadan sunucunun raporuna gider. Süresi dolmuş oturumda çıkış hakkı kullanılmış olsa da dashboard'a dönülebilir.
+- Oyuncunun bitiş bildirimi bir kez yapılır; arka plan durum kontrolü terminal durum görürse rapora geçer. Aynı anda gelen next/status cevapları tekrar bitiş/sertifika isteği başlatmaz.
+- Bitiş ekranı sınıflandırmayı istemcide theta'dan yeniden üretmez; sunucunun kanıta dayalı raporunu açar. Sertifika isteği top-level `sessionId` sözleşmesiyle düzeltilmiştir; sunucu yetki ve final kanıt kontrolünü korur. Sertifika isteği rapor açılışını engellemez; başarılı olursa rapor yenilenir.
+- `/api/sessions/:id/complete` artık yaşam döngüsünü zorla COMPLETED yapmaz. Teslim/scoring motorunun sonlandırdığı COMPLETED/SCORING/FLAGGED kaydını yalnızca onaylar; aktif/paused/expired ve fixed-form yanlış yolunu reddeder. Tekrarlar durum, cevap, rapor ve tamamlanma tarihini değiştirmez. Eski uyumluluk yolunun tekrar tekrar sonuç bildirimi göndermesi kaldırıldı; normal sınav sonlandırması oyuncunun teslim yolu üzerinden yürür.
+
+Yerel testler atanmış kodla mobil/masaüstü exit→dashboard→logout, preparation cancel/logout, pending/final report yönlendirmesi, sertifika sözleşmesi, hata sonrası logout tekrarı ve expired dönüşünü kapsar. Gerçek HTTP testi bitmemiş sınavın zorla tamamlanmadığını ve SCORING/FLAGGED durumlarının korunduğunu doğrular. Canlı dağıtım bu yerel çalışmayla yapılmış sayılmaz.
+
+Son doğrulama: **2243 genel test**, **54 odaklı çıkış/yönlendirme testi**, **34/34 gerçek HTTP senaryosu** ve **68/68 tarayıcı regresyonu** geçti. Son tip kontrolü ve tam üretim derlemesi başarılı. Genel koşuda 68 atlama ve 2 todo başarı olarak sayılmadı. Migration gerekmez.
+
 ## Sıradaki iş listesi
 
 | Kimlik | İş | Bağımlılık / teslim |

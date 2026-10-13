@@ -42,9 +42,9 @@ export function buildAssessmentReport(session: ReportSession, baseUrl: string, n
   }) || (session.responses === undefined && meta.pendingAsyncScoring === true);
   const completedAt = date(session.completedAt);
   const validUntil = date(session.validUntil);
-  const expired = session.status === 'EXPIRED' || !!(validUntil && validUntil < now);
-  const review = session.status === 'FLAGGED' || diagnostic.securityFlag === true;
-  const provisional = pending || diagnostic.scoringComplete !== true || sr.isVerified !== true || (session.responses !== undefined && !hasCompleteScoringEvidence(responses, scoringRequirements(meta))) || !completedAt || !session.scoreReport || !['COMPLETED', 'EXPIRED'].includes(session.status);
+  const expired = session.status === 'EXPIRED' || !!(validUntil && validUntil <= now);
+  const review = session.status === 'FLAGGED' || diagnostic.securityFlag === true || meta.securityFlag === true;
+  const provisional = review || pending || diagnostic.scoringComplete !== true || sr.isVerified !== true || (session.responses !== undefined && !hasCompleteScoringEvidence(responses, scoringRequirements(meta))) || !completedAt || !session.scoreReport || !['COMPLETED', 'EXPIRED'].includes(session.status);
   const status = expired ? 'Expired' : review ? 'Under review' : provisional ? 'Provisional' : 'Completed';
   const profiles = Object.fromEntries(Object.entries(record(diagnostic.skillProfiles ?? meta.skillProfiles)).map(([key, value]) => [key.toUpperCase(), record(value)]));
   const skills = REPORT_SKILLS.map(skill => {

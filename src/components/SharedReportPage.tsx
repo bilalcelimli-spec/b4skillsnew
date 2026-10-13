@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 
 interface SharedReport {
   candidateName: string;
+  productLine?: string;
+  scoreScale?: string;
+  validUntil?: string | null;
   cefr: string;
   score: number | null;
   skills: {
@@ -9,6 +12,8 @@ interface SharedReport {
     listening: number | null;
     writing: number | null;
     speaking: number | null;
+    grammar?: number | null;
+    vocabulary?: number | null;
   };
   completedAt: string;
 }
@@ -21,7 +26,7 @@ const CEFR_COLORS: Record<string, string> = {
 };
 
 const SKILL_LABELS: Record<string, string> = {
-  reading: "Reading", listening: "Listening", writing: "Writing", speaking: "Speaking",
+  reading: "Reading", listening: "Listening", writing: "Writing", speaking: "Speaking", grammar: "Grammar", vocabulary: "Vocabulary",
 };
 
 interface Props {
@@ -34,11 +39,15 @@ export function SharedReportPage({ token }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/share/${token}`)
+    const controller = new AbortController();
+    let active = true;
+    setLoading(true);setReport(null);setError(null);
+    fetch(`/api/share/${encodeURIComponent(token)}`,{signal:controller.signal,cache:'no-store'})
       .then((r) => r.ok ? r.json() : r.json().then((e: any) => Promise.reject(e.error ?? "Not found")))
-      .then((d) => setReport(d))
-      .catch((e) => setError(typeof e === "string" ? e : "This share link is invalid or has expired."))
-      .finally(() => setLoading(false));
+      .then((d) => {if(active)setReport(d);})
+      .catch((e) => {if(active)setError(typeof e === "string" ? e : "This share link is invalid or has expired.");})
+      .finally(() => {if(active)setLoading(false);});
+    return () => {active=false;controller.abort();};
   }, [token]);
 
   if (loading) {
@@ -76,26 +85,30 @@ export function SharedReportPage({ token }: Props) {
 
         <div className="px-8 py-6">
           <p className="text-lg font-semibold text-slate-800">{report.candidateName}</p>
+          {report.productLine && <p className="text-sm text-slate-600">{report.productLine}</p>}
           <p className="text-sm text-slate-400 mb-5">Completed {completedDate}</p>
+          {report.validUntil && <p className="text-xs text-slate-500 mb-4">Valid until {new Date(report.validUntil).toLocaleDateString()}</p>}
 
           {report.score !== null && (
             <div className="flex items-center gap-3 mb-5 p-3 bg-slate-50 rounded-xl">
               <span className="text-2xl font-bold text-indigo-600">{report.score}</span>
-              <span className="text-sm text-slate-500">Overall Score</span>
+              <span className="text-sm text-slate-500">Overall Score / 100</span>
             </div>
           )}
 
+          <p className="text-xs text-slate-500 mb-3">Scores use a 0–100 platform scale; they are not percentages of correct answers. Grammar and vocabulary are supporting constructs.</p>
           {/* Skill breakdown */}
           <div className="space-y-2">
             {(Object.entries(report.skills) as [string, number | null][])
-              .filter(([, v]) => v !== null)
+              .filter(([, v]) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100)
               .map(([skill, score]) => (
                 <div key={skill} className="flex items-center gap-3">
                   <span className="text-xs text-slate-500 w-20 shrink-0 font-medium">{SKILL_LABELS[skill] ?? skill}</span>
                   <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
                     <div
+                      role="meter" aria-label={`${SKILL_LABELS[skill] ?? skill} score`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={score!}
                       className="h-2 rounded-full transition-all"
-                      style={{ width: `${Math.min(100, ((score! + 4) / 8) * 100)}%`, backgroundColor: cefrColor }}
+                      style={{ width: `${Math.max(0, Math.min(100, score!))}%`, backgroundColor: cefrColor }}
                     />
                   </div>
                   <span className="text-xs font-semibold text-slate-600 w-8 text-right">{score!.toFixed(1)}</span>
@@ -106,7 +119,7 @@ export function SharedReportPage({ token }: Props) {
 
         <div className="px-8 pb-6 text-center">
           <p className="text-xs text-slate-400">
-            Verified by{" "}
+            Shared result from{" "}
             <a href="/" className="text-indigo-500 hover:underline font-medium">B4Skills</a>
             {" "}· Adaptive English Assessment Platform
           </p>

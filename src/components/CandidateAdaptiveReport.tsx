@@ -272,7 +272,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {onClose && (
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <button onClick={onClose} aria-label="Close report" className="text-slate-400 hover:text-slate-600">
               <ChevronRight className="w-5 h-5 rotate-180" />
             </button>
           )}
