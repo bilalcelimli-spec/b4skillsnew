@@ -23,12 +23,12 @@ describe("evaluateCalibrationResult()", () => {
     expect(decision.alertMessage).toBeNull();
   });
 
-  it("emits an info alert when the anchor corpus is empty (clean exit)", () => {
+  it("emits an info alert when the anchor corpus is empty (evidence failure)", () => {
     const decision = evaluateCalibrationResult(
       baseResult({ totalItems: 0, scoredItems: 0, meetsThreshold: true })
     );
-    expect(decision.exitCode).toBe(0);
-    expect(decision.alertSeverity).toBe("info");
+    expect(decision.exitCode).toBe(2);
+    expect(decision.alertSeverity).toBe("warning");
     expect(decision.alertMessage).toMatch(/empty/i);
   });
 
@@ -60,4 +60,28 @@ describe("evaluateCalibrationResult()", () => {
     );
     expect(decision.alertMessage).toMatch(/overscoring/);
   });
+});
+
+it('does not trust a success flag with incomplete scoring or failed numerical limits',()=>{
+ expect(evaluateCalibrationResult(baseResult({scoredItems:49,meetsThreshold:true})).exitCode).toBe(1);
+ expect(evaluateCalibrationResult(baseResult({mae:.2,meetsThreshold:true})).exitCode).toBe(1);
+});
+it('distinguishes absent evidence from model outages without a zero-error success',()=>{
+ const result=baseResult({scoredItems:0,mae:null,rmse:null,pearsonR:null,excludedItems:[{id:'one',reasons:['RUBRIC_MISSING']}]});
+ expect(evaluateCalibrationResult(result).exitCode).toBe(2);
+ expect(evaluateCalibrationResult(baseResult({evidenceGaps:['WRITING_ANCHORS_BELOW_30']})).exitCode).toBe(2);
+});
+it('rejects invalid numerical metrics and signals undefined variation',()=>{
+ expect(evaluateCalibrationResult(baseResult({mae:NaN})).exitCode).toBe(1);
+ expect(evaluateCalibrationResult(baseResult({pearsonR:null})).exitCode).toBe(2);
+});
+it('independently checks per-skill values even when the pooled metrics and flag look good',()=>{
+ const metric={n:30,mae:.02,rmse:.02,pearsonR:1};
+ const result=baseResult({bySkill:{WRITING:metric,SPEAKING:{...metric,mae:.1}}});
+ expect(evaluateCalibrationResult(result).exitCode).toBe(1);
+ expect(evaluateCalibrationResult({...result,bySkill:{WRITING:metric,SPEAKING:{...metric,n:2}}}).exitCode).toBe(2);
+});
+it('does not accept impossible counts or negative error metrics',()=>{
+ expect(evaluateCalibrationResult(baseResult({totalItems:0,scoredItems:1})).exitCode).toBe(1);
+ expect(evaluateCalibrationResult(baseResult({mae:-.1})).exitCode).toBe(1);
 });

@@ -11,8 +11,9 @@
  *   - A scheduled Render / Fly cron task
  *
  * Exit codes:
- *   0 — calibration ran and met all thresholds (or anchor set was empty)
- *   1 — calibration failed thresholds OR an unexpected error occurred
+ *   0 — diagnostic drift checks met (never model release approval)
+ *   1 — observed drift, scoring failure or unexpected error
+ *   2 — reference evidence missing or incomplete
  *
  * Required environment:
  *   DATABASE_URL    — for the Prisma client (anchor set lives in SystemConfig)
@@ -24,7 +25,7 @@ import { AnchorCalibrationService, type AnchorCalibrationResult } from "../src/l
 import { logger, captureException, Sentry } from "../src/lib/observability/index.js";
 
 export interface RunnerDecision {
-  exitCode: 0 | 1;
+  exitCode: 0 | 1 | 2;
   alertSeverity: "none" | "info" | "warning" | "error";
   alertMessage: string | null;
 }
@@ -36,12 +37,18 @@ export interface RunnerDecision {
 export function evaluateCalibrationResult(
   result: AnchorCalibrationResult
 ): RunnerDecision {
+  if (!Number.isInteger(result.totalItems)||!Number.isInteger(result.scoredItems)||result.totalItems<0||result.scoredItems<0||result.scoredItems>result.totalItems) {
+    return {exitCode:1,alertSeverity:'error',alertMessage:'Invalid anchor calibration counts.'};
+  }
   if (result.totalItems === 0) {
     return {
-      exitCode: 0,
-      alertSeverity: "info",
-      alertMessage: "Anchor corpus is empty — calibration skipped.",
+      exitCode: 2,
+      alertSeverity: "warning",
+      alertMessage: "Anchor corpus is empty — calibration evidence is missing.",
     };
+  }
+  if (result.scoredItems === 0 && result.excludedItems?.length && result.excludedItems.every(item=>item.reasons.every(reason=>reason!=='AI_UNAVAILABLE'&&reason!=='AI_SCORING_FAILED'))) {
+    return {exitCode:2,alertSeverity:'warning',alertMessage:'Anchor reference evidence is invalid; no model scores were eligible.'};
   }
   if (result.scoredItems === 0) {
     return {
@@ -49,10 +56,23 @@ export function evaluateCalibrationResult(
       alertSeverity: "error",
       alertMessage:
         `Anchor calibration could not score any of ${result.totalItems} items ` +
-        `(probable AI scoring outage).`,
+        `(inspect excluded-item reason codes; failure is not a zero score).`,
     };
   }
-  if (!result.meetsThreshold) {
+  if(result.evidenceGaps?.length) return {exitCode:2,alertSeverity:'warning',alertMessage:`Anchor evidence incomplete: ${result.evidenceGaps.join(', ')}. Scored ${result.scoredItems}/${result.totalItems}; release is not approved.`};
+  if(result.scoredItems!==result.totalItems) return {exitCode:1,alertSeverity:'error',alertMessage:'Anchor scoring is incomplete; a partial result cannot pass.'};
+  if(result.mae===null||result.rmse===null||result.pearsonR===null) return {exitCode:2,alertSeverity:'warning',alertMessage:'Anchor metrics are undefined; reference variation is insufficient.'};
+  if(!Number.isFinite(result.mae)||!Number.isFinite(result.rmse)||!Number.isFinite(result.pearsonR)||result.mae<0||result.mae>1||result.rmse<0||result.rmse>1||Math.abs(result.pearsonR)>1) return {exitCode:1,alertSeverity:'error',alertMessage:'Invalid anchor calibration metrics.'};
+  if(result.bySkill){
+    for(const skill of ['WRITING','SPEAKING']){
+      const metric=result.bySkill[skill];
+      if(!metric||!Number.isInteger(metric.n)||metric.n<30||metric.mae===null||metric.rmse===null||metric.pearsonR===null)
+        return {exitCode:2,alertSeverity:'warning',alertMessage:`Anchor evidence is incomplete for ${skill}.`};
+      if(!Number.isFinite(metric.mae)||!Number.isFinite(metric.rmse)||!Number.isFinite(metric.pearsonR)||metric.mae<0||metric.mae>.08||metric.rmse<0||metric.rmse>.12||metric.pearsonR<.85||metric.pearsonR>1)
+        return {exitCode:1,alertSeverity:'error',alertMessage:`Anchor drift limits failed for ${skill}.`};
+    }
+  }
+  if (!result.meetsThreshold || result.mae>.08 || result.rmse>.12 || result.pearsonR<.85) {
     return {
       exitCode: 1,
       alertSeverity: "error",

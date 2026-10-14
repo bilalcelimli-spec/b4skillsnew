@@ -1,8 +1,9 @@
 name: Anchor Calibration
 
-# Re-scores the gold-standard anchor corpus against the live AI scoring
+# Re-scores the declared anchor corpus against the live AI scoring
 # pipeline once per week and on demand. Fails the run (and pages via Sentry)
-# if the AI pipeline drifts beyond the calibrated thresholds:
+# if drift exceeds provisional limits or reference evidence is missing.
+# This diagnostic job never authorizes model release. Internal targets:
 #   MAE ≤ 0.08, RMSE ≤ 0.12, Pearson r ≥ 0.85.
 
 on:
