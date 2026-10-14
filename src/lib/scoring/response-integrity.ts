@@ -142,7 +142,8 @@ export function lexicalDiversity(text: string): number {
  */
 export function promptParrotRate(text: string, prompt: string): number {
   const candTokens = tokenise(text);
-  const promptTokens = tokenise(prompt);
+  // Author-only rubric/context is not visible to the candidate and is not copy evidence.
+  const promptTokens = tokenise(prompt.split("\n\nTask assessment context [")[0]);
   if (candTokens.length < 8 || promptTokens.length < 4) return 0;
 
   const candGrams = ngrams(candTokens, 4);

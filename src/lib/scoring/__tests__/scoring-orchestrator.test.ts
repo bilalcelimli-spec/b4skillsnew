@@ -213,3 +213,26 @@ describe("ScoringOrchestrator.scoreSpeakingFromText — integrity gating", () =>
     expect(result.integrity?.passed).toBe(true);
   });
 });
+
+// Regression: low-level personal tasks must not be held for missing essay arguments.
+describe('task-sensitive discourse review', () => {
+  it('keeps model agreement gates but makes argument mismatch advisory for a personal note', async () => {
+    const { ArgumentQualityAnalyzer } = await import('../argument-quality-analyzer');
+    vi.mocked(ArgumentQualityAnalyzer.raterAgreementKappa).mockReturnValueOnce({agreement: 'POOR', delta: 0.8} as any);
+    const result = await ScoringOrchestrator.scoreWriting(GOOD_ESSAY, 'Write a short thank-you note to your grandpa.');
+    expect(result.reviewReasons).not.toContain('DISCOURSE_AI_DISAGREEMENT');
+  });
+  it('still holds argumentative tasks when discourse and AI ratings disagree', async () => {
+    const { ArgumentQualityAnalyzer } = await import('../argument-quality-analyzer');
+    vi.mocked(ArgumentQualityAnalyzer.raterAgreementKappa).mockReturnValueOnce({agreement: 'POOR', delta: 0.8} as any);
+    const result = await ScoringOrchestrator.scoreWriting(GOOD_ESSAY, PROMPT);
+    expect(result.requiresHumanReview).toBe(true);
+    expect(result.reviewReasons).toContain('DISCOURSE_AI_DISAGREEMENT');
+  });
+});
+
+it('forwards the same target level to both independent writing passes', async () => {
+ await ScoringOrchestrator.scoreWriting(GOOD_ESSAY,PROMPT,'B2');
+ expect(GeminiScoringService.scoreWriting).toHaveBeenCalledWith(GOOD_ESSAY,PROMPT,'B2');
+ expect(GeminiScoringService.verifyWriting).toHaveBeenCalledWith(GOOD_ESSAY,PROMPT,'B2');
+});

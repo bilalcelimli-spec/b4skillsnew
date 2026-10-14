@@ -9,7 +9,7 @@
  * Data source: GET /api/sessions/:id/full-analysis
  */
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/Card";
 import { Button } from "../ui/Button";
 import {
@@ -45,6 +45,31 @@ import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
 import { SubScoreRadar } from "../SubScoreRadar";
 
+import { embeddedSpeakingAudio, finalResponseScore, isObjectiveEvidence, isProductiveResponse, responseScoringStatus,
+  scoringReasonLabel, scoringStatusLabels, type PresentedResponse, type ResponseScoringStatus } from '../../lib/scoring/response-presentation';
+
+export function ResponseRating({ response }: { response: PresentedResponse }) {
+  const status = responseScoringStatus(response);
+  if (isProductiveResponse(response) || status !== 'scored') {
+    return <span className={status === 'scored' ? 'text-emerald-700' : 'text-amber-700'}>{scoringStatusLabels[status]}</span>;
+  }
+  return response.isCorrect === true ? <CheckCircle2 aria-label="Correct" size={16} className="text-emerald-500 mx-auto" /> :
+    response.isCorrect === false ? <XCircle aria-label="Incorrect" size={16} className="text-rose-400 mx-auto" /> : <span>—</span>;
+}
+export function ResponseScore({ response }: { response: PresentedResponse }) {
+  const score = finalResponseScore(response);
+  return <div>{score !== null ? <span>Final: {score.toFixed(2)}</span> : <span>Final: pending</span>}
+    {isProductiveResponse(response) && typeof response.aiScore === 'number' && Number.isFinite(response.aiScore) &&
+      <div className="text-violet-600 text-[10px]">AI proposal: {response.aiScore.toFixed(2)}</div>}</div>;
+}
+export function SpeakingPlayback({ value }: { value: string | null }) {
+  const audio = useMemo(() => embeddedSpeakingAudio(value), [value]);
+  // Native audio loads on demand; no base64 conversion or remote request is needed during rendering.
+  return audio ? <audio aria-label="Speaking recording" controls preload="none" className="max-w-full"
+    src={`data:${audio.mimeType};base64,${audio.audio}`} onClick={event => event.stopPropagation()} /> :
+    <span className="text-slate-500">Recording unavailable</span>;
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface AnalysisData {
@@ -71,6 +96,9 @@ interface AnalysisData {
     latencyMs: number;
     rtZScore: number | null;
     rtFlag: string | null;
+    scoringStatus?: ResponseScoringStatus;
+    reviewReasons?: string[];
+    failureCode?: string;
     transcript?: string;
     rubricScores?: {
       grammar?: number;
@@ -314,6 +342,15 @@ const QuestionDrawer: React.FC<{
             </div>
           )}
 
+          <div className="rounded-xl border border-slate-200 p-3 text-sm space-y-2">
+            <ResponseRating response={response} />
+            <ResponseScore response={response} />
+            {[...new Set([...(response.reviewReasons ?? []), ...(response.failureCode ? [response.failureCode] : [])])].map(reason =>
+              <p key={reason}>{scoringReasonLabel(reason)}</p>)}
+            {responseScoringStatus(response) === 'review_required' && <p>Final score is withheld until human review is completed.</p>}
+            {response.item.skill === 'SPEAKING' && <SpeakingPlayback value={response.value} />}
+          </div>
+
           {/* Transcript (Speaking) */}
           {response.transcript && (
             <div>
@@ -325,7 +362,7 @@ const QuestionDrawer: React.FC<{
           )}
 
           {/* Written response */}
-          {options.length === 0 && response.value && !response.transcript && (
+          {options.length === 0 && response.item.skill !== "SPEAKING" && response.value && !response.transcript && (
             <div>
               <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Response</div>
               <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-700 leading-relaxed border border-slate-100">
@@ -348,7 +385,7 @@ const QuestionDrawer: React.FC<{
 
           {/* Scores row */}
           <div className="flex gap-3">
-            {response.score !== null && (
+            {finalResponseScore(response) !== null && (
               <div className="flex-1 bg-slate-50 rounded-xl p-3 text-center border border-slate-100">
                 <div className="text-[8px] font-black uppercase tracking-widest text-slate-400">Score</div>
                 <div className="text-lg font-black text-slate-800 mt-0.5">{response.score?.toFixed(2)}</div>
@@ -356,7 +393,7 @@ const QuestionDrawer: React.FC<{
             )}
             {response.aiScore !== null && (
               <div className="flex-1 bg-violet-50 rounded-xl p-3 text-center border border-violet-100">
-                <div className="text-[8px] font-black uppercase tracking-widest text-violet-400">AI Score</div>
+                <div className="text-[8px] font-black uppercase tracking-widest text-violet-400">AI Proposal</div>
                 <div className="text-lg font-black text-violet-800 mt-0.5">{response.aiScore?.toFixed(2)}</div>
               </div>
             )}
@@ -437,7 +474,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
   // CSV Export
   const exportCsv = () => {
     if (!data) return;
-    const header = ["#", "Skill", "CEFR", "Type", "ItemCode", "Prompt(80)", "Answer", "Correct", "Score", "LatencyMs", "RTFlag", "Difficulty"];
+    const header = ["#", "Skill", "CEFR", "Type", "ItemCode", "Prompt(80)", "Answer", "Correct", "FinalScore", "ScoringStatus", "AIProposal", "LatencyMs", "RTFlag", "Difficulty"];
     const rows = data.responses.map((r) => [
       r.order,
       r.item.skill,
@@ -445,9 +482,11 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
       r.item.type,
       r.item.itemCode ?? "",
       `"${(r.item.content?.prompt ?? "").slice(0, 80).replace(/"/g, "'")}"`,
-      `"${(r.value ?? "").slice(0, 60).replace(/"/g, "'")}"`,
-      r.isCorrect === true ? "1" : r.isCorrect === false ? "0" : "",
-      r.score ?? "",
+      `"${(r.item.skill === "SPEAKING" ? "Speaking recording" : r.value ?? "").slice(0, 60).replace(/"/g, "'")}"`,
+      isObjectiveEvidence(r) ? (r.isCorrect ? "1" : "0") : "",
+      finalResponseScore(r) ?? "",
+      responseScoringStatus(r),
+      r.aiScore ?? "",
       r.latencyMs,
       r.rtFlag ?? "",
       r.item.difficulty.toFixed(2),
@@ -492,15 +531,17 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
   // ── Filtered responses for table ─────────────────────────────────────────
   const filteredResponses = responses.filter((r) => {
     if (skillFilter !== "ALL" && r.item.skill !== skillFilter) return false;
-    if (correctFilter === "CORRECT" && r.isCorrect !== true) return false;
-    if (correctFilter === "INCORRECT" && r.isCorrect !== false) return false;
+    if (correctFilter === "CORRECT" && (!isObjectiveEvidence(r) || r.isCorrect !== true)) return false;
+    if (correctFilter === "INCORRECT" && (!isObjectiveEvidence(r) || r.isCorrect !== false)) return false;
     if (rtFilter === "RAPID_GUESS" && r.rtFlag !== "RAPID_GUESS") return false;
     if (rtFilter === "NORMAL" && r.rtFlag === "RAPID_GUESS") return false;
     return true;
   });
 
   // ── Chart data ───────────────────────────────────────────────────────────
-  const responseChartData = responses.map((r) => ({
+  const objectiveResponses = responses.filter(isObjectiveEvidence);
+  const objectiveCorrect = objectiveResponses.filter(r => r.isCorrect).length;
+  const responseChartData = objectiveResponses.map((r) => ({
     name: `#${r.order}`,
     correct: r.isCorrect === true ? 1 : 0,
     incorrect: r.isCorrect === false ? 1 : 0,
@@ -510,22 +551,16 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
     difficulty: r.item.difficulty,
   }));
 
-  const skillChartData = Object.entries(stats.skillBreakdown).map(([skill, d]) => ({
-    skill: skill.slice(0, 4),
-    fullSkill: skill,
-    correct: d.correct,
-    incorrect: d.total - d.correct,
-    pct: Math.round((d.correct / d.total) * 100),
-    avgLatency: d.avgLatency,
-  }));
-
-  const cefrChartData = CEFR_ORDER
-    .filter((c) => stats.cefrBreakdown[c])
-    .map((c) => ({
-      cefr: c,
-      correct: stats.cefrBreakdown[c].correct,
-      incorrect: stats.cefrBreakdown[c].total - stats.cefrBreakdown[c].correct,
-    }));
+  const skillChartData = [...new Set(objectiveResponses.map(r => r.item.skill))].map(skill => {
+    const rows = objectiveResponses.filter(r => r.item.skill === skill);
+    const correct = rows.filter(r => r.isCorrect).length;
+    return { skill: skill.slice(0, 4), fullSkill: skill, correct, incorrect: rows.length - correct,
+      pct: Math.round(correct / rows.length * 100), avgLatency: rows.reduce((sum, r) => sum + r.latencyMs, 0) / rows.length };
+  });
+  const cefrChartData = CEFR_ORDER.flatMap(cefr => {
+    const rows = objectiveResponses.filter(r => r.item.cefrLevel === cefr);
+    return rows.length ? [{ cefr, correct: rows.filter(r => r.isCorrect).length, incorrect: rows.filter(r => !r.isCorrect).length }] : [];
+  });
 
   const cefr = scoreReport?.overallCefr ?? session.cefrLevel ?? "—";
   const durationStr = stats.durationMs ? formatDuration(stats.durationMs) : "—";
@@ -618,9 +653,9 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
         />
         <StatCard
           icon={<Target size={20} />}
-          label="Accuracy"
-          value={`${stats.pctCorrect}%`}
-          sub={`${stats.totalCorrect}/${stats.totalItems} correct`}
+          label="Objective accuracy"
+          value={objectiveResponses.length ? `${Math.round(objectiveCorrect / objectiveResponses.length * 100)}%` : "—"}
+          sub={`${objectiveCorrect}/${objectiveResponses.length} scored objective items`}
           accent="bg-emerald-50 text-emerald-600"
         />
         <StatCard
@@ -648,7 +683,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
-          <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Correct / Incorrect</div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Scored objective responses: Correct / Incorrect</div>
           <ResponsiveContainer width="100%" height={80}>
             <BarChart data={responseChartData} barSize={8} margin={{ left: 0, right: 0 }}>
               <XAxis dataKey="name" tick={false} axisLine={false} tickLine={false} />
@@ -874,7 +909,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
                   <th className="px-5 py-3 border-b border-slate-100">Type</th>
                   <th className="px-5 py-3 border-b border-slate-100 max-w-xs">Prompt (summary)</th>
                   <th className="px-5 py-3 border-b border-slate-100">Response</th>
-                  <th className="px-5 py-3 border-b border-slate-100 text-center">✓/✗</th>
+                  <th className="px-5 py-3 border-b border-slate-100 text-center">Rating status</th>
                   <th className="px-5 py-3 border-b border-slate-100 text-right">Score</th>
                   <th className="px-5 py-3 border-b border-slate-100 text-right">Duration</th>
                   <th className="px-5 py-3 border-b border-slate-100">RT</th>
@@ -916,19 +951,11 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
                       </p>
                     </td>
                     <td className="px-5 py-3">
-                      <p className="text-xs text-slate-500 truncate max-w-[120px] font-mono">
-                        {(r.value ?? "—").slice(0, 40)}
-                      </p>
+                      {r.item.skill === 'SPEAKING' ? <span className="text-xs text-slate-500">Speaking recording — open details</span> :
+                        <p className="text-xs text-slate-500 truncate max-w-[120px] font-mono">{(r.value ?? "—").slice(0, 40)}</p>}
                     </td>
-                    <td className="px-5 py-3 text-center">
-                      {r.isCorrect === true  ? <CheckCircle2 size={16} className="text-emerald-500 mx-auto" /> :
-                       r.isCorrect === false ? <XCircle size={16} className="text-rose-400 mx-auto" /> :
-                       <span className="text-slate-300 text-xs">—</span>}
-                    </td>
-                    <td className="px-5 py-3 text-right text-xs font-bold text-slate-700">
-                      {r.score !== null ? r.score?.toFixed(2) :
-                       r.aiScore !== null ? <span className="text-violet-500">{r.aiScore?.toFixed(2)}</span> : "—"}
-                    </td>
+                    <td className="px-5 py-3 text-center text-xs"><ResponseRating response={r} /></td>
+                    <td className="px-5 py-3 text-right text-xs font-bold text-slate-700"><ResponseScore response={r} /></td>
                     <td className="px-5 py-3 text-right text-xs font-bold text-slate-500">
                       {formatMs(r.latencyMs)}
                     </td>

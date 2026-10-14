@@ -1,3 +1,4 @@
+import { requiresArgumentStructure } from "./writing-task-policy.js";
 import { SCORING_MODEL, scoringFailureCode } from "./ai-scoring-policy.js";
 import { AIScore, GeminiScoringService } from "./gemini-scoring-service.js";
 import {
@@ -214,7 +215,7 @@ function applyIntegrityToResult(
 }
 
 export const ScoringOrchestrator = {
-  async scoreWriting(text: string, prompt: string): Promise<OrchestratedScore> {
+  async scoreWriting(text: string, prompt: string, targetCefr?: CefrLevel): Promise<OrchestratedScore> {
     const integrity = assessWritingIntegrity({ text, prompt });
     if (integrity.recommendation === "reject") {
       return buildRejectedScore(integrity);
@@ -222,8 +223,8 @@ export const ScoringOrchestrator = {
 
     try {
       const [primary, verifier] = await Promise.all([
-        GeminiScoringService.scoreWriting(text, prompt),
-        GeminiScoringService.verifyWriting(text, prompt),
+        GeminiScoringService.scoreWriting(text, prompt, targetCefr),
+        GeminiScoringService.verifyWriting(text, prompt, targetCefr),
       ]);
       const orchestrated = applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
 
@@ -238,7 +239,7 @@ export const ScoringOrchestrator = {
       const aqAgreement = ArgumentQualityAnalyzer.raterAgreementKappa(geminiCoherence, aqProfile.discourseQualityScore);
       (orchestrated.aiResult as any).argumentQualityAgreement = aqAgreement;
 
-      if (aqAgreement.agreement === "POOR") {
+      if (requiresArgumentStructure(prompt) && aqAgreement.agreement === "POOR") {
         orchestrated.requiresHumanReview = true;
         orchestrated.reviewReasons.push("DISCOURSE_AI_DISAGREEMENT");
         if (orchestrated.scoreSource === "ai_auto") {
@@ -247,7 +248,7 @@ export const ScoringOrchestrator = {
       }
 
       // Surface critical discourse flags for reviewers
-      if (aqProfile.flags.includes("UNSUPPORTED_CLAIMS") || aqProfile.flags.includes("NO_CLAIM_DETECTED")) {
+      if (requiresArgumentStructure(prompt) && (aqProfile.flags.includes("UNSUPPORTED_CLAIMS") || aqProfile.flags.includes("NO_CLAIM_DETECTED"))) {
         orchestrated.reviewReasons.push("WEAK_ARGUMENT_STRUCTURE");
       }
 
@@ -262,7 +263,8 @@ export const ScoringOrchestrator = {
     audioBase64: string,
     mimeType: string,
     prompt: string,
-    audioMetadata?: { audioDurationSec?: number; silentDurationSec?: number }
+    audioMetadata?: { audioDurationSec?: number; silentDurationSec?: number },
+    targetCefr?: CefrLevel
   ): Promise<OrchestratedScore> {
     // Speaking integrity needs a transcript; we run audio-only checks first
     // (duration / silence), then re-run the text checks once Gemini returns
@@ -285,8 +287,8 @@ export const ScoringOrchestrator = {
     let primary: AIScore, verifier: AIScore;
     try {
       [primary, verifier] = await Promise.all([
-        GeminiScoringService.scoreSpeaking(audioBase64, mimeType, prompt),
-        GeminiScoringService.verifySpeaking(audioBase64, mimeType, prompt),
+        GeminiScoringService.scoreSpeaking(audioBase64, mimeType, prompt, targetCefr),
+        GeminiScoringService.verifySpeaking(audioBase64, mimeType, prompt, targetCefr),
       ]);
     } catch (err) {
       return buildUnavailableScore(err, audioOnly);
@@ -365,8 +367,8 @@ import type { CefrLevel } from "../cefr/cefr-framework.js";
  */
 export const ScoringOrchestratorEnsemble = {
   async scoreWriting(text: string, prompt: string, targetCefrLevel?: CefrLevel): Promise<OrchestratedScore> {
-    if (!USE_ENSEMBLE_SCORING) {
-      return ScoringOrchestrator.scoreWriting(text, prompt);
+    if (!USE_ENSEMBLE_SCORING || !targetCefrLevel) {
+      return ScoringOrchestrator.scoreWriting(text, prompt, targetCefrLevel);
     }
 
     const integrity = assessWritingIntegrity({ text, prompt });
@@ -376,7 +378,7 @@ export const ScoringOrchestratorEnsemble = {
 
     try {
       // Call multi-rater ensemble instead
-      const ensembleResult = await scoreWritingWithEnsemble(text, prompt, targetCefrLevel || "B1");
+      const ensembleResult = await scoreWritingWithEnsemble(text, prompt, targetCefrLevel);
 
       // Convert ensemble result to orchestrated format
       const orchestrated = convertEnsembleToOrchestrated(ensembleResult, "WRITING", integrity);
@@ -390,7 +392,7 @@ export const ScoringOrchestratorEnsemble = {
       const aqAgreement = ArgumentQualityAnalyzer.raterAgreementKappa(normalizedCoherence, aqProfile.discourseQualityScore);
       (orchestrated.aiResult as any).argumentQualityAgreement = aqAgreement;
 
-      if (aqAgreement.agreement === "POOR") {
+      if (requiresArgumentStructure(prompt) && aqAgreement.agreement === "POOR") {
         orchestrated.requiresHumanReview = true;
         orchestrated.reviewReasons.push("DISCOURSE_AI_DISAGREEMENT");
         if (orchestrated.scoreSource === "ai_auto") {
@@ -398,7 +400,7 @@ export const ScoringOrchestratorEnsemble = {
         }
       }
 
-      if (aqProfile.flags.includes("UNSUPPORTED_CLAIMS") || aqProfile.flags.includes("NO_CLAIM_DETECTED")) {
+      if (requiresArgumentStructure(prompt) && (aqProfile.flags.includes("UNSUPPORTED_CLAIMS") || aqProfile.flags.includes("NO_CLAIM_DETECTED"))) {
         orchestrated.reviewReasons.push("WEAK_ARGUMENT_STRUCTURE");
       }
 
@@ -415,8 +417,8 @@ export const ScoringOrchestratorEnsemble = {
     audioMetadata?: { audioDurationSec?: number; silentDurationSec?: number },
     targetCefrLevel?: CefrLevel
   ): Promise<OrchestratedScore> {
-    if (!USE_ENSEMBLE_SCORING) {
-      return ScoringOrchestrator.scoreSpeaking(audioBase64, mimeType, prompt, audioMetadata);
+    if (!USE_ENSEMBLE_SCORING || !targetCefrLevel) {
+      return ScoringOrchestrator.scoreSpeaking(audioBase64, mimeType, prompt, audioMetadata, targetCefrLevel);
     }
 
     // Audio-only integrity checks first
@@ -438,7 +440,7 @@ export const ScoringOrchestratorEnsemble = {
       const ensembleResult = await scoreSpeakingWithEnsemble(
         audioBase64,
         prompt,
-        targetCefrLevel || "B1"
+        targetCefrLevel
       );
 
       // Extract transcript from first rater (all raters should provide same transcript)

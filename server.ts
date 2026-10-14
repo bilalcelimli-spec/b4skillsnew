@@ -4531,6 +4531,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
             latencyMs:   r.latencyMs ?? 0,
             rtZScore:    r.rtZScore ?? null,
             rtFlag:      r.rtFlag ?? null,
+            scoringStatus: r.isPretest ? 'pretest' : buildScoringStatus([r]).items[0]?.status ?? 'pending',
+            reviewReasons: Array.isArray(meta.reviewReasons)
+              ? meta.reviewReasons.filter((reason: unknown) => typeof reason === 'string' && /^[A-Z0-9_:.\-]+$/.test(reason)) : [],
+            failureCode: typeof meta.failureCode === 'string' && /^[A-Z0-9_]+$/.test(meta.failureCode) ? meta.failureCode : undefined,
             transcript:  meta.transcript ?? undefined,
             rubricScores:    meta.rubricScores    ?? r.rubricScores    ?? undefined,
             speakingFeatures: meta.speakingFeatures ?? undefined,

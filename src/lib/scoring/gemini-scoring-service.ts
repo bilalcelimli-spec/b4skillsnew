@@ -75,7 +75,10 @@ For EVERY response you must:
   2. Consider all five sub-criteria: Grammar, Vocabulary, Coherence/Cohesion, Fluency (speaking), and Task Achievement.
   3. Provide targeted, actionable feedback anchored in the rubric language.
   4. Cite specific examples from the candidate's response in corrections and feedback.
-  5. If the performance clearly exceeds or falls below the target level, reflect this in cefrLevel.
+  5. The target CEFR level describes the task demands, not the candidate's attained level or a ceiling. Assess only proficiency evidenced by this task; do not claim advanced proficiency from a short basic task. Keep the normalized score on the supplied cross-level scale, not percent success at the target task.
+  8. C2 does not require native-speaker or near-native-speaker competence. Never penalize an identifiable accent or demand native likeness, even if an author note uses such wording. Assess precision, appropriateness, flexibility and intelligibility.
+  9. Detailed authored criteria take priority over generic author notes. Criterion maxScore values describe the author rubric scale; keep returned rubricScores on the required 0–10 schema and the overall score on the supplied cross-level scale.
+  10. Use author-specified task criteria where supplied. Do not require essay arguments for descriptions, notes or personal messages. Judge pronunciation by intelligibility, not similarity to a native accent. Recording defects must not be described as language errors.
   6. Use the error profile in the knowledge block to calibrate scoring tolerance — errors typical of this level should not be penalised as harshly as errors that indicate a lower-level candidate.
   7. Use the Can-Do descriptors in the knowledge block to anchor your qualitative feedback.
 Be objective, rigorous, and precise. Always return valid JSON.
@@ -122,7 +125,7 @@ Instructions:
 4. confidence must be a decimal between 0 and 1, never a percentage.
 5. Normalised score: A1=0.10, A2=0.28, B1=0.46, B2=0.65, C1=0.82, C2=1.0
 6. Sub-scores for Grammar, Vocabulary, Fluency, Coherence, and Task Relevance (0-10).
-7. 3–5 specific corrections with original text, suggestion, type and explanation.
+7. Up to 5 specific corrections for errors actually evidenced in the response; use an empty array when none are supported. Never invent errors to fill a quota.
 
 Return JSON with these exact fields:
 {
@@ -231,7 +234,7 @@ Instructions:
 2. confidence must be a decimal between 0 and 1, never a percentage.
 3. Normalised score: A1=0.10, A2=0.28, B1=0.46, B2=0.65, C1=0.82, C2=1.0
 4. Sub-scores for Grammar, Vocabulary, Coherence, and Task Relevance (0–10).
-5. 3–5 specific corrections with original text, suggestion, type and explanation.
+5. Up to 5 specific corrections for errors actually evidenced in the response; use an empty array when none are supported. Never invent errors to fill a quota.
 
 Return JSON:
 {

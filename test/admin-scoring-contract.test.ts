@@ -64,3 +64,8 @@ describe('scoring queue evidence',()=>{
    expect(await res.json()).toEqual({ok:true,queued:1,skipped:2});expect(enqueueScoringJob).toHaveBeenCalledTimes(1);
  });
 });
+it('rebuilds failed jobs with the authored target and rubric', () => {
+ const original=response('context');
+ const job=retryScoringJob({...original,item:{...original.item,cefrLevel:'A2',content:{prompt:'Write a note.',rubric:{task:'Thank the recipient.'}}}});
+ expect(job?.targetCefr).toBe('A2');expect(job?.prompt).toContain('Thank the recipient.');
+});

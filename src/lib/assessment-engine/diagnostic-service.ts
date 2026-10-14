@@ -282,7 +282,7 @@ export class DiagnosticService {
       ? value.trim().toUpperCase().charCodeAt(0) - 65 : value;
     const options = Array.isArray(content.options) ? content.options.map((option: any) => typeof option === "string" ? option : option.text) : undefined;
     const flaggedIndex = Array.isArray(content.options) ? content.options.findIndex((option: any) => option?.isCorrect === true) : -1;
-    const evaluation = await evaluateFreemiumResponse({skill:foundSkill,type:itemRow.type,content:{...content, options,
+    const evaluation = await evaluateFreemiumResponse({skill:foundSkill,type:itemRow.type,cefrLevel:itemRow.cefrLevel,content:{...content, options,
       correctIndex:content.correctIndex ?? (flaggedIndex >= 0 ? flaggedIndex : undefined)}}, input);
     const score = evaluation.score;
     const isCorrect = score === null ? null : score >= .5;
@@ -331,6 +331,7 @@ export class DiagnosticService {
           scoreSource: evaluation.scoreSource ?? (evaluation.kind === "objective" ? "objective" : evaluation.status === "unavailable" ? "ai_unavailable" : score === null ? "ai_flagged" : "ai_auto"),
           scoringMode: evaluation.scoringMode,
           aiUnavailable: evaluation.kind === "rubric" && evaluation.status === "unavailable",
+          reviewReasons: evaluation.reviewReasons,
           aiFeedback: evaluation.feedback, },
       },
     });

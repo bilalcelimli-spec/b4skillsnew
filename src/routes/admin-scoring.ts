@@ -9,7 +9,7 @@ type Dependencies = {
   databaseAvailable: () => boolean;
   loadQueue: () => Promise<Pick<typeof import('../lib/scoring/scoring-queue.js'), 'enqueueScoringJob' | 'isScoringJobPending'>>;
 };
-const include = {item:{select:{skill:true,type:true,content:true}},ratingTask:{select:{status:true,score:true}},
+const include = {item:{select:{skill:true,type:true,content:true,cefrLevel:true}},ratingTask:{select:{status:true,score:true}},
   session:{include:{candidate:{select:{name:true,email:true}}}}} as const;
 export function createAdminScoringRouter(deps: Dependencies) {
   const router = express.Router();

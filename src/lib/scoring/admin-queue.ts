@@ -1,6 +1,7 @@
+import { resolveTaskRubric } from "./rubric-validation.js";
 import { productiveModes, productiveScoringMode } from '../assessment-engine/productive-response.js';
 import { shouldExcludeResponseFromAbility } from './score-evidence.js';
-import { buildScoringPrompt } from './task-context.js';
+import { buildScoringPrompt, scoringTargetCefr } from './task-context.js';
 import type { ScoringJob } from './scoring-queue.js';
 
 export const unresolvedScoringWhere = {
@@ -14,7 +15,7 @@ export const unresolvedScoringWhere = {
 type QueueResponse = {
   id: string; sessionId: string; itemId: string; value: string | null;
   score: number | null; humanScore?: number | null; isPretest?: boolean; metadata?: unknown; createdAt: Date;
-  item: { skill: string; type?: string; content: unknown };
+  item: { skill: string; type?: string; content: unknown; cefrLevel?: string };
   ratingTask?: { status: string; score: number | null } | null;
   session?: { candidate?: { name: string | null; email: string } };
 };
@@ -46,7 +47,7 @@ export function retryScoringJob(response: QueueResponse): ScoringJob | null {
     const skill = productiveScoringMode(response.item.skill, response.item.type, content, value);
     if (!skill || (skill === 'SPEAKING' && typeof value === 'string')) return null;
     return { responseId: response.id, sessionId: response.sessionId, itemId: response.itemId,
-      skill, value, prompt: buildScoringPrompt(content) };
+      skill, value, prompt: buildScoringPrompt(content), targetCefr: scoringTargetCefr(response.item.cefrLevel), rubric: resolveTaskRubric(content) };
   } catch { return null; }
 }
 export function summarizeAdminQueue(responses: QueueResponse[], now = Date.now()) {

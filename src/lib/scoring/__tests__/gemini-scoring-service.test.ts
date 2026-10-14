@@ -54,3 +54,19 @@ it('classifies operational errors without retaining provider payloads or secrets
   expect(scoringFailureCode(new Error('Gateway Timeout'))).toBe('AI_TIMEOUT');
   expect(scoringFailureCode(new SyntaxError('private candidate text'))).toBe('AI_INVALID_RESULT');
 });
+
+it('supplies CEFR descriptors for the authored target without treating it as an attained level', async () => {
+ await GeminiScoringService.scoreWriting('Synthetic answer','Describe your room.','A1');
+ const request = mocks.generate.mock.calls[0][0];
+ expect(request.contents).toContain('A1');
+ expect(request.config.systemInstruction).toContain("not the candidate's attained level");
+ expect(request.contents).toContain('Never invent errors');
+});
+it('supplies the same target descriptors to the audio verifier', async () => {
+ await GeminiScoringService.verifySpeaking('synthetic-base64','audio/webm','Describe your room.','A2');
+ expect(mocks.generate.mock.calls[0][0].contents[0].text).toContain('A2');
+});
+it('does not equate C2 proficiency with native-speaker likeness even when an author note does', async () => {
+ await GeminiScoringService.scoreSpeaking('synthetic-base64','audio/webm','Assess near-native mastery.','C2');
+ expect(mocks.generate.mock.calls[0][0].config.systemInstruction).toContain('C2 does not require native-speaker or near-native-speaker competence');
+});

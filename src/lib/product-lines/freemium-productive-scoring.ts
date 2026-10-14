@@ -1,4 +1,5 @@
-import { buildScoringPrompt } from "../scoring/task-context.js";
+import { rubricReviewReasons, resolveTaskRubric } from "../scoring/rubric-validation.js";
+import { buildScoringPrompt, scoringTargetCefr } from "../scoring/task-context.js";
 import { ScoringOrchestrator } from '../scoring/scoring-orchestrator.js';
 import { productiveScoringMode } from '../assessment-engine/productive-response.js';
 import { scoreObjectiveResponse, UnscorableObjectiveError } from '../assessment-engine/objective-response.js';
@@ -11,11 +12,12 @@ export interface FreemiumEvaluation {
   feedback?: string;
   scoreSource?: 'ai_auto' | 'ai_flagged' | 'ai_unavailable' | 'rejected_integrity';
   aiScore?: number | null;
+  reviewReasons?: string[];
   scoringMode?: 'WRITING' | 'SPEAKING';
 }
 
 export async function evaluateFreemiumResponse(
-  item: { skill: string; type: string; content?: Record<string, any> }, answer: unknown,
+  item: { skill: string; type: string; cefrLevel?: string; content?: Record<string, any> }, answer: unknown,
 ): Promise<FreemiumEvaluation> {
   const content = item.content ?? {};
   const mode = productiveScoringMode(item.skill, item.type, content, answer);
@@ -29,20 +31,23 @@ export async function evaluateFreemiumResponse(
       throw error;
     }
   }
+  const rubricIssues = rubricReviewReasons(resolveTaskRubric(content));
+  if (rubricIssues.length) return {score:null,kind:'rubric',status:'review_required',scoreSource:'ai_flagged',
+    aiScore:null,scoringMode:mode,reviewReasons:rubricIssues,feedback:'Task rubric requires content review before scoring.'};
   const prompt = buildScoringPrompt(content);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     let scoring;
     if (mode === 'WRITING') {
       if (typeof answer !== 'string' || answer.length > 100_000) throw new Error('Invalid writing response');
-      scoring = ScoringOrchestrator.scoreWriting(answer, prompt);
+      scoring = ScoringOrchestrator.scoreWriting(answer, prompt, scoringTargetCefr(item.cefrLevel));
     } else {
       if (!answer || typeof answer !== 'object') throw new Error('Speaking requires an audio recording');
       const audio = answer as { audio?: unknown; mimeType?: unknown };
       if (typeof audio.audio !== 'string' || audio.audio.length < 24 || audio.audio.length > 10_000_000 ||
           !/^[A-Za-z0-9+/]+={0,2}$/.test(audio.audio) || typeof audio.mimeType !== 'string' ||
           !/^audio\/(webm|mp4|mpeg|wav|ogg|flac)(;.*)?$/.test(audio.mimeType)) throw new Error('Invalid speaking audio');
-      scoring = ScoringOrchestrator.scoreSpeaking(audio.audio, audio.mimeType, prompt);
+      scoring = ScoringOrchestrator.scoreSpeaking(audio.audio, audio.mimeType, prompt, undefined, scoringTargetCefr(item.cefrLevel));
     }
     const decision = await Promise.race([scoring, new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error('Scoring timed out')), 45_000);

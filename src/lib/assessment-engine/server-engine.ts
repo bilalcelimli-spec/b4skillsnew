@@ -1,8 +1,9 @@
+import { resolveTaskRubric } from "../scoring/rubric-validation.js";
 import { effectiveSessionStart } from './session-pause';
 import { createOzgunKidsService } from "../fixed-forms/ozgun-kids-service";
 import {sessionDeadlineReached} from './session-deadline';
 import { buildSessionProgress } from "./session-progress";
-import { buildScoringPrompt } from "../scoring/task-context.js";
+import { buildScoringPrompt, scoringTargetCefr } from "../scoring/task-context.js";
 import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence } from "../scoring/score-evidence.js";
 import { estimateTheta } from "./estimator.js";
 import { adaptiveItemWhere, sectionAbility, sectionItemBudget } from "./adaptive-policy.js";
@@ -999,6 +1000,8 @@ export const AssessmentService = {
         responseId: savedResponse.id,
         itemId,
         skill: scoringMode,
+        targetCefr: scoringTargetCefr(dbItem.cefrLevel),
+        rubric: resolveTaskRubric(item.metadata ?? {}),
         value: value as string | { audio: string; mimeType: string },
         prompt,
       }).catch((err) => {

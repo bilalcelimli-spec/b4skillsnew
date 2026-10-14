@@ -20,7 +20,7 @@ try {
     const value = skill === 'WRITING' ? text : { audio: audio.toString('base64'), mimeType: 'audio/wav' };
     const row = await db.response.create({ data: { sessionId: session.id, itemId: item.id, order: index + 1, value: typeof value === 'string' ? value : JSON.stringify(value), metadata: { pendingAsyncScore: true, scoringMode: skill } } });
     const started = Date.now();
-    await enqueueScoringJob({ sessionId: session.id, responseId: row.id, itemId: item.id, skill, value, prompt: 'Describe a holiday you enjoyed.' });
+    await enqueueScoringJob({ sessionId: session.id, responseId: row.id, itemId: item.id, skill, value, prompt: 'Describe a holiday you enjoyed.', rubric: {taskAchievement:{descriptor:'Describe a holiday.'},languageControl:{descriptor:'Use intelligible and appropriate language.'}} });
     const saved = await db.response.findUniqueOrThrow({ where: { id: row.id } });
     assert(saved.metadata.asyncScored === true && saved.metadata.pendingAsyncScore === false);
     assert(saved.metadata.scoringPasses?.length === 2, 'Both independent scoring passes must finish');

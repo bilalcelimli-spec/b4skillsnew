@@ -1,3 +1,4 @@
+import { rubricReviewReasons, resolveTaskRubric, RUBRIC_VALIDATION_VERSION } from "./rubric-validation.js";
 /**
  * Async AI Scoring Queue
  *
@@ -18,8 +19,8 @@
  */
 
 import { SCORING_JOB_TIMEOUT_MS, SCORING_POLICY_VERSION, scoringFailureCode } from "./ai-scoring-policy.js";
-import { randomUUID } from "node:crypto";
-import { buildScoringPrompt } from "./task-context.js";
+import { randomUUID, createHash } from "node:crypto";
+import { buildScoringPrompt, scoringTargetCefr, TASK_CONTEXT_VERSION } from "./task-context.js";
 import { productiveScoringMode } from "../assessment-engine/productive-response.js";
 import { refreshScoredSession } from "./score-report-refresh.js";
 import { prisma } from "../prisma.js";
@@ -46,6 +47,8 @@ export interface ScoringJob {
   skill: ScoringSkill;
   value: string | { audio: string; mimeType: string };
   prompt: string;
+  rubric?: unknown;
+  targetCefr?: import("../cefr/cefr-framework.js").CefrLevel;
 }
 
 type ScoringJobWithResolve = ScoringJob & {
@@ -90,6 +93,25 @@ async function resolveHumanGrade(job: ScoringJobWithResolve): Promise<void> {
 async function processJob(job: ScoringJobWithResolve): Promise<void> {
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
+    const rubricIssues = rubricReviewReasons(job.rubric);
+    if (rubricIssues.length) {
+      const persisted = await persistScoringResult(job.responseId, {
+        score: null, adjustedScore: null, isCorrect: null, aiScore: null,
+        metadata: { scoringMode: job.skill, asyncScored: true, pendingAsyncScore: false,
+          requiresHumanReview: true, scoreFailed: false, aiUnavailable: false, scoreSource: 'ai_flagged',
+          reviewReasons: rubricIssues, rubricValidationVersion: RUBRIC_VALIDATION_VERSION,
+          targetCefr: job.targetCefr ?? null, taskContextVersion: TASK_CONTEXT_VERSION,
+          scoringPromptHash: createHash('sha256').update(job.prompt).digest('hex'),
+          failureCode: null, confidence: null, rubricScores: null, scoringPasses: [], model: null, modelVersion: null, aiFeedback: 'Task rubric requires content review before this response can receive a final score.' },
+      });
+      if (!persisted) { await resolveHumanGrade(job); return; }
+      await RatingQueueService.enqueue({sessionId:job.sessionId,itemId:job.itemId,type:job.skill,
+        content:typeof job.value === 'string' ? job.value : JSON.stringify(job.value)});
+      try { await refreshScoredSession(job.sessionId); }
+      catch (err) { logger.error({err,sessionId:job.sessionId}, 'async-scoring: rubric hold report refresh failed'); }
+      job.resolve({score:0,aiResult:null,requiresHumanReview:true,scoreSource:'ai_flagged'});
+      return;
+    }
     const timeoutPromise = new Promise<never>((_, reject) =>
       timeoutHandle = setTimeout(() => reject(new Error(`AI scoring timed out after ${AI_TIMEOUT_MS}ms`)), AI_TIMEOUT_MS)
     );
@@ -100,14 +122,14 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
 
     if (job.skill === "WRITING") {
       scoringDecision = await Promise.race([
-        ScoringOrchestrator.scoreWriting(String(job.value), job.prompt),
+        ScoringOrchestrator.scoreWriting(String(job.value), job.prompt, job.targetCefr),
         timeoutPromise,
       ]);
     } else {
       const val = job.value as { audio: string; mimeType: string } | string;
       if (typeof val === "object" && val.audio && val.mimeType) {
         scoringDecision = await Promise.race([
-          ScoringOrchestrator.scoreSpeaking(val.audio, val.mimeType, job.prompt),
+          ScoringOrchestrator.scoreSpeaking(val.audio, val.mimeType, job.prompt, undefined, job.targetCefr),
           timeoutPromise,
         ]);
       } else {
@@ -127,6 +149,10 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
         aiScore: scoringDecision?.scoreSource === "ai_unavailable" ? null : aiResult?.score as number | undefined,
         metadata: aiResult
           ? {
+              rubricValidationVersion: RUBRIC_VALIDATION_VERSION,
+              taskContextVersion: TASK_CONTEXT_VERSION,
+              scoringPromptHash: createHash("sha256").update(job.prompt).digest("hex"),
+              targetCefr: job.targetCefr ?? null,
               aiFeedback: aiResult.feedback,
               scoringMode: job.skill,
               confidence: aiResult.confidence,
@@ -327,7 +353,7 @@ async function recoverPendingBatch(): Promise<number> {
       catch { logger.warn({ responseId: response.id }, "async-scoring: invalid recovery submission"); continue; }
       if (!mode) continue;
       void enqueueScoringJob({ sessionId: response.sessionId, responseId: response.id, itemId: response.itemId,
-        skill: mode, value, prompt: buildScoringPrompt(content) }).catch(() => undefined);
+        skill: mode, value, prompt: buildScoringPrompt(content), targetCefr: scoringTargetCefr(response.item.cefrLevel), rubric: resolveTaskRubric(content) }).catch(() => undefined);
       recovered++;
       if (recovered >= capacity) return recovered;
     }
