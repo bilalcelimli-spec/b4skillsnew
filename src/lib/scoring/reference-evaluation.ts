@@ -1,3 +1,4 @@
+import { learnerBootstrapInterval } from "./learner-bootstrap.js";
 import { z } from 'zod';
 const score = z.number().finite().min(0).max(1);
 const band = z.number().int().min(0).max(6);
@@ -15,7 +16,7 @@ export const ReferenceDatasetSchema = z.object({
  }).strict()),
 }).strict();
 export type ReferenceDataset = z.infer<typeof ReferenceDatasetSchema>;
-export const REFERENCE_EVALUATION_VERSION = '2026-10-14.1';
+export const REFERENCE_EVALUATION_VERSION = '2026-10-14.2';
 const mean=(values:number[])=>values.length?values.reduce((sum,value)=>sum+value,0)/values.length:null;
 /** Uses explicitly rated ordinal bands; never rounds continuous scores into CEFR levels. */
 export function ordinalQuadraticKappa(pairs:Array<[number,number]>):number|null {
@@ -26,18 +27,6 @@ export function ordinalQuadraticKappa(pairs:Array<[number,number]>):number|null 
  return expected===0?null:1-observed/expected;
 }
 type Pair={learnerId:string;skill:string;reference:number;referenceBand:number;prediction:number;predictionBand:number;boundary:boolean;groups:Record<string,string>};
-/** Learner-cluster bootstrap: repeated tasks from one learner are resampled together. */
-function maeInterval(pairs:Pair[],iterations=1000):[number,number]|null {
- const clusters=new Map<string,Pair[]>();for(const pair of pairs)clusters.set(pair.learnerId,[...(clusters.get(pair.learnerId)??[]),pair]);
- const values=[...clusters.values()];if(values.length<2)return null;
- let seed=20261014;const random=()=>{seed=(Math.imul(1664525,seed)+1013904223)>>>0;return seed/4294967296;};
- const estimates:number[]=[];
- for(let iteration=0;iteration<iterations;iteration++){
-  const sampled:Pair[]=[];for(let cluster=0;cluster<values.length;cluster++)sampled.push(...values[Math.floor(random()*values.length)]);
-  estimates.push(mean(sampled.map(pair=>Math.abs(pair.prediction-pair.reference)))!);
- }
- estimates.sort((a,b)=>a-b);return [estimates[24],estimates[974]];
-}
 function metrics(pairs:Pair[]) {
  const delta=pairs.map(pair=>pair.prediction-pair.reference);
  const boundary=pairs.filter(pair=>pair.boundary);
@@ -47,7 +36,7 @@ function metrics(pairs:Pair[]) {
  return {n:pairs.length,learners:new Set(pairs.map(pair=>pair.learnerId)).size,
   mae:mean(delta.map(Math.abs)),rmse:delta.length?Math.sqrt(mean(delta.map(value=>value*value))!):null,
   signedBias:mean(delta),qwk:ordinalQuadraticKappa(pairs.map(pair=>[pair.predictionBand,pair.referenceBand])),
-  mae95LearnerBootstrap:maeInterval(pairs),placement:errors(pairs),boundaryPlacement:errors(boundary)};
+  mae95LearnerBootstrap:learnerBootstrapInterval(pairs.map(pair=>({learnerId:pair.learnerId,value:Math.abs(pair.prediction-pair.reference)}))),placement:errors(pairs),boundaryPlacement:errors(boundary)};
 }
 export function evaluateReferenceDataset(input:unknown) {
  const dataset=ReferenceDatasetSchema.parse(input);

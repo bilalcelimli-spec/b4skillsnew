@@ -37,3 +37,19 @@ Constant single-band QWK and insufficient confidence-interval evidence are null,
 Coverage gaps use a provisional target of at least 30 distinct auto-scored learners in each skill/reference-band cell. Small subgroup metrics require at least 30 distinct learners; otherwise only counts are shown. These are initial research targets, not universal certification standards. Learner-only bootstrap does not establish generalizability to new prompt families, and descriptive subgroup comparisons are not a causal fairness test. Review routing creates selection effects; auto-score metrics must always be read with coverage.
 
 `releaseApproved` is always false. A psychometric/assessment review must set task-specific acceptance criteria, examine the human baseline, confidence intervals, exclusions and subgroup evidence, then independently authorize any production use. Synthetic fixtures validate software behavior only.
+
+## Compare a candidate model or policy version
+
+```sh
+node --import tsx scripts/evaluation/compare-scoring-models.ts baseline.json candidate.json comparison.json
+```
+
+Both files must use the same dataset ID, cutoffs, reference responses, partitions, pseudonymous learner/prompt identifiers, rubric versions, expert ratings, adjudications and subgroup labels. Responses and expert-rating entries may appear in a different order. At least the model or scoring policy version must differ. Preserve original files; do not update the reference labels after seeing a model comparison.
+
+Accuracy differences use only the first run of cases auto-scored by both versions. The report also tracks gained auto-scored cases and previously auto-scored cases lost to review/failure; equal net coverage does not conceal changes in which cases were graded. Paired absolute-error differences have learner-cluster bootstrap intervals. Writing/speaking regressions and repeatability are checked separately so improvement in one skill cannot conceal deterioration in the other.
+
+The frozen provisional policy is reported in every result: MAE increase margin 0.01, candidate MAE at most 0.08, candidate ordinal QWK at least 0.80, severe band-error increase at most 0.01, coverage drop and previously-auto lost-case rate at most 0.02, auto coverage at least 0.90, repeatability within five points at least 0.95 with decline at most 0.02, 30 paired learners per skill and existing 30-learner skill/band coverage. A one-sided interpretation of the reported paired 95% interval's upper endpoint is used conservatively to check the MAE margin; unresolved intervals generate an evidence gap. These limits are unvalidated internal research choices, not CEFR certification rules. Observed regressions are descriptive; the tool makes no significance or multiple-comparison-adjusted claims.
+
+`observed_regression` means at least one observed limit was exceeded, even if other evidence is sparse. `insufficient_evidence` means gaps remain without an observed limit violation. `within_provisional_limits` means these checks found neither; it still does not authorize release. Append `--check` for diagnostic exit code 2 on regressions/gaps (0 within provisional limits, 1 invalid input/output error). The output is always created privately as a new file and always states `releaseApproved: false`.
+
+This comparison does not prove fairness, expert qualification, prompt-family independence or validity for a new population. The earlier per-model subgroup reports and independent assessment review remain necessary. No live model calls, database writes or deployment changes occur.
