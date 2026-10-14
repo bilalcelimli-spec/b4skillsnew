@@ -18,7 +18,7 @@
  *   2. A drift detector that compares the latest window against a baseline
  *      and raises an alert if MAE exceeds the baseline by > driftThreshold.
  *
- * High-stakes industry targets (Cambridge / ETS):
+ * Provisional internal monitoring targets (not external standards or validity evidence):
  *   QWK ≥ 0.80, MAE ≤ 0.08, Pearson r ≥ 0.85
  *
  * All functions are pure: no I/O, no randomness.
@@ -40,7 +40,7 @@ export interface AgreementMetrics {
   rmse: number;
   pearsonR: number;
   meanDelta: number;
-  /** Industry-standard threshold check (see module header). */
+  /** Internal provisional threshold check; does not establish high-stakes validity. */
   meetsHighStakesThreshold: boolean;
 }
 
@@ -99,7 +99,7 @@ function pearson(xs: number[], ys: number[]): number {
 /**
  * Quadratic Weighted Kappa for two raters who score the same items on the
  * same ordinal scale. We discretise normalised [0,1] scores into `bandCount`
- * bands (default 7 = CEFR), then apply Cohen's QWK with quadratic weights.
+ * equal-width ordinal bins (default 7; not validated CEFR cutoffs), then apply Cohen's QWK with quadratic weights.
  *
  * Returns 1 for perfect agreement, 0 for chance-level, and negative values
  * for systematic disagreement.

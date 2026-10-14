@@ -14,7 +14,7 @@
  *  4. Before deploying a new Gemini model version, the admin runs a
  *     validateModelVersion() check — it fails if the new MAE exceeds the threshold.
  *
- * Targets (Cambridge / ETS industry standards):
+ * Provisional internal drift targets; these are not external standards or release approval:
  *  - MAE  < 0.08  (normalised 0–1 scale)
  *  - RMSE < 0.12
  *  - Pearson r > 0.85
