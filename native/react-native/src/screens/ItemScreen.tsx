@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { pointerCursor, useHover } from '../components/hover';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AssessmentItem, canRender, choiceText, responseMode } from '../api';
 import { Icon } from '../components/Icon';
@@ -144,13 +145,12 @@ function Passage({ text, tall }: { text: string; tall?: boolean }) {
 }
 
 function ChoiceRow({ index, text, selected, onPress }: { index: number; text: string; selected: boolean; onPress: () => void }) {
-  const [hovered, setHovered] = useState(false);
+  const [hovered, hoverProps] = useHover();
   const letter = String.fromCharCode(65 + index);
   return (
     <Pressable
       onPress={onPress}
-      onHoverIn={() => setHovered(true)}
-      onHoverOut={() => setHovered(false)}
+      {...hoverProps}
       accessibilityRole="radio"
       accessibilityState={{ selected, checked: selected }}
       accessibilityLabel={`${letter}. ${text}`}
@@ -158,7 +158,7 @@ function ChoiceRow({ index, text, selected, onPress }: { index: number; text: st
         styles.choice,
         (hovered || pressed) && !selected && { borderColor: '#D9C6D3', backgroundColor: '#FCF8FB' },
         selected && styles.choiceSelected,
-        { cursor: 'pointer' } as any,
+        pointerCursor as any,
       ]}
     >
       <View style={[styles.letter, selected && { backgroundColor: color.plum }]}>
@@ -200,7 +200,7 @@ function ListeningPlayer({ url, disabled }: { url: string; disabled: boolean }) 
         accessibilityLabel={playing ? 'Dinlemeyi durdur' : 'Kaydı dinle'}
         disabled={disabled || (!playing && left <= 0)}
         onPress={() => (playing ? (B4Native.stopPlayback(), setPlaying(false)) : play())}
-        style={[styles.playButton, (disabled || (!playing && left <= 0)) && { opacity: 0.4 }, { cursor: 'pointer' } as any]}
+        style={[styles.playButton, (disabled || (!playing && left <= 0)) && { opacity: 0.4 }, pointerCursor as any]}
       >
         <Icon name={playing ? 'pause' : 'play'} size={22} color={color.onDark} />
       </Pressable>

@@ -1,7 +1,7 @@
-import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { CandidateDetails, normaliseExamCode } from '../api';
-import { LOGO, LOGO_ASPECT } from '../assets/logo';
+import { LogoHalo } from '../components/LogoHalo';
 import { Icon } from '../components/Icon';
 import { Button, Card, Eyebrow, Field, IconButton, Message } from '../components/ui';
 import { color, font, type } from '../theme';
@@ -13,24 +13,26 @@ const newCandidateId = () =>
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** Opening screen: the logo centred on a plum-dark page, exam-code entry, then email sign-in. */
-export function Welcome({ store, onConnection, onHelp }: { store: AssessmentState; onConnection: () => void; onHelp: () => void }) {
+export type WelcomeMode = 'code' | 'email' | 'both';
+
+/**
+ * Sign-in: the logo, then exam-code entry and/or email sign-in. The introduction's last screen
+ * opens it on one method; the other stays one tap away.
+ */
+export function Welcome({ store, mode: initialMode = 'both', onConnection, onHelp, onTour }: {
+  store: AssessmentState; mode?: WelcomeMode; onConnection: () => void; onHelp: () => void; onTour?: () => void;
+}) {
   const { width } = useWindowDimensions();
-  const logoW = Math.min(560, Math.max(300, width * 0.46), width - 40);
-  const logoH = logoW / LOGO_ASPECT;
+  const [mode, setMode] = useState<WelcomeMode>(initialMode);
+  useEffect(() => setMode(initialMode), [initialMode]);
+  const logoW = Math.min(480, Math.max(280, width * 0.4), width - 40);
 
   return (
     <View style={styles.page}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
         <View style={styles.column}>
           <View style={styles.brand}>
-            <View style={{ width: logoW, height: logoH, alignItems: 'center', justifyContent: 'center' }}>
-              {/* Soft magenta halo centred on the logo: stacked low-opacity discs, no gradient dependency. */}
-              {[2.3, 1.95, 1.65, 1.4, 1.2, 1.02, 0.86].map(k => (
-                <View key={k} pointerEvents="none" style={[styles.glow, { width: logoW * k, height: logoW * k, borderRadius: (logoW * k) / 2 }]} />
-              ))}
-              <Image source={LOGO} style={{ width: logoW, height: logoH }} resizeMode="contain" accessibilityLabel="b4skills" accessibilityRole="image" />
-            </View>
+            <LogoHalo width={logoW} />
             <Text style={styles.tagline}>ENGLISH ASSESSMENT</Text>
           </View>
 
@@ -38,14 +40,25 @@ export function Welcome({ store, onConnection, onHelp }: { store: AssessmentStat
             <ActivityIndicator color={color.onDark} style={{ marginTop: 24 }} />
           ) : (
             <>
-              <CodeCard store={store} />
-              <View style={styles.divider} accessibilityRole="text">
-                <View style={styles.rule} />
-                <Text style={styles.dividerText}>veya hesabınızla giriş yapın</Text>
-                <View style={styles.rule} />
-              </View>
-              <AccountCard store={store} />
+              {mode !== 'email' ? <CodeCard store={store} autoFocus={mode === 'code'} /> : null}
+              {mode === 'both' ? (
+                <View style={styles.divider} accessibilityRole="text">
+                  <View style={styles.rule} />
+                  <Text style={styles.dividerText}>veya hesabınızla giriş yapın</Text>
+                  <View style={styles.rule} />
+                </View>
+              ) : null}
+              {mode !== 'code' ? <AccountCard store={store} autoFocus={mode === 'email'} /> : null}
+              {mode !== 'both' ? (
+                <Button
+                  label={mode === 'code' ? 'Bunun yerine e-posta ile giriş yap' : 'Bunun yerine sınav kodu kullan'}
+                  icon={mode === 'code' ? 'mail' : 'hash'} variant="onDark"
+                  onPress={() => { store.setError(null); setMode(mode === 'code' ? 'email' : 'code'); }}
+                  style={{ alignSelf: 'center' }}
+                />
+              ) : null}
               <View style={styles.footer}>
+                {onTour ? <Button label="Tanıtım" icon="sparkle" variant="onDark" compact onPress={onTour} /> : null}
                 <Button label="Sunucu" icon="sliders" variant="onDark" compact onPress={onConnection} />
                 <Button label="Yardım" icon="help" variant="onDark" compact onPress={onHelp} />
               </View>
@@ -61,7 +74,7 @@ export function Welcome({ store, onConnection, onHelp }: { store: AssessmentStat
  * Exam-code entry, mirroring the web's CodeEntryPage: validate (read-only), then candidate details
  * and redeem. When a candidate is already signed in, their account is used and no form is shown.
  */
-export function CodeCard({ store, signedIn = false }: { store: AssessmentState; signedIn?: boolean }) {
+export function CodeCard({ store, signedIn = false, autoFocus = false }: { store: AssessmentState; signedIn?: boolean; autoFocus?: boolean }) {
   const [code, setCode] = useState('');
   const [verified, setVerified] = useState<{ code: string; productLine: string } | null>(null);
   const [details, setDetails] = useState<CandidateDetails>({ name: '', surname: '', email: '', school: '', className: '' });
@@ -134,6 +147,7 @@ export function CodeCard({ store, signedIn = false }: { store: AssessmentState; 
             <View style={styles.codeBox}>
             <TextInput
               accessibilityLabel="Sınav kodu"
+              autoFocus={autoFocus}
               value={code}
               onChangeText={t => setCode(t.toUpperCase())}
               placeholder="SINAV KODU"
@@ -185,7 +199,7 @@ export function CodeCard({ store, signedIn = false }: { store: AssessmentState; 
   );
 }
 
-function AccountCard({ store }: { store: AssessmentState }) {
+function AccountCard({ store, autoFocus = false }: { store: AssessmentState; autoFocus?: boolean }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const passwordRef = useRef<TextInput>(null);
@@ -202,7 +216,7 @@ function AccountCard({ store }: { store: AssessmentState }) {
             <Text style={[type.heading, { color: color.ink, fontSize: 21 }]}>E-posta ile giriş</Text>
           </View>
         </View>
-        <Field label="E-posta adresi" icon="mail" value={email} onChangeText={setEmail} placeholder="ornek@eposta.com"
+        <Field label="E-posta adresi" icon="mail" value={email} onChangeText={setEmail} placeholder="ornek@eposta.com" autoFocus={autoFocus}
           keyboardType="email-address" textContentType="username" autoComplete="email" returnKeyType="next"
           onSubmitEditing={() => passwordRef.current?.focus()} />
         <Field ref={passwordRef} label="Şifre" icon="lock" value={password} onChangeText={setPassword} placeholder="Şifrenizi girin"
@@ -220,7 +234,6 @@ function AccountCard({ store }: { store: AssessmentState }) {
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: color.aubergine, overflow: 'hidden' },
-  glow: { position: 'absolute', backgroundColor: color.logoMagenta, opacity: 0.045 },
   scroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 56 },
   column: { width: '100%', maxWidth: 480, gap: 22, alignItems: 'stretch' },
   brand: { alignItems: 'center', gap: 22, marginBottom: 18 },

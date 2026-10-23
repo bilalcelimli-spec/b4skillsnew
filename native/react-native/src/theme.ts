@@ -81,4 +81,4 @@ export type IconName =
   | 'arrowRight' | 'check' | 'checkCircle' | 'book' | 'headphones' | 'pen' | 'mic' | 'waveform'
   | 'mail' | 'lock' | 'shield' | 'help' | 'sliders' | 'logout' | 'play' | 'pause' | 'stop'
   | 'refresh' | 'sidebar' | 'grid' | 'layers' | 'sparkle' | 'alert' | 'info' | 'user' | 'hash'
-  | 'globe' | 'text' | 'spell' | 'close' | 'clock' | 'chevronRight' | 'target' | 'hand';
+  | 'globe' | 'text' | 'spell' | 'close' | 'clock' | 'chevronRight' | 'chevronLeft' | 'target' | 'hand';

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { pointerCursor, useHover } from './src/components/hover';
 import {
   ActivityIndicator, AppState, Linking, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View,
   useWindowDimensions,
@@ -8,7 +9,8 @@ import { Icon } from './src/components/Icon';
 import { Button, Eyebrow, Field, IconButton, Message, Sheet, Wordmark } from './src/components/ui';
 import { B4Native } from './src/native';
 import { Ready, SkillGrid } from './src/screens/Home';
-import { Welcome } from './src/screens/Welcome';
+import { Onboarding } from './src/screens/Onboarding';
+import { Welcome, WelcomeMode } from './src/screens/Welcome';
 import { ItemScreen } from './src/screens/ItemScreen';
 import { NextStep, Recovery, Results } from './src/screens/Results';
 import { color, font, IconName, skillMeta, type } from './src/theme';
@@ -35,6 +37,12 @@ function Shell() {
   const [sheet, setSheet] = useState<SheetName>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const scroll = useRef<ScrollView>(null);
+  // First run: the introduction is shown once (until finished), then sign-in opens on the chosen method.
+  const [onboarded, setOnboarded] = useState<boolean | null>(null);
+  const [signInMode, setSignInMode] = useState<WelcomeMode>('both');
+  useEffect(() => {
+    B4Native.getPref('onboarded').then(v => setOnboarded(v === '1'), () => setOnboarded(false));
+  }, []);
 
   const canShowSidebar = width >= 1000;
   const showSidebar = canShowSidebar && sidebarOpen;
@@ -87,11 +95,25 @@ function Shell() {
     </>
   );
 
-  // Signed out (and while a saved sign-in is being restored): the full-screen opening page.
-  if (store.restoring || !store.candidate) {
+  // Restoring a saved sign-in or reading the first-run flag: the plain brand background only.
+  if (store.restoring || onboarded === null) {
+    return <View style={{ flex: 1, backgroundColor: color.aubergine }} />;
+  }
+
+  if (!store.candidate && !onboarded) {
+    return (
+      <View style={{ flex: 1, paddingTop: insets.top, paddingBottom: insets.bottom, backgroundColor: color.aubergine }}>
+        <Onboarding onFinish={mode => { B4Native.setPref('onboarded', '1'); setSignInMode(mode); setOnboarded(true); }} />
+      </View>
+    );
+  }
+
+  // Signed out: sign-in, opened on the method picked at the end of the introduction.
+  if (!store.candidate) {
     return (
       <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: color.aubergine }}>
-        <Welcome store={store} onConnection={() => setSheet('connection')} onHelp={() => setSheet('help')} />
+        <Welcome store={store} mode={signInMode} onConnection={() => setSheet('connection')} onHelp={() => setSheet('help')}
+          onTour={() => setOnboarded(false)} />
         {sheets}
       </View>
     );
@@ -153,15 +175,14 @@ function initials(name?: string | null) {
 }
 
 function NavRow({ icon, label, active, onPress }: { icon: IconName; label: string; active?: boolean; onPress?: () => void }) {
-  const [hovered, setHovered] = useState(false);
+  const [hovered, hoverProps] = useHover();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: !!active }}
       onPress={onPress}
-      onHoverIn={() => setHovered(true)}
-      onHoverOut={() => setHovered(false)}
-      style={[styles.nav, active && styles.navActive, !active && hovered && { backgroundColor: 'rgba(255,255,255,0.06)' }, { cursor: 'pointer' } as any]}
+      {...hoverProps}
+      style={[styles.nav, active && styles.navActive, !active && hovered && { backgroundColor: 'rgba(255,255,255,0.06)' }, pointerCursor as any]}
     >
       <Icon name={icon} size={17} color={active ? color.onDark : 'rgba(255,255,255,0.62)'} />
       <Text style={[styles.navText, active && { color: color.onDark }]} numberOfLines={1}>{label}</Text>
@@ -212,7 +233,7 @@ function Sidebar({ store, onSheet, topInset }: { store: AssessmentState; onSheet
             </View>
           </View>
           <Pressable accessibilityRole="button" onPress={() => onSheet('logout')} disabled={store.busy}
-            style={[{ flexDirection: 'row', alignItems: 'center', gap: 8 }, { cursor: 'pointer' } as any]}>
+            style={[{ flexDirection: 'row', alignItems: 'center', gap: 8 }, pointerCursor as any]}>
             <Icon name="logout" size={14} color="rgba(255,255,255,0.6)" />
             <Text style={[type.caption, { color: 'rgba(255,255,255,0.6)' }]}>Çıkış yap</Text>
           </Pressable>

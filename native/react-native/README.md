@@ -30,7 +30,8 @@ Geliştirmede sunucu varsayılanı `http://localhost:3001`, Release derlemesinde
 - `src/useAssessment.ts` — oturum akışı: bölüm geçişleri, `answeredItemIds` ile doğrulama, oturuma devam, geçici sonuçlar.
 - `src/useRecorder.ts`, `modules/b4-native/` — iki platformda ortak ObjC modülü: AAC/M4A kayıt (en fazla 180 sn, `{audio, mimeType: "audio/mp4"}`), dinleme oynatma (soru başına 2), ayarlar, çıkışta cookie temizliği.
 - `src/theme.ts`, `src/components/` — marka tokenları, `b4skills` yazı logosu (−6° eğim, sarı ışık), ikon seti.
-- `src/screens/Welcome.tsx` — açılış ekranı: ortada logo, altında web'deki gibi **sınav koduyla giriş** (`/api/codes/validate` → aday bilgileri → `/api/codes/redeem`, sunucu oturumu açar), altında e-posta/şifre. Giriş yapmış aday kodu hazırlık ekranından kendi hesabına tanımlayabilir. Var olan bir hesabın e-postası girilirse (`account_login_required`) önce e-postayla giriş istenir. Sabit formlu Özgün Kids kodları kullanılmadan web'e yönlendirilir.
+- `src/screens/Onboarding.tsx` — **ilk açılış**: ortada yalnızca büyük logo ve altta "Devam et"; ardından 5 ekranlı tanıtım (uyarlanabilir değerlendirme, dört beceri, hazırlık, sonuçlar, giriş seçimi). Son ekran "Sınav kodum var" veya "E-posta ile giriş yap" ile giriş ekranını o yöntemle açar. Bir kez gösterilir (`onboarded` tercihi); oturumu açık adaya hiç gösterilmez; giriş ekranındaki "Tanıtım" ile tekrar izlenebilir. Sonuç çizimi "Örnek görünüm" olarak etiketlidir, düzey veya puan göstermez.
+- `src/screens/Welcome.tsx` — giriş ekranı: ortada logo, altında web'deki gibi **sınav koduyla giriş** (`/api/codes/validate` → aday bilgileri → `/api/codes/redeem`, sunucu oturumu açar), altında e-posta/şifre. Giriş yapmış aday kodu hazırlık ekranından kendi hesabına tanımlayabilir. Var olan bir hesabın e-postası girilirse (`account_login_required`) önce e-postayla giriş istenir. Sabit formlu Özgün Kids kodları kullanılmadan web'e yönlendirilir.
 - `src/screens/` — hazırlık (mikrofon testi), soru (geniş ekranda okuma metni yan panelde), sonuçlar.
 
 ## Marka
@@ -43,6 +44,7 @@ Geliştirmede sunucu varsayılanı `http://localhost:3001`, Release derlemesinde
 ## Doğrulama (23 Ekim 2026)
 
 - `npm test` — API sözleşme testleri: 14/14 (kod doğrulama/kayıt dahil).
+- İlk açılış: iPad'de açılış sayfası, 5 tanıtım ekranı, iki giriş seçimi, yöntemler arası geçiş ve yeniden açılışta tanıtımın atlanması; Mac'te açılış sayfası, tanıtım, kısa pencerede son ekran ve e-posta seçimi elle kontrol edildi.
 - `npm run type-check` — temiz.
 - Xcode Debug derlemeleri: iPad simülatörü ve macOS başarılı.
 - iPad Pro 13" simülatöründe ve Mac'te giriş ekranı görsel olarak kontrol edildi.
@@ -53,7 +55,13 @@ Geliştirmede sunucu varsayılanı `http://localhost:3001`, Release derlemesinde
 
 Soru, kayıt ve sonuç ekranları arayüzden henüz elle geçilmedi; bu akış `live-smoke` ile API düzeyinde doğrulandı.
 
-**Bilinen react-native-macos sorunu:** tek satırlı bir `TextInput`'a dikey `padding` verilirse Mac uygulaması hata vermeden kapanıyor. Yükseklik dıştaki `View`'da tutulmalı (bkz. `codeBox`). Mac'te otomatik/ani sonlandırma da kapalı (`NSSupportsAutomaticTermination = false`), sınav sırasında sistem uygulamayı kapatmasın diye.
+**Bilinen react-native-macos 0.83 sorunları** (Mac uygulaması hata vermeden, çıkış kodu 0 ile kapanıyor):
+- tek satırlı `TextInput`'a dikey `padding` → yükseklik dıştaki `View`'da (`codeBox`);
+- `transform: [{ scale }]` ve `Animated` için `useNativeDriver: true` → macOS'ta kullanılmıyor;
+- `Modal` ana pencereyi boşaltıyor ve içerik görünmüyor → `Sheet` uygulama içi katman olarak çiziliyor;
+- `useWindowDimensions` pencereyi değil ekranı veriyor → tanıtım yüksekliği `onLayout` ile ölçülüyor.
+
+Fare üzeri vurgusu ve `cursor: pointer` yalnızca macOS'ta etkin. Mac'te otomatik/ani sonlandırma da kapalı (`NSSupportsAutomaticTermination = false`), sınav sırasında sistem uygulamayı kapatmasın diye.
 
 ## Yerel uçtan uca test
 

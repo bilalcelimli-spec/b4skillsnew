@@ -1,6 +1,7 @@
 import React, { ReactNode, useState } from 'react';
+import { pointerCursor, useHover } from './hover';
 import {
-  ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextInput,
+  ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextInput,
   TextInputProps, View, ViewStyle,
 } from 'react-native';
 import { color, IconName, radius, shadow, type } from '../theme';
@@ -51,7 +52,7 @@ type ButtonProps = {
 export function Button({
   label, onPress, icon, trailingIcon, variant = 'primary', disabled, loading, block, compact, accessibilityHint, style,
 }: ButtonProps) {
-  const [hovered, setHovered] = useState(false);
+  const [hovered, hoverProps] = useHover();
   const primary = variant === 'primary';
   const danger = variant === 'danger';
   const onDark = variant === 'onDark';
@@ -64,8 +65,7 @@ export function Button({
       accessibilityState={{ disabled: !!disabled, busy: !!loading }}
       disabled={disabled || loading}
       onPress={onPress}
-      onHoverIn={() => setHovered(true)}
-      onHoverOut={() => setHovered(false)}
+      {...hoverProps}
       style={({ pressed }) => [
         styles.button,
         compact && styles.buttonCompact,
@@ -97,14 +97,13 @@ export function Button({
 export function IconButton({ icon, label, onPress, tone = color.muted, size = 20 }: {
   icon: IconName; label: string; onPress: () => void; tone?: string; size?: number;
 }) {
-  const [hovered, setHovered] = useState(false);
+  const [hovered, hoverProps] = useHover();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      onHoverIn={() => setHovered(true)}
-      onHoverOut={() => setHovered(false)}
+      {...hoverProps}
       hitSlop={6}
       style={({ pressed }) => [styles.iconButton, (pressed || hovered) && { backgroundColor: 'rgba(15,23,42,0.06)' }, pointer]}
     >
@@ -181,8 +180,11 @@ export function ProgressBar({ value, tone = color.plum, track = color.wash, heig
 export function Sheet({ visible, onClose, title, eyebrow, children }: {
   visible: boolean; onClose: () => void; title: string; eyebrow?: string; children: ReactNode;
 }) {
+  // An in-tree overlay rather than <Modal>: react-native-macos 0.83's Modal left the main window
+  // blank with the sheet nowhere on screen. Rendered last in the shell, so it covers the app.
+  if (!visible) return null;
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} supportedOrientations={['portrait', 'landscape']}>
+    <View style={[StyleSheet.absoluteFill, { zIndex: 10 }]}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Kapat" />
         <View style={styles.sheet} accessibilityViewIsModal>
@@ -196,11 +198,11 @@ export function Sheet({ visible, onClose, title, eyebrow, children }: {
           <ScrollView contentContainerStyle={{ padding: 28, paddingTop: 4, gap: 18 }}>{children}</ScrollView>
         </View>
       </View>
-    </Modal>
+    </View>
   );
 }
 
-const pointer = Platform.OS === 'ios' || Platform.OS === 'macos' ? ({ cursor: 'pointer' } as ViewStyle) : null;
+const pointer = pointerCursor as ViewStyle | null;
 
 const styles = StyleSheet.create({
   monogram: { backgroundColor: color.plum, alignItems: 'center', justifyContent: 'center' },
