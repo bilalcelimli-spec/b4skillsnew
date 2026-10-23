@@ -55,7 +55,11 @@ struct ReactNativeView: NSViewRepresentable {
   let factory: RCTReactNativeFactory
 
   func makeNSView(context: Context) -> NSView {
-    factory.rootViewFactory.view(withModuleName: "B4Skills")
+    let view = factory.rootViewFactory.view(withModuleName: "B4Skills")
+    // Welcome-screen background (#1E0820) while the JS bundle loads, instead of a white window.
+    view.wantsLayer = true
+    view.layer?.backgroundColor = NSColor(srgbRed: 0x1E / 255.0, green: 0x08 / 255.0, blue: 0x20 / 255.0, alpha: 1).cgColor
+    return view
   }
 
   func updateNSView(_ nsView: NSView, context: Context) {}

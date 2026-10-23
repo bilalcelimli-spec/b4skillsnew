@@ -1,23 +1,23 @@
 import React, { ReactNode, useState } from 'react';
 import {
-  ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextInput,
+  ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextInput,
   TextInputProps, View, ViewStyle,
 } from 'react-native';
 import { color, IconName, radius, shadow, type } from '../theme';
 import { Icon } from './Icon';
+import { LOGO, LOGO_ASPECT } from '../assets/logo';
 
-/** The web nav wordmark: lowercase white "b4skills" on plum, skewed −6°, with a soft gold glow. */
+/** The real b4skills logo (public/b4skillslogo.png). Height in points; width follows its aspect. */
 export function Wordmark({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
-  const fontSize = size === 'sm' ? 18 : size === 'lg' ? 34 : 24;
+  const height = size === 'sm' ? 30 : size === 'lg' ? 64 : 42;
   return (
-    <View
-      accessible
-      accessibilityRole="header"
+    <Image
+      source={LOGO}
+      style={{ height, width: height * LOGO_ASPECT, marginLeft: -height * 0.04 }}
+      resizeMode="contain"
+      accessibilityRole="image"
       accessibilityLabel="b4skills"
-      style={[styles.wordmark, { paddingHorizontal: fontSize * 0.5, paddingVertical: fontSize * 0.2 }]}
-    >
-      <Text style={[styles.wordmarkText, { fontSize, transform: [{ skewX: '6deg' }] }]}>b4skills</Text>
-    </View>
+    />
   );
 }
 
@@ -39,7 +39,7 @@ type ButtonProps = {
   onPress: () => void;
   icon?: IconName;
   trailingIcon?: IconName;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'onDark';
   disabled?: boolean;
   loading?: boolean;
   block?: boolean;
@@ -54,7 +54,8 @@ export function Button({
   const [hovered, setHovered] = useState(false);
   const primary = variant === 'primary';
   const danger = variant === 'danger';
-  const fg = primary ? color.onDark : danger ? color.danger : variant === 'ghost' ? color.muted : color.plum;
+  const onDark = variant === 'onDark';
+  const fg = primary ? color.onDark : danger ? color.danger : variant === 'ghost' ? color.muted : onDark ? 'rgba(255,255,255,0.78)' : color.plum;
   return (
     <Pressable
       accessibilityRole="button"
@@ -72,6 +73,7 @@ export function Button({
         primary && { backgroundColor: pressed || hovered ? color.plumDark : color.plum },
         variant === 'secondary' && [styles.secondary, (pressed || hovered) && { backgroundColor: color.wash }],
         variant === 'ghost' && (pressed || hovered) && { backgroundColor: 'rgba(15,23,42,0.05)' },
+        onDark && (pressed || hovered) && { backgroundColor: 'rgba(255,255,255,0.08)' },
         danger && [styles.secondary, { borderColor: '#F3D2D2' }, (pressed || hovered) && { backgroundColor: color.dangerWash }],
         (disabled || loading) && { opacity: 0.5 },
         pointer,
@@ -201,20 +203,6 @@ export function Sheet({ visible, onClose, title, eyebrow, children }: {
 const pointer = Platform.OS === 'ios' || Platform.OS === 'macos' ? ({ cursor: 'pointer' } as ViewStyle) : null;
 
 const styles = StyleSheet.create({
-  wordmark: {
-    alignSelf: 'flex-start',
-    backgroundColor: color.plum,
-    borderRadius: 3,
-    transform: [{ skewX: '-6deg' }],
-  },
-  wordmarkText: {
-    color: color.onDark,
-    fontWeight: '800',
-    letterSpacing: -0.8,
-    textShadowColor: 'rgba(253,224,71,0.6)',
-    textShadowRadius: 6,
-    textShadowOffset: { width: 0, height: 0 },
-  },
   monogram: { backgroundColor: color.plum, alignItems: 'center', justifyContent: 'center' },
   monogramText: {
     color: color.onDark, fontWeight: '900', letterSpacing: -0.6,
@@ -236,7 +224,8 @@ const styles = StyleSheet.create({
     backgroundColor: color.canvas, borderRadius: radius.md, borderWidth: 1, borderColor: color.line,
   },
   fieldFocused: { borderColor: color.plum, backgroundColor: color.surface },
-  input: { flex: 1, fontSize: 15, color: color.ink, paddingVertical: 12 },
+  // letterSpacing is explicit: recycled native inputs can otherwise keep the code box's tracking.
+  input: { flex: 1, fontSize: 15, color: color.ink, paddingVertical: 12, letterSpacing: 0, textAlign: 'left' },
   message: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: radius.lg },
   tile: {
     flexGrow: 1, flexBasis: 200, minHeight: 132, padding: 20, gap: 16, backgroundColor: color.surface,

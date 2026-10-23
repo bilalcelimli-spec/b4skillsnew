@@ -1,4 +1,14 @@
-import { Backend, canRender, normaliseBaseUrl, responseMode, AssessmentItem } from '../src/api';
+import { Backend, canRender, isExamCode, normaliseBaseUrl, normaliseExamCode, responseMode, AssessmentItem } from '../src/api';
+
+describe('exam codes', () => {
+  it('follows the backend CodeString rule', () => {
+    expect(normaliseExamCode('  ab-12x ')).toBe('AB-12X');
+    expect(isExamCode('AB-12X')).toBe(true);
+    expect(isExamCode('AB1')).toBe(false);
+    expect(isExamCode('AB 12')).toBe(false);
+    expect(isExamCode('Ç0DE1')).toBe(false);
+  });
+});
 
 type Call = { url: string; init: RequestInit };
 
@@ -83,6 +93,31 @@ describe('Backend', () => {
   it('surfaces the backend message with the HTTP status', async () => {
     mockFetch([{ status: 403, body: { message: 'Lisans bulunamadı' } }]);
     await expect(api.launch('General English')).rejects.toThrow('Lisans bulunamadı (HTTP 403)');
+  });
+
+  it('validates an exam code without credentials and redeems it with the candidate details', async () => {
+    const calls = mockFetch([
+      { status: 200, body: { valid: true, productLine: 'General English', expiresAt: null } },
+      { status: 200, body: { success: true, organizationId: 'o1', productLine: 'General English', candidateId: 'u1' } },
+    ]);
+    expect(await api.validateCode('AB-12')).toEqual({ productLine: 'General English', expiresAt: null });
+    const details = { name: 'Ada', surname: 'Y', email: 'ada@example.test', school: 'S', className: '9A' };
+    await api.redeemCode('AB-12', 'cand_x1', details);
+    expect(calls[0].url).toBe('http://localhost:3001/api/codes/validate');
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({ code: 'AB-12' });
+    expect(JSON.parse(calls[1].init.body as string)).toEqual({ code: 'AB-12', candidateId: 'cand_x1', ...details });
+  });
+
+  it('keeps the backend error code for an existing account', async () => {
+    mockFetch([{ status: 409, body: { error: 'account_login_required', message: 'Sign in first.' } }]);
+    await expect(api.redeemCode('AB-12', 'c', { name: 'a', surname: 'b', email: 'a@b.co', school: 's', className: 'c' }))
+      .rejects.toMatchObject({ status: 409, code: 'account_login_required' });
+  });
+
+  it('does not refresh tokens on a failed code check', async () => {
+    const calls = mockFetch([{ status: 404, body: { error: 'Code not found' } }]);
+    await expect(api.validateCode('NOPE1')).rejects.toThrow('Code not found (HTTP 404)');
+    expect(calls).toHaveLength(1);
   });
 
   it('resolves relative media against the backend origin only', () => {

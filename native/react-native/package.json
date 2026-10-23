@@ -11,7 +11,9 @@
     "type-check": "tsc --noEmit",
     "live-smoke": "../../node_modules/.bin/tsx scripts/live-smoke.ts",
     "pods": "cd ios && pod install && cd ../macos && pod install",
-    "e2e:backend": "bash scripts/e2e/start-local-backend.sh"
+    "e2e:backend": "bash scripts/e2e/start-local-backend.sh",
+    "e2e:code": "../../node_modules/.bin/tsx scripts/e2e/code-smoke.ts",
+    "logo": "python3 scripts/prepare-logo.py ../../public/b4skillslogo.png src/assets/b4skills-logo.png"
   },
   "dependencies": {
     "b4-native": "file:modules/b4-native",

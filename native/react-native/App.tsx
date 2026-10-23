@@ -7,7 +7,8 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { Icon } from './src/components/Icon';
 import { Button, Eyebrow, Field, IconButton, Message, Sheet, Wordmark } from './src/components/ui';
 import { B4Native } from './src/native';
-import { Ready, SignIn, SkillGrid } from './src/screens/Home';
+import { Ready, SkillGrid } from './src/screens/Home';
+import { Welcome } from './src/screens/Welcome';
 import { ItemScreen } from './src/screens/ItemScreen';
 import { NextStep, Recovery, Results } from './src/screens/Results';
 import { color, font, IconName, skillMeta, type } from './src/theme';
@@ -64,12 +65,40 @@ function Shell() {
 
   const crumb = store.phase === 'item' ? 'Değerlendirme' : store.phase === 'finished' ? 'Sonuçlarım' : store.candidate ? 'Genel bakış' : 'Giriş';
 
+  const sheets = (
+    <>
+      <HelpSheet visible={sheet === 'help'} onClose={() => setSheet(null)} />
+      <Sheet visible={sheet === 'skills'} onClose={() => setSheet(null)} eyebrow="Dört beceri" title="Bir dil, birçok yön.">
+        <Text style={[type.body, { color: color.muted }]}>
+          Okuma, dinleme, yazma ve konuşma becerileriniz bir arada değerlendirilir. Programınıza göre kelime bilgisi ve dil bilgisi bölümleri de yer alabilir.
+        </Text>
+        <SkillGrid />
+      </Sheet>
+      <ConnectionSheet visible={sheet === 'connection'} onClose={() => setSheet(null)} store={store} />
+      <Sheet visible={sheet === 'logout'} onClose={() => setSheet(null)} eyebrow="Çıkış" title="Çıkış yapılsın mı?">
+        <Text style={[type.body, { color: color.muted }]}>
+          Gönderilmemiş yanıtlar bu cihazdan silinir. Başladığınız sınavın sunucudaki süresi durmaz; aynı oturum kimliğiyle yeniden girebilirsiniz.
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+          <Button label="Çıkış yap" icon="logout" variant="danger" onPress={() => { setSheet(null); recorder.clear(); store.logout(); }} />
+          <Button label="Vazgeç" variant="ghost" onPress={() => setSheet(null)} />
+        </View>
+      </Sheet>
+    </>
+  );
+
+  // Signed out (and while a saved sign-in is being restored): the full-screen opening page.
+  if (store.restoring || !store.candidate) {
+    return (
+      <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: color.aubergine }}>
+        <Welcome store={store} onConnection={() => setSheet('connection')} onHelp={() => setSheet('help')} />
+        {sheets}
+      </View>
+    );
+  }
+
   let body: React.ReactNode;
-  if (store.restoring) {
-    body = <View style={styles.loading}><ActivityIndicator color={color.plum} /></View>;
-  } else if (!store.candidate) {
-    body = <SignIn store={store} wide={wide} onConnection={() => setSheet('connection')} />;
-  } else if (store.phase === 'finished') {
+  if (store.phase === 'finished') {
     body = <Results store={store} wide={wide} />;
   } else if (store.phase === 'uncertain') {
     body = <Recovery store={store} />;
@@ -113,23 +142,7 @@ function Shell() {
         </ScrollView>
       </View>
 
-      <HelpSheet visible={sheet === 'help'} onClose={() => setSheet(null)} />
-      <Sheet visible={sheet === 'skills'} onClose={() => setSheet(null)} eyebrow="Dört beceri" title="Bir dil, birçok yön.">
-        <Text style={[type.body, { color: color.muted }]}>
-          Okuma, dinleme, yazma ve konuşma becerileriniz bir arada değerlendirilir. Programınıza göre kelime bilgisi ve dil bilgisi bölümleri de yer alabilir.
-        </Text>
-        <SkillGrid />
-      </Sheet>
-      <ConnectionSheet visible={sheet === 'connection'} onClose={() => setSheet(null)} store={store} />
-      <Sheet visible={sheet === 'logout'} onClose={() => setSheet(null)} eyebrow="Çıkış" title="Çıkış yapılsın mı?">
-        <Text style={[type.body, { color: color.muted }]}>
-          Gönderilmemiş yanıtlar bu cihazdan silinir. Başladığınız sınavın sunucudaki süresi durmaz; aynı oturum kimliğiyle yeniden girebilirsiniz.
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-          <Button label="Çıkış yap" icon="logout" variant="danger" onPress={() => { setSheet(null); recorder.clear(); store.logout(); }} />
-          <Button label="Vazgeç" variant="ghost" onPress={() => setSheet(null)} />
-        </View>
-      </Sheet>
+      {sheets}
     </View>
   );
 }

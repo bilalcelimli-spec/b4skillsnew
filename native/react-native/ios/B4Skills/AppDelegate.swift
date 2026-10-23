@@ -34,6 +34,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 }
 
 class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
+  // Welcome-screen background (#1E0820), so launch screen → JS hand-off has no white flash.
+  override func customize(_ rootView: RCTRootView) {
+    super.customize(rootView)
+    rootView.backgroundColor = UIColor(red: 0x1E / 255.0, green: 0x08 / 255.0, blue: 0x20 / 255.0, alpha: 1)
+  }
+
   override func sourceURL(for bridge: RCTBridge) -> URL? {
     self.bundleURL()
   }

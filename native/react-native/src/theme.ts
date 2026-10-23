@@ -9,6 +9,11 @@ export const color = {
   plumSoft: '#B84D8C',
   navy: '#0F172A',
   navyRaised: '#172036',
+  // Welcome screen: the deep violet at the right end of public/b4skillslogo.png's gradient,
+  // with the logo's magenta as the halo, so the badge reads as part of the page.
+  aubergine: '#1E0820',
+  aubergineRaised: '#33102F',
+  logoMagenta: '#C8246E',
   gold: '#FDE047',
   ink: '#0F172A',
   body: '#334155',

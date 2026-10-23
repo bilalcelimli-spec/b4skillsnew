@@ -1,12 +1,11 @@
-import React, { useRef, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Eyebrow, Field, Message, SkillTile } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { color, font, SKILLS, type } from '../theme';
 import { AssessmentState } from '../useAssessment';
 import { formatSeconds, RecorderState } from '../useRecorder';
-
-const CEFR = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+import { CodeCard } from './Welcome';
 
 export function SkillGrid() {
   // Four across when there is room, otherwise a balanced 2×2 — never a 3+1 orphan.
@@ -19,77 +18,6 @@ export function SkillGrid() {
         <SkillTile key={key} title={SKILLS[key].label} subtitle={SKILLS[key].hint} icon={SKILLS[key].icon}
           style={tileWidth ? { width: tileWidth, flexGrow: 0, flexBasis: 'auto' } : undefined} />
       ))}
-    </View>
-  );
-}
-
-export function SignIn({ store, wide, onConnection }: { store: AssessmentState; wide: boolean; onConnection: () => void }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const passwordRef = useRef<TextInput>(null);
-  const canSubmit = email.trim().length > 3 && password.length > 0 && !store.busy;
-  const submit = () => { if (canSubmit) store.login(email, password).then(() => setPassword('')); };
-
-  return (
-    <View style={{ gap: 32 }}>
-      <View style={[styles.hero, wide && styles.heroWide]}>
-        <View style={[styles.story, wide && { flex: 1 }]}>
-          <Eyebrow>Dört beceri. Tek bir bakış.</Eyebrow>
-          <Text style={[type.display, { color: color.ink }]}>
-            İngilizceniz.{'\n'}<Text style={{ color: color.plum }}>Tüm yönleriyle.</Text>
-          </Text>
-          <Text style={[type.body, { color: color.muted, maxWidth: 460 }]}>
-            Okuyun, dinleyin, yazın ve konuşun. Seviyenize uyum sağlayan bir değerlendirmeyle kendinizi daha iyi tanıyın.
-          </Text>
-          <View style={{ gap: 12, marginTop: 8 }}>
-            <View style={styles.row}>
-              <Icon name="target" size={16} color={color.plum} />
-              <Text style={[type.small, { color: color.ink, fontWeight: '600' }]}>CEFR odaklı uyarlanabilir değerlendirme</Text>
-            </View>
-            <View style={styles.ladder} accessible accessibilityLabel="CEFR düzeyleri A1, A2, B1, B2, C1, C2">
-              {CEFR.map((level, i) => (
-                <View key={level} style={[styles.rung, { backgroundColor: i === 5 ? color.plum : color.wash, height: 30 + i * 6 }]}>
-                  <Text style={[styles.rungText, i === 5 && { color: color.onDark }]}>{level}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
-
-        <Card style={[styles.login, wide && { width: 380 }]}>
-          <View style={{ gap: 22 }}>
-            <View style={styles.rowBetween}>
-              <Eyebrow>Hoş geldiniz</Eyebrow>
-              <Icon name="user" size={20} color={color.plum} />
-            </View>
-            <View style={{ gap: 8 }}>
-              <Text style={[type.heading, { color: color.ink, fontSize: 26, lineHeight: 32 }]}>Kaldığınız yerden{'\n'}devam edin.</Text>
-              <Text style={[type.small, { color: color.muted }]}>Kurumunuzun verdiği B4Skills hesabıyla giriş yapın.</Text>
-            </View>
-            <View style={{ gap: 16 }}>
-              <Field
-                label="E-posta adresi" icon="mail" value={email} onChangeText={setEmail}
-                placeholder="ornek@eposta.com" keyboardType="email-address" textContentType="username"
-                autoComplete="email" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()}
-              />
-              <Field
-                ref={passwordRef}
-                label="Şifre" icon="lock" value={password} onChangeText={setPassword} placeholder="Şifrenizi girin"
-                secureTextEntry textContentType="password" autoComplete="password" returnKeyType="go" onSubmitEditing={submit}
-              />
-            </View>
-            <Button label="Giriş yap" trailingIcon="arrowRight" block onPress={submit} disabled={!canSubmit} loading={store.busy} />
-            <View style={styles.rowBetween}>
-              <View style={[styles.row, { flex: 1 }]}>
-                <Icon name="shield" size={14} color={color.plum} />
-                <Text style={[type.caption, { color: color.muted, flex: 1 }]}>Şifreniz bu cihazda saklanmaz.</Text>
-              </View>
-              <Button label="Sunucu" icon="sliders" variant="ghost" compact onPress={onConnection} />
-            </View>
-          </View>
-        </Card>
-      </View>
-      <SkillGrid />
     </View>
   );
 }
@@ -168,6 +96,8 @@ export function Ready({ store, recorder, wide }: { store: AssessmentState; recor
           </View>
         </Card>
       </View>
+
+      <CodeCard store={store} signedIn />
 
       <Card>
         <View style={[styles.hero, wide && styles.heroWide, { gap: 22 }]}>

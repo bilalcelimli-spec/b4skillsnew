@@ -4,8 +4,8 @@
 // - provisional results are shown as the backend reports them; missing scores stay missing.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Answer, ApiError, AssessmentItem, Backend, Candidate, SessionProgress, canRender, isFinished,
-  normaliseBaseUrl, responseMode,
+  Answer, ApiError, AssessmentItem, Backend, Candidate, CandidateDetails, SessionProgress, WEB_ONLY_PRODUCT_LINES,
+  canRender, isExamCode, isFinished, normaliseBaseUrl, normaliseExamCode, responseMode,
 } from './api';
 import { B4Native } from './native';
 
@@ -50,10 +50,10 @@ export function useAssessment() {
     }
   }, []);
 
-  const enter = useCallback(async (backend: Backend, user: Candidate) => {
+  const enter = useCallback(async (backend: Backend, user: Candidate, productOverride?: string) => {
     client.current = backend;
     setCandidate(user);
-    setProductLine(user.allowedProductLine || DEFAULT_PRODUCT_LINE);
+    setProductLine(productOverride || user.allowedProductLine || DEFAULT_PRODUCT_LINE);
     setSessionId((await B4Native.getPref(resumeKey(user.uid, backend.baseUrl))) ?? '');
     setPhase('ready');
   }, []);
@@ -98,6 +98,45 @@ export function useAssessment() {
       B4Native.setPref('backend', backend.baseUrl);
       await enter(backend, user);
     }), [address, enter, perform]);
+
+  /** Step 1 of code entry. Read-only: the code is not consumed. Errors are thrown to the caller. */
+  const checkCode = useCallback(async (raw: string) => {
+    const code = normaliseExamCode(raw);
+    if (!isExamCode(code)) throw new ApiError('Kod 4–64 harf, rakam veya tireden oluşmalıdır.');
+    const backend = client.current ?? new Backend(normaliseBaseUrl(address));
+    const { productLine: line } = await backend.validateCode(code);
+    if (WEB_ONLY_PRODUCT_LINES.includes(line)) {
+      throw new ApiError('Bu kod web uygulamasında yapılan sabit formlu bir sınava ait. Kodu kullanmadan b4skills web sitesinden devam edin.');
+    }
+    return { code, productLine: line };
+  }, [address]);
+
+  /**
+   * Step 2: consumes the code. The server signs the candidate in, so the identity always comes
+   * from /me afterwards — never from what was typed. Errors are thrown to the caller.
+   */
+  const redeemCode = useCallback(async (code: string, candidateId: string, details: CandidateDetails) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      const backend = client.current ?? new Backend(normaliseBaseUrl(address));
+      const redemption = await backend.redeemCode(code, candidateId, details);
+      const user = await backend.me();
+      B4Native.setPref('backend', backend.baseUrl);
+      setItem(null); setProgress(null); setAnswered(0); setNotice(null); setError(null);
+      await enter(backend, user, redemption.productLine);
+      setNotice(`Kodunuz kabul edildi: ${redemption.productLine}. Hazır olduğunuzda değerlendirmeye başlayın.`);
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'account_login_required') {
+        throw new ApiError('Bu e-posta adresiyle bir hesabınız var. Önce aşağıdan e-posta ve şifrenizle giriş yapın, sonra kodunuzu girin.', e.status, e.code);
+      }
+      throw e;
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }, [address, enter]);
 
   const logout = useCallback(() =>
     perform(async () => {
@@ -235,7 +274,7 @@ export function useAssessment() {
   return {
     address, setAddress, saveAddress, candidate, sessionId, productLine, item, progress, phase, busy,
     restoring, error, notice, answered, setError, setNotice,
-    login, logout, launch, resume, retryNext, submit, reconcile, refreshProgress, leaveResults, interrupted,
+    login, logout, checkCode, redeemCode, launch, resume, retryNext, submit, reconcile, refreshProgress, leaveResults, interrupted,
     mediaUrl: (raw?: string | null) => client.current?.mediaUrl(raw) ?? null,
   };
 }

@@ -75,9 +75,23 @@ export function isFinished(p?: SessionProgress | null): boolean {
 }
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status?: number) {
+  constructor(message: string, readonly status?: number, readonly code?: string) {
     super(message);
   }
+}
+
+/** Fixed-form products run only in the web app (see src/lib/fixed-forms/ozgun-kids.ts). */
+export const WEB_ONLY_PRODUCT_LINES = ['Özgün Kids — Form A (96 soru)'];
+
+export type CandidateDetails = { name: string; surname: string; email: string; school: string; className: string };
+export type Redemption = { success: true; organizationId: string; productLine: string; candidateId: string; displayName?: string | null };
+
+/** Same rules as the backend's CodeString schema: 4–64 letters, digits or dashes, uppercased. */
+export function normaliseExamCode(raw: string): string {
+  return raw.trim().toUpperCase();
+}
+export function isExamCode(code: string): boolean {
+  return /^[A-Z0-9-]{4,64}$/.test(code);
 }
 
 const LAN = /^(10\.\d{1,3}|192\.168|172\.(1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}$/;
@@ -120,6 +134,25 @@ export class Backend {
     } catch {
       // Cookies are cleared locally regardless.
     }
+  }
+
+  /** POST /api/codes/validate — read-only check; does not consume the code. */
+  async validateCode(code: string): Promise<{ productLine: string; expiresAt?: string | null }> {
+    const data = await this.request<{ valid?: boolean; productLine?: string; expiresAt?: string | null }>('api/codes/validate', { code }, false);
+    if (data?.valid !== true || typeof data.productLine !== 'string') throw new ApiError('Kod doğrulanamadı. Lütfen tekrar deneyin.');
+    return { productLine: data.productLine, expiresAt: data.expiresAt };
+  }
+
+  /**
+   * POST /api/codes/redeem — consumes the code and signs the candidate in (the server sets the
+   * auth cookies). candidateId is reused across retries of the same attempt, as on the web.
+   */
+  async redeemCode(code: string, candidateId: string, details: CandidateDetails): Promise<Redemption> {
+    const data = await this.request<Redemption>('api/codes/redeem', { code, candidateId, ...details }, false);
+    if (data?.success !== true || !data.productLine || !data.organizationId || !data.candidateId) {
+      throw new ApiError('Kayıt doğrulanamadı. Tekrar denemeden önce kurumunuzla iletişime geçin.');
+    }
+    return data;
   }
 
   launch(productLine: string, organizationId?: string | null) {
@@ -193,7 +226,7 @@ export class Backend {
     }
     if (!response.ok) {
       const message = data?.message ?? data?.error ?? (response.status === 401 ? 'Oturumunuzun süresi doldu. Yeniden giriş yapın.' : 'İstek tamamlanamadı');
-      throw new ApiError(`${message} (HTTP ${response.status})`, response.status);
+      throw new ApiError(`${message} (HTTP ${response.status})`, response.status, typeof data?.error === 'string' ? data.error : undefined);
     }
     return data as T;
   }
