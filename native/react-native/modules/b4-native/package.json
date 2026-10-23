@@ -1,0 +1,7 @@
+{
+  "name": "b4-native",
+  "version": "1.0.0",
+  "private": true,
+  "description": "B4Skills audio, preferences and cookie helpers for iPadOS and macOS",
+  "main": "index.js"
+}
