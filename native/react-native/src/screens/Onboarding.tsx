@@ -1,12 +1,15 @@
-// First-run experience: a logo-only splash, then a five-screen introduction. The last screen
-// sends the candidate to exam-code or email sign-in. Shown once; replayable from sign-in.
+// Signed-out experience. Every launch opens on the logo-only page with "Devam et". The first time,
+// a five-screen introduction follows; afterwards "Devam et" goes straight to its last screen,
+// where sign-in happens in place: exam code or email. There is no separate sign-in screen.
 import React, { useEffect, useRef, useState } from 'react';
 import { pointerCursor, useHover } from '../components/hover';
 import { Animated, Easing, LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Icon } from '../components/Icon';
 import { LogoHalo } from '../components/LogoHalo';
-import { Button } from '../components/ui';
+import { Button, IconButton } from '../components/ui';
 import { color, IconName, type } from '../theme';
+import { AssessmentState } from '../useAssessment';
+import { AccountCard, CodeCard } from './SignInCards';
 
 export type SignInMode = 'code' | 'email';
 
@@ -14,8 +17,15 @@ type Page = { eyebrow: string; title: string; body: string; art: React.ReactNode
 
 const onDarkMuted = 'rgba(255,255,255,0.66)';
 
-export function Onboarding({ onFinish }: { onFinish: (mode: SignInMode) => void }) {
-  const [step, setStep] = useState(-1); // -1 = splash, 0…4 = introduction
+export function Onboarding({ store, introSeen, onIntroSeen, onHelp, onConnection }: {
+  store: AssessmentState;
+  introSeen: boolean;
+  onIntroSeen: () => void;
+  onHelp: () => void;
+  onConnection?: () => void;
+}) {
+  const [step, setStep] = useState(-1); // -1 = logo page, 0…4 = introduction
+  const [signIn, setSignIn] = useState<SignInMode | null>(null);
   const screen = useWindowDimensions();
   // Measured, not useWindowDimensions: on macOS that reports the screen, not the window.
   const [box, setBox] = useState<{ width: number; height: number } | null>(null);
@@ -27,11 +37,18 @@ export function Onboarding({ onFinish }: { onFinish: (mode: SignInMode) => void 
   };
   const fade = useRef(new Animated.Value(0)).current;
 
+  const pages = PAGES(width);
+  const lastIndex = pages.length - 1;
+  const last = step === lastIndex;
+
   useEffect(() => {
     fade.setValue(0);
     // react-native-macos 0.83 quits silently with the native animation driver here, so macOS animates in JS.
     Animated.timing(fade, { toValue: 1, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: Platform.OS !== 'macos' }).start();
-  }, [fade, step]);
+  }, [fade, step, signIn]);
+
+  // Reaching the sign-in screen counts as having seen the introduction.
+  useEffect(() => { if (last && !introSeen) onIntroSeen(); }, [last, introSeen, onIntroSeen]);
 
   const appear = {
     opacity: fade,
@@ -46,55 +63,81 @@ export function Onboarding({ onFinish }: { onFinish: (mode: SignInMode) => void 
           <LogoHalo width={logoW} />
         </Animated.View>
         <View style={styles.splashBottom}>
-          <Button label="Devam et" trailingIcon="arrowRight" onPress={() => setStep(0)} style={styles.cta} />
+          {store.restoring ? (
+            // A plain label, not ActivityIndicator: that made react-native-macos 0.83 quit at launch.
+            <View style={{ height: 50, justifyContent: 'center' }}><Text style={{ color: onDarkMuted, fontSize: 14 }}>Yükleniyor…</Text></View>
+          ) : (
+            <Button label="Devam et" trailingIcon="arrowRight" onPress={() => setStep(introSeen ? lastIndex : 0)} style={styles.cta} />
+          )}
         </View>
       </View>
     );
   }
 
-  const pages = PAGES(width);
   const page = pages[step];
-  const last = step === pages.length - 1;
   const compact = width < 700;
   // Short windows (a Mac window, iPad landscape with the keyboard): the art is decorative, so it
-  // shrinks first, and on the sign-in choice screen it goes so the choices never meet the footer.
+  // shrinks first, and on the sign-in screen it goes so the content never meets the footer.
   const short = height < 900;
-  const showArt = !(last && short);
+  const showArt = !(last && (short || signIn));
+  const choose = (mode: SignInMode | null) => { store.setError(null); setSignIn(mode); };
+  const copy = last && signIn
+    ? signIn === 'code'
+      ? { eyebrow: 'Sınav kodu', title: 'Kodunuzla başlayın.', body: 'Kurumunuzun verdiği sınav kodunu girin, ardından aday bilgilerinizi tamamlayın.' }
+      : { eyebrow: 'Hesabınız', title: 'E-posta ile giriş yapın.', body: 'Kurumunuzun verdiği B4Skills hesabının e-posta adresi ve şifresiyle devam edin.' }
+    : page;
 
   return (
     <View style={styles.page} onLayout={measure}>
       <View style={styles.topBar}>
         <LogoHalo width={compact ? 110 : 132} halo={false} />
         <View style={{ flex: 1 }} />
-        {!last ? <Button label="Atla" variant="onDark" compact onPress={() => setStep(pages.length - 1)} /> : null}
+        {onConnection ? <IconButton icon="sliders" label="Sunucu adresi" onPress={onConnection} tone="rgba(255,255,255,0.7)" /> : null}
+        <IconButton icon="help" label="Yardım ve destek" onPress={onHelp} tone="rgba(255,255,255,0.7)" />
+        {!last ? <Button label="Atla" variant="onDark" compact onPress={() => setStep(lastIndex)} /> : null}
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <Animated.View style={[styles.body, short && { gap: 22 }, appear]} key={step}>
-        {showArt ? (
-          <View style={[styles.art, { minHeight: short ? 0 : Math.min(320, height * 0.34) }]}>{page.art}</View>
-        ) : null}
-        <View style={styles.copy}>
-          <Text style={styles.eyebrow}>{page.eyebrow.toLocaleUpperCase('tr-TR')}</Text>
-          <Text style={[styles.title, (compact || short) && { fontSize: 30, lineHeight: 36 }]}>{page.title}</Text>
-          <Text style={styles.text}>{page.body}</Text>
-        </View>
-        {last ? (
-          <View style={styles.choices}>
-            <Choice icon="hash" title="Sınav kodum var" hint="Kurumunuzun verdiği kodla başlayın" onPress={() => onFinish('code')} primary />
-            <Choice icon="mail" title="E-posta ile giriş yap" hint="B4Skills hesabınızla devam edin" onPress={() => onFinish('email')} />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+        <Animated.View style={[styles.body, (short || signIn) && { gap: 22 }, appear]} key={`${step}-${signIn ?? ''}`}>
+          {showArt ? (
+            <View style={[styles.art, { minHeight: short ? 0 : Math.min(320, height * 0.34) }]}>{page.art}</View>
+          ) : null}
+          <View style={styles.copy}>
+            <Text style={styles.eyebrow}>{copy.eyebrow.toLocaleUpperCase('tr-TR')}</Text>
+            <Text style={[styles.title, (compact || short || signIn) && { fontSize: 30, lineHeight: 36 }]}>{copy.title}</Text>
+            <Text style={styles.text}>{copy.body}</Text>
           </View>
-        ) : null}
-      </Animated.View>
+          {last && !signIn ? (
+            <View style={styles.choices}>
+              <Choice icon="hash" title="Sınav kodum var" hint="Kurumunuzun verdiği kodla başlayın" onPress={() => choose('code')} primary />
+              <Choice icon="mail" title="E-posta ile giriş yap" hint="B4Skills hesabınızla devam edin" onPress={() => choose('email')} />
+            </View>
+          ) : null}
+          {last && signIn ? (
+            <View style={{ gap: 16 }}>
+              {signIn === 'code' ? <CodeCard store={store} autoFocus /> : <AccountCard store={store} autoFocus showHeader={false} />}
+              <Button
+                label={signIn === 'code' ? 'Bunun yerine e-posta ile giriş yap' : 'Bunun yerine sınav kodu kullan'}
+                icon={signIn === 'code' ? 'mail' : 'hash'} variant="onDark"
+                onPress={() => choose(signIn === 'code' ? 'email' : 'code')} style={{ alignSelf: 'center' }}
+              />
+            </View>
+          ) : null}
+        </Animated.View>
       </ScrollView>
 
       <View style={styles.footer}>
         <View style={{ flex: 1, alignItems: 'flex-start' }}>
-          {step > 0 ? <Button label="Geri" icon="chevronLeft" variant="onDark" onPress={() => setStep(s => s - 1)} style={styles.back} /> : null}
+          {last && signIn ? (
+            <Button label="Seçenekler" icon="chevronLeft" variant="onDark" onPress={() => choose(null)} style={styles.back} />
+          ) : step > 0 ? (
+            <Button label="Geri" icon="chevronLeft" variant="onDark" onPress={() => setStep(s => s - 1)} style={styles.back} />
+          ) : null}
         </View>
         <View style={styles.dots} accessible accessibilityLabel={`Tanıtım ${step + 1} / ${pages.length}`}>
           {pages.map((_, i) => (
-            <Pressable key={i} onPress={() => setStep(i)} accessibilityRole="button" accessibilityLabel={`${i + 1}. ekran`} hitSlop={8}
+            <Pressable key={i} onPress={() => { choose(null); setStep(i); }} accessibilityRole="button" accessibilityLabel={`${i + 1}. ekran`} hitSlop={8}
               style={[styles.dot, i === step && styles.dotActive, pointerCursor as any]} />
           ))}
         </View>

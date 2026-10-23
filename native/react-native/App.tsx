@@ -10,7 +10,6 @@ import { Button, Eyebrow, Field, IconButton, Message, Sheet, Wordmark } from './
 import { B4Native } from './src/native';
 import { Ready, SkillGrid } from './src/screens/Home';
 import { Onboarding } from './src/screens/Onboarding';
-import { Welcome, WelcomeMode } from './src/screens/Welcome';
 import { ItemScreen } from './src/screens/ItemScreen';
 import { NextStep, Recovery, Results } from './src/screens/Results';
 import { color, font, IconName, skillMeta, type } from './src/theme';
@@ -39,7 +38,6 @@ function Shell() {
   const scroll = useRef<ScrollView>(null);
   // First run: the introduction is shown once (until finished), then sign-in opens on the chosen method.
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
-  const [signInMode, setSignInMode] = useState<WelcomeMode>('both');
   useEffect(() => {
     B4Native.getPref('onboarded').then(v => setOnboarded(v === '1'), () => setOnboarded(false));
   }, []);
@@ -95,25 +93,18 @@ function Shell() {
     </>
   );
 
-  // Restoring a saved sign-in or reading the first-run flag: the plain brand background only.
-  if (store.restoring || onboarded === null) {
-    return <View style={{ flex: 1, backgroundColor: color.aubergine }} />;
-  }
-
-  if (!store.candidate && !onboarded) {
+  // Signed out, and while a saved sign-in is restored: always the logo page first. The
+  // introduction runs once; sign-in itself lives on its last screen (no separate sign-in screen).
+  if (store.restoring || !store.candidate) {
     return (
       <View style={{ flex: 1, paddingTop: insets.top, paddingBottom: insets.bottom, backgroundColor: color.aubergine }}>
-        <Onboarding onFinish={mode => { B4Native.setPref('onboarded', '1'); setSignInMode(mode); setOnboarded(true); }} />
-      </View>
-    );
-  }
-
-  // Signed out: sign-in, opened on the method picked at the end of the introduction.
-  if (!store.candidate) {
-    return (
-      <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: color.aubergine }}>
-        <Welcome store={store} mode={signInMode} onConnection={() => setSheet('connection')} onHelp={() => setSheet('help')}
-          onTour={() => setOnboarded(false)} />
+        <Onboarding
+          store={store}
+          introSeen={onboarded === true}
+          onIntroSeen={() => { B4Native.setPref('onboarded', '1'); setOnboarded(true); }}
+          onHelp={() => setSheet('help')}
+          onConnection={__DEV__ ? () => setSheet('connection') : undefined}
+        />
         {sheets}
       </View>
     );

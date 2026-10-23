@@ -5,7 +5,7 @@ import { Icon } from '../components/Icon';
 import { color, font, SKILLS, type } from '../theme';
 import { AssessmentState } from '../useAssessment';
 import { formatSeconds, RecorderState } from '../useRecorder';
-import { CodeCard } from './Welcome';
+import { CodeCard } from './SignInCards';
 
 export function SkillGrid() {
   // Four across when there is room, otherwise a balanced 2×2 — never a 3+1 orphan.

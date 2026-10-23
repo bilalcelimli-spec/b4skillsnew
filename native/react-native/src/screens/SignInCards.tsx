@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+// Sign-in cards: exam-code entry (as on the web's CodeEntryPage) and email/password.
+import React, { useRef, useState } from 'react';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { CandidateDetails, normaliseExamCode } from '../api';
-import { LogoHalo } from '../components/LogoHalo';
 import { Icon } from '../components/Icon';
 import { Button, Card, Eyebrow, Field, IconButton, Message } from '../components/ui';
 import { color, font, type } from '../theme';
@@ -12,63 +12,6 @@ const newCandidateId = () =>
   `cand_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-export type WelcomeMode = 'code' | 'email' | 'both';
-
-/**
- * Sign-in: the logo, then exam-code entry and/or email sign-in. The introduction's last screen
- * opens it on one method; the other stays one tap away.
- */
-export function Welcome({ store, mode: initialMode = 'both', onConnection, onHelp, onTour }: {
-  store: AssessmentState; mode?: WelcomeMode; onConnection: () => void; onHelp: () => void; onTour?: () => void;
-}) {
-  const { width } = useWindowDimensions();
-  const [mode, setMode] = useState<WelcomeMode>(initialMode);
-  useEffect(() => setMode(initialMode), [initialMode]);
-  const logoW = Math.min(480, Math.max(280, width * 0.4), width - 40);
-
-  return (
-    <View style={styles.page}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
-        <View style={styles.column}>
-          <View style={styles.brand}>
-            <LogoHalo width={logoW} />
-            <Text style={styles.tagline}>ENGLISH ASSESSMENT</Text>
-          </View>
-
-          {store.restoring ? (
-            <ActivityIndicator color={color.onDark} style={{ marginTop: 24 }} />
-          ) : (
-            <>
-              {mode !== 'email' ? <CodeCard store={store} autoFocus={mode === 'code'} /> : null}
-              {mode === 'both' ? (
-                <View style={styles.divider} accessibilityRole="text">
-                  <View style={styles.rule} />
-                  <Text style={styles.dividerText}>veya hesabınızla giriş yapın</Text>
-                  <View style={styles.rule} />
-                </View>
-              ) : null}
-              {mode !== 'code' ? <AccountCard store={store} autoFocus={mode === 'email'} /> : null}
-              {mode !== 'both' ? (
-                <Button
-                  label={mode === 'code' ? 'Bunun yerine e-posta ile giriş yap' : 'Bunun yerine sınav kodu kullan'}
-                  icon={mode === 'code' ? 'mail' : 'hash'} variant="onDark"
-                  onPress={() => { store.setError(null); setMode(mode === 'code' ? 'email' : 'code'); }}
-                  style={{ alignSelf: 'center' }}
-                />
-              ) : null}
-              <View style={styles.footer}>
-                {onTour ? <Button label="Tanıtım" icon="sparkle" variant="onDark" compact onPress={onTour} /> : null}
-                <Button label="Sunucu" icon="sliders" variant="onDark" compact onPress={onConnection} />
-                <Button label="Yardım" icon="help" variant="onDark" compact onPress={onHelp} />
-              </View>
-            </>
-          )}
-        </View>
-      </ScrollView>
-    </View>
-  );
-}
 
 /**
  * Exam-code entry, mirroring the web's CodeEntryPage: validate (read-only), then candidate details
@@ -199,7 +142,7 @@ export function CodeCard({ store, signedIn = false, autoFocus = false }: { store
   );
 }
 
-function AccountCard({ store, autoFocus = false }: { store: AssessmentState; autoFocus?: boolean }) {
+export function AccountCard({ store, autoFocus = false, showHeader = true }: { store: AssessmentState; autoFocus?: boolean; showHeader?: boolean }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const passwordRef = useRef<TextInput>(null);
@@ -209,13 +152,15 @@ function AccountCard({ store, autoFocus = false }: { store: AssessmentState; aut
   return (
     <Card style={styles.card}>
       <View style={{ gap: 18 }}>
-        <View style={styles.cardHeader}>
-          <View style={styles.badge}><Icon name="user" size={20} color={color.plum} /></View>
-          <View style={{ flex: 1, gap: 4 }}>
-            <Eyebrow>Hesabınız</Eyebrow>
-            <Text style={[type.heading, { color: color.ink, fontSize: 21 }]}>E-posta ile giriş</Text>
+        {showHeader ? (
+          <View style={styles.cardHeader}>
+            <View style={styles.badge}><Icon name="user" size={20} color={color.plum} /></View>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Eyebrow>Hesabınız</Eyebrow>
+              <Text style={[type.heading, { color: color.ink, fontSize: 21 }]}>E-posta ile giriş</Text>
+            </View>
           </View>
-        </View>
+        ) : null}
         <Field label="E-posta adresi" icon="mail" value={email} onChangeText={setEmail} placeholder="ornek@eposta.com" autoFocus={autoFocus}
           keyboardType="email-address" textContentType="username" autoComplete="email" returnKeyType="next"
           onSubmitEditing={() => passwordRef.current?.focus()} />
@@ -233,11 +178,6 @@ function AccountCard({ store, autoFocus = false }: { store: AssessmentState; aut
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: color.aubergine, overflow: 'hidden' },
-  scroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 56 },
-  column: { width: '100%', maxWidth: 480, gap: 22, alignItems: 'stretch' },
-  brand: { alignItems: 'center', gap: 22, marginBottom: 18 },
-  tagline: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '600', letterSpacing: 3 },
   card: { padding: 26, borderColor: 'transparent', shadowOpacity: 0.3, shadowRadius: 30, shadowOffset: { width: 0, height: 14 }, shadowColor: '#000' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   badge: { width: 44, height: 44, borderRadius: 13, backgroundColor: color.wash, alignItems: 'center', justifyContent: 'center' },
@@ -252,9 +192,5 @@ const styles = StyleSheet.create({
   },
   product: { padding: 16, gap: 4, borderRadius: 14, backgroundColor: color.wash, borderWidth: 1, borderColor: '#EBD3E2' },
   pair: { flexDirection: 'row', gap: 12 },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: 14, marginVertical: 2 },
-  rule: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.16)' },
-  dividerText: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '500' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  footer: { flexDirection: 'row', justifyContent: 'center', gap: 8 },
 });

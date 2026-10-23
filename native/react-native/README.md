@@ -30,8 +30,8 @@ Geliştirmede sunucu varsayılanı `http://localhost:3001`, Release derlemesinde
 - `src/useAssessment.ts` — oturum akışı: bölüm geçişleri, `answeredItemIds` ile doğrulama, oturuma devam, geçici sonuçlar.
 - `src/useRecorder.ts`, `modules/b4-native/` — iki platformda ortak ObjC modülü: AAC/M4A kayıt (en fazla 180 sn, `{audio, mimeType: "audio/mp4"}`), dinleme oynatma (soru başına 2), ayarlar, çıkışta cookie temizliği.
 - `src/theme.ts`, `src/components/` — marka tokenları, `b4skills` yazı logosu (−6° eğim, sarı ışık), ikon seti.
-- `src/screens/Onboarding.tsx` — **ilk açılış**: ortada yalnızca büyük logo ve altta "Devam et"; ardından 5 ekranlı tanıtım (uyarlanabilir değerlendirme, dört beceri, hazırlık, sonuçlar, giriş seçimi). Son ekran "Sınav kodum var" veya "E-posta ile giriş yap" ile giriş ekranını o yöntemle açar. Bir kez gösterilir (`onboarded` tercihi); oturumu açık adaya hiç gösterilmez; giriş ekranındaki "Tanıtım" ile tekrar izlenebilir. Sonuç çizimi "Örnek görünüm" olarak etiketlidir, düzey veya puan göstermez.
-- `src/screens/Welcome.tsx` — giriş ekranı: ortada logo, altında web'deki gibi **sınav koduyla giriş** (`/api/codes/validate` → aday bilgileri → `/api/codes/redeem`, sunucu oturumu açar), altında e-posta/şifre. Giriş yapmış aday kodu hazırlık ekranından kendi hesabına tanımlayabilir. Var olan bir hesabın e-postası girilirse (`account_login_required`) önce e-postayla giriş istenir. Sabit formlu Özgün Kids kodları kullanılmadan web'e yönlendirilir.
+- `src/screens/Onboarding.tsx` — **oturum açılmamışken uygulamanın tamamı**. Her açılış ortasında büyük b4skills logosu ve altta "Devam et" olan sayfayla başlar (kayıtlı oturum geri yüklenirken de). İlk kez: 5 ekranlı tanıtım (uyarlanabilir değerlendirme, dört beceri, hazırlık, sonuçlar, giriş). Sonraki açılışlarda "Devam et" doğrudan son ekrana gider (`onboarded` tercihi). Ayrı bir giriş ekranı yoktur: son ekranda "Sınav kodum var" veya "E-posta ile giriş yap" seçilir ve form aynı ekranda açılır; yöntemler arası geçiş ve "Seçenekler"e dönüş vardır. Yardım üst köşede; sunucu adresi yalnızca geliştirme derlemesinde. Sonuç çizimi "Örnek görünüm" diye etiketlidir, düzey veya puan göstermez.
+- `src/screens/SignInCards.tsx` — kod ve e-posta kartları. Sınav kodu web'deki gibi: `/api/codes/validate` → aday bilgileri → `/api/codes/redeem` (sunucu oturumu açar). Giriş yapmış aday kodu hazırlık ekranından kendi hesabına tanımlayabilir. Var olan bir hesabın e-postası girilirse (`account_login_required`) önce e-postayla giriş istenir. Sabit formlu Özgün Kids kodları kullanılmadan web'e yönlendirilir.
 - `src/screens/` — hazırlık (mikrofon testi), soru (geniş ekranda okuma metni yan panelde), sonuçlar.
 
 ## Marka
@@ -44,20 +44,21 @@ Geliştirmede sunucu varsayılanı `http://localhost:3001`, Release derlemesinde
 ## Doğrulama (23 Ekim 2026)
 
 - `npm test` — API sözleşme testleri: 14/14 (kod doğrulama/kayıt dahil).
-- İlk açılış: iPad'de açılış sayfası, 5 tanıtım ekranı, iki giriş seçimi, yöntemler arası geçiş ve yeniden açılışta tanıtımın atlanması; Mac'te açılış sayfası, tanıtım, kısa pencerede son ekran ve e-posta seçimi elle kontrol edildi.
+- Açılış akışı: iPad'de logolu sayfa, 5 tanıtım ekranı, tanıtım görüldükten sonra "Devam et"in doğrudan son ekrana gitmesi ve kod formunun yerinde açılması; Mac'te logolu sayfa, kısa pencerede son ekran ve e-posta formunun yerinde açılması elle kontrol edildi. Mac'te şifre arka planda yazılamadığı için e-posta girişi arayüzden tamamlanmadı.
 - `npm run type-check` — temiz.
 - Xcode Debug derlemeleri: iPad simülatörü ve macOS başarılı.
 - iPad Pro 13" simülatöründe ve Mac'te giriş ekranı görsel olarak kontrol edildi.
 - `npm run live-smoke` — uygulamanın kendi `api.ts` istemcisi, izole yerel backend'e karşı (`npm run e2e:backend`): **53 yanıt, COMPLETED**, 5 bölüm geçişi, dinleme medyası HTTP 200, sentetik konuşma kaydı kabul edildi, anonim erişim 401. 6 üretici yanıt incelemede (AI anahtarı yüklenmedi); C2 fixture yanıtlarının geçici çıktısıdır.
 
 - `npm run e2e:code` — kodla giriş, gerçek backend'e karşı: yeni aday kaydolup oturum açtı ve sınav başlattı; kullanılmış kod reddedildi (400); var olan hesap girişsiz kod kullanamadı (`account_login_required`); giriş yapmış aday kodu kendi hesabına tanımladı.
-- Mac arayüzünde kod → aday bilgileri → oturum açma → hazırlık ekranı elle geçildi. iPad'de açılış ve launch ekranı görsel olarak kontrol edildi.
+- Kod → aday bilgileri → oturum açma → hazırlık ekranı Mac arayüzünde (önceki giriş ekranı düzeninde, aynı kartla) elle geçildi.
 
 Soru, kayıt ve sonuç ekranları arayüzden henüz elle geçilmedi; bu akış `live-smoke` ile API düzeyinde doğrulandı.
 
 **Bilinen react-native-macos 0.83 sorunları** (Mac uygulaması hata vermeden, çıkış kodu 0 ile kapanıyor):
 - tek satırlı `TextInput`'a dikey `padding` → yükseklik dıştaki `View`'da (`codeBox`);
 - `transform: [{ scale }]` ve `Animated` için `useNativeDriver: true` → macOS'ta kullanılmıyor;
+- açılış sayfasındaki `ActivityIndicator` (muhtemel; düğmelerdeki sorun çıkarmadı) → yerine metin;
 - `Modal` ana pencereyi boşaltıyor ve içerik görünmüyor → `Sheet` uygulama içi katman olarak çiziliyor;
 - `useWindowDimensions` pencereyi değil ekranı veriyor → tanıtım yüksekliği `onLayout` ile ölçülüyor.
 
