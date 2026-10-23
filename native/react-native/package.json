@@ -10,7 +10,8 @@
     "macos": "react-native run-macos",
     "type-check": "tsc --noEmit",
     "live-smoke": "../../node_modules/.bin/tsx scripts/live-smoke.ts",
-    "pods": "cd ios && pod install && cd ../macos && pod install"
+    "pods": "cd ios && pod install && cd ../macos && pod install",
+    "e2e:backend": "bash scripts/e2e/start-local-backend.sh"
   },
   "dependencies": {
     "b4-native": "file:modules/b4-native",

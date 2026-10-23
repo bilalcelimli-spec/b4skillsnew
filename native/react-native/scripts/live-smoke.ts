@@ -1,5 +1,5 @@
 // Runs the app's own src/api.ts client through a complete session against the isolated local
-// backend (native/apple/scripts/start-local-e2e.sh). Local fixture accounts only; port 3001 only.
+// backend (scripts/e2e/start-local-backend.sh, or `npm run e2e:backend`). Local fixture accounts only; port 3001 only.
 // Node's fetch has no cookie store, so a minimal jar stands in for the native one.
 import fs from 'node:fs';
 import { Backend, canRender, choiceText, responseMode, Answer } from '../src/api';

@@ -9,7 +9,7 @@ Tek JavaScript kod tabanı, iki native Apple uygulaması:
 
 İkisinde de paket kimliği `com.b4skills.assessment`. App Store Connect'te aynı kimlikle iOS ve macOS uygulaması açılırsa **Universal Purchase** ile tek mağaza kaydı olur.
 
-Mevcut backend değiştirilmedi. SwiftUI prototipi (`native/apple`) yerinde duruyor; bu proje onun API sözleşmesini ve tasarım dilini taşır.
+Mevcut backend değiştirilmedi. Önceki SwiftUI prototipinin yerini alır; onun doğrulanmış API sözleşmesini ve tasarım dilini taşır.
 
 ## Kurulum
 
@@ -42,9 +42,18 @@ Kaynaklar: `src/components/SiteNav.tsx` (erik moru yazı logosu), `LandingPage.t
 - `npm run type-check` — temiz.
 - Xcode Debug derlemeleri: iPad simülatörü ve macOS başarılı.
 - iPad Pro 13" simülatöründe ve Mac'te giriş ekranı görsel olarak kontrol edildi.
-- `npm run live-smoke` — uygulamanın kendi `api.ts` istemcisi, izole yerel backend'e karşı (`native/apple/scripts/start-local-e2e.sh`): **53 yanıt, COMPLETED**, 5 bölüm geçişi, dinleme medyası HTTP 200, sentetik konuşma kaydı kabul edildi, anonim erişim 401. 6 üretici yanıt incelemede (AI anahtarı yüklenmedi); C2 fixture yanıtlarının geçici çıktısıdır.
+- `npm run live-smoke` — uygulamanın kendi `api.ts` istemcisi, izole yerel backend'e karşı (`npm run e2e:backend`): **53 yanıt, COMPLETED**, 5 bölüm geçişi, dinleme medyası HTTP 200, sentetik konuşma kaydı kabul edildi, anonim erişim 401. 6 üretici yanıt incelemede (AI anahtarı yüklenmedi); C2 fixture yanıtlarının geçici çıktısıdır.
 
 Arayüzde giriş sonrası ekranlar (soru, kayıt, sonuç) simülatör metin girişi çalışmadığı için henüz elle doğrulanmadı.
+
+## Yerel uçtan uca test
+
+```sh
+npm run e2e:backend   # ayrı terminalde: gerçek server.ts, izole PostgreSQL 16 (127.0.0.1:55432)
+npm run live-smoke    # tam sınav, uygulamanın api.ts istemcisiyle
+```
+
+`scripts/e2e/start-local-backend.sh` normal `.env`'i yüklemez; yalnızca `b4skills_apple_e2e` veritabanını ve 3001 portunu kabul eder, başka bir 3001 sürecini durdurmaz. Veriler `/tmp/b4skills-apple-e2e/` altındadır. Yerel test hesapları `apple.ipad@example.test`, `apple.mac@example.test`, `apple.client@example.test` (şifre `scripts/e2e/provision-e2e.mjs` içinde). Test backend'ini internete açmayın.
 
 ## App Store'a göndermeden önce
 
