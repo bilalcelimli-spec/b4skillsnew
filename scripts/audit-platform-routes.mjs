@@ -72,6 +72,7 @@ for (const file of ['server.ts', ...sourceFiles('src')]) {
 }
 
 const factories = {
+  'src/routes/session-pause.ts': 'createSessionPauseRouter',
   'src/routes/items.ts': 'createItemsRouter',
   'src/routes/billing.ts': 'createBillingRouter',
   'src/routes/proctoring.ts': 'createProctoringRouter',

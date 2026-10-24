@@ -13,7 +13,7 @@ async function json(response, path) {
 export async function runAuthSmoke({ baseUrl, email, password, fetchImpl = fetch, log = console.log }) {
   assertOk(baseUrl && email && password, 'Missing required env vars: BASE_URL, AUTH_EMAIL, AUTH_PASSWORD');
   const request = (path, options = {}) => fetchImpl(`${baseUrl.replace(/\/$/, '')}${path}`, {
-    ...options, signal: AbortSignal.timeout(15000),
+    ...options, headers: { Origin: new URL(baseUrl).origin, ...options.headers }, signal: AbortSignal.timeout(15000),
   });
   const live = await json(await request('/api/healthz/live'), '/api/healthz/live');
   assertOk(live.status === 'ok', 'Liveness status is not ok');

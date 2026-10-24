@@ -1,4 +1,5 @@
 import { storeNativeEvent } from "./src/lib/proctoring/native-events.js";
+import { cookieRequestProtection } from './src/lib/security/cookie-request-protection.js';
 import { examPolicy, admitExam } from "./src/lib/proctoring/exam-policy.js";
 import { isGeminiScoringConfigured } from "./src/lib/scoring/gemini-scoring-service.js";
 import { createSessionPauseRouter } from './src/routes/session-pause';
@@ -165,6 +166,12 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.use(cookieParser());
+  const csrf = cookieRequestProtection(
+    process.env.JWT_SECRET!, process.env.APP_URL || `http://localhost:${process.env.PORT || '3001'}`,
+    process.env.NODE_ENV === 'production',
+  );
+  app.get('/api/auth/csrf', csrf.issue);
+  app.use('/api', csrf.protect);
   // A production database outage must never turn an assessment into demo scoring.
   app.use("/api", (req, res, next) => {
     if ((process.env.NODE_ENV === "production" || validationOnly) && !dbAvailable && !req.path.startsWith("/health")) {

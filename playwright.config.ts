@@ -31,6 +31,7 @@ export default defineConfig({
   ],
   use: {
     baseURL: BASE_URL,
+    extraHTTPHeaders: { Origin: new URL(BASE_URL).origin },
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "on-first-retry",
