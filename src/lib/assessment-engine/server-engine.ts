@@ -1,4 +1,7 @@
+import { examPolicy, admitExam, admitCurrentExam, ExamPreflight } from "../proctoring/exam-policy.js";
+import type { z } from "zod";
 import { resolveTaskRubric } from "../scoring/rubric-validation.js";
+import { createSessionOnce, findLaunchSession } from './launch-idempotency';
 import { effectiveSessionStart } from './session-pause';
 import { createOzgunKidsService } from "../fixed-forms/ozgun-kids-service";
 import {sessionDeadlineReached} from './session-deadline';
@@ -298,13 +301,27 @@ export const AssessmentService = {
   /**
    * Launch a new session
    */
-  async launchSession(candidateId: string, organizationId: string, productLine?: string) {
+  launchReceipt(session: { id: string; status: string; metadata: unknown }) {
+    const profile = getProfile((session.metadata as any)?.productLine);
+    return {
+      sessionId: session.id, status: session.status, maxDurationMs: profile.maxDurationMs,
+      estimatedDurationMin: profile.estimatedDurationMin,
+      sectionOrder: profile.sectionOrder.map(s => String(s)),
+      profileName: profile.displayName ?? profile.name,
+    };
+  },
+
+  async launchSession(candidateId: string, organizationId: string, productLine?: string, launchRequestId?: string, requestedProductLine: string | null = productLine ?? null, preflight?: z.infer<typeof ExamPreflight>) {
+    const identity = { candidateId, organizationId, productLine: requestedProductLine ?? undefined, launchRequestId };
+    const existing = await findLaunchSession(prisma, identity);
+    if (existing) return this.launchReceipt(existing);
     const engine = await getEngine();
     
     const org = await prisma.organization.findUnique({ where: { id: organizationId } });
     if (!org) {
       throw new Error("Organization not found. Create the organization in the admin console first.");
     }
+    admitExam(examPolicy(org.settings), preflight);
     let candidate = await prisma.user.findUnique({ where: { id: candidateId } });
     if (!candidate) {
       // Auto-create a guest candidate record (e.g. from code-entry flow)
@@ -321,7 +338,7 @@ export const AssessmentService = {
 
     // --- CREDIT CHECK ---
     const hasCredits = await BillingService.hasSufficientCredits(organizationId);
-    if (!hasCredits) {
+    if (!hasCredits && !launchRequestId) {
       throw new AppError(402, "INSUFFICIENT_CREDITS", "Insufficient assessment credits. Please top up your account.");
     }
 
@@ -383,23 +400,31 @@ export const AssessmentService = {
       );
     }
 
-    const session = await prisma.$transaction(async tx => {
+    let created = false;
+    const session = await createSessionOnce(prisma, identity, async tx => {
+      const admission = await admitCurrentExam(tx, organizationId, preflight);
       await BillingService.consumeCredit(organizationId, tx);
-      return tx.session.create({
+      const launched = await tx.session.create({
         data: {
           candidateId,
           organizationId,
           status: SessionStatus.IN_PROGRESS,
           theta: initialState.theta,
           sem: initialState.sem,
-          metadata: productLine ? { productLine } : {},
+          metadata: {
+            ...(admission ? { examAdmission: admission } : {}),
+            ...(productLine ? { productLine } : {}),
+            ...(launchRequestId ? { launchRequestId, launchProductLine: requestedProductLine ?? 'General English' } : {}),
+          },
           startedAt: new Date(),
         },
       });
+      created = true;
+      return launched;
     });
 
     // Denominator for global Sympson–Hetter exposure rate (exposures / test starts)
-    getExposureStore()
+    if (created) getExposureStore()
       .then((store) => store.recordTestStart())
       .catch(() => {});
 
@@ -1658,7 +1683,7 @@ export const AssessmentService = {
     });
     if (!session) throw new Error("Session not found");
     if ((session.metadata as any)?.sessionType === 'FIXED_FORM') return createOzgunKidsService(prisma).read(sessionId);
-    return buildSessionProgress(session);
+    return { ...buildSessionProgress(session), examAdmission: (session.metadata as any)?.examAdmission ?? null };
   },
 
   /**
