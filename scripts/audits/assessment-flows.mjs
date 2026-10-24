@@ -436,10 +436,15 @@ try{
   // AI providers are disabled in this local server: recovery must preserve each
   // answer and route unavailable scoring to review, never invent a final grade.
   const deadline=Date.now()+90_000;
-  let pending=105;
-  while(pending && Date.now()<deadline){
+  let pending=105,reviewCount=0;
+  // Clearing pendingAsyncScore precedes review-task delivery. Wait for the
+  // complete observable outcome, including the tail of the second batch.
+  while((pending || reviewCount<ids.length) && Date.now()<deadline){
    await new Promise(resolve=>setTimeout(resolve,500));
-   pending=await db.response.count({where:{sessionId:{in:ids},metadata:{path:['pendingAsyncScore'],equals:true}}});
+   [pending,reviewCount]=await Promise.all([
+    db.response.count({where:{sessionId:{in:ids},metadata:{path:['pendingAsyncScore'],equals:true}}}),
+    db.ratingTask.count({where:{response:{sessionId:{in:ids}}}}),
+   ]);
   }
   assert.equal(pending,0,'Every persisted submission is recovered across bounded batches');
   const responses=await db.response.findMany({where:{sessionId:{in:ids}}});
