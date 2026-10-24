@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { createHash } from "node:crypto";
 
 export type StorageProvider = "supabase" | "s3";
 export type StoragePurpose = "identity" | "proctoring" | "exports";
@@ -75,6 +76,33 @@ export async function uploadPrivateObject(purpose: StoragePurpose, key: string, 
   return reference;
 }
 
+/** Immutable evidence upload. A lost storage ACK is recovered only for identical bytes. */
+export async function uploadPrivateObjectOnce(reference: StorageReference, bytes: Buffer, contentType: string): Promise<void> {
+  storageReference('proctoring', reference.key, reference.provider, reference.bucket);
+  try {
+    if (reference.provider === 'supabase') {
+      const client = supabaseStorageClient();
+      await privateBucket(client, reference.bucket);
+      const { error } = await client.storage.from(reference.bucket).upload(reference.key, bytes, { contentType, upsert: false });
+      if (error) throw new Error('Private evidence upload failed');
+    } else {
+      const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
+      const client = new S3Client({ region: process.env.AWS_REGION || 'eu-west-1' });
+      try {
+        await client.send(new PutObjectCommand({ Bucket: reference.bucket, Key: reference.key, Body: bytes,
+          ContentType: contentType, ServerSideEncryption: 'AES256', IfNoneMatch: '*' }), { abortSignal: AbortSignal.timeout(15_000) });
+      } finally { client.destroy(); }
+    }
+  } catch (error) {
+    if (error instanceof StorageConfigurationError) throw error;
+    const existing = await downloadPrivateObject(reference);
+    if (existing.contentType.split(';')[0] !== contentType || existing.bytes.length !== bytes.length
+      || createHash('sha256').update(existing.bytes).digest('hex') !== createHash('sha256').update(bytes).digest('hex')) {
+      throw new Error('Private evidence object conflicts with reserved bytes');
+    }
+  }
+}
+
 /** Caller must enforce session/tenant ownership before reading an object. */
 export async function downloadPrivateObject(reference: StorageReference): Promise<{ bytes: Buffer; contentType: string }> {
   storageReference("identity", reference.key, reference.provider, reference.bucket);
@@ -93,4 +121,20 @@ export async function downloadPrivateObject(reference: StorageReference): Promis
     if (!object.Body) throw new Error("Storage object has no body");
     return { bytes: Buffer.from(await object.Body.transformToByteArray()), contentType: object.ContentType || "application/octet-stream" };
   } finally { client.destroy(); }
+}
+
+/** Only retention/admin callers may delete an already-authorized private object. */
+export async function deletePrivateObject(reference: StorageReference): Promise<void> {
+  storageReference('proctoring', reference.key, reference.provider, reference.bucket);
+  if (reference.provider === 'supabase') {
+    const client = supabaseStorageClient();
+    await privateBucket(client, reference.bucket);
+    const { error } = await client.storage.from(reference.bucket).remove([reference.key]);
+    if (error) throw new Error('Private evidence deletion failed');
+    return;
+  }
+  const { S3Client, DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+  const client = new S3Client({ region: process.env.AWS_REGION || 'eu-west-1' });
+  try { await client.send(new DeleteObjectCommand({ Bucket: reference.bucket, Key: reference.key }), { abortSignal: AbortSignal.timeout(15_000) }); }
+  finally { client.destroy(); }
 }

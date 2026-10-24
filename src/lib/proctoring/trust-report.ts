@@ -1,3 +1,9 @@
+/** Native technical receipts and approved photos are observations, not risk signals. */
+export function isNeutralNativeObservation(event: { type: string; severity: number; metadata?: unknown }) {
+  const metadata = event.metadata as any;
+  return (metadata?.nativeProtocol?.version === 2 && event.severity <= 1)
+    || (typeof metadata?.reservationDigest === 'string' && ['EVIDENCE_PENDING', 'SCREENSHOT', 'EVIDENCE_EXPIRED'].includes(event.type));
+}
 /** Heuristic review aid computed from stored events; reading never changes session status. */
 export function buildTrustReport(sessionId: string, events: Array<{
   id: string; type: string; severity: number; timestamp: Date; metadata?: unknown;
@@ -8,12 +14,13 @@ export function buildTrustReport(sessionId: string, events: Array<{
     AUDIO_ANOMALY: 5, HIGH_NOISE: 5, NOISE_DETECTED: 5,
     MULTIPLE_FACES: 30, UNAUTHORIZED_DEVICE: 50,
   };
-  const penalty = events.reduce((sum, event) => sum + (weights[event.type] ?? 2) *
+  const signals = events.filter(event => !isNeutralNativeObservation(event));
+  const penalty = signals.reduce((sum, event) => sum + (weights[event.type] ?? 2) *
     Math.max(0, Math.min(5, Number.isFinite(event.severity) ? event.severity : 0)), 0);
   const trustScore = Math.max(0, 100 - penalty);
   const status = trustScore < 40 ? 'FAILED' : trustScore < 80 ? 'FLAGGED' : 'CLEAN';
   return { sessionId, trustScore, events, status,
-    summary: events.length ? `${events.length} recorded events. Heuristic trust score: ${trustScore}/100; human review determines the assessment outcome.`
+    summary: events.length ? `${events.length} recorded events; ${events.length - signals.length} neutral technical/photo observations excluded from risk scoring. Heuristic trust score: ${trustScore}/100; human review determines the assessment outcome.`
       : 'No proctoring events recorded. This does not establish that monitoring was active.',
   };
 }

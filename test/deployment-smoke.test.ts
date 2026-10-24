@@ -42,9 +42,9 @@ describe('production auth smoke', () => {
       '/api/healthz/live', '/api/healthz/ready', '/api/auth/login', '/api/auth/me',
       '/api/auth/refresh', '/api/auth/me', '/api/auth/logout',
     ]);
-    expect(calls[3][1].headers).toEqual({ Cookie: 'accessToken=old' });
-    expect(calls[5][1].headers).toEqual({ Cookie: 'accessToken=new' });
-    expect(calls[6][1].headers).toEqual({ Cookie: 'accessToken=new' });
+    expect(calls[3][1].headers).toEqual({ Origin: 'https://example.test', Cookie: 'accessToken=old' });
+    expect(calls[5][1].headers).toEqual({ Origin: 'https://example.test', Cookie: 'accessToken=new' });
+    expect(calls[6][1].headers).toEqual({ Origin: 'https://example.test', Cookie: 'accessToken=new' });
   });
 
   it('rejects missing refresh cookies and changed identity', async () => {

@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import { isNeutralNativeObservation } from './trust-report';
 
 /**
  * Anomaly Detection Service
@@ -18,6 +19,7 @@ export const AnomalyDetectionService = {
     let penalty = 0;
 
     for (const event of events) {
+      if (isNeutralNativeObservation(event)) continue;
       switch (event.type) {
         case "TAB_SWITCH":
           penalty += 10 * event.severity;
