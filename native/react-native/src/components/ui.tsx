@@ -7,6 +7,7 @@ import {
 import { color, IconName, radius, shadow, type } from '../theme';
 import { Icon } from './Icon';
 import { LOGO, LOGO_ASPECT } from '../assets/logo';
+import { useAndroidBack } from '../androidSystem';
 
 /** The real b4skills logo (public/b4skillslogo.png). Height in points; width follows its aspect. */
 export function Wordmark({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
@@ -180,6 +181,11 @@ export function ProgressBar({ value, tone = color.plum, track = color.wash, heig
 export function Sheet({ visible, onClose, title, eyebrow, children }: {
   visible: boolean; onClose: () => void; title: string; eyebrow?: string; children: ReactNode;
 }) {
+  // Android back closes the sheet before it reaches the screen beneath.
+  useAndroidBack(visible, () => {
+    onClose();
+    return true;
+  });
   // An in-tree overlay rather than <Modal>: react-native-macos 0.83's Modal left the main window
   // blank with the sheet nowhere on screen. Rendered last in the shell, so it covers the app.
   if (!visible) return null;

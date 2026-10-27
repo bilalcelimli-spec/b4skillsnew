@@ -2,6 +2,7 @@
 // a five-screen introduction follows; afterwards "Devam et" goes straight to its last screen,
 // where sign-in happens in place: exam code or email. There is no separate sign-in screen.
 import React, { useEffect, useRef, useState } from 'react';
+import { useAndroidBack } from '../androidSystem';
 import { pointerCursor, useHover } from '../components/hover';
 import { Animated, Easing, LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Icon } from '../components/Icon';
@@ -49,6 +50,20 @@ export function Onboarding({ store, introSeen, onIntroSeen, onHelp, onConnection
 
   // Reaching the sign-in screen counts as having seen the introduction.
   useEffect(() => { if (last && !introSeen) onIntroSeen(); }, [last, introSeen, onIntroSeen]);
+
+  // Android back walks back through the introduction; on the logo page it leaves the app.
+  useAndroidBack(true, () => {
+    if (step === -1) return false;
+    if (last && signIn) {
+      store.setError(null);
+      setSignIn(null);
+    } else if (last || step === 0) {
+      setStep(-1);
+    } else {
+      setStep(s => s - 1);
+    }
+    return true;
+  });
 
   const appear = {
     opacity: fade,

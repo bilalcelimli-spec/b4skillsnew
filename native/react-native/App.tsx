@@ -15,6 +15,7 @@ import { NextStep, Recovery, Results } from './src/screens/Results';
 import { color, font, IconName, skillMeta, type } from './src/theme';
 import { AssessmentState, useAssessment } from './src/useAssessment';
 import { useRecorder } from './src/useRecorder';
+import { useAndroidBack, useAndroidKeyboardHeight } from './src/androidSystem';
 
 type SheetName = 'help' | 'skills' | 'connection' | 'logout' | null;
 
@@ -69,6 +70,12 @@ function Shell() {
     return () => sub.remove();
   }, [interrupted, recording, stop]);
 
+  // Android: back never leaves a running exam (open sheets still close first).
+  const examRunning = !!store.candidate && ['item', 'uncertain', 'next', 'launchPending'].includes(store.phase);
+  useAndroidBack(examRunning, () => true);
+  // Android edge-to-edge: the window does not shrink for the keyboard, so pad by its height.
+  const keyboard = useAndroidKeyboardHeight();
+
   const crumb = store.phase === 'item' ? 'Değerlendirme' : store.phase === 'finished' ? 'Sonuçlarım' : store.candidate ? 'Genel bakış' : 'Giriş';
 
   const sheets = (
@@ -97,7 +104,7 @@ function Shell() {
   // introduction runs once; sign-in itself lives on its last screen (no separate sign-in screen).
   if (store.restoring || !store.candidate) {
     return (
-      <View style={{ flex: 1, paddingTop: insets.top, paddingBottom: insets.bottom, backgroundColor: color.aubergine }}>
+      <View style={{ flex: 1, paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, keyboard), backgroundColor: color.aubergine }}>
         <Onboarding
           store={store}
           introSeen={onboarded === true}
@@ -124,7 +131,7 @@ function Shell() {
   }
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingBottom: keyboard }]}>
       {showSidebar ? <Sidebar store={store} onSheet={setSheet} topInset={insets.top} /> : null}
       <View style={{ flex: 1 }}>
         {!canShowSidebar ? <CompactBar store={store} onSheet={setSheet} topInset={insets.top} /> : null}
