@@ -1,0 +1,28 @@
+// Android side of the b4-native module (Kotlin). Autolinked by the React Native CLI.
+def ext(name, fallback) { rootProject.ext.has(name) ? rootProject.ext.get(name) : fallback }
+
+apply plugin: "com.android.library"
+
+// AGP 9 compiles Kotlin itself; older AGP needs the Kotlin plugin.
+def agpMajor = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.tokenize('.')[0].toInteger()
+def builtInKotlin = providers.gradleProperty("android.builtInKotlin").orNull
+if (agpMajor <= 8 || (builtInKotlin != null && !builtInKotlin.toBoolean())) {
+    apply plugin: "org.jetbrains.kotlin.android"
+}
+
+android {
+    namespace "com.b4skills.b4native"
+    compileSdk ext("compileSdkVersion", 36)
+    defaultConfig {
+        minSdkVersion ext("minSdkVersion", 29)
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    implementation("com.facebook.react:react-android")
+}

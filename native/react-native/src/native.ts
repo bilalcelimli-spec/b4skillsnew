@@ -18,7 +18,7 @@ type B4NativeModule = {
 
 const module = NativeModules.B4Native as B4NativeModule | undefined;
 if (!module) {
-  throw new Error('B4Native native module is not linked. Run pod install for ios/ and macos/.');
+  throw new Error('B4Native native module is not linked. Run pod install for ios/ and macos/, or rebuild the Android app.');
 }
 
 export const B4Native = module;

@@ -2,6 +2,6 @@
   "name": "b4-native",
   "version": "1.0.0",
   "private": true,
-  "description": "B4Skills audio, preferences and cookie helpers for iPadOS and macOS",
+  "description": "B4Skills audio, camera, preferences and cookie helpers for iPadOS, macOS and Android",
   "main": "index.js"
 }

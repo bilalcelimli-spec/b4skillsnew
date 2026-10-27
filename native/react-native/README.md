@@ -1,4 +1,4 @@
-# B4Skills — React Native (iPad + macOS)
+# B4Skills — React Native (iPad + macOS + Android)
 
 Tek JavaScript kod tabanı, iki native Apple uygulaması:
 
@@ -21,6 +21,24 @@ npm start             # Metro
 ```
 
 Ardından Xcode'da ilgili workspace'i açıp çalıştırın veya `npm run ios` / `npm run macos`.
+
+### Android (Aşama 0: iskelet)
+
+Plan ve kararlar: [Android yol haritası](ANDROID_ROADMAP.md). Yalnız tablet (`supports-screens`, en küçük genişlik 600 dp), `minSdk 29`, paket `com.b4skills.assessment`. Sürüm `release.json`'dan okunur (`version`, `androidVersionCode`).
+
+Gerekenler: JDK 17 ve Android SDK (`~/Library/Android/sdk`). Homebrew ile kurulduysa:
+
+```sh
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+export ANDROID_HOME=$HOME/Library/Android/sdk
+$ANDROID_HOME/emulator/emulator -avd B4Skills_Tablet &   # tablet emülatörü
+npm start                                              # Debug, JS'i Metro'dan yükler
+npm run android
+```
+
+Debug paketi JS'i `10.0.2.2:8081`'den (Mac'in 8081 portu) ister. 8081'i başka bir proje kullanıyorsa Metro'yu `npx react-native start --port 8082` ile açın, `adb reverse tcp:8081 tcp:8082` çalıştırın ve geliştirici menüsünde (Cmd+M) "Change Bundle Location" ile adresi `localhost:8081` yapın. Emülatörde `localhost` emülatörün kendisidir; yerel backend için `adb reverse tcp:3001 tcp:3001` çalıştırın, uygulamadaki `http://localhost:3001` adresi Mac'e ulaşır. Düz HTTP yalnız Debug'da açıktır (`android/app/src/debug/res/xml/network_security_config.xml`); Release yalnız HTTPS kabul eder. Yedekleme ve cihazdan cihaza aktarım kapalıdır.
+
+Native modül (`modules/b4-native/android`): tercihler, `newRequestId` ve çerez temizliği çalışır. Ses, kamera ve güvenli depolama Aşama 1–2'ye kadar `E_ANDROID_PENDING` hatasıyla reddedilir. Release imzası için upload anahtarı `~/.gradle/gradle.properties` içinde `B4SKILLS_UPLOAD_STORE_FILE`, `B4SKILLS_UPLOAD_STORE_PASSWORD`, `B4SKILLS_UPLOAD_KEY_ALIAS`, `B4SKILLS_UPLOAD_KEY_PASSWORD` ile verilir; yoksa Release paketi imzasız kalır, debug anahtarıyla asla imzalanmaz. Simge ve açılış logosu `npm run icons` ile üretilir (`scripts/prepare-android-icons.py`; Play mağaza simgesi `android/play-store-icon.png`).
 
 Geliştirmede sunucu varsayılanı `http://localhost:3001`, Release derlemesinde `https://app.b4skills.com`. Giriş ekranındaki **Sunucu** düğmesiyle değiştirilebilir. HTTP yalnızca Debug'da ve yerel ağda kabul edilir.
 

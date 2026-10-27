@@ -1,0 +1,4 @@
+<resources>
+    <!-- Opening background: deep purple end of the logo gradient, same as the iPad launch screen. -->
+    <color name="b4_opening_background">#1E0820</color>
+</resources>
