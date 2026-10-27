@@ -25,4 +25,12 @@ repositories {
 
 dependencies {
     implementation("com.facebook.react:react-android")
+    // Exam monitoring camera: preview, ~1 fps analysis, still photo.
+    def camerax = "1.4.2"
+    implementation("androidx.camera:camera-core:$camerax")
+    implementation("androidx.camera:camera-camera2:$camerax")
+    implementation("androidx.camera:camera-lifecycle:$camerax")
+    implementation("androidx.camera:camera-view:$camerax")
+    // On-device face counting with the bundled model (no network, no Play Services download).
+    implementation("com.google.mlkit:face-detection:16.1.7")
 }

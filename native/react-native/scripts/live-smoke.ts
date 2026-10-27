@@ -1,11 +1,13 @@
 // Runs the app's own src/api.ts client through a complete session against the isolated local
-// backend (scripts/e2e/start-local-backend.sh, or `npm run e2e:backend`). Local fixture accounts only; port 3001 only.
+// backend (scripts/e2e/start-local-backend.sh, or `npm run e2e:backend`). Local fixture accounts only; local test ports 3001/3003 only.
 // Node's fetch has no cookie store, so a minimal jar stands in for the native one.
 import fs from 'node:fs';
 import { Backend, canRender, choiceText, responseMode, Answer } from '../src/api';
 
 (globalThis as any).__DEV__ = true;
-const BASE = 'http://localhost:3001';
+const PORT = process.env.B4SKILLS_E2E_PORT ?? '3001';
+if (!['3001', '3003'].includes(PORT)) throw new Error('Only isolated local test ports are allowed');
+const BASE = `http://localhost:${PORT}`;
 const EMAIL = process.env.B4SKILLS_E2E_EMAIL ?? 'apple.mac@example.test';
 const AUDIO = process.env.B4SKILLS_E2E_AUDIO ?? '/tmp/b4skills-apple-e2e/speech.m4a';
 

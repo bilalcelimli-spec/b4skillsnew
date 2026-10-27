@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { rendererSpecs } from './test/e2e/spec-groups';
 
 /**
  * Playwright E2E configuration.
@@ -20,7 +21,7 @@ export default defineConfig({
   testDir: "./test/e2e",
   testMatch: "**/*.spec.ts",
   // Renderer fixtures run on their own Vite origin with synthetic media devices.
-  testIgnore: ["**/item-renderer.spec.ts", "**/certificate-renderer.spec.ts", "**/ozgun-kids-renderer.spec.ts", "**/adaptive-report-renderer.spec.ts"],
+  testIgnore: rendererSpecs.map(name => `**/${name}`),
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
@@ -31,6 +32,7 @@ export default defineConfig({
   ],
   use: {
     baseURL: BASE_URL,
+    extraHTTPHeaders: { Origin: new URL(BASE_URL).origin },
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "on-first-retry",

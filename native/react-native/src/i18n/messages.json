@@ -1,0 +1,1470 @@
+{
+  "/ en fazla": {
+    "en": "/ up to",
+    "ar": "/ بحد أقصى"
+  },
+  "100 üzerinden": {
+    "en": "Out of 100",
+    "ar": "من 100"
+  },
+  "ADAY ALANI": {
+    "en": "CANDIDATE AREA",
+    "ar": "منطقة المتقدم"
+  },
+  "Ad": {
+    "en": "First name",
+    "ar": "الاسم الأول"
+  },
+  "Aday alanı": {
+    "en": "Candidate area",
+    "ar": "منطقة المتقدم"
+  },
+  "Aday hesabı": {
+    "en": "Candidate account",
+    "ar": "حساب المتقدم"
+  },
+  "Adım 1 / 2 · Kodu doğrula": {
+    "en": "Step 1 / 2 · Verify your code",
+    "ar": "الخطوة 1 / 2 · التحقق من الرمز"
+  },
+  "Adım 2 / 2 · Aday bilgileri": {
+    "en": "Step 2 / 2 · Candidate details",
+    "ar": "الخطوة 2 / 2 · بيانات المتقدم"
+  },
+  "Ana sayfa": {
+    "en": "Home",
+    "ar": "الرئيسية"
+  },
+  "Anlayın ve yorumlayın": {
+    "en": "Understand and interpret",
+    "ar": "افهم وفسّر"
+  },
+  "Apple güvenli değerlendirme modu": {
+    "en": "Apple secure assessment mode",
+    "ar": "وضع التقييم الآمن من Apple"
+  },
+  "Atla": {
+    "en": "Skip",
+    "ar": "تخطي"
+  },
+  "B4Skills hesabınızla devam edin": {
+    "en": "Continue with your B4Skills account",
+    "ar": "تابع باستخدام حساب B4Skills"
+  },
+  "Bağlantı": {
+    "en": "Connection",
+    "ar": "الاتصال"
+  },
+  "Bağlantı kesildi. Bilgileriniz duruyor; bağlantınızı kontrol edip tekrar deneyin. Kodunuz kullanılmış görünürse kurumunuzla iletişime geçin.": {
+    "en": "Connection lost. Your details are still here; check your connection and try again. If your code appears used, contact your institution.",
+    "ar": "انقطع الاتصال. بياناتك محفوظة هنا؛ تحقق من اتصالك وحاول مجددًا. إذا ظهر أن الرمز مستخدم، فتواصل مع مؤسستك."
+  },
+  "Bağlantı kesilmiş olabilir. Aynı yanıtı ikinci kez göndermemek için önce kaydınızın sunucuya ulaşıp ulaşmadığını kontrol edin.": {
+    "en": "The connection may have been lost. Check whether your answer reached the server before sending it again.",
+    "ar": "ربما انقطع الاتصال. تحقق من وصول إجابتك إلى الخادم قبل إرسالها مجددًا."
+  },
+  "Başladığınız bir oturum mu var?": {
+    "en": "Already started a session?",
+    "ar": "هل بدأت جلسة بالفعل؟"
+  },
+  "Başladığınızda süre sunucuda işler": {
+    "en": "The server timer starts when you begin",
+    "ar": "يبدأ مؤقت الخادم عند بدء الاختبار"
+  },
+  "Başlamadan önce mikrofonunuzu uygulamada deneyebilirsiniz. Dinleme ve konuşma bölümleri için cihazınızın hazır olduğundan emin olun.": {
+    "en": "You can test your microphone in the app before starting. Make sure your device is ready for listening and speaking.",
+    "ar": "يمكنك اختبار الميكروفون في التطبيق قبل البدء. تأكد من جاهزية جهازك لقسمي الاستماع والتحدث."
+  },
+  "Başlangıç fotoğrafı alındı.": {
+    "en": "Baseline photo taken.",
+    "ar": "تم التقاط الصورة المرجعية."
+  },
+  "Başlatma isteğiniz saklandı. Aynı oturumu tekrar getirerek devam edin; bu işlem ikinci bir sınav kredisi kullanmaz.": {
+    "en": "Your start request was saved. Retrieve the same session to continue; this will not use a second exam credit.",
+    "ar": "حُفظ طلب بدء الاختبار. استرجع الجلسة نفسها للمتابعة؛ لن تُستهلك محاولة اختبار إضافية."
+  },
+  "Başlatılan oturumu getir": {
+    "en": "Retrieve the started session",
+    "ar": "استرجاع الجلسة التي بدأت"
+  },
+  "Başlayalım": {
+    "en": "Let’s begin",
+    "ar": "لنبدأ"
+  },
+  "Beceri görünümünüz": {
+    "en": "Your skills at a glance",
+    "ar": "نظرة على مهاراتك"
+  },
+  "Beceri puanları henüz hazır değil.": {
+    "en": "Skill scores are not ready yet.",
+    "ar": "درجات المهارات ليست جاهزة بعد."
+  },
+  "Bekleniyor": {
+    "en": "Pending",
+    "ar": "قيد الانتظار"
+  },
+  "Bekleyen fotoğrafı cihazdan sil": {
+    "en": "Delete pending photo from this device",
+    "ar": "حذف الصورة المعلقة من هذا الجهاز"
+  },
+  "Bilgilerinizi girin": {
+    "en": "Enter your details",
+    "ar": "أدخل بياناتك"
+  },
+  "Bir dil, birçok yön.": {
+    "en": "One language, many dimensions.",
+    "ar": "لغة واحدة، أبعاد متعددة."
+  },
+  "Bir sonraki adım.": {
+    "en": "The next step.",
+    "ar": "الخطوة التالية."
+  },
+  "Birden fazla yüz görünüyor": {
+    "en": "More than one face is visible",
+    "ar": "يظهر أكثر من وجه واحد"
+  },
+  "Birkaç saniye konuşun. Deneme kaydı gönderilmez.": {
+    "en": "Speak for a few seconds. The test recording is not sent.",
+    "ar": "تحدث لبضع ثوانٍ. لن يُرسل التسجيل التجريبي."
+  },
+  "Boşlukları tamamlayın.": {
+    "en": "Complete the blanks.",
+    "ar": "أكمل الفراغات."
+  },
+  "Bu Mac": {
+    "en": "This Mac",
+    "ar": "هذا الـ Mac"
+  },
+  "Bu e-posta adresiyle bir hesabınız var. Önce aşağıdan e-posta ve şifrenizle giriş yapın, sonra kodunuzu girin.": {
+    "en": "An account already exists for this email address. Sign in below with your email and password, then enter your code.",
+    "ar": "يوجد حساب بهذا البريد الإلكتروني. سجّل الدخول أدناه ببريدك وكلمة المرور، ثم أدخل الرمز."
+  },
+  "Bu görünüm sunucunun bildirdiği geçici sonuçları içerir. İnceleme bekleyen yanıtlar tamamlandıkça güncellenir; doğrulanmış sertifika değildir.": {
+    "en": "This view shows provisional results from the server. It updates as pending reviews are completed; it is not a verified certificate.",
+    "ar": "تعرض هذه الصفحة نتائج أولية من الخادم، وتتحدث عند اكتمال المراجعات المعلقة؛ وهي ليست شهادة معتمدة."
+  },
+  "Bu kamera fotoğraf çekimini tamamlayamadı. Kamerayı yeniden açın.": {
+    "en": "This camera could not complete the capture. Reopen the camera.",
+    "ar": "تعذر إكمال التقاط الصورة بهذه الكاميرا. افتح الكاميرا مجددًا."
+  },
+  "Bu kod web uygulamasında yapılan sabit formlu bir sınava ait. Kodu kullanmadan b4skills web sitesinden devam edin.": {
+    "en": "This code is for a fixed-form exam on the web platform. Continue on the B4Skills website without redeeming it here.",
+    "ar": "هذا الرمز لاختبار ذي نموذج ثابت على منصة الويب. تابع على موقع B4Skills دون استخدام الرمز هنا."
+  },
+  "Bu soru biçimi uygulamada henüz desteklenmiyor.": {
+    "en": "This question format is not supported in the app yet.",
+    "ar": "هذا النوع من الأسئلة غير مدعوم في التطبيق حاليًا."
+  },
+  "Bu sürümde": {
+    "en": "In this version",
+    "ar": "في هذا الإصدار"
+  },
+  "Bunun yerine e-posta ile giriş yap": {
+    "en": "Use email sign-in instead",
+    "ar": "استخدام البريد الإلكتروني بدلًا من ذلك"
+  },
+  "Bunun yerine sınav kodu kullan": {
+    "en": "Use an exam code instead",
+    "ar": "استخدام رمز اختبار بدلًا من ذلك"
+  },
+  "CEFR": {
+    "en": "CEFR",
+    "ar": "CEFR"
+  },
+  "CEFR düzeyi": {
+    "en": "CEFR level",
+    "ar": "مستوى CEFR"
+  },
+  "CEFR düzeyi {0}": {
+    "en": "CEFR level {0}",
+    "ar": "مستوى CEFR ‏{0}"
+  },
+  "CEFR düzeyleri A1'den C2'ye": {
+    "en": "CEFR levels A1 to C2",
+    "ar": "مستويات CEFR من A1 إلى C2"
+  },
+  "Cihaz kontrolü": {
+    "en": "Device check",
+    "ar": "فحص الجهاز"
+  },
+  "Denemeyi bitir": {
+    "en": "Finish test",
+    "ar": "إنهاء التجربة"
+  },
+  "Desteklenmeyen sınav politikası. Uygulamayı güncelleyin.": {
+    "en": "Unsupported exam policy. Update the app.",
+    "ar": "سياسة الاختبار غير مدعومة. حدّث التطبيق."
+  },
+  "Devam et": {
+    "en": "Continue",
+    "ar": "متابعة"
+  },
+  "Devam etmeye hazırsınız": {
+    "en": "You’re ready to continue",
+    "ar": "أنت جاهز للمتابعة"
+  },
+  "Değerlendirme": {
+    "en": "Assessment",
+    "ar": "التقييم"
+  },
+  "Değerlendirme programınız": {
+    "en": "Your assessment programme",
+    "ar": "برنامج تقييمك"
+  },
+  "Değerlendirme özeti": {
+    "en": "Assessment summary",
+    "ar": "ملخص التقييم"
+  },
+  "Değerlendirmeniz": {
+    "en": "Your assessment",
+    "ar": "تقييمك"
+  },
+  "Değerlendirmeniz devam ediyor": {
+    "en": "Your assessment is in progress",
+    "ar": "تقييمك جارٍ"
+  },
+  "Değerlendirmeye başla": {
+    "en": "Start assessment",
+    "ar": "بدء التقييم"
+  },
+  "Dil tercihi kaydedilemedi. Yeniden deneyin.": {
+    "en": "Your language preference could not be saved. Try again.",
+    "ar": "تعذر حفظ تفضيل اللغة. حاول مجددًا."
+  },
+  "Dinleme hakkınız doldu": {
+    "en": "No plays remaining",
+    "ar": "انتهت فرص الاستماع"
+  },
+  "Dinleme iptal edildi.": {
+    "en": "Playback cancelled.",
+    "ar": "أُلغي تشغيل الصوت."
+  },
+  "Dinleme kayıtları en fazla iki kez çalınır": {
+    "en": "Listening recordings can be played at most twice",
+    "ar": "يمكن تشغيل التسجيلات الصوتية مرتين كحد أقصى"
+  },
+  "Dinlemeyi durdur": {
+    "en": "Stop listening",
+    "ar": "إيقاف الاستماع"
+  },
+  "Dinleyin ve keşfedin": {
+    "en": "Listen and explore",
+    "ar": "استمع واكتشف"
+  },
+  "Dört beceri": {
+    "en": "Four skills",
+    "ar": "أربع مهارات"
+  },
+  "Düzeyinizi ve becerilerinizi görün.": {
+    "en": "See your level and skills.",
+    "ar": "تعرّف على مستواك ومهاراتك."
+  },
+  "Düşüncelerinizi aktarın": {
+    "en": "Share your thoughts",
+    "ar": "عبّر عن أفكارك"
+  },
+  "E-posta adresi": {
+    "en": "Email address",
+    "ar": "البريد الإلكتروني"
+  },
+  "E-posta ile giriş": {
+    "en": "Email sign-in",
+    "ar": "الدخول بالبريد الإلكتروني"
+  },
+  "E-posta ile giriş yap": {
+    "en": "Sign in with email",
+    "ar": "الدخول بالبريد الإلكتروني"
+  },
+  "E-posta ile giriş yapın.": {
+    "en": "Sign in with email.",
+    "ar": "سجّل الدخول بالبريد الإلكتروني."
+  },
+  "ENGLISH ASSESSMENT": {
+    "en": "ENGLISH ASSESSMENT",
+    "ar": "تقييم اللغة الإنجليزية"
+  },
+  "Eksik yetenekler: {0}. Bu profil için sınav başlatılamaz.": {
+    "en": "Missing capabilities: {0}. An exam cannot start with this profile.",
+    "ar": "الإمكانات غير المتاحة: {0}. لا يمكن بدء الاختبار بهذا الملف."
+  },
+  "En az {0}": {
+    "en": "At least {0}",
+    "ar": "{0} على الأقل"
+  },
+  "Fotoğraf deposunun boyutu geçersiz.": {
+    "en": "Invalid photo storage size.",
+    "ar": "حجم مخزن الصور غير صالح."
+  },
+  "Fotoğraf gönderimi iptal edildi.": {
+    "en": "Photo delivery was cancelled.",
+    "ar": "أُلغي إرسال الصورة."
+  },
+  "Fotoğraf için yeniden giriş yapın.": {
+    "en": "Sign in again to send a photo.",
+    "ar": "سجّل الدخول مجددًا لإرسال صورة."
+  },
+  "Fotoğraf kimliği başka içerikle kullanılamaz.": {
+    "en": "A photo ID cannot be reused for different content.",
+    "ar": "لا يمكن إعادة استخدام معرّف صورة لمحتوى مختلف."
+  },
+  "Fotoğraf kuyruğu dolu. Bekleyen kayıtları kontrol edin.": {
+    "en": "The photo queue is full. Check pending items.",
+    "ar": "قائمة انتظار الصور ممتلئة. تحقق من الصور المعلقة."
+  },
+  "Fotoğraf kuyruğu dolu. Teslimi tamamlayın veya bekleyen fotoğrafı silin.": {
+    "en": "The photo queue is full. Complete delivery or delete a pending photo.",
+    "ar": "قائمة انتظار الصور ممتلئة. أكمل الإرسال أو احذف صورة معلقة."
+  },
+  "Fotoğraf kuyruğu sınırı aşıldı.": {
+    "en": "The photo queue limit was exceeded.",
+    "ar": "تم تجاوز الحد الأقصى لقائمة انتظار الصور."
+  },
+  "Fotoğraf rezervasyonu doğrulanamadı.": {
+    "en": "Photo reservation could not be verified.",
+    "ar": "تعذر التحقق من حجز الصورة."
+  },
+  "Fotoğraf teslimi doğrulanamadı. Aynı fotoğrafla yeniden deneyin.": {
+    "en": "Photo delivery could not be verified. Try again with the same photo.",
+    "ar": "تعذر التحقق من تسليم الصورة. حاول مجددًا بالصورة نفسها."
+  },
+  "Fotoğraf teslimini yeniden dene": {
+    "en": "Retry photo delivery",
+    "ar": "إعادة محاولة إرسال الصور"
+  },
+  "Fotoğraf veya yüz sayımı tamamlanamadı. Yeniden deneyin.": {
+    "en": "Photo capture or face counting failed. Try again.",
+    "ar": "تعذر التقاط الصورة أو عدّ الوجوه. حاول مجددًا."
+  },
+  "Fotoğraf çek": {
+    "en": "Take photo",
+    "ar": "التقاط صورة"
+  },
+  "Fotoğraf çekilemedi.": {
+    "en": "The photo could not be taken.",
+    "ar": "تعذر التقاط الصورة."
+  },
+  "Fotoğraf çekilemedi. Kamerayı yeniden açın.": {
+    "en": "The photo could not be taken. Reopen the camera.",
+    "ar": "تعذر التقاط الصورة. افتح الكاميرا مجددًا."
+  },
+  "Fotoğraf çekimi kesildi.": {
+    "en": "Photo capture was interrupted.",
+    "ar": "انقطع التقاط الصورة."
+  },
+  "Fotoğraf şifreli olarak kaydedilemedi. Yeniden deneyin.": {
+    "en": "The photo could not be saved encrypted. Try again.",
+    "ar": "تعذر حفظ الصورة بصورة مشفّرة. حاول مجددًا."
+  },
+  "Fotoğrafta yalnız bir yüz görünmeli. Yeniden çekin.": {
+    "en": "Only one face should be visible. Retake the photo.",
+    "ar": "يجب أن يظهر وجه واحد فقط. أعد التقاط الصورة."
+  },
+  "Fotoğrafı kontrol edip gönderebilirsiniz.": {
+    "en": "Check the photo before sending it.",
+    "ar": "راجع الصورة قبل إرسالها."
+  },
+  "Fotoğrafı onayla ve gönder": {
+    "en": "Approve and send photo",
+    "ar": "الموافقة على الصورة وإرسالها"
+  },
+  "Fotoğrafın gönderim süresi doldu. Yeniden çekin.": {
+    "en": "The photo submission window expired. Retake it.",
+    "ar": "انتهت مهلة إرسال الصورة. أعد التقاطها."
+  },
+  "Fotoğrafın teslim süresi doldu. Yeniden çekin veya bu kaydı silin.": {
+    "en": "The photo delivery window expired. Retake it or delete this item.",
+    "ar": "انتهت مهلة تسليم الصورة. أعد التقاطها أو احذفها."
+  },
+  "Genel bakış": {
+    "en": "Overview",
+    "ar": "نظرة عامة"
+  },
+  "General English": {
+    "en": "General English",
+    "ar": "General English"
+  },
+  "Geri": {
+    "en": "Back",
+    "ar": "رجوع"
+  },
+  "Geçerli bir e-posta adresi girin.": {
+    "en": "Enter a valid email address.",
+    "ar": "أدخل بريدًا إلكترونيًا صالحًا."
+  },
+  "Geçerli bir sunucu adresi girin (ör. https://b4skills.com).": {
+    "en": "Enter a valid server address (e.g. https://b4skills.com).",
+    "ar": "أدخل عنوان خادم صالحًا، مثل https://b4skills.com."
+  },
+  "Geçersiz fotoğraf. Yeniden çekin.": {
+    "en": "Invalid photo. Retake it.",
+    "ar": "الصورة غير صالحة. أعد التقاطها."
+  },
+  "Geçersiz gözetim olayı.": {
+    "en": "Invalid monitoring event.",
+    "ar": "حدث المراقبة غير صالح."
+  },
+  "Geçici CEFR düzeyi": {
+    "en": "Provisional CEFR level",
+    "ar": "مستوى CEFR الأولي"
+  },
+  "Giriş": {
+    "en": "Sign in",
+    "ar": "تسجيل الدخول"
+  },
+  "Giriş veya sınav erişimiyle ilgili bir sorun yaşıyorsanız kurumunuzla görüşün. Destek isterken ekranın altındaki oturum kimliğinizi paylaşabilirsiniz.": {
+    "en": "Contact your institution if you have trouble signing in or accessing an exam. You can share the session ID at the bottom of the screen when requesting support.",
+    "ar": "تواصل مع مؤسستك إذا واجهت مشكلة في تسجيل الدخول أو الوصول إلى الاختبار. يمكنك مشاركة معرّف الجلسة أسفل الشاشة عند طلب الدعم."
+  },
+  "Giriş yap": {
+    "en": "Sign in",
+    "ar": "تسجيل الدخول"
+  },
+  "Grammar": {
+    "en": "Grammar",
+    "ar": "القواعد"
+  },
+  "GÖZETİM": {
+    "en": "MONITORING",
+    "ar": "المراقبة"
+  },
+  "Gönderilecek fotoğrafın önizlemesi": {
+    "en": "Preview of the photo to send",
+    "ar": "معاينة الصورة المراد إرسالها"
+  },
+  "Gönderilmemiş yanıtlar bu cihazdan silinir. Başladığınız sınavın sunucudaki süresi durmaz; aynı oturum kimliğiyle yeniden girebilirsiniz.": {
+    "en": "Unsent answers will be removed from this device. The exam timer on the server will continue; you can return using the same session ID.",
+    "ar": "ستُحذف الإجابات غير المرسلة من هذا الجهاز. سيستمر مؤقت الاختبار على الخادم؛ ويمكنك العودة بمعرّف الجلسة نفسه."
+  },
+  "Görünen yüz sayısı:": {
+    "en": "Visible faces:",
+    "ar": "عدد الوجوه الظاهرة:"
+  },
+  "Görünen yüz: {0}": {
+    "en": "Visible faces: {0}",
+    "ar": "الوجوه الظاهرة: {0}"
+  },
+  "Gözetim açık": {
+    "en": "Monitoring on",
+    "ar": "المراقبة مفعّلة"
+  },
+  "Gözetim kuyruğu dolu. Bağlantıyı kontrol edip yeniden deneyin.": {
+    "en": "The monitoring queue is full. Check your connection and try again.",
+    "ar": "قائمة انتظار أحداث المراقبة ممتلئة. تحقق من اتصالك وحاول مجددًا."
+  },
+  "Gözetim kuyruğu okunamadı. Destek ile iletişime geçin.": {
+    "en": "The monitoring queue could not be read. Contact support.",
+    "ar": "تعذرت قراءة قائمة انتظار أحداث المراقبة. تواصل مع الدعم."
+  },
+  "Gözetim kuyruğu sınırı aşıldı. Destek ile iletişime geçin.": {
+    "en": "The monitoring queue limit was exceeded. Contact support.",
+    "ar": "تم تجاوز الحد الأقصى لأحداث المراقبة. تواصل مع الدعم."
+  },
+  "Gözetim olayı alındı onayı doğrulanamadı.": {
+    "en": "The monitoring event acknowledgement could not be verified.",
+    "ar": "تعذر التحقق من تأكيد استلام حدث المراقبة."
+  },
+  "Güvenli değerlendirme": {
+    "en": "Secure assessment",
+    "ar": "التقييم الآمن"
+  },
+  "Hazır olduğunuzda başlayalım, {0}.": {
+    "en": "Let’s begin when you’re ready, {0}.",
+    "ar": "لنبدأ عندما تكون جاهزًا، {0}."
+  },
+  "Hazır olduğunuzda başlayalım.": {
+    "en": "Let’s begin when you’re ready.",
+    "ar": "لنبدأ عندما تكون جاهزًا."
+  },
+  "Hazır olduğunuzda kayda başlayın. En fazla {0} dakika.": {
+    "en": "Start recording when you’re ready. Maximum {0} minutes.",
+    "ar": "ابدأ التسجيل عندما تكون جاهزًا. الحد الأقصى {0} دقائق."
+  },
+  "Hazırlık": {
+    "en": "Preparation",
+    "ar": "الاستعداد"
+  },
+  "Her becerinizin": {
+    "en": "Every skill has",
+    "ar": "لكل مهارة من مهاراتك"
+  },
+  "Her boşluğu doldurun; yanıtlarda | işaretini kullanmayın.": {
+    "en": "Fill every blank; do not use the | character in answers.",
+    "ar": "أكمل جميع الفراغات؛ ولا تستخدم الرمز | في الإجابات."
+  },
+  "Hesabınız": {
+    "en": "Your account",
+    "ar": "حسابك"
+  },
+  "Kamera açılamadı.": {
+    "en": "The camera could not be opened.",
+    "ar": "تعذر فتح الكاميرا."
+  },
+  "Kamera başlatılamadı.": {
+    "en": "The camera could not start.",
+    "ar": "تعذر تشغيل الكاميرا."
+  },
+  "Kamera başlatılıyor…": {
+    "en": "Starting the camera…",
+    "ar": "جارٍ تشغيل الكاميرا…"
+  },
+  "Kamera bu kurumda kapalı · olaylar kaydediliyor": {
+    "en": "Camera off for this institution · events are recorded",
+    "ar": "الكاميرا متوقفة لهذه المؤسسة · يتم تسجيل الأحداث"
+  },
+  "Kamera fotoğraf için hazır değil.": {
+    "en": "The camera is not ready to take a photo.",
+    "ar": "الكاميرا غير جاهزة لالتقاط صورة."
+  },
+  "Kamera fotoğraf çekimini desteklemiyor.": {
+    "en": "This camera does not support photo capture.",
+    "ar": "هذه الكاميرا لا تدعم التقاط الصور."
+  },
+  "Kamera izni isteği tamamlanmadı.": {
+    "en": "The camera permission request did not complete.",
+    "ar": "لم يكتمل طلب إذن الكاميرا."
+  },
+  "Kamera izni kontrol ediliyor. Görünen izin penceresini yanıtlayın.": {
+    "en": "Checking camera permission. Please answer the permission prompt.",
+    "ar": "جارٍ التحقق من إذن الكاميرا. يرجى الرد على نافذة الإذن."
+  },
+  "Kamera izni verilmedi. Sistem ayarlarından kontrol edin.": {
+    "en": "Camera permission was not granted. Check System Settings.",
+    "ar": "لم يُمنح إذن الكاميرا. تحقق من إعدادات النظام."
+  },
+  "Kamera için uygulamaya geri dönüp yeniden deneyin.": {
+    "en": "Return to the app and try the camera again.",
+    "ar": "عُد إلى التطبيق وحاول تشغيل الكاميرا مجددًا."
+  },
+  "Kamera kanıtı": {
+    "en": "Camera evidence",
+    "ar": "أدلة الكاميرا"
+  },
+  "Kamera kontrolü iptal edildi.": {
+    "en": "Camera check was cancelled.",
+    "ar": "أُلغي فحص الكاميرا."
+  },
+  "Kamera kontrolü zaman aşımına uğradı. Yeniden deneyin.": {
+    "en": "Camera check timed out. Try again.",
+    "ar": "انتهت مهلة فحص الكاميرا. حاول مجددًا."
+  },
+  "Kamera kontrolü · Pilot": {
+    "en": "Camera check · Pilot",
+    "ar": "فحص الكاميرا · تجريبي"
+  },
+  "Kamera kullanılamıyor · olaylar kaydediliyor": {
+    "en": "Camera unavailable · events are recorded",
+    "ar": "الكاميرا غير متاحة · يتم تسجيل الأحداث"
+  },
+  "Kamera pilotunun durumu alınamadı. Bu özellik için bağlantıyı kontrol edip oturumu yeniden açın.": {
+    "en": "The camera pilot status could not be retrieved. Check your connection and reopen the session to use this feature.",
+    "ar": "تعذر جلب حالة ميزة الكاميرا التجريبية. تحقق من اتصالك وأعد فتح الجلسة لاستخدام هذه الميزة."
+  },
+  "Kamera politikası doğrulanamadı.": {
+    "en": "The camera policy could not be verified.",
+    "ar": "تعذر التحقق من سياسة الكاميرا."
+  },
+  "Kamera ve yüz kontrolü": {
+    "en": "Camera and face check",
+    "ar": "فحص الكاميرا والوجه"
+  },
+  "Kamera yalnızca siz açtığınızda çalışır. Fotoğrafı gördükten sonra göndermeyi seçersiniz. Kamera açıkken sürekli yüz sayımı cihazda yapılır; video kareleri gönderilmez. Beş saniye yüz yokluğu veya üç saniye birden fazla yüz teknik gözlem olarak kaydedilir; kimliğinizi doğrulamaz ve ihlal kararı vermez. Canlı görüşme ve ortam sesi kaydı yoktur. Gönderilen fotoğrafa yetkili kurum inceleyicileri": {
+    "en": "The camera works only when you turn it on. You decide whether to send a photo after viewing it. While the camera is on, faces are counted continuously on your device; video frames are not sent. No face for five seconds or multiple faces for three seconds is recorded as a technical observation; this does not verify your identity or determine a violation. There is no live call or ambient audio recording. Authorised institutional reviewers can access the submitted photo for",
+    "ar": "لا تعمل الكاميرا إلا عند تشغيلها بنفسك. وبعد معاينة الصورة تختار إرسالها أو عدم إرسالها. عند تشغيل الكاميرا تُعدّ الوجوه باستمرار على جهازك؛ ولا تُرسل إطارات الفيديو. يُسجّل غياب الوجه لخمس ثوانٍ أو ظهور أكثر من وجه لثلاث ثوانٍ كملاحظة تقنية؛ وهذا لا يؤكد هويتك ولا يحكم بوجود مخالفة. لا توجد مكالمة مباشرة أو تسجيل لأصوات المكان. يمكن لمراجعي المؤسسة المخوّلين الوصول إلى الصورة المرسلة لمدة"
+  },
+  "Kamera zaten kullanımda.": {
+    "en": "The camera is already in use.",
+    "ar": "الكاميرا قيد الاستخدام بالفعل."
+  },
+  "Kamerada birden fazla kişi görünüyor. Bu durum kaydedildi.": {
+    "en": "More than one person is visible on camera. This has been recorded.",
+    "ar": "يظهر أكثر من شخص أمام الكاميرا. تم تسجيل ذلك."
+  },
+  "Kamerayı aç": {
+    "en": "Turn on camera",
+    "ar": "تشغيل الكاميرا"
+  },
+  "Kamerayı açtığınızda önizleme ve cihazda yüz sayımı için kullanılır. Sınav fotoğrafı yalnızca siz onayladığınızda gönderilir. Canlı insan gözetimi yapılmaz.": {
+    "en": "Used for a preview and on-device face counting when you turn on the camera. An exam photo is sent only with your approval. There is no live human proctoring.",
+    "ar": "تُستخدم الكاميرا للمعاينة وعدّ الوجوه على الجهاز عند تشغيلها. لا تُرسل صورة الاختبار إلا بموافقتك. لا توجد مراقبة بشرية مباشرة."
+  },
+  "Kamerayı kapat": {
+    "en": "Turn off camera",
+    "ar": "إيقاف الكاميرا"
+  },
+  "Kapat": {
+    "en": "Close",
+    "ar": "إغلاق"
+  },
+  "Kayda başla": {
+    "en": "Start recording",
+    "ar": "بدء التسجيل"
+  },
+  "Kaydet": {
+    "en": "Save",
+    "ar": "حفظ"
+  },
+  "Kaydol ve devam et": {
+    "en": "Register and continue",
+    "ar": "التسجيل والمتابعة"
+  },
+  "Kaydı bitir": {
+    "en": "Finish recording",
+    "ar": "إنهاء التسجيل"
+  },
+  "Kaydı dinle": {
+    "en": "Play recording",
+    "ar": "تشغيل التسجيل"
+  },
+  "Kaydı dinleyin": {
+    "en": "Listen to the recording",
+    "ar": "استمع إلى التسجيل"
+  },
+  "Kaydımı kontrol et": {
+    "en": "Check my saved answer",
+    "ar": "التحقق من حفظ إجابتي"
+  },
+  "Kaydınız hazır.": {
+    "en": "Your recording is ready.",
+    "ar": "تسجيلك جاهز."
+  },
+  "Kayıt alındı.": {
+    "en": "Recording captured.",
+    "ar": "تم التسجيل."
+  },
+  "Kayıt başlatılamadı.": {
+    "en": "Recording could not start.",
+    "ar": "تعذر بدء التسجيل."
+  },
+  "Kayıt bulunamadı.": {
+    "en": "Recording not found.",
+    "ar": "لم يُعثر على التسجيل."
+  },
+  "Kayıt doğrulanamadı. Tekrar denemeden önce kurumunuzla iletişime geçin.": {
+    "en": "Registration could not be verified. Contact your institution before trying again.",
+    "ar": "تعذر التحقق من التسجيل. تواصل مع مؤسستك قبل المحاولة مجددًا."
+  },
+  "Kayıt sürerken dinleme başlatılamaz.": {
+    "en": "Playback cannot start while recording.",
+    "ar": "لا يمكن تشغيل الصوت أثناء التسجيل."
+  },
+  "Kelimelerle çalışın": {
+    "en": "Work with words",
+    "ar": "تدرّب على المفردات"
+  },
+  "Kenar çubuğunu gizle": {
+    "en": "Hide sidebar",
+    "ar": "إخفاء الشريط الجانبي"
+  },
+  "Kenar çubuğunu göster": {
+    "en": "Show sidebar",
+    "ar": "إظهار الشريط الجانبي"
+  },
+  "Kendinizi ifade edin": {
+    "en": "Express yourself",
+    "ar": "عبّر عن نفسك"
+  },
+  "Kod": {
+    "en": "Code",
+    "ar": "الرمز"
+  },
+  "Kod 4–64 harf, rakam veya tireden oluşmalıdır.": {
+    "en": "The code must contain 4–64 letters, digits or hyphens.",
+    "ar": "يجب أن يتكون الرمز من 4 إلى 64 حرفًا أو رقمًا أو شرطة."
+  },
+  "Kod doğrulanamadı. Lütfen tekrar deneyin.": {
+    "en": "The code could not be verified. Please try again.",
+    "ar": "تعذر التحقق من الرمز. حاول مجددًا."
+  },
+  "Kodu değiştir": {
+    "en": "Change code",
+    "ar": "تغيير الرمز"
+  },
+  "Kodu doğrula": {
+    "en": "Verify code",
+    "ar": "التحقق من الرمز"
+  },
+  "Kodu kullan": {
+    "en": "Redeem code",
+    "ar": "استخدام الرمز"
+  },
+  "Kodunuz kabul edildi: {0}. Hazır olduğunuzda değerlendirmeye başlayın.": {
+    "en": "Your code was accepted: {0}. Start the assessment when you’re ready.",
+    "ar": "تم قبول الرمز: {0}. ابدأ التقييم عندما تكون جاهزًا."
+  },
+  "Kodunuzla başlayın.": {
+    "en": "Start with your code.",
+    "ar": "ابدأ برمزك."
+  },
+  "Konuşma bölümündeki yanıtlarınızı kaydetmek ve mikrofonunuzu kontrol etmek için kullanılır.": {
+    "en": "Used to record your speaking answers and check your microphone.",
+    "ar": "يُستخدم لتسجيل إجاباتك في قسم التحدث وفحص الميكروفون."
+  },
+  "Konuşma yanıtları kaydedilir, en fazla 3 dakika": {
+    "en": "Speaking answers are recorded, up to 3 minutes",
+    "ar": "تُسجّل إجابات التحدث لمدة تصل إلى 3 دقائق"
+  },
+  "Konuşma yanıtları ses olarak gönderilir. Etkinleştirilmişse uygulamanın ön/arka plana geçiş zamanları teknik olay olarak kaydedilir. Teknik olay tek başına ihlal kararı değildir. Canlı insan gözetimi yapılmaz.": {
+    "en": "Speaking answers are sent as audio. If enabled, the times the app enters the foreground or background are recorded as technical events. A technical event alone does not determine a violation. There is no live human proctoring.",
+    "ar": "تُرسل إجابات التحدث كتسجيلات صوتية. إذا كانت الميزة مفعّلة، تُسجّل أوقات انتقال التطبيق بين الواجهة والخلفية كأحداث تقنية. الحدث التقني وحده لا يحدد وجود مخالفة. لا توجد مراقبة بشرية مباشرة."
+  },
+  "Konuşun, çubuklar hareket etmeli · {0}": {
+    "en": "Speak; the bars should move · {0}",
+    "ar": "تحدث؛ ينبغي أن تتحرك المؤشرات · {0}"
+  },
+  "Kulaklık": {
+    "en": "Headphones",
+    "ar": "سماعات الرأس"
+  },
+  "Kulaklık veya hoparlör": {
+    "en": "Headphones or speakers",
+    "ar": "سماعات الرأس أو مكبرات الصوت"
+  },
+  "Kullanılabilir kamera bulunamadı.": {
+    "en": "No camera is available.",
+    "ar": "لا توجد كاميرا متاحة."
+  },
+  "Kullanılabilir kamera bulunamadı. Simülatörde fiziksel kamera doğrulaması yapılamaz.": {
+    "en": "No camera is available. A physical camera cannot be verified in the simulator.",
+    "ar": "لا توجد كاميرا متاحة. لا يمكن التحقق من كاميرا فعلية في المحاكي."
+  },
+  "Kurumunuz size bir sınav kodu verdiyse kodla başlayın. Bir B4Skills hesabınız varsa e-posta ve şifrenizle giriş yapın.": {
+    "en": "If your institution gave you an exam code, start with it. If you have a B4Skills account, sign in with your email and password.",
+    "ar": "إذا أعطتك مؤسستك رمز اختبار، فابدأ به. وإذا كان لديك حساب B4Skills، فسجّل الدخول بالبريد الإلكتروني وكلمة المرور."
+  },
+  "Kurumunuzun verdiği B4Skills hesabının e-posta adresi ve şifresiyle devam edin.": {
+    "en": "Continue with the email address and password of the B4Skills account provided by your institution.",
+    "ar": "تابع بالبريد الإلكتروني وكلمة مرور حساب B4Skills الذي قدمته مؤسستك."
+  },
+  "Kurumunuzun verdiği kodla başlayın": {
+    "en": "Start with the code from your institution",
+    "ar": "ابدأ بالرمز الذي قدمته مؤسستك"
+  },
+  "Kurumunuzun verdiği sınav kodunu girin, ardından aday bilgilerinizi tamamlayın.": {
+    "en": "Enter the exam code from your institution, then complete your candidate details.",
+    "ar": "أدخل رمز الاختبار الذي قدمته مؤسستك، ثم أكمل بيانات المتقدم."
+  },
+  "Kurumunuzun verdiği sınav kodunu girin.": {
+    "en": "Enter the exam code from your institution.",
+    "ar": "أدخل رمز الاختبار الذي قدمته مؤسستك."
+  },
+  "Listening": {
+    "en": "Listening",
+    "ar": "الاستماع"
+  },
+  "Lütfen tüm aday bilgilerini doldurun.": {
+    "en": "Please complete all candidate details.",
+    "ar": "يرجى إكمال جميع بيانات المتقدم."
+  },
+  "Medya kaynağı başka bir işlem tarafından kullanılıyor.": {
+    "en": "Another operation is using the media device.",
+    "ar": "تستخدم عملية أخرى جهاز الوسائط."
+  },
+  "Mikrofon izin isteği tamamlanmadı. Sistem izin penceresini kontrol edip tekrar deneyin.": {
+    "en": "The microphone permission request did not finish. Check the system permission dialog and try again.",
+    "ar": "لم يكتمل طلب إذن الميكروفون. تحقق من نافذة إذن النظام وحاول مجددًا."
+  },
+  "Mikrofon izni": {
+    "en": "Microphone permission",
+    "ar": "إذن الميكروفون"
+  },
+  "Mikrofon izni kontrol ediliyor. Görünen izin penceresini yanıtlayın.": {
+    "en": "Checking microphone permission. Respond to the permission dialog.",
+    "ar": "جارٍ التحقق من إذن الميكروفون. استجب لنافذة طلب الإذن."
+  },
+  "Mikrofon izni verilmedi. Sistem Ayarları'ndan B4Skills için mikrofonu açın.": {
+    "en": "Microphone permission was not granted. Enable the microphone for B4Skills in System Settings.",
+    "ar": "لم يُمنح إذن الميكروفون. فعّل الميكروفون لتطبيق B4Skills في إعدادات النظام."
+  },
+  "Mikrofon:": {
+    "en": "Microphone:",
+    "ar": "الميكروفون:"
+  },
+  "Mikrofonu kontrol et": {
+    "en": "Check microphone",
+    "ar": "فحص الميكروفون"
+  },
+  "Mikrofonunuz ses alıyor. Deneme kaydı gönderilmez.": {
+    "en": "Your microphone is receiving audio. The test recording is not sent.",
+    "ar": "الميكروفون يلتقط الصوت. لن يُرسل التسجيل التجريبي."
+  },
+  "Mikrofonunuzu deneyin": {
+    "en": "Test your microphone",
+    "ar": "جرّب الميكروفون"
+  },
+  "Nasıl giriş yapmak\nistersiniz?": {
+    "en": "How would you like\nto sign in?",
+    "ar": "كيف تود\nتسجيل الدخول؟"
+  },
+  "Nasıl giriş yapmak istersiniz?": {
+    "en": "How would you like to sign in?",
+    "ar": "كيف تود تسجيل الدخول؟"
+  },
+  "Nasıl yardımcı olabiliriz?": {
+    "en": "How can we help?",
+    "ar": "كيف يمكننا مساعدتك؟"
+  },
+  "Okul / Kurum": {
+    "en": "School / Institution",
+    "ar": "المدرسة / المؤسسة"
+  },
+  "Okuma metni": {
+    "en": "Reading passage",
+    "ar": "نص القراءة"
+  },
+  "Okuma, dinleme, yazma ve konuşma becerileriniz bir arada değerlendirilir. Programınıza göre kelime bilgisi ve dil bilgisi bölümleri de yer alabilir.": {
+    "en": "Reading, listening, writing and speaking are assessed together. Vocabulary and grammar sections may also be included, depending on your programme.",
+    "ar": "تُقيّم مهارات القراءة والاستماع والكتابة والتحدث معًا. وقد يشمل برنامجك أيضًا أقسامًا للمفردات والقواعد."
+  },
+  "Okuma, dinleme, yazma ve konuşma tek bir oturumda değerlendirilir. Programınıza göre dil bilgisi ve kelime bölümleri de yer alabilir.": {
+    "en": "Reading, listening, writing and speaking are assessed in one session. Grammar and vocabulary may also be included, depending on your programme.",
+    "ar": "تُقيّم مهارات القراءة والاستماع والكتابة والتحدث في جلسة واحدة. وقد يتضمن برنامجك القواعد والمفردات أيضًا."
+  },
+  "Okuyun, dinleyin, yazın, konuşun.": {
+    "en": "Read, listen, write, speak.",
+    "ar": "اقرأ، استمع، اكتب، تحدث."
+  },
+  "Olay teslimini yeniden dene": {
+    "en": "Retry event delivery",
+    "ar": "إعادة محاولة إرسال الأحداث"
+  },
+  "Onaylanan fotoğraf şifreli kaydedildi. Sunucu teslimi onayladığında kuyruktan kaldırılır; aksi halde bekleyen fotoğraflar bölümünde görünür.": {
+    "en": "Your approved photo was saved encrypted. It is removed from the queue once the server confirms delivery; otherwise it appears under pending photos.",
+    "ar": "حُفظت الصورة التي وافقت عليها بصورة مشفّرة. تُحذف من قائمة الانتظار عند تأكيد الخادم استلامها؛ وإلا فتظهر ضمن الصور المعلقة."
+  },
+  "Onaylanan fotoğrafın teslimi bekleniyor. Uygulama yeniden açıldığında aynı hesapla devam eder.": {
+    "en": "Your approved photo is awaiting delivery. It will continue with the same account when the app reopens.",
+    "ar": "صورتك المعتمدة بانتظار الإرسال. ستُستأنف العملية بالحساب نفسه عند إعادة فتح التطبيق."
+  },
+  "Onaylanmamış fotoğraf yalnız bellekte kalır. Onaydan sonra cihazda şifreli saklanır; bağlantı gelince aynı kimlikle yeniden gönderilir. İlk teslim için 10 dakika vardır; süre aşılırsa yeniden çekin.": {
+    "en": "An unapproved photo stays only in memory. After approval it is stored encrypted on this device and retried with the same ID when connected. The first delivery window is 10 minutes; retake the photo if it expires.",
+    "ar": "تبقى الصورة غير المعتمدة في الذاكرة فقط. بعد الموافقة تُحفظ مشفّرة على الجهاز وتُعاد محاولة إرسالها بالمعرّف نفسه عند الاتصال. مهلة الإرسال الأول 10 دقائق؛ أعد التقاط الصورة إذا انتهت المهلة."
+  },
+  "Otomatik gözetimli": {
+    "en": "Automatically monitored",
+    "ar": "مراقبة آلية"
+  },
+  "Oturum kimliği": {
+    "en": "Session ID",
+    "ar": "معرّف الجلسة"
+  },
+  "Oturum kimliğinizi girin": {
+    "en": "Enter your session ID",
+    "ar": "أدخل معرّف الجلسة"
+  },
+  "Oturum kimliğinizle değerlendirmenize veya sonuçlarınıza ulaşın.": {
+    "en": "Use your session ID to access your assessment or results.",
+    "ar": "استخدم معرّف الجلسة للوصول إلى تقييمك أو نتائجك."
+  },
+  "Oturum:": {
+    "en": "Session:",
+    "ar": "الجلسة:"
+  },
+  "Oturuma devam et": {
+    "en": "Resume session",
+    "ar": "استئناف الجلسة"
+  },
+  "Oturumu getir": {
+    "en": "Retrieve session",
+    "ar": "استرجاع الجلسة"
+  },
+  "Oturumun fotoğraf sınırına ulaşıldı. Bekleyen kaydı cihazdan silebilir veya kurumunuzla iletişime geçebilirsiniz.": {
+    "en": "The session photo limit has been reached. Delete the pending item from this device or contact your institution.",
+    "ar": "تم بلوغ الحد الأقصى لصور الجلسة. احذف الصورة المعلقة من هذا الجهاز أو تواصل مع مؤسستك."
+  },
+  "Oturumunuz tamamlandı.": {
+    "en": "Your session is complete.",
+    "ar": "اكتملت جلستك."
+  },
+  "Oturumunuzun süresi doldu. Yeniden giriş yapın.": {
+    "en": "Your session expired. Sign in again.",
+    "ar": "انتهت صلاحية جلستك. سجّل الدخول مجددًا."
+  },
+  "Profil:": {
+    "en": "Profile:",
+    "ar": "الملف:"
+  },
+  "Puanlama bekleniyor.": {
+    "en": "Awaiting scoring.",
+    "ar": "بانتظار احتساب الدرجة."
+  },
+  "Reading": {
+    "en": "Reading",
+    "ar": "القراءة"
+  },
+  "SINAV KODU": {
+    "en": "EXAM CODE",
+    "ar": "رمز الاختبار"
+  },
+  "Ses adresi geçersiz.": {
+    "en": "Invalid audio address.",
+    "ar": "عنوان الصوت غير صالح."
+  },
+  "Ses kaydı kesildi. Yeniden kaydedin.": {
+    "en": "Audio recording was interrupted. Record again.",
+    "ar": "انقطع التسجيل الصوتي. أعد التسجيل."
+  },
+  "Ses kaydı okunamadı. Yeniden kaydedin.": {
+    "en": "The recording could not be read. Record again.",
+    "ar": "تعذرت قراءة التسجيل. أعد التسجيل."
+  },
+  "Ses kaydı sürerken dinleme başlatılamaz.": {
+    "en": "Listening cannot start while recording.",
+    "ar": "لا يمكن بدء الاستماع أثناء التسجيل."
+  },
+  "Ses oynatılamadı.": {
+    "en": "Audio could not be played.",
+    "ar": "تعذر تشغيل الصوت."
+  },
+  "Ses seviyesi göstergesi": {
+    "en": "Audio level indicator",
+    "ar": "مؤشر مستوى الصوت"
+  },
+  "Ses seviyesi ölçülüyor": {
+    "en": "Measuring audio level",
+    "ar": "جارٍ قياس مستوى الصوت"
+  },
+  "Ses yüklenemedi.": {
+    "en": "Audio could not be loaded.",
+    "ar": "تعذر تحميل الصوت."
+  },
+  "Ses yüklenemedi. Bağlantınızı kontrol edip yeniden deneyin. Dinleme hakkınız korunuyor.": {
+    "en": "Audio could not be loaded. Check your connection and try again. Your play allowance is preserved.",
+    "ar": "تعذر تحميل الصوت. تحقق من اتصالك وحاول مجددًا. فرص الاستماع محفوظة."
+  },
+  "Ses yükleniyor…": {
+    "en": "Loading audio…",
+    "ar": "جارٍ تحميل الصوت…"
+  },
+  "Sessiz bir ortam": {
+    "en": "A quiet place",
+    "ar": "مكان هادئ"
+  },
+  "Sessiz bir ortam seçin. Kulaklığınızı ve mikrofonunuzu hazırlayın.": {
+    "en": "Choose a quiet place. Prepare your headphones and microphone.",
+    "ar": "اختر مكانًا هادئًا. جهّز سماعاتك والميكروفون."
+  },
+  "Sessiz bir ortam, kulaklık ve mikrofon.": {
+    "en": "A quiet place, headphones and microphone.",
+    "ar": "مكان هادئ وسماعات وميكروفون."
+  },
+  "Seviyenize uyum sağlayan bir sınav.": {
+    "en": "An assessment that adapts to your level.",
+    "ar": "تقييم يتكيف مع مستواك."
+  },
+  "Seçenekler": {
+    "en": "Options",
+    "ar": "الخيارات"
+  },
+  "Simülatör": {
+    "en": "Simulator",
+    "ar": "المحاكي"
+  },
+  "Size özel bir başlangıç": {
+    "en": "A start tailored to you",
+    "ar": "بداية تناسبك"
+  },
+  "Size özel bir değerlendirme": {
+    "en": "An assessment tailored to you",
+    "ar": "تقييم يناسبك"
+  },
+  "Sizi dinliyoruz.": {
+    "en": "We’re listening.",
+    "ar": "نحن نستمع إليك."
+  },
+  "Sonraki soruyu yükle": {
+    "en": "Load next question",
+    "ar": "تحميل السؤال التالي"
+  },
+  "Sonuçlar": {
+    "en": "Results",
+    "ar": "النتائج"
+  },
+  "Sonuçları getir": {
+    "en": "Get results",
+    "ar": "جلب النتائج"
+  },
+  "Sonuçları yenile": {
+    "en": "Refresh results",
+    "ar": "تحديث النتائج"
+  },
+  "Sonuçlarım": {
+    "en": "My results",
+    "ar": "نتائجي"
+  },
+  "Sonuçlarınız hazırlanıyor.": {
+    "en": "Your results are being prepared.",
+    "ar": "جارٍ إعداد نتائجك."
+  },
+  "Sorular yanıtlarınıza göre ilerler. Bölüm sırası ve süre, kurumunuzun programına bağlıdır. Başladıktan sonra oturum sunucuda işlemeye devam eder.": {
+    "en": "Questions adapt to your answers. Section order and timing depend on your institution’s programme. Once started, the session continues on the server.",
+    "ar": "تتكيف الأسئلة مع إجاباتك. ويعتمد ترتيب الأقسام والوقت على برنامج مؤسستك. بعد البدء تستمر الجلسة على الخادم."
+  },
+  "Sorular yanıtlarınıza göre zorlaşır ya da kolaylaşır. İngilizce düzeyiniz A1’den C2’ye CEFR ölçeğinde belirlenir.": {
+    "en": "Questions become harder or easier based on your answers. Your English level is determined on the CEFR scale from A1 to C2.",
+    "ar": "تصبح الأسئلة أصعب أو أسهل بناءً على إجاباتك. ويُحدد مستواك في الإنجليزية على مقياس CEFR من A1 إلى C2."
+  },
+  "Soruyu yanıtlayabilirsiniz": {
+    "en": "You can answer the question",
+    "ar": "يمكنك الإجابة عن السؤال"
+  },
+  "Soyad": {
+    "en": "Last name",
+    "ar": "اسم العائلة"
+  },
+  "Speaking": {
+    "en": "Speaking",
+    "ar": "التحدث"
+  },
+  "Standart": {
+    "en": "Standard",
+    "ar": "قياسي"
+  },
+  "Sunucu adresi": {
+    "en": "Server address",
+    "ar": "عنوان الخادم"
+  },
+  "Sunucu bu fotoğrafı kabul etmedi. Yeniden çekin veya bu kaydı silin.": {
+    "en": "The server did not accept this photo. Retake it or delete this item.",
+    "ar": "لم يقبل الخادم هذه الصورة. أعد التقاطها أو احذفها."
+  },
+  "Sunucudan beklenen yanıt alınamadı.": {
+    "en": "The server returned an unexpected response.",
+    "ar": "أعاد الخادم استجابة غير متوقعة."
+  },
+  "Sunucuya ulaşılamadı. İnternet bağlantınızı ve sunucu adresini kontrol edin.": {
+    "en": "Cannot reach the server. Check your internet connection and server address.",
+    "ar": "تعذر الوصول إلى الخادم. تحقق من اتصال الإنترنت وعنوان الخادم."
+  },
+  "Söz sizde.": {
+    "en": "Your turn.",
+    "ar": "دورك الآن."
+  },
+  "Sürekli yüz kontrolü başlatılamadı.": {
+    "en": "Continuous face checking could not start.",
+    "ar": "تعذر بدء فحص الوجوه المستمر."
+  },
+  "Sürekli yüz sayımı açık ·": {
+    "en": "Continuous face counting is on ·",
+    "ar": "عدّ الوجوه المستمر مفعّل ·"
+  },
+  "Sınav bitince geçici CEFR düzeyinizi ve beceri görünümünüzü görürsünüz. Yazma ve konuşma yanıtları incelendikçe sonuçlar güncellenir.": {
+    "en": "After the exam, you’ll see your provisional CEFR level and skill overview. Results update as writing and speaking answers are reviewed.",
+    "ar": "بعد الاختبار سترى مستوى CEFR الأولي ونظرة على مهاراتك. وتتحدث النتائج عند مراجعة إجابات الكتابة والتحدث."
+  },
+  "Sınav gözetimi": {
+    "en": "Exam monitoring",
+    "ar": "مراقبة الاختبار"
+  },
+  "Sınav kodu": {
+    "en": "Exam code",
+    "ar": "رمز الاختبار"
+  },
+  "Sınav kodum var": {
+    "en": "I have an exam code",
+    "ar": "لدي رمز اختبار"
+  },
+  "Sınav kodunuz var mı?": {
+    "en": "Have an exam code?",
+    "ar": "هل لديك رمز اختبار؟"
+  },
+  "Sınav koşulları alınıyor…": {
+    "en": "Getting exam requirements…",
+    "ar": "جارٍ جلب متطلبات الاختبار…"
+  },
+  "Sınav koşullarını kontrol edip bilgilendirmeyi onaylayın.": {
+    "en": "Check the exam requirements and acknowledge the information.",
+    "ar": "تحقق من متطلبات الاختبار وأقرّ بالاطلاع على المعلومات."
+  },
+  "Sınav koşullarını ve cihazı kontrol et": {
+    "en": "Check exam requirements and device",
+    "ar": "فحص متطلبات الاختبار والجهاز"
+  },
+  "Sınav koşullarını ve veri kullanım açıklamasını okudum.": {
+    "en": "I have read the exam requirements and data use notice.",
+    "ar": "قرأت متطلبات الاختبار وبيان استخدام البيانات."
+  },
+  "Sınav politikası doğrulanamadı.": {
+    "en": "The exam policy could not be verified.",
+    "ar": "تعذر التحقق من سياسة الاختبار."
+  },
+  "Sınıf / Düzey": {
+    "en": "Class / Level",
+    "ar": "الصف / المستوى"
+  },
+  "Sıradaki soru hazırlanıyor…": {
+    "en": "Preparing the next question…",
+    "ar": "جارٍ إعداد السؤال التالي…"
+  },
+  "Tanıtım {0} / {1}": {
+    "en": "Introduction {0} / {1}",
+    "ar": "التعريف {0} / {1}"
+  },
+  "Teknik kayıt kontrol ediliyor…": {
+    "en": "Checking technical event storage…",
+    "ar": "جارٍ فحص تخزين الأحداث التقنية…"
+  },
+  "Teknik kayıt kontrolü zaman aşımına uğradı.": {
+    "en": "Technical event storage check timed out.",
+    "ar": "انتهت مهلة فحص تخزين الأحداث التقنية."
+  },
+  "Teknik olay kaydı": {
+    "en": "Technical event logging",
+    "ar": "تسجيل الأحداث التقنية"
+  },
+  "Teknik olayların teslimi doğrulanamadı. Bağlantı ve güvenli depolamayı kontrol edin; gönderim yeniden denenecek.": {
+    "en": "Technical event delivery could not be verified. Check your connection and secure storage; delivery will be retried.",
+    "ar": "تعذر التحقق من تسليم الأحداث التقنية. تحقق من الاتصال والتخزين الآمن؛ ستُعاد محاولة الإرسال."
+  },
+  "Tekrar dene": {
+    "en": "Try again",
+    "ar": "المحاولة مجددًا"
+  },
+  "Uyarlanabilir değerlendirme": {
+    "en": "Adaptive assessment",
+    "ar": "التقييم التكيفي"
+  },
+  "Uygulama arka planda · olay kaydedildi": {
+    "en": "App in the background · event recorded",
+    "ar": "التطبيق في الخلفية · تم تسجيل الحدث"
+  },
+  "Uygulama dili": {
+    "en": "App language",
+    "ar": "لغة التطبيق"
+  },
+  "Uygulama geçiş olayları": {
+    "en": "App transition events",
+    "ar": "أحداث انتقال التطبيق"
+  },
+  "Uygulama kesintiye uğradı. Yanıtınız cihazda duruyor; sınavın sunucudaki süresi işlemeye devam edebilir.": {
+    "en": "The app was interrupted. Your answer is still on this device; the server exam timer may continue.",
+    "ar": "انقطع نشاط التطبيق. إجابتك محفوظة على هذا الجهاز؛ وقد يستمر مؤقت الاختبار على الخادم."
+  },
+  "Uzak sunucular için HTTPS kullanın. HTTP yalnızca yerel geliştirme ağında kabul edilir.": {
+    "en": "Use HTTPS for remote servers. HTTP is allowed only on a local development network.",
+    "ar": "استخدم HTTPS للخوادم البعيدة. يُسمح بـ HTTP فقط على شبكة تطوير محلية."
+  },
+  "Vazgeç": {
+    "en": "Cancel",
+    "ar": "إلغاء"
+  },
+  "Vocabulary": {
+    "en": "Vocabulary",
+    "ar": "المفردات"
+  },
+  "Writing": {
+    "en": "Writing",
+    "ar": "الكتابة"
+  },
+  "Yalnız bir yüz görünmeli; ışığı ve kadrajı düzenleyip yeniden çekin.": {
+    "en": "Only one face should be visible; adjust the lighting and framing, then retake the photo.",
+    "ar": "يجب أن يظهر وجه واحد فقط؛ اضبط الإضاءة وإطار الصورة ثم أعد التقاطها."
+  },
+  "Yanıt gönderilmedi. Aynı oturuma web uygulamasından devam edebilirsiniz. Oturum kimliği:": {
+    "en": "No answer was sent. You can continue the same session on the web app. Session ID:",
+    "ar": "لم تُرسل أي إجابة. يمكنك متابعة الجلسة نفسها على تطبيق الويب. معرّف الجلسة:"
+  },
+  "Yanıtlarda | işaretini kullanmayın.": {
+    "en": "Do not use the | character in answers.",
+    "ar": "لا تستخدم الرمز | في الإجابات."
+  },
+  "Yanıtı gönder": {
+    "en": "Submit answer",
+    "ar": "إرسال الإجابة"
+  },
+  "Yanıtınız": {
+    "en": "Your answer",
+    "ar": "إجابتك"
+  },
+  "Yanıtınız gönderildiğinde kaydedilir ve değiştirilemez.": {
+    "en": "Your answer is saved when submitted and cannot be changed.",
+    "ar": "تُحفظ إجابتك عند إرسالها ولا يمكن تغييرها."
+  },
+  "Yanıtınız kaydedilmemiş. Sorunuz ve yanıtınız korundu; kontrol edip yeniden gönderebilirsiniz.": {
+    "en": "Your answer was not saved. Your question and answer are preserved; check them and submit again.",
+    "ar": "لم تُحفظ إجابتك. السؤال والإجابة محفوظان؛ راجعهما ثم أعد الإرسال."
+  },
+  "Yanıtınızı buraya yazın…": {
+    "en": "Write your answer here…",
+    "ar": "اكتب إجابتك هنا…"
+  },
+  "Yanıtınızı kontrol ediyoruz.": {
+    "en": "We’re checking your answer.",
+    "ar": "جارٍ التحقق من إجابتك."
+  },
+  "Yanıtınızı yazın": {
+    "en": "Write your answer",
+    "ar": "اكتب إجابتك"
+  },
+  "Yapıları doğru kullanın": {
+    "en": "Use structures correctly",
+    "ar": "استخدم التراكيب بشكل صحيح"
+  },
+  "Yardım ve destek": {
+    "en": "Help and support",
+    "ar": "المساعدة والدعم"
+  },
+  "Yazılı yanıt": {
+    "en": "Written answer",
+    "ar": "الإجابة المكتوبة"
+  },
+  "Yeni bölüm: {0}": {
+    "en": "New section: {0}",
+    "ar": "القسم الجديد: {0}"
+  },
+  "Yeni bölüme geçildi.": {
+    "en": "Moved to a new section.",
+    "ar": "تم الانتقال إلى قسم جديد."
+  },
+  "Yeniden dene": {
+    "en": "Try again",
+    "ar": "حاول مرة أخرى"
+  },
+  "Yeniden kaydet": {
+    "en": "Record again",
+    "ar": "إعادة التسجيل"
+  },
+  "Yeniden çek": {
+    "en": "Retake photo",
+    "ar": "إعادة التقاط الصورة"
+  },
+  "Yükleniyor…": {
+    "en": "Loading…",
+    "ar": "جارٍ التحميل…"
+  },
+  "Yüz sayımı cihazda yapılır; video gönderilmez.": {
+    "en": "Faces are counted on this device; no video is sent.",
+    "ar": "يتم عدّ الوجوه على هذا الجهاز؛ ولا يُرسل أي فيديو."
+  },
+  "Yüzünüz birkaç saniyedir görünmüyor. Kameraya bakın; bu bir teknik kayıttır, ihlal kararı değildir.": {
+    "en": "Your face has not been visible for a few seconds. Please face the camera; this is a technical record, not a finding of misconduct.",
+    "ar": "لم يظهر وجهك منذ بضع ثوانٍ. يرجى النظر إلى الكاميرا؛ هذا سجل تقني وليس حكمًا بمخالفة."
+  },
+  "Yüzünüz görünmüyor": {
+    "en": "Your face is not visible",
+    "ar": "وجهك غير ظاهر"
+  },
+  "açık": {
+    "en": "on",
+    "ar": "مفعّل"
+  },
+  "b4skills": {
+    "en": "b4skills",
+    "ar": "b4skills"
+  },
+  "bekleniyor": {
+    "en": "pending",
+    "ar": "قيد الانتظار"
+  },
+  "bir hikâyesi var.": {
+    "en": "a story of its own.",
+    "ar": "قصة خاصة."
+  },
+  "boşluk tamamlandı": {
+    "en": "blanks completed",
+    "ar": "فراغات مكتملة"
+  },
+  "en fazla {0}": {
+    "en": "at most {0}",
+    "ar": "{0} بحد أقصى"
+  },
+  "gün erişebilir.": {
+    "en": "days.",
+    "ar": "أيام."
+  },
+  "hazır": {
+    "en": "ready",
+    "ar": "جاهز"
+  },
+  "hello@b4skills.com": {
+    "en": "hello@b4skills.com",
+    "ar": "hello@b4skills.com"
+  },
+  "hesabınıza tanımlanacak. Kod bir kez kullanılabilir.": {
+    "en": "will be assigned to your account. The code can only be used once.",
+    "ar": "سيُربط بحسابك. يمكن استخدام الرمز مرة واحدة فقط."
+  },
+  "https://app.b4skills.com": {
+    "en": "https://app.b4skills.com",
+    "ar": "https://app.b4skills.com"
+  },
+  "inceleme bekliyor": {
+    "en": "awaiting review",
+    "ar": "بانتظار المراجعة"
+  },
+  "izin gerekli": {
+    "en": "permission required",
+    "ar": "يلزم الإذن"
+  },
+  "için geliştirmede http://localhost:3001 kullanılır. Fiziksel iPad'de Mac'in yerel ağ adresini girin. Uzak sunucular HTTPS gerektirir.": {
+    "en": "uses http://localhost:3001 during development. On a physical iPad, enter your Mac’s local network address. Remote servers require HTTPS.",
+    "ar": "يستخدم http://localhost:3001 أثناء التطوير. على iPad فعلي أدخل عنوان Mac على الشبكة المحلية. تتطلب الخوادم البعيدة HTTPS."
+  },
+  "kapalı": {
+    "en": "off",
+    "ar": "غير مفعّل"
+  },
+  "kelime": {
+    "en": "words",
+    "ar": "كلمات"
+  },
+  "kullanılamıyor": {
+    "en": "unavailable",
+    "ar": "غير متاح"
+  },
+  "ornek@eposta.com": {
+    "en": "name@example.com",
+    "ar": "name@example.com"
+  },
+  "yanıt": {
+    "en": "answers",
+    "ar": "إجابات"
+  },
+  "yanıt gönderildi": {
+    "en": "answers submitted",
+    "ar": "إجابات مرسلة"
+  },
+  "yanıt kaydedildi": {
+    "en": "answers saved",
+    "ar": "إجابات محفوظة"
+  },
+  "{0} (HTTP {1})": {
+    "en": "{0} (HTTP {1})",
+    "ar": "{0} (HTTP {1})"
+  },
+  "{0} / {1} · Bitirdiğinizde kaydı durdurun.": {
+    "en": "{0} / {1} · Stop recording when you finish.",
+    "ar": "{0} / {1} · أوقف التسجيل عند الانتهاء."
+  },
+  "{0} dinleme hakkınız kaldı": {
+    "en": "{0} plays remaining",
+    "ar": "فرص الاستماع المتبقية: {0}"
+  },
+  "{0} kaydedildi. Göndermeden önce yeniden kaydedebilirsiniz.": {
+    "en": "{0} saved. You can record again before submitting.",
+    "ar": "تم حفظ {0}. يمكنك إعادة التسجيل قبل الإرسال."
+  },
+  "{0} yanıt, en fazla {1}": {
+    "en": "{0} answers, up to {1}",
+    "ar": "{0} إجابات، بحد أقصى {1}"
+  },
+  "{0}. boşluk": {
+    "en": "Blank {0}",
+    "ar": "الفراغ {0}"
+  },
+  "{0}. boşluk seçenekleri": {
+    "en": "Options for blank {0}",
+    "ar": "خيارات الفراغ {0}"
+  },
+  "{0}. ekran": {
+    "en": "Screen {0}",
+    "ar": "الشاشة {0}"
+  },
+  "· Durdurulan dinleme hakkınızdan düşer": {
+    "en": "· Stopping uses one play",
+    "ar": "· يُحتسب إيقاف التسجيل ضمن فرص الاستماع"
+  },
+  "· Teknik olay kaydı:": {
+    "en": "· Technical event logging:",
+    "ar": "· تسجيل الأحداث التقنية:"
+  },
+  "· Uygulama geçiş kaydı:": {
+    "en": "· App transition logging:",
+    "ar": "· تسجيل انتقالات التطبيق:"
+  },
+  "· İngilizcenizi tüm yönleriyle tanıyın.": {
+    "en": "· Get to know every side of your English.",
+    "ar": "· تعرّف على جميع جوانب لغتك الإنجليزية."
+  },
+  "Çalışan bir mikrofon": {
+    "en": "A working microphone",
+    "ar": "ميكروفون يعمل"
+  },
+  "Çoktan seçmeli, yazılı ve sesli yanıtlar desteklenir. Gözetimli sınavlar, sürükle-bırak ve entegre görevler için web uygulamasını kullanın.": {
+    "en": "Multiple-choice, written and audio answers are supported. Use the web app for monitored exams, drag-and-drop and integrated tasks.",
+    "ar": "تُدعم الإجابات الاختيارية والمكتوبة والصوتية. استخدم تطبيق الويب للاختبارات الخاضعة للمراقبة ومهام السحب والإفلات والمهام المدمجة."
+  },
+  "Çıkış": {
+    "en": "Sign out",
+    "ar": "تسجيل الخروج"
+  },
+  "Çıkış yap": {
+    "en": "Sign out",
+    "ar": "تسجيل الخروج"
+  },
+  "Çıkış yapılsın mı?": {
+    "en": "Sign out?",
+    "ar": "هل تريد تسجيل الخروج؟"
+  },
+  "ÖRNEK GÖRÜNÜM": {
+    "en": "SAMPLE VIEW",
+    "ar": "عرض توضيحي"
+  },
+  "Ölçüm bekleniyor / ölçüm alınamadı": {
+    "en": "Waiting for a reading / reading unavailable",
+    "ar": "بانتظار القياس / تعذر القياس"
+  },
+  "Önce giriş yapın.": {
+    "en": "Sign in first.",
+    "ar": "سجّل الدخول أولًا."
+  },
+  "Önceki yanıtınız kaydedildi. Değerlendirmenize devam edin.": {
+    "en": "Your previous answer was saved. Continue your assessment.",
+    "ar": "حُفظت إجابتك السابقة. تابع التقييم."
+  },
+  "Özgün Kids — Form A (96 soru)": {
+    "en": "Özgün Kids — Form A (96 questions)",
+    "ar": "Özgün Kids — Form A (96 سؤالًا)"
+  },
+  "İnceleme tamamlandığında görünecek": {
+    "en": "Will appear when the review is complete",
+    "ar": "ستظهر عند اكتمال المراجعة"
+  },
+  "İngilizcenize daha yakından bakın.": {
+    "en": "Take a closer look at your English.",
+    "ar": "تعرّف على لغتك الإنجليزية عن قرب."
+  },
+  "İngilizcenizi tüm yönleriyle tanıyın.": {
+    "en": "Get to know every side of your English.",
+    "ar": "تعرّف على جميع جوانب لغتك الإنجليزية."
+  },
+  "İstek tamamlanamadı": {
+    "en": "Request could not be completed",
+    "ar": "تعذر إكمال الطلب"
+  },
+  "ŞU AN": {
+    "en": "RIGHT NOW",
+    "ar": "الآن"
+  },
+  "Şifre": {
+    "en": "Password",
+    "ar": "كلمة المرور"
+  },
+  "Şifreli fotoğraf deposu açılamadı.": {
+    "en": "Encrypted photo storage could not be opened.",
+    "ar": "تعذر فتح مخزن الصور المشفّر."
+  },
+  "Şifreli fotoğraf deposu doğrulanamadı. Kayıtların üzerine yazılmadı.": {
+    "en": "Encrypted photo storage could not be verified. Existing records were not overwritten.",
+    "ar": "تعذر التحقق من مخزن الصور المشفّر. لم تُستبدل السجلات الموجودة."
+  },
+  "Şifreli fotoğraf kuyruğu doğrulanamadı. Kayıtlar korunuyor.": {
+    "en": "The encrypted photo queue could not be verified. Records are preserved.",
+    "ar": "تعذر التحقق من قائمة انتظار الصور المشفّرة. السجلات محفوظة."
+  },
+  "Şifreli fotoğraf kuyruğu: {0} bekleyen. Teslim sunucu onayından sonra tamamlanır.": {
+    "en": "Encrypted photo queue: {0} pending. Delivery completes after server confirmation.",
+    "ar": "قائمة انتظار الصور المشفّرة: {0} صور معلقة. يكتمل التسليم بعد تأكيد الخادم."
+  },
+  "Şifreli fotoğraf kuyruğunun durumu doğrulanamadı. Kayıtlar korunuyor.": {
+    "en": "The encrypted photo queue status could not be verified. Records are preserved.",
+    "ar": "تعذر التحقق من حالة قائمة انتظار الصور المشفّرة. السجلات محفوظة."
+  },
+  "Şifreniz bu cihazda saklanmaz.": {
+    "en": "Your password is not stored on this device.",
+    "ar": "لا تُحفظ كلمة مرورك على هذا الجهاز."
+  },
+  "Şifrenizi girin": {
+    "en": "Enter your password",
+    "ar": "أدخل كلمة المرور"
+  }
+}

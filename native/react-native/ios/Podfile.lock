@@ -2905,7 +2905,7 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
 SPEC CHECKSUMS:
-  B4Native: 0c35f01b3462011c13e5fe7b1ac938ef358b15de
+  B4Native: 6f1073c776f01d1cdb3042b2af65bbbce2d9239e
   boost: 7e761d76ca2ce687f7cc98e698152abd03a18f90
   DoubleConversion: cb417026b2400c8f53ae97020b2be961b59470cb
   fast_float: b32c788ed9c6a8c584d114d0047beda9664e7cc6

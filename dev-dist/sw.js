@@ -67,11 +67,10 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-d43adce7'], (function (workbox) { 'use strict';
+define(['./workbox-833106ff'], (function (workbox) { 'use strict';
 
   self.skipWaiting();
   workbox.clientsClaim();
-
   /**
    * The precacheAndRoute() method efficiently caches and responds to
    * requests for URLs in the manifest.
@@ -81,17 +80,38 @@ define(['./workbox-d43adce7'], (function (workbox) { 'use strict';
     "url": "registerSW.js",
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
-    "url": "index.html",
-    "revision": "0.biv57j3u914"
+    "url": "/index.html",
+    "revision": "0.up0rsplqdg4"
   }], {});
   workbox.cleanupOutdatedCaches();
-  workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
-    allowlist: [/^\/$/]
+  workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("/index.html"), {
+    allowlist: [/^\/$/],
+    denylist: [/^\/api\//]
   }));
-  workbox.registerRoute(/^https:\/\/api\.linguadapt\.com\/.*/i, new workbox.NetworkFirst({
-    "cacheName": "api-cache",
-    plugins: [new workbox.BackgroundSyncPlugin("sync-queue", {
+  workbox.registerRoute(({
+    url
+  }) => url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/auth"), new workbox.NetworkFirst({
+    "cacheName": "api-reads",
+    "networkTimeoutSeconds": 10,
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 100,
+      maxAgeSeconds: 300
+    }), new workbox.BackgroundSyncPlugin("api-sync-queue", {
       maxRetentionTime: 1440
+    })]
+  }), 'GET');
+  workbox.registerRoute(/\/assets\/.+\.(js|css|woff2?|ttf)$/, new workbox.CacheFirst({
+    "cacheName": "static-assets",
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 200,
+      maxAgeSeconds: 31536000
+    })]
+  }), 'GET');
+  workbox.registerRoute(/\.(mp3|ogg|webm|wav|png|jpg|webp|svg)$/, new workbox.StaleWhileRevalidate({
+    "cacheName": "media-assets",
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 300,
+      maxAgeSeconds: 2592000
     })]
   }), 'GET');
 

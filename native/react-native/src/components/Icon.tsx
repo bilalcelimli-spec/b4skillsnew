@@ -1,5 +1,6 @@
+import { useLanguage } from '../i18n/store';
 import React from 'react';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle, Path, G } from 'react-native-svg';
 import { IconName } from '../theme';
 
 // Stroke icons on a 24×24 grid (lucide-style), drawn natively on iPadOS and macOS.
@@ -46,9 +47,12 @@ const GLYPHS: Record<IconName, Glyph> = {
 export function Icon({ name, size = 20, color = '#0F172A', strokeWidth = 1.9 }: {
   name: IconName; size?: number; color?: string; strokeWidth?: number;
 }) {
+  const { rtl } = useLanguage();
+  const mirror = rtl && ['arrowRight', 'chevronRight', 'chevronLeft', 'sidebar', 'logout'].includes(name);
   const glyph = GLYPHS[name];
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" accessible={false}>
+      <G transform={mirror ? "translate(24, 0) scale(-1, 1)" : undefined}>
       {glyph.c?.map(([cx, cy, r], i) => (
         <Circle key={`c${i}`} cx={cx} cy={cy} r={r} stroke={color} strokeWidth={strokeWidth} fill="none" />
       ))}
@@ -63,6 +67,7 @@ export function Icon({ name, size = 20, color = '#0F172A', strokeWidth = 1.9 }: 
           strokeLinejoin="round"
         />
       ))}
+      </G>
     </Svg>
   );
 }

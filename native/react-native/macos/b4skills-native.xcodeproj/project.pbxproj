@@ -11,19 +11,24 @@
 		5142014D2437B4B30078DB4F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5142014C2437B4B30078DB4F /* AppDelegate.swift */; };
 		514201522437B4B40078DB4F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 514201512437B4B40078DB4F /* Assets.xcassets */; };
 		5DF6615F148504E612DBB95C /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 36CE33356304B4AC15A68403 /* PrivacyInfo.xcprivacy */; };
+		7AB4BFF94CEF779B4354B7EB /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5C9F7C303195A05AC9184B9F /* InfoPlist.strings */; };
 		8F297B244F36D430E03B388E /* libPods-b4skills-native-macOS.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F21144C7069E42D28A8271E8 /* libPods-b4skills-native-macOS.a */; };
+		BC7C2D602C68946AD93A1F57 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5C9F7C303195A05AC9184B9F /* InfoPlist.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		01F7B42D36D60F3B620C1D2B /* Pods-b4skills-native-macOS.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-b4skills-native-macOS.release.xcconfig"; path = "Target Support Files/Pods-b4skills-native-macOS/Pods-b4skills-native-macOS.release.xcconfig"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* b4skills-native.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "b4skills-native.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		257F4883598FCE79C9BB5F72 /* en */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = en; path = "b4skills-native-macOS/en.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		36CE33356304B4AC15A68403 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		4D4C84BD2EB810118322D0AE /* tr */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = tr; path = "b4skills-native-macOS/tr.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		514201492437B4B30078DB4F /* b4skills-native.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "b4skills-native.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		5142014C2437B4B30078DB4F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		514201512437B4B40078DB4F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		514201562437B4B40078DB4F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		514201592437B4B40078DB4F /* b4skills-native.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "b4skills-native.entitlements"; sourceTree = "<group>"; };
 		B38F1467A84FE04CAA59E6DB /* Pods-b4skills-native-macOS.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-b4skills-native-macOS.debug.xcconfig"; path = "Target Support Files/Pods-b4skills-native-macOS/Pods-b4skills-native-macOS.debug.xcconfig"; sourceTree = "<group>"; };
+		C0393C11F9A31B1830521D08 /* ar */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = ar; path = "b4skills-native-macOS/ar.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F21144C7069E42D28A8271E8 /* libPods-b4skills-native-macOS.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-b4skills-native-macOS.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -83,6 +88,7 @@
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				36CE33356304B4AC15A68403 /* PrivacyInfo.xcprivacy */,
 				E5D0BABC8D26D6EB567AEC58 /* Pods */,
+				5C9F7C303195A05AC9184B9F /* InfoPlist.strings */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -173,6 +179,8 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				tr,
+				ar,
 			);
 			mainGroup = 83CBB9F61A601CBA00E9B192;
 			productRefGroup = 83CBBA001A601CBA00E9B192 /* Products */;
@@ -191,6 +199,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5DF6615F148504E612DBB95C /* PrivacyInfo.xcprivacy in Resources */,
+				7AB4BFF94CEF779B4354B7EB /* InfoPlist.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -200,6 +209,7 @@
 			files = (
 				514201522437B4B40078DB4F /* Assets.xcassets in Resources */,
 				46F6A8A9F7B25ABCA63D0EAF /* PrivacyInfo.xcprivacy in Resources */,
+				BC7C2D602C68946AD93A1F57 /* InfoPlist.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -218,7 +228,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "export NODE_BINARY=node\n../node_modules/react-native-macos/scripts/react-native-xcode.sh\n";
+			shellScript = "export FORCE_BUNDLING=1\nexport EXTRA_PACKAGER_ARGS=\"--max-workers 1\"\nexport NODE_BINARY=node\n../node_modules/react-native-macos/scripts/react-native-xcode.sh\n";
 		};
 		1A938104A937498D81B3BD3B /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -258,7 +268,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "export NODE_BINARY=node\n../node_modules/react-native-macos/scripts/react-native-xcode.sh\n";
+			shellScript = "export FORCE_BUNDLING=1\nexport EXTRA_PACKAGER_ARGS=\"--max-workers 1\"\nexport NODE_BINARY=node\n../node_modules/react-native-macos/scripts/react-native-xcode.sh\n";
 		};
 		8FEB12B34F74A2381FE1FDD1 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -326,17 +336,32 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXVariantGroup section */
+		5C9F7C303195A05AC9184B9F /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				4D4C84BD2EB810118322D0AE /* tr */,
+				257F4883598FCE79C9BB5F72 /* en */,
+				C0393C11F9A31B1830521D08 /* ar */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = 333355WMYW;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = "b4skills-native-iOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -355,10 +380,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 333355WMYW;
+				ENABLE_TESTABILITY = NO;
 				INFOPLIST_FILE = "b4skills-native-iOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
+				ONLY_ACTIVE_ARCH = NO;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -366,6 +396,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.b4skills.assessment;
 				PRODUCT_NAME = B4Skills;
+				SKIP_INSTALL = NO;
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
@@ -378,13 +409,15 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = "b4skills-native-macOS/b4skills-native.entitlements";
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
 				DEAD_CODE_STRIPPING = NO;
+				DEVELOPMENT_TEAM = 333355WMYW;
 				ENABLE_HARDENED_RUNTIME = YES;
-				INFOPLIST_FILE = "b4skills-native-macos/Info.plist";
+				INFOPLIST_FILE = "b4skills-native-macOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -405,12 +438,17 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = "b4skills-native-macOS/b4skills-native.entitlements";
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 333355WMYW;
 				ENABLE_HARDENED_RUNTIME = YES;
-				INFOPLIST_FILE = "b4skills-native-macos/Info.plist";
+				ENABLE_TESTABILITY = NO;
+				INFOPLIST_FILE = "b4skills-native-macOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
+				ONLY_ACTIVE_ARCH = NO;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -419,6 +457,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.b4skills.assessment;
 				PRODUCT_NAME = B4Skills;
 				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;

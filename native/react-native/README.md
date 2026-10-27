@@ -9,7 +9,7 @@ Tek JavaScript kod tabanı, iki native Apple uygulaması:
 
 İkisinde de paket kimliği `com.b4skills.assessment`. App Store Connect'te aynı kimlikle iOS ve macOS uygulaması açılırsa **Universal Purchase** ile tek mağaza kaydı olur.
 
-Mevcut backend değiştirilmedi. Önceki SwiftUI prototipinin yerini alır; onun doğrulanmış API sözleşmesini ve tasarım dilini taşır.
+Mevcut backend kullanılır. Başlatma isteğine isteğe bağlı `launchRequestId` eklendi: sunucu aynı adayın aynı isteğine aynı oturumu döndürür ve ikinci kredi tüketmez. Bu backend güncellemesi uygulamadan önce dağıtılmalıdır. Önceki SwiftUI prototipinin yerini alır.
 
 ## Kurulum
 
@@ -17,7 +17,7 @@ Mevcut backend değiştirilmedi. Önceki SwiftUI prototipinin yerini alır; onun
 cd native/react-native
 npm install
 npm run pods          # ios/ ve macos/ için pod install (CocoaPods gerekir: brew install cocoapods)
-npm start             # Metro
+npm start             # İsteğe bağlı canlı geliştirme için Metro
 ```
 
 Ardından Xcode'da ilgili workspace'i açıp çalıştırın veya `npm run ios` / `npm run macos`.
@@ -40,9 +40,15 @@ Debug paketi JS'i `10.0.2.2:8081`'den (Mac'in 8081 portu) ister. 8081'i başka b
 
 Native modül (`modules/b4-native/android`): tercihler, `newRequestId` ve çerez temizliği çalışır. Ses, kamera ve güvenli depolama Aşama 1–2'ye kadar `E_ANDROID_PENDING` hatasıyla reddedilir. Release imzası için upload anahtarı `~/.gradle/gradle.properties` içinde `B4SKILLS_UPLOAD_STORE_FILE`, `B4SKILLS_UPLOAD_STORE_PASSWORD`, `B4SKILLS_UPLOAD_KEY_ALIAS`, `B4SKILLS_UPLOAD_KEY_PASSWORD` ile verilir; yoksa Release paketi imzasız kalır, debug anahtarıyla asla imzalanmaz. Simge ve açılış logosu `npm run icons` ile üretilir (`scripts/prepare-android-icons.py`; Play mağaza simgesi `android/play-store-icon.png`).
 
-Geliştirmede sunucu varsayılanı `http://localhost:3001`, Release derlemesinde `https://app.b4skills.com`. Giriş ekranındaki **Sunucu** düğmesiyle değiştirilebilir. HTTP yalnızca Debug'da ve yerel ağda kabul edilir.
+Debug derlemeleri de JavaScript paketini uygulamanın içine gömer ve varsayılan olarak bu paketten açılır; Metro gerekmez. Canlı geliştirme için Xcode scheme Launch Arguments listesine `-b4skills.useMetro YES` ekleyin. Bu seçenek Release'te kullanılmaz. Sürüm/test doğrulamasında bu argümanı kaldırın.
+
+Geliştirmede sunucu varsayılanı `http://localhost:3001`, Release derlemesinde `https://b4skills.com`. **Sunucu** düğmesi yalnız Debug sürümünde kullanılabilir; Release eski geliştirme adresini yüklemez ve üretim adresine sabitlenir. HTTP yalnızca Debug'da ve yerel ağda kabul edilir.
 
 ## Yapı
+
+Soru türleri, sınav profilleri, erişilebilirlik ve teslim aşamaları: [Sınav deneyimi yol haritası](EXAM_EXPERIENCE_ROADMAP.md).
+
+Web özelliklerinin iPad/macOS'a taşınması, otomatik kamera gözetimi ve Apple güvenli değerlendirme modu: [Web özellikleri ve gözetmenlik planı](WEB_FEATURE_PARITY_ROADMAP.md).
 
 - `src/api.ts` — backend istemcisi: `/api/auth/*`, `/api/sessions/launch|:id/next|:id/respond|:id/status`. 401'de tek yenileme; ağda kaybolan `respond` POST'u asla tekrar gönderilmez.
 - `src/useAssessment.ts` — oturum akışı: bölüm geçişleri, `answeredItemIds` ile doğrulama, oturuma devam, geçici sonuçlar.
@@ -57,12 +63,12 @@ Geliştirmede sunucu varsayılanı `http://localhost:3001`, Release derlemesinde
 - **Logo:** `public/b4skillslogo.png`. Uygulamadaki `src/assets/b4skills-logo.png` ondan `npm run logo` (`scripts/prepare-logo.py`) ile üretilir: yalnızca rozetin dışındaki beyaz zemin şeffaf yapılır ve kırpılır, logo değişmez. Açılış ekranı, iOS launch ekranı ve kenar çubuğu bunu kullanır.
 - **Açılış zemini:** `#1E0820`, logodaki geçişin derin mor ucu; arkadaki hale logonun macentası (`#C8246E`). iOS launch ekranı ve kök görünüm de bu renkte, yüklenirken beyaz ekran görünmez.
 - **Uygulama içi:** `LandingPage.tsx` (`#9B276C` / `#7D1F57`), `src/App.tsx` (`#0F172A`, `#FDE047`).
-- **Uygulama ikonu:** `public/favicon.svg` "b4" işareti; macOS ikonu `scripts/render-mac-icon.swift` ile. Eski mavi LinguAdapt `icons/pwa-*.png` kullanılmaz.
+- **Uygulama simgesi:** Kullanıcının sağladığı `src/assets/app-icon-source.png`. iPad ve macOS AppIcon setleri bu görselin gereken boyutlara ölçeklenmiş sürümleridir.
 
-## Doğrulama (23 Ekim 2026)
+## Doğrulama (24 Ekim 2026)
 
-- `npm test` — API sözleşme testleri: 14/14 (kod doğrulama/kayıt dahil).
-- Açılış akışı: iPad'de logolu sayfa, 5 tanıtım ekranı, tanıtım görüldükten sonra "Devam et"in doğrudan son ekrana gitmesi ve kod formunun yerinde açılması; Mac'te logolu sayfa, kısa pencerede son ekran ve e-posta formunun yerinde açılması elle kontrol edildi. Mac'te şifre arka planda yazılamadığı için e-posta girişi arayüzden tamamlanmadı.
+- `npm test -- --runInBand` — 64/64 test (API, kurtarma, boşluk doldurma, şifre, politika hazırlığı, güvenli olay kuyruğu ve medya koordinasyonu dahil).
+- Açılış akışı: iPad'de logolu sayfa, 5 tanıtım ekranı, tanıtım görüldükten sonra "Devam et"in doğrudan son ekrana gitmesi ve kod formunun yerinde açılması; Mac'te logolu sayfa, kısa pencerede son ekran ve e-posta formunun yerinde açılması elle kontrol edildi. macOS gerçek QA hesabıyla e-posta/şifre girişi ve mikrofon + güvenli olay kaydı hazırlığı da doğrulandı; ayrıntılar [ilk sprint raporunda](SPRINT_1_PROCTORING.md).
 - `npm run type-check` — temiz.
 - Xcode Debug derlemeleri: iPad simülatörü ve macOS başarılı.
 - iPad Pro 13" simülatöründe ve Mac'te giriş ekranı görsel olarak kontrol edildi.
@@ -71,7 +77,7 @@ Geliştirmede sunucu varsayılanı `http://localhost:3001`, Release derlemesinde
 - `npm run e2e:code` — kodla giriş, gerçek backend'e karşı: yeni aday kaydolup oturum açtı ve sınav başlattı; kullanılmış kod reddedildi (400); var olan hesap girişsiz kod kullanamadı (`account_login_required`); giriş yapmış aday kodu kendi hesabına tanımladı.
 - Kod → aday bilgileri → oturum açma → hazırlık ekranı Mac arayüzünde (önceki giriş ekranı düzeninde, aynı kartla) elle geçildi.
 
-Soru, kayıt ve sonuç ekranları arayüzden henüz elle geçilmedi; bu akış `live-smoke` ile API düzeyinde doğrulandı.
+Soru, kayıt ve sonuç ekranları iPadOS 26.5 simülatöründe ve macOS Debug uygulamasında hata fixture’larıyla elle geçildi. Gerçek backend’in tam sınavı ayrıca `live-smoke` ile API düzeyinde doğrulandı. Ayrıntılar: [Kurtarma doğrulaması](RECOVERY_VALIDATION.md).
 
 **Bilinen react-native-macos 0.83 sorunları** (Mac uygulaması hata vermeden, çıkış kodu 0 ile kapanıyor):
 - tek satırlı `TextInput`'a dikey `padding` → yükseklik dıştaki `View`'da (`codeBox`);
@@ -90,7 +96,7 @@ npm run live-smoke    # tam sınav, uygulamanın api.ts istemcisiyle
 npm run e2e:code      # sınav koduyla giriş: yeni aday, kod tekrar kullanımı, var olan hesap, giriş yapmış aday
 ```
 
-`scripts/e2e/start-local-backend.sh` normal `.env`'i yüklemez; yalnızca `b4skills_apple_e2e` veritabanını ve 3001 portunu kabul eder, başka bir 3001 sürecini durdurmaz. Veriler `/tmp/b4skills-apple-e2e/` altındadır. Yerel test hesapları `apple.ipad@example.test`, `apple.mac@example.test`, `apple.client@example.test` (şifre `scripts/e2e/provision-e2e.mjs` içinde). Test backend'ini internete açmayın.
+`scripts/e2e/start-local-backend.sh` normal `.env`'i yüklemez; yalnızca `b4skills_apple_e2e` veritabanını ve 3001/3003 test portlarını kabul eder; mevcut bir süreci durdurmaz. 3001 doluysa backend ve smoke komutlarını `B4SKILLS_E2E_PORT=3003` ile çalıştırın. Veriler `/tmp/b4skills-apple-e2e/` altındadır. Yerel test hesapları `apple.ipad@example.test`, `apple.mac@example.test`, `apple.client@example.test` (şifre `scripts/e2e/provision-e2e.mjs` içinde). Test backend'ini internete açmayın.
 
 ## App Store'a göndermeden önce
 
@@ -101,4 +107,45 @@ npm run e2e:code      # sınav koduyla giriş: yeni aday, kod tekrar kullanımı
 5. Apple hesap silme şartı: uygulama hesap açmıyor (hesapları kurum veriyor); inceleme notunda bunu belirtin.
 6. Fiziksel iPad/Mac mikrofonu, mikrofon izni reddi ve yeniden giriş akışı cihazda denenmeli.
 
-Henüz yok: sürükle-bırak / boşluk doldurma / entegre görevler, gözetim, çevrimdışı taslak, ses önizleme, PDF.
+Boşluk doldurma, politika/teknik olay altyapısı ve isteğe bağlı kamera pilotu eklendi. Kamera açıkken cihazda sürekli yüz sayımı ve adayın onayladığı fotoğraflar için şifreli dayanıklı kuyruk vardır; fiziksel cihaz kabul sınırları Sprint 2 raporundadır. Henüz yok: sürükle-bırak / entegre görevler, zorunlu fotoğraf kabul kapısı, Apple güvenli modu, kalıcı çevrimdışı yanıt taslağı, ses önizleme, PDF. Canlı insan gözetmeni kapsam dışıdır.
+
+## Bağlantı ve medya kurtarma testleri
+
+Sonuçlar ve kapsam: [Kurtarma doğrulaması](RECOVERY_VALIDATION.md). Gerçek backend makbuz testi: `../../node_modules/.bin/tsx scripts/e2e/launch-recovery-smoke.ts`.
+
+`npm test -- --runInBand` API istemcisi, oturum durumları, aynı başlatma makbuzuyla yeniden deneme, uygulama yeniden açılışı, yazı taslağı/konuşma kaydı koruma ve dinleme hakkı testlerini çalıştırır. Başlatma makbuzu ağ isteğinden önce cihazda saklanır. Yanıtı belirsiz bir başlatmada **Oturumu getir** aynı isteği tekrarlar. Yanıt gönderiminde ise otomatik POST tekrarı yapılmaz: sunucu durumu ve sıradaki soru doğrulanır; aday saklanan yanıtını açıkça yeniden gönderebilir. Tamamlanan/sona eren oturum doğrudan sonuçlara geçer.
+
+Native ses köprüsü `play()` sözünü ses gerçekten oynayana kadar bekletir; yükleme hatası veya 20 saniyelik başlangıç zaman aşımı hak tüketmez. Akış sırasında teknik hata hakkı geri verir; adayın durdurduğu veya tamamlanan dinleme hakkı tüketir. Konuşma kaydı ve yazılı taslak, kurtarma görünümünde korunur. Taslakların uygulama kapatıldıktan sonra diskte korunması henüz kapsamda değildir.
+
+Tekrarlanabilir arayüz hata senaryoları için:
+
+```sh
+node scripts/e2e/fault-server.mjs
+```
+
+Geliştirme uygulamasında sunucuyu `http://localhost:3002` yapın. Bu yalnızca loopback arayüzünde çalışan, veritabanına ve dış servislere erişmeyen bir fixture sunucusudur; gerçek sınav doğrulamasından ayrı tutulur. `POST /__qa` ile `writing`, `speaking`, `listening` veya `expired` senaryosu seçilir; `dropLaunch: true` başlatma yanıtını kaybettirir. Yanıt POST'ları `allowAnswers: false` iken kaydedilmeden kesilir. Kurtarma ekranı görüldükten sonra `PATCH /__qa` ile `dropLaunch: false` başlatma bağlantısını, `allowAnswers: true` yanıt gönderimini, `allowMedia: true` medyayı açar; PATCH senaryoyu sıfırlamaz. `GET /__qa` makbuz, başlatma ve yanıt sayısını gösterir. Test sonunda uygulama sunucusunu tekrar `http://localhost:3001` yapın.
+
+Backend regresyonları kök dizinde `test/native-launch-schema.test.ts` ile; PostgreSQL eşzamanlılık, tek kredi ve rollback testleri `test/native-launch-idempotency.test.ts` ile doğrulanır. Veritabanı testi yalnız `B4_NATIVE_TEST_DB_URL` açıkça `127.0.0.1:55432/b4skills_apple_e2e` adresine verilirse çalışır; normal `.env` veritabanını kullanmaz.
+
+### Gerçek Supabase veritabanıyla test
+
+Yerel API'yi proje `.env` veritabanıyla çalıştırmak için `npm run e2e:real-backend` kullanılır; native sunucu adresi `http://127.0.0.1:3004` olarak seçilir. Ayrı QA adayları `npm run e2e:real-candidates`, gerçek soru bankası testi `npm run e2e:real-smoke` ile çalışır. Bu test gerçek veritabanına QA kayıtları yazar ve her koşuda bir QA kredisi kullanır. Başlangıç bakım işlemleri kapalıdır. Ayrıntılar ve tamamlanamayan kontroller: [REAL_DATABASE_VALIDATION.md](./REAL_DATABASE_VALIDATION.md).
+
+İlk sprintin otomatik gözetim altyapısı, kurum bazlı açılış koşulları ve doğrulama sınırları: [SPRINT_1_PROCTORING.md](./SPRINT_1_PROCTORING.md). Canlı görüntülü insan gözetmeni kapsam dışıdır.
+
+Sprint 2 kamera pilotu, private kanıt aktarımı ve doğrulama sınırları: [SPRINT_2_CAMERA.md](./SPRINT_2_CAMERA.md).
+
+
+TestFlight sürüm/imza/Release kontrolleri ve açık dağıtım kapıları: [TESTFLIGHT_PREPARATION.md](./TESTFLIGHT_PREPARATION.md). `npm run icons` verilen kare uygulama ikonunu paketler; `npm run logo` mevcut yatay uygulama içi logoyu hazırlar.
+
+
+## Arayüz dilleri
+
+Uygulama Türkçe, İngilizce ve Arapça arayüz destekler. Dil seçimi ilk logo ekranında, tanıtımda ve giriş sonrası üst çubukta bulunur. `ui-language` tercihi native UserDefaults içinde saklanır; kayıt yoksa desteklenen cihaz dili, aksi halde Türkçe kullanılır. Dil geçişi ekranı/oturumu yeniden başlatmaz.
+
+`src/i18n/messages.json` yalnız uygulama metinlerini içerir; soru, seçenek, okuma metni, aday adı ve yazılan yanıtlar çeviri motoruna verilmez. Arapça için yerel RTL yerleşimi ve ok yönleri kullanılır; İngilizce sınav içeriği ve yanıt alanları LTR kalır. Sistem genelindeki RTL ayarı değiştirilmez. Kamera/mikrofon açıklamalarının `tr/en/ar` InfoPlist.strings kaynakları iki Xcode hedefinde de bulunur; sistem izin pencerelerinin dili işletim sisteminin uygulama diline göre seçilir.
+
+Doğrulama: 112 Jest testi, TypeScript, çeviri parametre/kapsam kontrolü ve Xcode yerelleştirme kaynak denetimi başarılı. İzole yerel test kopyaları `com.b4skills.assessment.localizationqa` kimliğiyle hazırlanır; üretim/TestFlight uygulamasını veya aday oturumunu değiştirmez. Dil desteği iPad ve universal macOS için TestFlight `1.0.0 (5)` ile dağıtıldı; iki mevcut iç test grubunda Testing, Apple metadata kaydında Validated / Includes Symbols: Yes / Arabic, English, Turkish doğrulandı.
+
+
+Mac Arapça görsel kontrolünde RTL kaydırma alanının metinleri aynaladığı görüldü. Ortak ScrollView bileşeni Mac viewport yönünü LTR, içeriğin yönünü seçilen dile göre tutar. Mac tanıtım gövdesinde dil geçişi sırasında native transform temizleme hatası nedeniyle hareket efekti kullanılmaz; iPad animasyonu korunur. Yön okları native view transformu yerine SVG grubu içinde çevrilir. Metin bileşeni fiziksel hizalamayı LTR layout ile, Arapça yazım yönünü RTL ile ayrı uygular. `rtl-macos.test.tsx` kaydırma yönlerini ve tanıtım gövdesinin dil değişiminde transformsuz kalmasını kapsar. Mac ve iPad simülatöründe açılış, İngilizce/Arapça dil geçişi, sağdan sola yerleşim ve e-posta giriş formu kontrol edildi; dil değişiminde form değeri korundu. Bu kontrol gerçek hesapla yeni bir sınav tamamlama testi değildir.

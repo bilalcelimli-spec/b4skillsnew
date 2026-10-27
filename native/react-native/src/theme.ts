@@ -1,3 +1,4 @@
+import { t } from './i18n/core';
 // B4Skills brand tokens. Sources: src/components/SiteNav.tsx (plum wordmark, -6° skew),
 // src/components/LandingPage.tsx (#9B276C / #7D1F57), src/App.tsx (#0F172A, #FDE047),
 // public/favicon.svg. The older LinguAdapt blue tokens are intentionally not used.
@@ -74,7 +75,8 @@ export const SKILLS: Record<string, { label: string; hint: string; icon: IconNam
 
 export function skillMeta(skill: string) {
   const key = skill.toUpperCase();
-  return SKILLS[key] ?? { label: key.charAt(0) + key.slice(1).toLowerCase(), hint: '', icon: 'grid' as IconName };
+  const meta = SKILLS[key] ?? { label: key.charAt(0) + key.slice(1).toLowerCase(), hint: '', icon: 'grid' as IconName };
+  return { ...meta, label: t(meta.label), hint: t(meta.hint) };
 }
 
 export type IconName =

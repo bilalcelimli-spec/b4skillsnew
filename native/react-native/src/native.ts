@@ -1,9 +1,17 @@
 import { NativeEventEmitter, NativeModules } from 'react-native';
 
 type Recording = { base64: string; bytes: number; durationMs: number };
+export type CameraPhoto = { base64: string; bytes: number; sha256: string; faceCount: number; capturedAt: string };
 
 type B4NativeModule = {
+  photoRead(scope: string): Promise<string | null>;
+  photoWrite(scope: string, value: string): Promise<void>;
+  secureRead(key: string): Promise<string | null>;
+  secureWrite(key: string, value: string): Promise<void>;
   requestMicrophone(): Promise<boolean>;
+  startCamera(): Promise<number>;
+  stopCamera(): void;
+  captureCamera(): Promise<CameraPhoto>;
   startRecording(maxSeconds: number): Promise<void>;
   stopRecording(): Promise<Recording>;
   cancelRecording(): void;
@@ -12,6 +20,8 @@ type B4NativeModule = {
   stopPlayback(): void;
   getPref(key: string): Promise<string | null>;
   setPref(key: string, value: string): void;
+  setPrefAsync(key: string, value: string): Promise<void>;
+  newRequestId(): Promise<string>;
   removePref(key: string): void;
   clearCookies(): Promise<void>;
 };

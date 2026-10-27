@@ -6,6 +6,13 @@ set -euo pipefail
 cd "$(dirname "$0")/../../../.."
 e2e_root="${B4SKILLS_E2E_ROOT:-/tmp/b4skills-apple-e2e}"
 pg_bin="${B4SKILLS_PG_BIN:-/opt/homebrew/opt/postgresql@16/bin}"
+e2e_port="${B4SKILLS_E2E_PORT:-3001}"
+case "$e2e_port" in 3001|3003) ;; *) echo 'Only local test ports 3001 and 3003 are allowed.'; exit 1 ;; esac
+if lsof -nP "-iTCP:$e2e_port" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "Port $e2e_port is already in use. No existing process was stopped."
+  exit 1
+fi
+export B4SKILLS_E2E_PORT="$e2e_port"
 mkdir -p "$e2e_root"
 if [[ ! -f "$e2e_root/pgdata/PG_VERSION" ]]; then
   "$pg_bin/initdb" -D "$e2e_root/pgdata" -A trust --no-locale -E UTF8 > "$e2e_root/initdb.log" 2>&1
@@ -31,8 +38,12 @@ const target=new URL(vars.DATABASE_URL);
 if(target.hostname!=='127.0.0.1'||target.port!=='55432'||target.pathname!=='/b4skills_apple_e2e'||vars.NODE_ENV!=='test'||vars.PORT!=='3001') {
  throw new Error('Refusing an E2E configuration outside the dedicated local database and port.');
 }
+const port=process.env.B4SKILLS_E2E_PORT;
+if(!['3001','3003'].includes(port)) throw new Error('Invalid local test port');
+vars.PORT=port; vars.APP_URL=`http://localhost:${port}`;
+fs.writeFileSync(`${process.env.B4SKILLS_E2E_ROOT}/backend-${port}.env`,Object.entries(vars).map(([k,v])=>`${k}=${v}`).join('\n')+'\n',{mode:0o600});
 JS
-export DOTENV_CONFIG_PATH="$e2e_root/backend.env"
+export DOTENV_CONFIG_PATH="$e2e_root/backend-$e2e_port.env"
 export DOTENV_CONFIG_OVERRIDE=true
 export AWS_SECRET_ARN="" OPENAI_API_KEY="" ANTHROPIC_API_KEY="" RESEND_API_KEY="" SUPABASE_SECRET_KEY="" SUPABASE_SERVICE_ROLE_KEY=""
 node -r dotenv/config node_modules/prisma/build/index.js migrate deploy
@@ -44,8 +55,8 @@ if [[ ! -f "$e2e_root/speech.m4a" ]]; then
 fi
 mkdir -p public/audio
 cp "$e2e_root/speech.m4a" public/audio/apple-e2e-fixture.m4a
-if lsof -nP -iTCP:3001 -sTCP:LISTEN >/dev/null 2>&1; then
-  echo 'Port 3001 is already in use. No existing process was stopped.'
+if lsof -nP "-iTCP:$e2e_port" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "Port $e2e_port is already in use. No existing process was stopped."
   exit 1
 fi
 exec node -r dotenv/config node_modules/tsx/dist/cli.mjs server.ts

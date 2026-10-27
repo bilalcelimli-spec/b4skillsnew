@@ -89,7 +89,7 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
             <ShieldAlert className="text-red-600" size={28} />
-            Proctoring Alerts
+            Proctoring Events & Evidence
           </h2>
           <Button variant="outline" size="sm" onClick={fetchAlerts} className="rounded-xl h-10 px-4 text-[10px] font-black uppercase tracking-widest">
             Refresh Feed
@@ -103,7 +103,7 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
                 <thead>
                   <tr className="bg-slate-50/50 text-slate-400 text-[8px] uppercase tracking-widest font-black">
                     <th className="px-8 py-4 border-b border-slate-100">Candidate</th>
-                    <th className="px-8 py-4 border-b border-slate-100">Violation</th>
+                    <th className="px-8 py-4 border-b border-slate-100">Observation</th>
                     <th className="px-8 py-4 border-b border-slate-100">Severity</th>
                     <th className="px-8 py-4 border-b border-slate-100">Time</th>
                     <th className="px-8 py-4 border-b border-slate-100 text-right">Action</th>
@@ -119,7 +119,7 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
                   ) : alerts.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-8 py-12 text-center text-slate-400 font-medium italic">
-                        No critical proctoring alerts detected.
+                        No proctoring events found.
                       </td>
                     </tr>
                   ) : (
@@ -180,7 +180,7 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
       <div className="space-y-6">
         <Card className="border-slate-200 shadow-sm rounded-3xl overflow-hidden sticky top-8">
           <CardHeader className="border-b border-slate-100 bg-slate-50/50 p-8">
-            <CardTitle className="text-sm font-black uppercase tracking-tight">Violation Details</CardTitle>
+            <CardTitle className="text-sm font-black uppercase tracking-tight">Event Details</CardTitle>
           </CardHeader>
           <CardContent className="p-8">
             <AnimatePresence mode="wait">
@@ -210,8 +210,12 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
                     <div>
                       <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Description</div>
                       <p className="text-sm text-slate-700 font-medium leading-relaxed">
-                        Candidate exited the secure browser environment or switched tabs during the assessment.
+                        {selectedAlert.metadata?.reservation
+                          ? 'Candidate-approved camera photo. Face count is a device observation, not identity verification or a misconduct decision.'
+                          : 'Technical observation recorded during the assessment. Review its context before making any decision.'}
                       </p>
+                      <p className="text-xs text-slate-500 mt-2">Platform: {selectedAlert.metadata?.nativeCamera?.platform || selectedAlert.metadata?.reservation?.platform || selectedAlert.metadata?.nativeProtocol?.platform || selectedAlert.metadata?.platform || 'web / legacy'}</p>
+                      {selectedAlert.metadata?.reservation ? <p className="text-xs text-slate-500 mt-2">Delivery: {selectedAlert.type === 'EVIDENCE_PENDING' ? 'Awaiting upload; no image delivered' : 'Server confirmed'} · Retention ends: {new Date(selectedAlert.metadata.expiresAt).toLocaleString()}</p> : null}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -230,9 +234,9 @@ export const ProctoringReview: React.FC<{ orgId: string }> = ({ orgId }) => {
                     <Button onClick={() => reviewAlert("APPROVE")} variant="outline" className="flex-1 rounded-xl h-12 text-[10px] font-black uppercase tracking-widest border-emerald-200 text-emerald-600 hover:bg-emerald-50">
                       <CheckCircle2 size={16} className="mr-2" /> Dismiss
                     </Button>
-                    <Button onClick={() => reviewAlert("REJECT")} variant="outline" className="flex-1 rounded-xl h-12 text-[10px] font-black uppercase tracking-widest border-red-200 text-red-600 hover:bg-red-50">
+                    {!selectedAlert.metadata?.reservation && selectedAlert.severity > 1 ? <Button onClick={() => reviewAlert("REJECT")} variant="outline" className="flex-1 rounded-xl h-12 text-[10px] font-black uppercase tracking-widest border-red-200 text-red-600 hover:bg-red-50">
                       <XCircle size={16} className="mr-2" /> Invalidate
-                    </Button>
+                    </Button> : null}
                   </div>
                 </motion.div>
               ) : (

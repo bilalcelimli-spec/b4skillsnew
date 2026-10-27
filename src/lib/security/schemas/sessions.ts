@@ -1,9 +1,13 @@
 import { z } from "zod";
 import { Id, CuidLike, NonEmptyString, LongText } from "./common.js";
 
+import { ExamPreflight } from "../../proctoring/exam-policy.js";
+
 const FlatValue = z.union([z.string().max(500), z.number(), z.boolean(), z.null()]);
 
 export const SessionLaunchBody = z.object({
+  preflight: ExamPreflight.optional(),
+  launchRequestId: z.string().uuid().optional(),
   candidateId: CuidLike.optional(),
   /** Organization the session belongs to. Required at runtime — validated in the handler. */
   organizationId: z.string().trim().max(128).optional(),

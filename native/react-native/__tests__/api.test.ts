@@ -1,5 +1,45 @@
 import { Backend, canRender, isExamCode, normaliseBaseUrl, normaliseExamCode, responseMode, AssessmentItem } from '../src/api';
 
+describe('camera evidence transport', () => {
+  const photo = { base64: 'jpeg', bytes: 4, sha256: 'a'.repeat(64), faceCount: 1, capturedAt: '2026-10-24T09:00:00Z' };
+  it('reserves metadata without image bytes before committing the same evidence ID', async () => {
+    const calls = mockFetch([{ status: 200, body: { reserved: true, evidenceId: 'e1' } }, { status: 200, body: { accepted: true, evidenceId: 'e1', eventId: 'evidence_e1' } }]);
+    await new Backend('https://app.b4skills.com').sendCameraPhoto('s1', 'e1', photo, 'macos');
+    const reserve = JSON.parse(calls[0].init.body as string), commit = JSON.parse(calls[1].init.body as string);
+    expect(reserve).not.toHaveProperty('base64'); expect(reserve.platform).toBe('macos');
+    expect(commit).toEqual({ version: 1, sessionId: 's1', evidenceId: 'e1', base64: 'jpeg' });
+  });
+  it('rejects mismatched reservation ACK and never uploads', async () => {
+    const calls = mockFetch([{ status: 200, body: { reserved: true, evidenceId: 'other' } }]);
+    await expect(new Backend('https://app.b4skills.com').sendCameraPhoto('s1', 'e1', photo, 'ipad')).rejects.toThrow(/rezervasyonu/);
+    expect(calls).toHaveLength(1);
+  });
+  it('rejects an ACK that identifies the right image but a different committed event', async () => {
+    mockFetch([{ status: 200, body: { reserved: true, evidenceId: 'e1' } }, { status: 200, body: { accepted: true, evidenceId: 'e1', eventId: 'unrelated-event' } }]);
+    await expect(new Backend('https://app.b4skills.com').sendCameraPhoto('s1', 'e1', photo, 'ipad')).rejects.toThrow(/teslimi/);
+  });
+  it('does not treat a missing server commit ACK as success', async () => {
+    mockFetch([{ status: 200, body: { reserved: true, evidenceId: 'e1' } }, { status: 200, body: {} }]);
+    await expect(new Backend('https://app.b4skills.com').sendCameraPhoto('s1', 'e1', photo, 'ipad')).rejects.toThrow(/teslimi/);
+  });
+  it('does not upload image bytes if the account lease changes after reservation', async () => {
+    const calls = mockFetch([{ status: 200, body: { reserved: true, evidenceId: 'e1' } }]);
+    const current = jest.fn().mockReturnValueOnce(true).mockReturnValue(false);
+    await expect(new Backend('https://app.b4skills.com').sendCameraPhoto('s1', 'e1', photo, 'ipad', current)).rejects.toThrow(/iptal/);
+    expect(calls).toHaveLength(1); expect(JSON.parse(calls[0].init.body as string)).not.toHaveProperty('base64');
+  });
+  it('does not start a reservation after logout', async () => {
+    const calls = mockFetch([]);
+    await expect(new Backend('https://app.b4skills.com').sendCameraPhoto('s1', 'e1', photo, 'ipad', () => false)).rejects.toThrow(/iptal/);
+    expect(calls).toHaveLength(0);
+  });
+  it('does not send photos with zero or multiple faces', async () => {
+    const calls = mockFetch([]);
+    for (const faceCount of [0, 2]) await expect(new Backend('https://app.b4skills.com').sendCameraPhoto('s1', 'e1', { ...photo, faceCount }, 'ipad')).rejects.toThrow(/bir yüz/);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe('exam codes', () => {
   it('follows the backend CodeString rule', () => {
     expect(normaliseExamCode('  ab-12x ')).toBe('AB-12X');
@@ -29,6 +69,18 @@ function mockFetch(responses: Array<{ status: number; body?: unknown }>) {
 
 const item = (over: Partial<AssessmentItem>): AssessmentItem => ({
   id: 'i1', skill: 'READING', type: 'MULTIPLE_CHOICE', metadata: { prompt: 'Q?', options: ['a', { text: 'b' }] }, ...over,
+});
+
+describe('cookie request protection', () => {
+  it('sends the configured origin for login, refresh and the retried request', async () => {
+    const calls = mockFetch([
+      { status: 200, body: {} }, { status: 401 }, { status: 200, body: {} }, { status: 200, body: {user: {uid: 'candidate-1'}} },
+    ]);
+    const backend = new Backend(normaliseBaseUrl('https://b4skills.com/'));
+    await backend.login('candidate@example.test', 'test-only-password');
+    expect(calls).toHaveLength(4);
+    for (const call of calls) expect(call.init.headers).toMatchObject({ Origin: 'https://b4skills.com' });
+  });
 });
 
 describe('normaliseBaseUrl', () => {
@@ -71,6 +123,12 @@ describe('Backend', () => {
     expect(JSON.parse(calls[0].init.body as string)).toEqual({ itemId: 'i1', value: 2, latencyMs: 1234 });
     expect(JSON.parse(calls[1].init.body as string)).toEqual({ itemId: 'i2', value: { audio: 'AAA=', mimeType: 'audio/mp4' }, latencyMs: 0 });
     expect(calls[0].init.credentials).toBe('include');
+  });
+
+  it('sends the stable launch receipt and omits a missing organization instead of null', async () => {
+    const calls = mockFetch([{ status: 200, body: { sessionId: 's1' } }]);
+    await api.launch('General English', null, '716e724c-f93e-4684-a1a2-b611bc67d823');
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({ productLine: 'General English', launchRequestId: '716e724c-f93e-4684-a1a2-b611bc67d823' });
   });
 
   it('refreshes once after a 401 and replays only that request', async () => {
@@ -125,4 +183,22 @@ describe('Backend', () => {
     expect(api.mediaUrl('https://cdn.example.com/a.mp3')).toBe('https://cdn.example.com/a.mp3');
     expect(api.mediaUrl('//evil.example/a.mp3')).toBeNull();
   });
+});
+
+describe('native event acknowledgements', () => {
+  const event = { version: 2 as const, eventId: '716e724c-f93e-4684-a1a2-b611bc67d823', sequence: 0, sessionId: 's1', platform: 'ipad' as const, eventType: 'OTHER' as const, severity: 'INFO' as const, timestamp: '2026-10-24T09:00:00.000Z', metadata: { reason: 'native-monitoring-attached' } };
+  it.each([{}, { accepted: true, eventId: 'other' }, { accepted: false, eventId: event.eventId }])('rejects an invalid ACK %j', body => {
+    mockFetch([{ status: 200, body }]);
+    return expect(new Backend('https://app.b4skills.com').sendEvent(event)).rejects.toThrow(/onayı/);
+  });
+  it('uses the same event ID when authentication refresh retries delivery', async () => {
+    const calls = mockFetch([{ status: 401 }, { status: 200 }, { status: 200, body: { accepted: true, eventId: event.eventId } }]);
+    await new Backend('https://app.b4skills.com').sendEvent(event);
+    expect(JSON.parse(calls[0].init.body as string)).toEqual(event);
+    expect(JSON.parse(calls[2].init.body as string)).toEqual(event);
+  });
+});
+it('preserves explicit backend error codes for preflight recovery', async () => {
+  mockFetch([{ status: 409, body: { error: 'Conditions changed', code: 'EXAM_POLICY_CHANGED' } }]);
+  await expect(new Backend('https://app.b4skills.com').launch('General English')).rejects.toMatchObject({ status: 409, code: 'EXAM_POLICY_CHANGED' });
 });

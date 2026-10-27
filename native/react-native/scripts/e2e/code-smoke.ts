@@ -4,7 +4,9 @@ import { execFileSync } from 'node:child_process';
 import { ApiError, Backend } from '../../src/api';
 
 (globalThis as any).__DEV__ = true;
-const BASE = 'http://localhost:3001';
+const PORT = process.env.B4SKILLS_E2E_PORT ?? '3001';
+if (!['3001', '3003'].includes(PORT)) throw new Error('Only isolated local test ports are allowed');
+const BASE = `http://localhost:${PORT}`;
 const PSQL = process.env.B4SKILLS_PG_BIN ? `${process.env.B4SKILLS_PG_BIN}/psql` : '/opt/homebrew/opt/postgresql@16/bin/psql';
 const DB = ['-h', '127.0.0.1', '-p', '55432', '-d', 'b4skills_apple_e2e', '-Atc'];
 

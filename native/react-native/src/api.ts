@@ -1,4 +1,6 @@
-// Client for the existing B4Skills backend (server.ts). No new endpoints are used.
+import type { ExamAdmission, ExamPolicy, NativeEvent, Preflight } from './proctoring/protocol';
+import type { NativePlatform } from './proctoring/platform';
+// Client for B4Skills (server.ts), including versioned native policy/event contracts.
 // Auth is the backend's httpOnly cookie pair; the native networking stack keeps the cookies.
 
 export type Candidate = {
@@ -20,6 +22,9 @@ export type ItemContent = {
   options?: Choice[] | null;
   minWords?: number | null;
   maxWords?: number | null;
+  scaffold?: string | null;
+  blanks?: Array<{ label?: string }> | null;
+  wordBank?: string[] | null;
 };
 
 export type AssessmentItem = { id: string; skill: string; type: string; metadata: ItemContent };
@@ -32,6 +37,7 @@ export type Delivery = {
 };
 
 export type SessionProgress = {
+  examAdmission?: ExamAdmission | null;
   status?: string | null;
   progress: number;
   maxItems: number;
@@ -45,9 +51,24 @@ export type SessionProgress = {
 export type Answer =
   | { kind: 'choice'; index: number }
   | { kind: 'text'; text: string }
+  | { kind: 'blanks'; answers: string[] }
   | { kind: 'audio'; base64: string };
 
-export type ResponseMode = 'choice' | 'text' | 'audio' | 'unsupported';
+export type ResponseMode = 'choice' | 'text' | 'audio' | 'blanks' | 'unsupported';
+
+/** Same marker normalization and ordered pipe-separated payload as the backend. */
+export function blankTask(item: AssessmentItem) {
+  const c = item.metadata;
+  const source = c.scaffold || [c.prompt, c.passage].find(t => t?.includes('___')) || '';
+  const scaffold = source.replace(/_{3,}(?:\[?\d+\]?_{3,})?/g, '___');
+  const count = (scaffold.match(/___/g) ?? []).length || c.blanks?.length || 1;
+  const choices = c.wordBank?.length ? c.wordBank : (c.options ?? []).map(choiceText);
+  return { scaffold, count, choices };
+}
+
+export function completeBlanks(answers: string[], count: number): boolean {
+  return answers.length === count && answers.every(a => !!a.trim() && !a.includes('|'));
+}
 
 export function choiceText(choice: Choice): string {
   return typeof choice === 'string' ? choice : choice?.text ?? '';
@@ -56,6 +77,7 @@ export function choiceText(choice: Choice): string {
 export function responseMode(item: AssessmentItem): ResponseMode {
   // Integrated/structured tasks need their own renderer and are deliberately blocked.
   const options = item.metadata?.options ?? [];
+  if (item.type === 'FILL_IN_BLANKS') return 'blanks';
   if (item.type === 'MULTIPLE_CHOICE' && options.length > 0) return 'choice';
   if (item.skill === 'SPEAKING' && ['OPEN_RESPONSE', 'SPEAKING_PROMPT'].includes(item.type)) return 'audio';
   if (item.skill === 'WRITING' && ['OPEN_RESPONSE', 'WRITING_PROMPT'].includes(item.type)) return 'text';
@@ -100,7 +122,7 @@ const LAN = /^(10\.\d{1,3}|192\.168|172\.(1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}$/
 export function normaliseBaseUrl(raw: string): string {
   const value = raw.trim().replace(/\/+$/, '');
   const match = /^(https?):\/\/([^/?#@\s]+)$/i.exec(value);
-  if (!match) throw new ApiError('Geçerli bir sunucu adresi girin (ör. https://app.b4skills.com).');
+  if (!match) throw new ApiError('Geçerli bir sunucu adresi girin (ör. https://b4skills.com).');
   const scheme = match[1].toLowerCase();
   const host = match[2].replace(/:\d+$/, '').toLowerCase();
   if (scheme === 'http') {
@@ -155,8 +177,17 @@ export class Backend {
     return data;
   }
 
-  launch(productLine: string, organizationId?: string | null) {
-    return this.request<{ sessionId: string }>('api/sessions/launch', { productLine, organizationId: organizationId ?? null });
+  launch(productLine: string, organizationId?: string | null, launchRequestId?: string, preflight?: Preflight) {
+    return this.request<{ sessionId: string }>('api/sessions/launch', {
+      ...(preflight ? { preflight } : {}), productLine, ...(organizationId ? { organizationId } : {}), ...(launchRequestId ? { launchRequestId } : {}),
+    });
+  }
+
+  examPolicy() { return this.request<ExamPolicy>('api/assessment/policy'); }
+
+  async sendEvent(event: NativeEvent): Promise<void> {
+    const ack = await this.request<{ accepted: boolean; eventId: string }>('api/proctoring/event', event);
+    if (ack?.accepted !== true || ack.eventId !== event.eventId) throw new ApiError('Gözetim olayı alındı onayı doğrulanamadı.');
   }
 
   next(id: string) {
@@ -168,9 +199,13 @@ export class Backend {
   }
 
   async respond(id: string, itemId: string, answer: Answer, latencyMs: number): Promise<void> {
+    if (answer.kind === 'blanks' && (!answer.answers.length || !completeBlanks(answer.answers, answer.answers.length))) {
+      throw new ApiError('Her boşluğu doldurun; yanıtlarda | işaretini kullanmayın.');
+    }
     const value =
       answer.kind === 'choice' ? answer.index
       : answer.kind === 'text' ? answer.text
+      : answer.kind === 'blanks' ? answer.answers.map(a => a.trim()).join('|')
       : { audio: answer.base64, mimeType: 'audio/mp4' };
     const ack = await this.request<{ success: boolean }>(`api/sessions/${encodeURIComponent(id)}/respond`, {
       itemId,
@@ -178,6 +213,26 @@ export class Backend {
       latencyMs: Math.max(0, Math.min(3_600_000, Math.round(latencyMs))),
     });
     if (!ack?.success) throw new ApiError('Sunucudan beklenen yanıt alınamadı.');
+  }
+
+  async cameraPolicy(sessionId: string): Promise<{ enabled: boolean; retentionDays: number }> {
+    const result = await this.request<any>(`api/sessions/${encodeURIComponent(sessionId)}/camera-policy`);
+    if (typeof result?.enabled !== 'boolean' || !Number.isInteger(result.retentionDays) || result.retentionDays < 1 || result.retentionDays > 30) throw new ApiError('Kamera politikası doğrulanamadı.');
+    return result;
+  }
+
+  async sendCameraPhoto(sessionId: string, evidenceId: string, photo: import('./native').CameraPhoto, platform: NativePlatform, current: () => boolean = () => true): Promise<void> {
+    if (!current()) throw new ApiError('Fotoğraf gönderimi iptal edildi.');
+    if (photo.faceCount !== 1) throw new ApiError('Fotoğrafta yalnız bir yüz görünmeli. Yeniden çekin.');
+    const { base64, faceCount, bytes, sha256, capturedAt } = photo;
+    const reserved = await this.request<any>('api/proctoring/evidence/reserve', {
+      version: 1, evidenceId, sessionId, platform,
+      kind: 'baseline', mimeType: 'image/jpeg', bytes, sha256, capturedAt, faceCount,
+    });
+    if (reserved?.reserved !== true || reserved.evidenceId !== evidenceId) throw new ApiError('Fotoğraf rezervasyonu doğrulanamadı.');
+    if (!current()) throw new ApiError('Fotoğraf gönderimi iptal edildi.');
+    const ack = await this.request<any>('api/proctoring/evidence/commit', { version: 1, evidenceId, sessionId, base64 });
+    if (ack?.accepted !== true || ack.evidenceId !== evidenceId || ack.eventId !== `evidence_${evidenceId.toLowerCase()}`) throw new ApiError('Fotoğraf teslimi doğrulanamadı. Aynı fotoğrafla yeniden deneyin.');
   }
 
   mediaUrl(raw?: string | null): string | null {
@@ -196,6 +251,7 @@ export class Backend {
         credentials: 'include',
         headers: {
           Accept: 'application/json',
+          Origin: this.baseUrl,
           ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
           'Cache-Control': 'no-store',
         },
@@ -226,7 +282,7 @@ export class Backend {
     }
     if (!response.ok) {
       const message = data?.message ?? data?.error ?? (response.status === 401 ? 'Oturumunuzun süresi doldu. Yeniden giriş yapın.' : 'İstek tamamlanamadı');
-      throw new ApiError(`${message} (HTTP ${response.status})`, response.status, typeof data?.error === 'string' ? data.error : undefined);
+      throw new ApiError(`${message} (HTTP ${response.status})`, response.status, typeof data?.code === 'string' ? data.code : typeof data?.error === 'string' ? data.error : undefined);
     }
     return data as T;
   }

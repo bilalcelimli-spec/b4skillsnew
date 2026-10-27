@@ -3,12 +3,83 @@
 // listening playback, simple preferences and cookie cleanup on sign-out.
 
 #import <AVFoundation/AVFoundation.h>
+#import <Security/Security.h>
 #import <React/RCTBridgeModule.h>
 #import <React/RCTEventEmitter.h>
+#import <React/RCTViewManager.h>
+#import <Vision/Vision.h>
+#import <ImageIO/ImageIO.h>
+#import <CommonCrypto/CommonDigest.h>
+#import "B4PhotoVault.h"
+#import "B4FramePhoto.h"
+#if TARGET_OS_OSX
+#import <AppKit/AppKit.h>
+#else
+#import <UIKit/UIKit.h>
+#endif
+
+static AVCaptureSession *B4PreviewSession;
+#if TARGET_OS_IOS
+// AVFoundation accounts for the front sensor's mount and mirroring. Keep buffers
+// upright for Vision instead of guessing an EXIF rotation for each camera model.
+static AVCaptureVideoOrientation B4VideoOrientation(void) {
+  switch (UIDevice.currentDevice.orientation) {
+    case UIDeviceOrientationPortrait: return AVCaptureVideoOrientationPortrait;
+    case UIDeviceOrientationPortraitUpsideDown: return AVCaptureVideoOrientationPortraitUpsideDown;
+    case UIDeviceOrientationLandscapeLeft: return AVCaptureVideoOrientationLandscapeRight;
+    case UIDeviceOrientationLandscapeRight: return AVCaptureVideoOrientationLandscapeLeft;
+    default: {
+      for (UIScene *scene in UIApplication.sharedApplication.connectedScenes)
+        if ([scene isKindOfClass:UIWindowScene.class] && ((UIWindowScene *)scene).interfaceOrientation != UIInterfaceOrientationUnknown)
+          return (AVCaptureVideoOrientation)((UIWindowScene *)scene).interfaceOrientation;
+      return AVCaptureVideoOrientationPortrait;
+    }
+  }
+}
+#endif
+
+#if TARGET_OS_OSX
+@interface B4CameraView : NSView
+#else
+@interface B4CameraView : UIView
+#endif
+@property(nonatomic, strong) AVCaptureVideoPreviewLayer *preview;
+@end
+@implementation B4CameraView
+- (instancetype)initWithFrame:(CGRect)frame {
+  if ((self = [super initWithFrame:frame])) {
+#if TARGET_OS_OSX
+    self.wantsLayer = YES;
+#endif
+    self.preview = [AVCaptureVideoPreviewLayer layerWithSession:B4PreviewSession];
+    self.preview.videoGravity = AVLayerVideoGravityResizeAspectFill;
+    [self.layer addSublayer:self.preview];
+  }
+  return self;
+}
+#if TARGET_OS_OSX
+- (void)layout { [super layout]; self.preview.frame = self.bounds; }
+#else
+- (void)layoutSubviews {
+  [super layoutSubviews]; self.preview.frame = self.bounds;
+  if (self.preview.connection.isVideoOrientationSupported) self.preview.connection.videoOrientation = B4VideoOrientation();
+}
+#endif
+@end
+@interface B4CameraPreviewManager : RCTViewManager @end
+@implementation B4CameraPreviewManager
+RCT_EXPORT_MODULE(B4CameraPreview)
++ (BOOL)requiresMainQueueSetup { return YES; }
+#if TARGET_OS_OSX
+- (NSView *)view { return [B4CameraView new]; }
+#else
+- (UIView *)view { return [B4CameraView new]; }
+#endif
+@end
 
 static const NSUInteger B4MaxAudioBytes = 14000000;
 
-@interface B4Native : RCTEventEmitter <RCTBridgeModule, AVAudioRecorderDelegate>
+@interface B4Native : RCTEventEmitter <RCTBridgeModule, AVAudioRecorderDelegate, AVCapturePhotoCaptureDelegate, AVCaptureVideoDataOutputSampleBufferDelegate>
 @end
 
 @implementation B4Native {
@@ -17,15 +88,33 @@ static const NSUInteger B4MaxAudioBytes = 14000000;
   AVPlayer *_player;
   id _endObserver;
   id _failObserver;
+  RCTPromiseResolveBlock _playResolve;
+  RCTPromiseRejectBlock _playReject;
+  dispatch_block_t _playTimeout;
+  BOOL _observingPlayer;
   BOOL _hasListeners;
+  AVCaptureSession *_cameraSession;
+  AVCapturePhotoOutput *_photoOutput;
+  dispatch_queue_t _cameraQueue;
+  dispatch_queue_t _faceQueue;
+  dispatch_queue_t _vaultQueue;
+  AVCaptureVideoDataOutput *_faceOutput;
+  NSTimeInterval _lastFaceSample;
+  NSUInteger _cameraGeneration;
+  BOOL _cameraStarting;
+  BOOL _framePhotoRequested;
+  AVCaptureVideoDataOutput *_framePhotoOutput;
+  NSUInteger _framePhotoGeneration;
+  RCTPromiseResolveBlock _photoResolve;
+  RCTPromiseRejectBlock _photoReject;
 }
 
 RCT_EXPORT_MODULE(B4Native)
 
-+ (BOOL)requiresMainQueueSetup { return NO; }
++ (BOOL)requiresMainQueueSetup { return YES; }
 - (dispatch_queue_t)methodQueue { return dispatch_get_main_queue(); }
 - (NSArray<NSString *> *)supportedEvents {
-  return @[ @"B4RecordingFinished", @"B4PlaybackEnded", @"B4PlaybackFailed", @"B4Interrupted" ];
+  return @[ @"B4RecordingFinished", @"B4PlaybackEnded", @"B4PlaybackFailed", @"B4Interrupted", @"B4FaceCount" ];
 }
 - (void)startObserving { _hasListeners = YES; }
 - (void)stopObserving { _hasListeners = NO; }
@@ -35,7 +124,12 @@ RCT_EXPORT_MODULE(B4Native)
 
 - (instancetype)init {
   if ((self = [super init])) {
+    _cameraQueue = dispatch_queue_create("com.b4skills.camera", DISPATCH_QUEUE_SERIAL);
+    _faceQueue = dispatch_queue_create("com.b4skills.faces", DISPATCH_QUEUE_SERIAL);
+    _vaultQueue = dispatch_queue_create("com.b4skills.photo-vault", DISPATCH_QUEUE_SERIAL);
 #if TARGET_OS_IOS
+    [UIDevice.currentDevice beginGeneratingDeviceOrientationNotifications];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(cameraOrientationChanged:) name:UIDeviceOrientationDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(handleInterruption:)
                                                  name:AVAudioSessionInterruptionNotification
@@ -46,6 +140,10 @@ RCT_EXPORT_MODULE(B4Native)
 }
 
 - (void)invalidate {
+  [self stopCamera];
+#if TARGET_OS_IOS
+  [UIDevice.currentDevice endGeneratingDeviceOrientationNotifications];
+#endif
   [self discardRecording];
   [self stopPlayer];
   [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -53,15 +151,256 @@ RCT_EXPORT_MODULE(B4Native)
 }
 
 #if TARGET_OS_IOS
+- (void)cameraOrientationChanged:(NSNotification *)note {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    AVCaptureVideoOrientation orientation = B4VideoOrientation();
+    NSArray *outputs = self->_cameraSession.outputs;
+    dispatch_async(self->_cameraQueue, ^{
+      for (AVCaptureOutput *output in outputs) {
+        AVCaptureConnection *connection = [output connectionWithMediaType:AVMediaTypeVideo];
+        if (connection.isVideoOrientationSupported) connection.videoOrientation = orientation;
+      }
+    });
+  });
+}
 - (void)handleInterruption:(NSNotification *)note {
   NSNumber *type = note.userInfo[AVAudioSessionInterruptionTypeKey];
   if (type.unsignedIntegerValue != AVAudioSessionInterruptionTypeBegan) { return; }
   BOOL wasRecording = _recorder.isRecording;
   if (wasRecording) { [_recorder stop]; }
-  [_player pause];
+  [self stopPlayer];
   [self emit:@"B4Interrupted" body:@{ @"wasRecording" : @(wasRecording) }];
 }
 #endif
+
+#pragma mark - Candidate-controlled camera pilot (video only; no ambient audio)
+
+RCT_EXPORT_METHOD(startCamera:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
+  if (_cameraSession || _cameraStarting) { reject(@"camera_busy", @"Kamera zaten kullanımda.", nil); return; }
+#if TARGET_OS_OSX
+  AVCaptureDevice *available = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+#else
+  AVCaptureDevice *available = [AVCaptureDevice defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInWideAngleCamera mediaType:AVMediaTypeVideo position:AVCaptureDevicePositionFront];
+#endif
+  if (!available) { reject(@"camera_unavailable", @"Kullanılabilir kamera bulunamadı. Simülatörde fiziksel kamera doğrulaması yapılamaz.", nil); return; }
+  _cameraStarting = YES;
+  NSUInteger generation = ++_cameraGeneration;
+  void (^open)(BOOL) = ^(BOOL granted) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (generation != self->_cameraGeneration) { reject(@"camera_cancelled", @"Kamera kontrolü iptal edildi.", nil); return; }
+      if (!granted) { self->_cameraStarting = NO; reject(@"camera_denied", @"Kamera izni verilmedi. Sistem ayarlarından kontrol edin.", nil); return; }
+#if TARGET_OS_OSX
+      AVCaptureDevice *device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+#else
+      AVCaptureDevice *device = [AVCaptureDevice defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInWideAngleCamera mediaType:AVMediaTypeVideo position:AVCaptureDevicePositionFront];
+#endif
+      NSError *error = nil;
+      AVCaptureDeviceInput *input = device ? [AVCaptureDeviceInput deviceInputWithDevice:device error:&error] : nil;
+      AVCaptureSession *session = [AVCaptureSession new];
+#if TARGET_OS_OSX
+      if ([session canSetSessionPreset:AVCaptureSessionPreset1280x720]) session.sessionPreset = AVCaptureSessionPreset1280x720;
+      else session.sessionPreset = AVCaptureSessionPresetHigh;
+#else
+      session.sessionPreset = AVCaptureSessionPresetPhoto;
+#endif
+#if TARGET_OS_IOS
+      session.automaticallyConfiguresApplicationAudioSession = NO;
+#endif
+#if TARGET_OS_OSX
+      AVCapturePhotoOutput *output = nil; // Tundra still capture is not supported by every Mac camera.
+#else
+      AVCapturePhotoOutput *output = [AVCapturePhotoOutput new];
+#endif
+      if (!input || ![session canAddInput:input]) { self->_cameraStarting = NO; reject(@"camera_unavailable", @"Kullanılabilir kamera bulunamadı.", error); return; }
+      [session addInput:input];
+      if (output && ![session canAddOutput:output]) { self->_cameraStarting = NO; reject(@"camera_unavailable", @"Kamera fotoğraf çekimini desteklemiyor.", nil); return; }
+      if (output) [session addOutput:output];
+      AVCaptureVideoDataOutput *faces = [AVCaptureVideoDataOutput new];
+      faces.alwaysDiscardsLateVideoFrames = YES;
+      faces.videoSettings = @{(id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA)};
+      if (![session canAddOutput:faces]) { self->_cameraStarting = NO; reject(@"camera_unavailable", @"Sürekli yüz kontrolü başlatılamadı.", nil); return; }
+      [session addOutput:faces];
+#if TARGET_OS_IOS
+      for (AVCaptureOutput *cameraOutput in @[output, faces]) {
+        AVCaptureConnection *connection = [cameraOutput connectionWithMediaType:AVMediaTypeVideo];
+        if (connection.isVideoOrientationSupported) connection.videoOrientation = B4VideoOrientation();
+      }
+#endif
+      [faces setSampleBufferDelegate:self queue:self->_faceQueue];
+      self->_faceOutput = faces;
+
+      self->_cameraSession = session; self->_photoOutput = output; B4PreviewSession = session;
+      dispatch_async(self->_cameraQueue, ^{
+        [session startRunning];
+        dispatch_async(dispatch_get_main_queue(), ^{
+          if (generation != self->_cameraGeneration) { reject(@"camera_cancelled", @"Kamera kontrolü iptal edildi.", nil); return; }
+          self->_cameraStarting = NO;
+          if (!session.isRunning) { [self stopCamera]; reject(@"camera_unavailable", @"Kamera başlatılamadı.", nil); return; }
+          resolve(@(generation));
+        });
+      });
+    });
+  };
+  AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+  if (status == AVAuthorizationStatusNotDetermined) [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:open];
+  else open(status == AVAuthorizationStatusAuthorized);
+}
+
+RCT_EXPORT_METHOD(stopCamera) {
+  ++_cameraGeneration; _cameraStarting = NO;
+  @synchronized(self) { _framePhotoRequested = NO; _framePhotoOutput = nil; }
+  AVCaptureSession *session = _cameraSession;
+  _cameraSession = nil; _photoOutput = nil; B4PreviewSession = nil;
+  [_faceOutput setSampleBufferDelegate:nil queue:NULL]; _faceOutput = nil;
+  if (_photoReject) _photoReject(@"camera_cancelled", @"Fotoğraf çekimi kesildi.", nil);
+  _photoResolve = nil; _photoReject = nil;
+  if (session) dispatch_async(_cameraQueue, ^{ [session stopRunning]; });
+}
+
+// Vision processes one frame per second on a serial queue; video frames never leave this method.
+- (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)buffer fromConnection:(AVCaptureConnection *)connection {
+#if TARGET_OS_OSX
+  BOOL requested; NSUInteger generation;
+  @synchronized(self) { requested = _framePhotoRequested && output == _framePhotoOutput; generation = _framePhotoGeneration; if (requested) _framePhotoRequested = NO; }
+  if (requested) [self processCameraSource:B4FrameJPEG(CMSampleBufferGetImageBuffer(buffer)) generation:generation error:nil];
+#endif
+  NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+  if (now - _lastFaceSample < 1) return;
+  _lastFaceSample = now;
+  VNDetectFaceRectanglesRequest *request = [VNDetectFaceRectanglesRequest new];
+  NSError *error = nil;
+  BOOL ok = [[[VNImageRequestHandler alloc] initWithCMSampleBuffer:buffer options:@{}] performRequests:@[request] error:&error];
+  id count = ok ? @(request.results.count) : NSNull.null;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (output != self->_faceOutput || !self->_cameraSession.isRunning) return;
+    [self emit:@"B4FaceCount" body:@{@"count":count, @"monotonicMs":@(now*1000), @"runId":@(self->_cameraGeneration)}];
+  });
+}
+
+#pragma mark - Bounded encrypted photo storage
+- (NSURL *)photoURL:(NSString *)scope error:(NSError **)error {
+  if (![scope hasPrefix:@"photo."] || scope.length > 2048) return nil;
+  NSURL *root = [[[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask] firstObject];
+  NSURL *dir = [root URLByAppendingPathComponent:@"B4SkillsPhotoVault" isDirectory:YES];
+  if (![[NSFileManager defaultManager] createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:error]) return nil;
+  if (![dir setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:error]) return nil;
+  return [dir URLByAppendingPathComponent:[B4ScopeHash(scope) stringByAppendingString:@".b4p"]];
+}
+- (NSData *)photoKey:(NSString *)scope create:(BOOL)create {
+  NSDictionary *query = @{(__bridge id)kSecClass:(__bridge id)kSecClassGenericPassword,
+    (__bridge id)kSecAttrService:@"com.b4skills.assessment.photo-vault", (__bridge id)kSecAttrAccount:B4ScopeHash(scope)};
+  NSMutableDictionary *read = [query mutableCopy]; read[(__bridge id)kSecReturnData]=@YES;
+  CFTypeRef found=NULL; OSStatus status=SecItemCopyMatching((__bridge CFDictionaryRef)read,&found);
+  if(status==errSecSuccess) return CFBridgingRelease(found);
+  if(status!=errSecItemNotFound || !create) return nil;
+  NSMutableData *key=[NSMutableData dataWithLength:64];
+  if(SecRandomCopyBytes(kSecRandomDefault,64,key.mutableBytes)!=errSecSuccess) return nil;
+  NSMutableDictionary *add=[query mutableCopy]; add[(__bridge id)kSecValueData]=key;
+#if TARGET_OS_IOS
+  add[(__bridge id)kSecAttrAccessible]=(__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
+#endif
+  if(SecItemAdd((__bridge CFDictionaryRef)add,NULL)!=errSecSuccess) return nil;
+  return key;
+}
+RCT_EXPORT_METHOD(photoRead:(NSString *)scope resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
+  dispatch_async(_vaultQueue, ^{
+    NSError *error=nil; NSURL *url=[self photoURL:scope error:&error];
+    if(!url) { reject(@"photo_storage",@"Şifreli fotoğraf deposu açılamadı.",error); return; }
+    if(![[NSFileManager defaultManager] fileExistsAtPath:url.path]) { resolve(NSNull.null); return; }
+    NSNumber *size=nil; [url getResourceValue:&size forKey:NSURLFileSizeKey error:&error];
+    if(!size || size.unsignedLongLongValue>6000200) { reject(@"photo_storage",@"Fotoğraf deposunun boyutu geçersiz.",error); return; }
+    NSData *sealed=[NSData dataWithContentsOfURL:url options:0 error:&error];
+    NSData *plain=sealed ? B4Open(sealed,[self photoKey:scope create:NO],scope) : nil;
+    NSString *value=plain ? [[NSString alloc] initWithData:plain encoding:NSUTF8StringEncoding] : nil;
+    if(!value) { reject(@"photo_storage",@"Şifreli fotoğraf deposu doğrulanamadı. Kayıtların üzerine yazılmadı.",error); return; }
+    resolve(value);
+  });
+}
+RCT_EXPORT_METHOD(photoWrite:(NSString *)scope value:(NSString *)value resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
+  dispatch_async(_vaultQueue, ^{
+    NSError *error=nil; NSURL *url=[self photoURL:scope error:&error];
+    NSData *plain=[value dataUsingEncoding:NSUTF8StringEncoding];
+    BOOL exists=url && [[NSFileManager defaultManager] fileExistsAtPath:url.path];
+    NSData *key=[self photoKey:scope create:!exists];
+    if(exists) {
+      NSNumber *size=nil; [url getResourceValue:&size forKey:NSURLFileSizeKey error:&error];
+      NSData *old=(size && size.unsignedLongLongValue<=6000200) ? [NSData dataWithContentsOfURL:url] : nil;
+      if(!old || !B4Open(old,key,scope)) { reject(@"photo_storage",@"Şifreli fotoğraf deposu doğrulanamadı. Kayıtların üzerine yazılmadı.",error); return; }
+    }
+    NSData *sealed=url && plain ? B4Seal(plain,key,scope) : nil;
+    NSDataWritingOptions options=NSDataWritingAtomic;
+#if TARGET_OS_IOS
+    options |= NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication;
+#endif
+    if(!sealed || ![sealed writeToURL:url options:options error:&error] || ![[NSFileManager defaultManager] setAttributes:@{NSFilePosixPermissions:@0600} ofItemAtPath:url.path error:&error]) {
+      reject(@"photo_storage",@"Fotoğraf şifreli olarak kaydedilemedi. Yeniden deneyin.",error); return;
+    }
+    resolve(nil);
+  });
+}
+
+RCT_EXPORT_METHOD(captureCamera:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
+  if (!_cameraSession.isRunning || _photoResolve) { reject(@"camera_not_ready", @"Kamera fotoğraf için hazır değil.", nil); return; }
+  _photoResolve = resolve; _photoReject = reject;
+#if TARGET_OS_OSX
+  @synchronized(self) { _framePhotoRequested = YES; _framePhotoOutput = _faceOutput; _framePhotoGeneration = _cameraGeneration; }
+#else
+  AVCapturePhotoOutput *output = _photoOutput;
+  dispatch_async(_cameraQueue, ^{
+    AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettingsWithFormat:@{AVVideoCodecKey: AVVideoCodecTypeJPEG}];
+    @try { [output capturePhotoWithSettings:settings delegate:self]; }
+    @catch (NSException *exception) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if (output != self->_photoOutput || !self->_photoReject) return;
+        self->_photoReject(@"camera_photo", @"Bu kamera fotoğraf çekimini tamamlayamadı. Kamerayı yeniden açın.", nil);
+        self->_photoResolve=nil; self->_photoReject=nil;
+      });
+    }
+  });
+#endif
+}
+
+- (void)photoOutput:(AVCapturePhotoOutput *)output didFinishProcessingPhoto:(AVCapturePhoto *)photo error:(NSError *)error {
+  dispatch_async(dispatch_get_main_queue(), ^{
+  // An old capture may finish after stop + reopen; it must never resolve the new request.
+  if (output != self->_photoOutput || !self->_photoResolve) return;
+  NSUInteger generation = self->_cameraGeneration;
+  [self processCameraSource:error ? nil : [photo fileDataRepresentation] generation:generation error:error];
+  });
+}
+
+- (void)processCameraSource:(NSData *)source generation:(NSUInteger)generation error:(NSError *)error {
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+    // Re-encode a bounded upright image without EXIF/location metadata.
+    CGImageSourceRef input = source ? CGImageSourceCreateWithData((__bridge CFDataRef)source, NULL) : NULL;
+    NSDictionary *options = @{(__bridge id)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
+      (__bridge id)kCGImageSourceCreateThumbnailWithTransform: @YES, (__bridge id)kCGImageSourceThumbnailMaxPixelSize: @1024};
+    CGImageRef image = input ? CGImageSourceCreateThumbnailAtIndex(input, 0, (__bridge CFDictionaryRef)options) : NULL;
+    if (input) CFRelease(input);
+    NSMutableData *jpeg = [NSMutableData data];
+    CGImageDestinationRef destination = image ? CGImageDestinationCreateWithData((__bridge CFMutableDataRef)jpeg, CFSTR("public.jpeg"), 1, NULL) : NULL;
+    BOOL valid = NO;
+    if (destination) {
+      CGImageDestinationAddImage(destination, image, (__bridge CFDictionaryRef)@{(__bridge id)kCGImageDestinationLossyCompressionQuality: @0.75});
+      valid = CGImageDestinationFinalize(destination); CFRelease(destination);
+    }
+    VNDetectFaceRectanglesRequest *faces = [VNDetectFaceRectanglesRequest new];
+    NSError *visionError = nil;
+    BOOL detected = image && [[[VNImageRequestHandler alloc] initWithCGImage:image options:@{}] performRequests:@[faces] error:&visionError];
+    if (image) CGImageRelease(image);
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH]; CC_SHA256(jpeg.bytes, (CC_LONG)jpeg.length, digest);
+    NSMutableString *hash = [NSMutableString string]; for (NSUInteger i=0; i<CC_SHA256_DIGEST_LENGTH; i++) [hash appendFormat:@"%02x", digest[i]];
+    NSString *capturedAt = [[NSISO8601DateFormatter new] stringFromDate:[NSDate date]];
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (generation != self->_cameraGeneration || !self->_photoResolve) return;
+      RCTPromiseResolveBlock done = self->_photoResolve; RCTPromiseRejectBlock failed = self->_photoReject;
+      self->_photoResolve = nil; self->_photoReject = nil;
+      if (!valid || !detected || jpeg.length == 0 || jpeg.length > 1000000) { failed(@"camera_photo", @"Fotoğraf veya yüz sayımı tamamlanamadı. Yeniden deneyin.", error ?: visionError); return; }
+      done(@{@"base64": [jpeg base64EncodedStringWithOptions:0], @"bytes": @(jpeg.length), @"sha256": hash,
+        @"faceCount": @(faces.results.count), @"capturedAt": capturedAt});
+    });
+  });
+}
 
 #pragma mark - Microphone
 
@@ -210,20 +549,72 @@ RCT_EXPORT_METHOD(play:(NSString *)urlString resolver:(RCTPromiseResolveBlock)re
                                                                      queue:[NSOperationQueue mainQueue]
                                                                 usingBlock:^(NSNotification *note) {
     NSError *error = note.userInfo[AVPlayerItemFailedToPlayToEndTimeErrorKey];
-    [weakSelf emit:@"B4PlaybackFailed" body:@{ @"message" : error.localizedDescription ?: @"Ses oynatılamadı." }];
+    [weakSelf failPlayback:error.localizedDescription ?: @"Ses oynatılamadı."];
   }];
   _player = [AVPlayer playerWithPlayerItem:item];
+  _playResolve = resolve;
+  _playReject = reject;
+  _observingPlayer = YES;
+  [item addObserver:self forKeyPath:@"status" options:NSKeyValueObservingOptionNew context:nil];
+  [_player addObserver:self forKeyPath:@"timeControlStatus" options:NSKeyValueObservingOptionNew context:nil];
+  _playTimeout = dispatch_block_create(0, ^{
+    [weakSelf failPlayback:@"Ses yüklenemedi. Bağlantınızı kontrol edip yeniden deneyin. Dinleme hakkınız korunuyor."];
+  });
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_SEC), dispatch_get_main_queue(), _playTimeout);
   [_player play];
-  resolve(nil);
+  // Resolve only once AVPlayer actually starts; constructing a player is not a played attempt.
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object
+                       change:(NSDictionary<NSKeyValueChangeKey,id> *)change context:(void *)context {
+  if (![NSThread isMainThread]) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+    });
+    return;
+  }
+  if ([keyPath isEqualToString:@"status"]) {
+    if (object == _player.currentItem && _player.currentItem.status == AVPlayerItemStatusFailed) {
+      [self failPlayback:_player.currentItem.error.localizedDescription ?: @"Ses yüklenemedi."];
+    }
+    return;
+  }
+  if ([keyPath isEqualToString:@"timeControlStatus"]) {
+    if (object == _player && _player.timeControlStatus == AVPlayerTimeControlStatusPlaying && _playResolve) {
+      if (_playTimeout) { dispatch_block_cancel(_playTimeout); _playTimeout = nil; }
+      RCTPromiseResolveBlock resolve = _playResolve;
+      _playResolve = nil; _playReject = nil;
+      resolve(nil);
+    }
+    return;
+  }
+  [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+}
+
+- (void)failPlayback:(NSString *)message {
+  RCTPromiseRejectBlock reject = _playReject;
+  _playReject = nil; _playResolve = nil;
+  [self stopPlayer];
+  if (reject) { reject(@"playback_failed", message, nil); }
+  else { [self emit:@"B4PlaybackFailed" body:@{ @"message" : message }]; }
 }
 
 RCT_EXPORT_METHOD(stopPlayback) { [self stopPlayer]; }
 
 - (void)stopPlayer {
+  if (_playTimeout) { dispatch_block_cancel(_playTimeout); _playTimeout = nil; }
+  if (_observingPlayer) {
+    [_player.currentItem removeObserver:self forKeyPath:@"status"];
+    [_player removeObserver:self forKeyPath:@"timeControlStatus"];
+    _observingPlayer = NO;
+  }
+  RCTPromiseRejectBlock reject = _playReject;
+  _playReject = nil; _playResolve = nil;
   [_player pause];
   _player = nil;
   if (_endObserver) { [[NSNotificationCenter defaultCenter] removeObserver:_endObserver]; _endObserver = nil; }
   if (_failObserver) { [[NSNotificationCenter defaultCenter] removeObserver:_failObserver]; _failObserver = nil; }
+  if (reject) { reject(@"playback_cancelled", @"Dinleme iptal edildi.", nil); }
 }
 
 #pragma mark - Preferences (non-secret values only: backend address, last session id)
@@ -236,11 +627,62 @@ RCT_EXPORT_METHOD(setPref:(NSString *)key value:(NSString *)value) {
   [[NSUserDefaults standardUserDefaults] setObject:value forKey:[@"b4skills." stringByAppendingString:key]];
 }
 
+RCT_EXPORT_METHOD(setPrefAsync:(NSString *)key value:(NSString *)value
+                  resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
+  [[NSUserDefaults standardUserDefaults] setObject:value forKey:[@"b4skills." stringByAppendingString:key]];
+  resolve(nil);
+}
+
+RCT_EXPORT_METHOD(newRequestId:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
+  resolve([NSUUID UUID].UUIDString);
+}
+
 RCT_EXPORT_METHOD(removePref:(NSString *)key) {
   [[NSUserDefaults standardUserDefaults] removeObjectForKey:[@"b4skills." stringByAppendingString:key]];
 }
 
 #pragma mark - Sign-out
+
+// OS-encrypted event storage. No plaintext preferences fallback.
+- (NSMutableDictionary *)secureQuery:(NSString *)key {
+  return [@{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+            (__bridge id)kSecAttrService: @"com.b4skills.assessment.proctoring",
+            (__bridge id)kSecAttrAccount: key} mutableCopy];
+}
+
+RCT_EXPORT_METHOD(secureRead:(NSString *)key resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
+  if (![key hasPrefix:@"proctoring."] || key.length > 2048) { reject(@"secure_key", @"Invalid storage key", nil); return; }
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    NSMutableDictionary *query = [self secureQuery:key];
+    query[(__bridge id)kSecReturnData] = @YES;
+    CFTypeRef result = NULL;
+    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
+    if (status == errSecItemNotFound) { resolve(nil); return; }
+    if (status != errSecSuccess) { reject(@"secure_read", @"Secure event storage is unavailable", nil); return; }
+    NSData *data = CFBridgingRelease(result);
+    NSString *value = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (!value) { reject(@"secure_read", @"Invalid secure event data", nil); return; }
+    resolve(value);
+  });
+}
+
+RCT_EXPORT_METHOD(secureWrite:(NSString *)key value:(NSString *)value resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
+  NSData *data = [value dataUsingEncoding:NSUTF8StringEncoding];
+  if (![key hasPrefix:@"proctoring."] || key.length > 2048 || data.length > 128000) { reject(@"secure_write", @"Event storage limit exceeded", nil); return; }
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    NSMutableDictionary *query = [self secureQuery:key];
+    OSStatus status = SecItemUpdate((__bridge CFDictionaryRef)query, (__bridge CFDictionaryRef)@{(__bridge id)kSecValueData: data});
+    if (status == errSecItemNotFound) {
+      query[(__bridge id)kSecValueData] = data;
+#if !TARGET_OS_OSX
+      query[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
+#endif
+      status = SecItemAdd((__bridge CFDictionaryRef)query, NULL);
+    }
+    if (status != errSecSuccess) { reject(@"secure_write", @"Secure event data could not be saved", nil); return; }
+    resolve(nil);
+  });
+}
 
 RCT_EXPORT_METHOD(clearCookies:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
   NSHTTPCookieStorage *storage = [NSHTTPCookieStorage sharedHTTPCookieStorage];
@@ -250,3 +692,88 @@ RCT_EXPORT_METHOD(clearCookies:(RCTPromiseResolveBlock)resolve rejecter:(RCTProm
 }
 
 @end
+
+#if TARGET_OS_OSX
+#import <AppKit/AppKit.h>
+#import <React/RCTViewManager.h>
+#import <React/RCTUIManager.h>
+#import <React/RCTConvert.h>
+
+// Use NSSecureTextField itself, not an NSSecureTextFieldCell in a plain text field.
+// AppKit's secure field editor requires the correct owning control when refocused.
+@interface B4PasswordField : NSSecureTextField
+@property (nonatomic, copy) void (^accessibilityEdit)(void);
+@end
+@implementation B4PasswordField
+- (void)setAccessibilityValue:(id)value {
+  [super setAccessibilityValue:value];
+  if (self.accessibilityEdit) self.accessibilityEdit();
+}
+@end
+
+@interface B4PasswordView : NSView <NSTextFieldDelegate>
+@property (nonatomic, strong) B4PasswordField *field;
+@property (nonatomic, copy) RCTDirectEventBlock onPasswordChange;
+@property (nonatomic, copy) RCTDirectEventBlock onPasswordFocus;
+@property (nonatomic, copy) RCTDirectEventBlock onPasswordBlur;
+@property (nonatomic, copy) RCTDirectEventBlock onPasswordSubmit;
+@property (nonatomic, copy) NSString *value;
+@property (nonatomic, copy) NSString *placeholder;
+@end
+
+@implementation B4PasswordView
+- (instancetype)initWithFrame:(NSRect)frame {
+  if ((self = [super initWithFrame:frame])) {
+    _field = [[B4PasswordField alloc] initWithFrame:self.bounds];
+    _field.delegate = self;
+    _field.bordered = NO;
+    _field.drawsBackground = NO;
+    _field.focusRingType = NSFocusRingTypeNone;
+    _field.font = [NSFont systemFontOfSize:15];
+    _field.textColor = [NSColor colorWithSRGBRed:0.12 green:0.09 blue:0.14 alpha:1];
+    _field.cell.usesSingleLineMode = YES;
+    __weak B4PasswordView *weakSelf = self;
+    _field.accessibilityEdit = ^{ [weakSelf changed]; };
+    [self addSubview:_field];
+  }
+  return self;
+}
+- (void)layout { [super layout]; self.field.frame = self.bounds; }
+- (void)setValue:(NSString *)value {
+  _value = [value copy];
+  if (![self.field.stringValue isEqualToString:value ?: @""]) self.field.stringValue = value ?: @"";
+}
+- (void)setPlaceholder:(NSString *)placeholder { _placeholder = [placeholder copy]; self.field.placeholderString = placeholder; }
+- (void)setAccessibilityLabel:(NSString *)label { [super setAccessibilityLabel:label]; self.field.accessibilityLabel = label; }
+- (void)changed { if (self.onPasswordChange) self.onPasswordChange(@{ @"text": self.field.stringValue }); }
+- (void)controlTextDidChange:(NSNotification *)note { [self changed]; }
+- (void)controlTextDidBeginEditing:(NSNotification *)note { if (self.onPasswordFocus) self.onPasswordFocus(@{}); }
+- (void)controlTextDidEndEditing:(NSNotification *)note { if (self.onPasswordBlur) self.onPasswordBlur(@{}); }
+- (BOOL)control:(NSControl *)control textView:(NSTextView *)editor doCommandBySelector:(SEL)selector {
+  if (selector == @selector(insertNewline:)) {
+    if (self.onPasswordSubmit) self.onPasswordSubmit(@{});
+    return YES;
+  }
+  return NO;
+}
+@end
+
+@interface B4SecureFieldManager : RCTViewManager
+@end
+@implementation B4SecureFieldManager
+RCT_EXPORT_MODULE(B4SecureField)
+- (NSView *)view { return [B4PasswordView new]; }
+RCT_EXPORT_VIEW_PROPERTY(value, NSString)
+RCT_EXPORT_VIEW_PROPERTY(placeholder, NSString)
+RCT_EXPORT_VIEW_PROPERTY(onPasswordChange, RCTDirectEventBlock)
+RCT_EXPORT_VIEW_PROPERTY(onPasswordFocus, RCTDirectEventBlock)
+RCT_EXPORT_VIEW_PROPERTY(onPasswordBlur, RCTDirectEventBlock)
+RCT_EXPORT_VIEW_PROPERTY(onPasswordSubmit, RCTDirectEventBlock)
+RCT_EXPORT_METHOD(focus:(nonnull NSNumber *)tag) {
+  [self.bridge.uiManager addUIBlock:^(__unused RCTUIManager *manager, NSDictionary<NSNumber *, NSView *> *registry) {
+    B4PasswordView *view = (B4PasswordView *)registry[tag];
+    if ([view isKindOfClass:B4PasswordView.class]) [view.window makeFirstResponder:view.field];
+  }];
+}
+@end
+#endif

@@ -81,7 +81,10 @@
     "db:seed:diverse-types:dry": "tsx scripts/seed-diverse-item-types.ts --dry-run",
     "audit:routes": "node scripts/audit-platform-routes.mjs",
     "test:item-renderer": "playwright test --config test/e2e/item-renderer.config.ts",
-    "audit:assessment-flows": "node scripts/audits/assessment-flows.mjs"
+    "audit:assessment-flows": "node scripts/audits/assessment-flows.mjs",
+    "quality:tour": "tsx scripts/jobs/quality-tour.ts",
+    "evidence:expire": "tsx scripts/jobs/expire-native-evidence.ts",
+    "smoke:native": "node scripts/smoke-native-api.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
@@ -142,6 +145,7 @@
     "i18next": "^26.0.3",
     "i18next-browser-languagedetector": "^8.2.1",
     "ioredis": "^5.10.1",
+    "jpeg-js": "^0.4.4",
     "jsonwebtoken": "^9.0.3",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",

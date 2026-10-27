@@ -1,0 +1,2 @@
+"NSCameraUsageDescription" = "Kamerayı açtığınızda önizleme ve cihazda yüz sayımı için kullanılır. Sınav fotoğrafı yalnızca siz onayladığınızda gönderilir. Canlı insan gözetimi yapılmaz.";
+"NSMicrophoneUsageDescription" = "Konuşma bölümündeki yanıtlarınızı kaydetmek ve mikrofonunuzu kontrol etmek için kullanılır.";

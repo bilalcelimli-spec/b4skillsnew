@@ -7,13 +7,20 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.UiThreadUtil
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleOwner
+import android.Manifest
+import android.content.pm.PackageManager
+import com.facebook.react.modules.core.PermissionAwareActivity
+import com.facebook.react.modules.core.PermissionListener
 import java.util.UUID
 
 /**
  * Android counterpart of modules/b4-native/apple/B4Native.m. Same JS interface (src/native.ts).
  *
- * Phase 0: preferences, request ids and cookies work. Audio, camera and secure storage
- * reject with E_ANDROID_PENDING until phases 1–2 (see ANDROID_ROADMAP.md).
+ * Works: preferences, request ids, cookies, microphone/camera permission, camera preview with
+ * on-device face counting and baseline photo, encrypted secure storage and photo vault.
+ * Recording and listening playback still reject with E_ANDROID_PENDING (ANDROID_ROADMAP.md, phase 1).
  */
 class B4NativeModule(context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
 
@@ -26,6 +33,26 @@ class B4NativeModule(context: ReactApplicationContext) : ReactContextBaseJavaMod
   override fun getName() = NAME
 
   private val prefs by lazy { reactApplicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+
+  private val camera by lazy { B4Camera.of(reactApplicationContext) }
+  private val secure by lazy { B4Vault(reactApplicationContext, "b4skills-secure", "b4skills.secure.v1") }
+  private val photos by lazy { B4Vault(reactApplicationContext, "b4skills-photos", "b4skills.photos.v1") }
+  private var nextPermissionRequest = 4100
+
+  /** Runtime permission through React Native's activity, like the Apple permission sheets. */
+  private fun withPermission(permission: String, done: (Boolean) -> Unit) {
+    if (ContextCompat.checkSelfPermission(reactApplicationContext, permission) == PackageManager.PERMISSION_GRANTED) { done(true); return }
+    val activity = reactApplicationContext.currentActivity as? PermissionAwareActivity
+    if (activity == null) { done(false); return }
+    val code = nextPermissionRequest++
+    UiThreadUtil.runOnUiThread {
+      activity.requestPermissions(arrayOf(permission), code, PermissionListener { requestCode, _, results ->
+        if (requestCode != code) return@PermissionListener false
+        done(results.isNotEmpty() && results[0] == PackageManager.PERMISSION_GRANTED)
+        true
+      })
+    }
+  }
 
   private fun pending(promise: Promise, feature: String) =
       promise.reject(PENDING, "$feature is not available on Android yet.")
@@ -66,17 +93,33 @@ class B4NativeModule(context: ReactApplicationContext) : ReactContextBaseJavaMod
 
   // Secure storage and photo vault (phase 2: Android Keystore + AES-GCM).
 
-  @ReactMethod fun secureRead(key: String, promise: Promise) = pending(promise, "Secure storage")
+  @ReactMethod fun secureRead(key: String, promise: Promise) =
+      vault(promise) { secure.read(key) }
 
-  @ReactMethod fun secureWrite(key: String, value: String, promise: Promise) = pending(promise, "Secure storage")
+  @ReactMethod fun secureWrite(key: String, value: String, promise: Promise) =
+      vault(promise) { secure.write(key, value); null }
 
-  @ReactMethod fun photoRead(scope: String, promise: Promise) = pending(promise, "Photo vault")
+  @ReactMethod fun photoRead(scope: String, promise: Promise) =
+      vault(promise) { require(scope.startsWith("photo.") && scope.length <= 2048) { "Geçersiz fotoğraf kapsamı." }; photos.read(scope) }
 
-  @ReactMethod fun photoWrite(scope: String, value: String, promise: Promise) = pending(promise, "Photo vault")
+  @ReactMethod fun photoWrite(scope: String, value: String, promise: Promise) =
+      vault(promise) {
+        require(scope.startsWith("photo.") && scope.length <= 2048) { "Geçersiz fotoğraf kapsamı." }
+        require(value.length <= 5_500_000) { "Fotoğraf kuyruğu sınırı aşıldı." }
+        photos.write(scope, value); null
+      }
+
+  private fun vault(promise: Promise, work: () -> String?) {
+    Thread {
+      try { promise.resolve(work()) }
+      catch (e: Exception) { promise.reject("E_SECURE_STORAGE", e.message ?: "Güvenli kayıt kullanılamıyor.", e) }
+    }.start()
+  }
 
   // Microphone and recording (phase 1: MediaRecorder, AAC in MPEG-4).
 
-  @ReactMethod fun requestMicrophone(promise: Promise) = pending(promise, "Microphone")
+  @ReactMethod fun requestMicrophone(promise: Promise) =
+      withPermission(Manifest.permission.RECORD_AUDIO) { granted -> promise.resolve(granted) }
 
   @ReactMethod fun startRecording(maxSeconds: Double, promise: Promise) = pending(promise, "Recording")
 
@@ -94,11 +137,19 @@ class B4NativeModule(context: ReactApplicationContext) : ReactContextBaseJavaMod
 
   // Camera (phase 2: CameraX + ML Kit face detection).
 
-  @ReactMethod fun startCamera(promise: Promise) = pending(promise, "Camera")
+  @ReactMethod fun startCamera(promise: Promise) =
+      withPermission(Manifest.permission.CAMERA) { granted ->
+        val owner = reactApplicationContext.currentActivity as? LifecycleOwner
+        when {
+          !granted -> promise.reject("camera_denied", "Kamera izni verilmedi. Ayarlar'dan B4Skills için kamerayı açın.")
+          owner == null -> promise.reject("camera_start", "Kamera başlatılamadı.")
+          else -> UiThreadUtil.runOnUiThread { camera.start(owner, promise) }
+        }
+      }
 
-  @ReactMethod fun stopCamera() = Unit
+  @ReactMethod fun stopCamera() = camera.stop()
 
-  @ReactMethod fun captureCamera(promise: Promise) = pending(promise, "Camera")
+  @ReactMethod fun captureCamera(promise: Promise) = camera.capture(promise)
 
   // Required by NativeEventEmitter on Android.
 

@@ -1,3 +1,4 @@
+import { proctoringCoordinator } from './proctoring/coordinator';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { B4Native, nativeEvents, Recording } from './native';
 
@@ -11,37 +12,61 @@ export function useRecorder() {
   const [level, setLevel] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const recordingRef = useRef(false);
+  const owner = useRef(Symbol("recorder"));
+  const release = useRef<(() => void) | null>(null);
+  const generation = useRef(0);
+  const starting = useRef(false);
+  const stopping = useRef(false);
+  const releaseMedia = () => { release.current?.(); release.current = null; };
 
   const stop = useCallback(async () => {
     if (!recordingRef.current) return;
     recordingRef.current = false;
+    stopping.current = true;
+    const attempt = generation.current;
+    const ownedRelease = release.current;
+    setPreparing(true);
     setRecording(false);
     setLevel(0);
     try {
-      setClip(await B4Native.stopRecording());
+      const result = await B4Native.stopRecording();
+      if (attempt === generation.current) setClip(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (attempt === generation.current) setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      stopping.current = false; ownedRelease?.();
+      if (release.current === ownedRelease) release.current = null;
+      if (attempt === generation.current) setPreparing(false);
     }
   }, []);
 
   const start = useCallback(async () => {
-    if (recordingRef.current || preparing) return;
+    if (recordingRef.current || starting.current || stopping.current) return;
+    starting.current = true;
+    const attempt = ++generation.current;
     setPreparing(true);
     setError(null);
     setClip(null);
     setSeconds(0);
     try {
+      release.current = proctoringCoordinator.acquire('microphone', owner.current, () => B4Native.cancelRecording());
       await B4Native.startRecording(MAX_RECORDING_SECONDS);
+      if (attempt !== generation.current) { B4Native.cancelRecording(); releaseMedia(); return; }
       recordingRef.current = true;
       setRecording(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      releaseMedia();
+      if (attempt === generation.current) setError(e instanceof Error ? e.message : String(e));
     } finally {
+      starting.current = false;
       setPreparing(false);
     }
-  }, [preparing]);
+  }, []);
 
   const clear = useCallback(() => {
+    generation.current += 1;
+    setPreparing(false);
+    releaseMedia();
     recordingRef.current = false;
     B4Native.cancelRecording();
     setRecording(false);
@@ -81,7 +106,7 @@ export function useRecorder() {
     return () => clearInterval(timer);
   }, [recording]);
 
-  useEffect(() => () => B4Native.cancelRecording(), []);
+  useEffect(() => () => { generation.current += 1; releaseMedia(); B4Native.cancelRecording(); }, []);
 
   return { recording, preparing, clip, error, level, seconds, start, stop, clear };
 }

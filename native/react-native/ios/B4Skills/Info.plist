@@ -37,6 +37,8 @@
 	</dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Konuşma bölümündeki yanıtlarınızı kaydetmek ve mikrofonunuzu kontrol etmek için kullanılır.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Kamerayı açtığınızda önizleme ve cihazda yüz sayımı için kullanılır. Sınav fotoğrafı yalnızca siz onayladığınızda gönderilir. Canlı insan gözetimi yapılmaz.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -56,5 +58,11 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>tr</string>
+		<string>en</string>
+		<string>ar</string>
+	</array>
 </dict>
 </plist>

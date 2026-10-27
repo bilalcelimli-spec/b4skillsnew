@@ -1,3 +1,6 @@
+import { storeNativeEvent } from "./src/lib/proctoring/native-events.js";
+import { cookieRequestProtection } from './src/lib/security/cookie-request-protection.js';
+import { examPolicy, admitExam } from "./src/lib/proctoring/exam-policy.js";
 import { isGeminiScoringConfigured } from "./src/lib/scoring/gemini-scoring-service.js";
 import { createSessionPauseRouter } from './src/routes/session-pause';
 import "dotenv/config";
@@ -53,6 +56,7 @@ import { shouldExcludeResponseFromAbility } from "./src/lib/scoring/score-eviden
 import { stripAnswerKeys } from "./src/lib/security/answer-sanitizer.js";
 import { staticCacheControl, noStoreMissingAsset } from "./src/lib/security/static-cache.js";
 import { uploadPrivateObject, downloadPrivateObject, storageReference, StorageConfigurationError } from "./src/lib/storage/private-storage.js";
+import { cameraPilot, reserveEvidence, commitEvidence, EvidenceReservationBody, EvidenceCommitBody } from './src/lib/proctoring/native-evidence.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -62,6 +66,9 @@ const __dirname = path.dirname(__filename);
 let dbAvailable = false;
 
 async function startServer() {
+  // A second API process may validate a live database without running deployment
+  // migrations, resetting the admin password, or claiming other candidates' jobs.
+  const validationOnly = process.env.B4SKILLS_API_VALIDATION_MODE === "true";
   // Load secrets first — AWS Secrets Manager if configured, else env vars
   await SecretsManager.load();
 
@@ -80,8 +87,8 @@ async function startServer() {
       console.log("✅ Database connected");
       // Run pending migrations on startup (safe — idempotent)
       try {
-        if (process.env.NODE_ENV === "test") {
-          console.log("✅ Database schema prepared by test harness");
+        if (process.env.NODE_ENV === "test" || validationOnly) {
+          console.log("✅ Startup migrations skipped (validation/test runtime)");
         } else {
           const { execFileSync } = await import("child_process");
           execFileSync(process.execPath, ["scripts/deploy-migrations.mjs"], { stdio: "inherit" });
@@ -91,7 +98,7 @@ async function startServer() {
         console.warn("⚠️  Prisma migrate deploy failed:", migErr);
       }
       // Ensure default admin org + user exist on every startup
-      try {
+      if (!validationOnly) try {
         await prisma.organization.upsert({
           where: { id: "b4skills-demo" },
           update: {},
@@ -121,7 +128,7 @@ async function startServer() {
     }
   }
 
-  if (dbAvailable) {
+  if (dbAvailable && !validationOnly) {
     const { recoverPendingScoringJobs } = await import("./src/lib/scoring/scoring-queue.js");
     void recoverPendingScoringJobs().catch(() => console.error("Could not recover pending scoring jobs"));
     const { recoverPendingReportRefreshes } = await import("./src/lib/scoring/score-report-refresh.js");
@@ -140,7 +147,7 @@ async function startServer() {
       }
       // Scan each healthy probe, not just the first reconnect: a restart can
       // leave more persisted submissions than one bounded recovery batch.
-      if (available) {
+      if (available && !validationOnly) {
         void import("./src/lib/scoring/scoring-queue.js")
           .then(({ recoverPendingScoringJobs }) => recoverPendingScoringJobs())
           .catch(() => console.error("Could not recover pending scoring jobs"));
@@ -159,9 +166,15 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.use(cookieParser());
+  const csrf = cookieRequestProtection(
+    process.env.JWT_SECRET!, process.env.APP_URL || `http://localhost:${process.env.PORT || '3001'}`,
+    process.env.NODE_ENV === 'production',
+  );
+  app.get('/api/auth/csrf', csrf.issue);
+  app.use('/api', csrf.protect);
   // A production database outage must never turn an assessment into demo scoring.
   app.use("/api", (req, res, next) => {
-    if (process.env.NODE_ENV === "production" && !dbAvailable && !req.path.startsWith("/health")) {
+    if ((process.env.NODE_ENV === "production" || validationOnly) && !dbAvailable && !req.path.startsWith("/health")) {
       return res.status(503).json({ error: "Assessment data service is unavailable. Please try again later." });
     }
     next();
@@ -1337,7 +1350,7 @@ async function startServer() {
   // API Routes
   app.get("/api/health", async (_req, res) => {
     const available = await probeDatabase();
-    const ready = available || process.env.NODE_ENV !== "production";
+    const ready = available || (process.env.NODE_ENV !== "production" && !validationOnly);
     res.status(ready ? 200 : 503).json({
       status: ready ? "ok" : "unavailable", database: available ? "up" : "down",
       timestamp: new Date().toISOString(),
@@ -1404,6 +1417,27 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 // --- ASSESSMENT SESSION API ---
   const { AssessmentService } = await import("./src/lib/assessment-engine/server-engine.js");
 
+  app.get("/api/assessment/policy", authMiddleware, async (req: any, res) => {
+    try {
+      if (!dbAvailable) return res.status(503).json({ error: 'Database unavailable' });
+      // Never accept a tenant supplied through query parameters.
+      const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { organizationId: true } });
+      let organizationId = user?.organizationId;
+      if (!organizationId && req.user.role === 'CANDIDATE') {
+        const code = await prisma.examCode.findFirst({ where: { usedByEmail: req.user.email, isUsed: true }, orderBy: { usedAt: 'desc' }, select: { organizationId: true } });
+        organizationId = code?.organizationId;
+      }
+      if (!organizationId) return res.status(403).json({ error: 'organization_required' });
+      const org = await prisma.organization.findUnique({ where: { id: organizationId }, select: { settings: true } });
+      if (!org) return res.status(404).json({ error: 'Organization not found' });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json(examPolicy(org.settings));
+    } catch (error) {
+      if (error instanceof AppError) return res.status(error.statusCode).json({ error: error.message, code: error.code });
+      return res.status(503).json({ error: 'Sınav politikası alınamadı.' });
+    }
+  });
+
   app.post("/api/sessions/launch", authMiddleware, async (req: any, res) => {
     try {
       const body = validate(SessionLaunchBody, req.body, res);
@@ -1412,6 +1446,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       // Always derive candidateId from the JWT — ignore body.candidateId to prevent IDOR
       const candidateId = req.user?.id || "demo-user";
       let resolvedOrganizationId = organizationId;
+      // A committed receipt can be recovered even when the last credit was used.
+      if (dbAvailable && body.launchRequestId) {
+        const { findLaunchSession } = await import('./src/lib/assessment-engine/launch-idempotency.js');
+        const existing = await findLaunchSession(prisma, {
+          candidateId, launchRequestId: body.launchRequestId, productLine, organizationId,
+        });
+        if (existing) return res.json(AssessmentService.launchReceipt(existing));
+      }
 
       // ── Access gate for CANDIDATE role ─────────────────────────────────────
       // A CANDIDATE must have one of: (a) redeemed exam code, (b) org License
@@ -1484,7 +1526,10 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         return res.status(400).json({ error: "organizationId is required" });
       }
       if (productLine === OZGUN_PRODUCT) {
+        if (body.launchRequestId) return res.status(400).json({error:'This fixed-form product must be launched from the web application'});
         if (!dbAvailable) return res.status(503).json({error:'Database unavailable'});
+        const org = await prisma.organization.findUniqueOrThrow({ where: { id: resolvedOrganizationId! }, select: { settings: true } });
+        admitExam(examPolicy(org.settings), body.preflight);
         return res.json(await createOzgunKidsService(prisma).launch(candidateId,resolvedOrganizationId!,req.user.role,req.user.email));
       }
       let session;
@@ -1492,10 +1537,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         session = await AssessmentService.launchSession(
           candidateId,
           resolvedOrganizationId || "demo-org",
-          productLine
+          productLine,
+          body.launchRequestId,
+          body.productLine ?? null,
+          body.preflight
         );
       } catch (err: any) {
-        if (process.env.NODE_ENV !== "production" && (isDBError(err) || err.name === "PrismaClientInitializationError")) {
+        if (!validationOnly && !body.launchRequestId && process.env.NODE_ENV !== "production" && (isDBError(err) || err.name === "PrismaClientInitializationError")) {
           const { studioItems } = await import("./src/data/studioItems.js");
           const sId = "demo-session-" + Date.now();
           const filteredItems = productLine && productLine !== "General" && productLine !== "General English" ? studioItems.filter((i: any) => i.productLine === productLine) : studioItems;
@@ -3924,6 +3972,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       // Candidates are limited to their own session; tenant-scoped staff are
       // limited to their organization; platform roles retain global access.
       if (!(await assertSessionOwnership(req, res, body.sessionId))) return;
+      if ('version' in body && body.version === 2) return res.json(await storeNativeEvent(prisma, body));
       const severityMap: Record<string, number> = { INFO: 1, WARNING: 3, CRITICAL: 5 };
       const severityInt = severityMap[body.severity ?? "INFO"] ?? 1;
       const event = await (prisma as any).proctoringEvent.create({
@@ -3931,9 +3980,41 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       });
       res.json(event);
     } catch (error) {
+      if (error instanceof AppError) return res.status(error.statusCode).json({ error: error.message, code: error.code });
       res.status(500).json({ error: "Failed to log proctoring event" });
     }
   });
+
+  app.get('/api/sessions/:id/camera-policy', authMiddleware, async (req: any, res) => {
+    try {
+      if (!(await assertSessionOwnership(req, res, req.params.id))) return;
+      const session = await prisma.session.findUniqueOrThrow({ where: { id: req.params.id }, include: { organization: { select: { settings: true } } } });
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.json(cameraPilot(session.organization?.settings));
+    } catch (error) {
+      if (error instanceof AppError) return res.status(error.statusCode).json({ error: error.message, code: error.code });
+      res.status(503).json({ error: 'Camera policy unavailable' });
+    }
+  });
+  for (const [path, schema, handler] of [
+    ['/api/proctoring/evidence/reserve', EvidenceReservationBody, reserveEvidence],
+    ['/api/proctoring/evidence/commit', EvidenceCommitBody, commitEvidence],
+  ] as const) {
+    app.post(path, authMiddleware, async (req: any, res) => {
+      try {
+        if (!['CANDIDATE', 'PROCTOR', 'SUPER_ADMIN', 'ASSESSMENT_DIRECTOR'].includes(req.user?.role)) return res.status(403).json({ error: 'Forbidden' });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) return res.status(400).json({ error: 'Invalid camera evidence payload' });
+        if (!(await assertSessionOwnership(req, res, parsed.data.sessionId))) return;
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.json(await (handler as any)(prisma, parsed.data));
+      } catch (error) {
+        if (error instanceof AppError) return res.status(error.statusCode).json({ error: error.message, code: error.code });
+        if (error instanceof StorageConfigurationError) return res.status(503).json({ error: error.message });
+        res.status(503).json({ error: 'Camera evidence delivery failed; retry with the same evidence ID' });
+      }
+    });
+  }
 
   // POST /api/proctoring/screenshot — store a proctoring frame (base64 JPEG) for review
   app.post("/api/proctoring/screenshot", authMiddleware, async (req: any, res) => {
@@ -3977,12 +4058,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       });
       if (!event) return res.status(404).json({ error: "Evidence not found" });
       if (!(await assertSessionOwnership(req, res, event.sessionId))) return;
+      if (typeof event.metadata?.expiresAt === 'string' && Date.parse(event.metadata.expiresAt) <= Date.now()) return res.status(410).json({ error: 'Evidence retention period ended' });
       const evidenceKey = event.metadata?.evidenceKey;
       if (typeof evidenceKey !== "string") return res.status(404).json({ error: "Evidence not found" });
       const object = await downloadPrivateObject(storageReference("proctoring", evidenceKey,
         event.metadata?.evidenceProvider === "supabase" ? "supabase" : "s3",
         typeof event.metadata?.evidenceBucket === "string" ? event.metadata.evidenceBucket : process.env.LEGACY_PROCTORING_EVIDENCE_BUCKET));
       res.setHeader("Content-Type", object.contentType);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader("Cache-Control", "private, no-store");
       return res.send(object.bytes);
     } catch {
@@ -5082,7 +5165,7 @@ ${codeSection}
     if (caller?.role === "PROCTOR" && caller?.organizationId !== id) return res.status(403).json({ error: "Forbidden" });
     try {
       const alerts = await (prisma as any).proctoringEvent.findMany({
-        where: { session: { organizationId: id }, severity: { gte: 2 } }, // MEDIUM or HIGH
+        where: { session: { organizationId: id }, OR: [{ severity: { gte: 2 } }, { id: { startsWith: 'evidence_' } }, { id: { startsWith: 'native_' } }] },
         include: { 
           session: { 
             include: { 
@@ -8140,7 +8223,7 @@ ${entries}
   realtimeManager.attach(httpServer);
 
   // Override app.listen with httpServer.listen below
-  httpServer.listen(parseInt(process.env.PORT || "3001", 10), "0.0.0.0", () => {
+  httpServer.listen(parseInt(process.env.PORT || "3001", 10), validationOnly ? "127.0.0.1" : "0.0.0.0", () => {
     console.log(`LinguAdapt Server running on http://localhost:${process.env.PORT || "3001"}`);
     console.log(`[WS] Realtime dashboard WebSocket attached at /ws/dashboard`);
   });

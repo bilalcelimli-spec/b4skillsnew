@@ -15,7 +15,7 @@ const products=['Primary (7-10)','Junior Suite (11-14)','15-Min Diagnostic','Exp
 const results=[],audio={audio:readFileSync('public/assessments/ozgun-kids/form-a-v1/Listening_01_Sorular_73-76.mp3').toString('base64'),mimeType:'audio/mpeg'};
 let child,log;
 async function request(path,body,cookie,method=body===undefined?'GET':'POST'){
- const response=await fetch(base+path,{method,headers:{'user-agent':'B4SkillsLocalAudit','Content-Type':'application/json',...(cookie?{cookie}:{})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(55000)});
+ const response=await fetch(base+path,{method,headers:{'user-agent':'B4SkillsLocalAudit','Origin':base,'Content-Type':'application/json',...(cookie?{cookie}:{})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(55000)});
  const type=response.headers.get('content-type')??'';const data=method==='HEAD'?null:type.includes('json')?await response.json():await response.arrayBuffer();return {response,data};
 }
 async function ok(path,body,cookie,method){const {response,data}=await request(path,body,cookie,method);assert(response.ok,`${path}: ${response.status} ${JSON.stringify(data)}`);return data;}
@@ -74,7 +74,7 @@ async function verifyPause(id,cookie,currentItemId){
 function valueFor(item){if(item.skill==='WRITING')return 'x';if(item.skill==='SPEAKING')return audio;
  const content=item.metadata??item.content;const options=content.options;const index=options.findIndex(option=>(typeof option==='string'?option:option.text).startsWith('Correct response'));assert(index>=0,'Controlled objective fixture required');return String.fromCharCode(65+index);}
 async function startAuditServer(){
- child=spawn(process.execPath,['dist/server.js'],{env:{...process.env,NODE_ENV:'test',DISABLE_HMR:'true',PORT:'39482',DATABASE_URL:database,DIRECT_URL:database,JWT_SECRET:secret,REFRESH_SECRET:secret+'-refresh',AWS_SECRET_ARN:'',SENTRY_DSN:'',OTEL_SDK_DISABLED:'true',REDIS_URL:'',GEMINI_API_KEY:'',GOOGLE_API_KEY:'',OPENAI_API_KEY:'',ANTHROPIC_API_KEY:''},stdio:['ignore',log,log]});
+ child=spawn(process.execPath,['dist/server.js'],{env:{...process.env,NODE_ENV:'test',APP_URL:base,DISABLE_HMR:'true',PORT:'39482',DATABASE_URL:database,DIRECT_URL:database,JWT_SECRET:secret,REFRESH_SECRET:secret+'-refresh',AWS_SECRET_ARN:'',SENTRY_DSN:'',OTEL_SDK_DISABLED:'true',REDIS_URL:'',GEMINI_API_KEY:'',GOOGLE_API_KEY:'',OPENAI_API_KEY:'',ANTHROPIC_API_KEY:''},stdio:['ignore',log,log]});
  let ready=false;for(let i=0;i<100;i++){try{if((await request('/api/health')).response.ok){ready=true;break;}}catch{}if(child.exitCode!==null||child.signalCode!==null)throw Error('Local audit server exited');await new Promise(resolve=>setTimeout(resolve,200));}assert(ready,'Server readiness');
 }
 async function crashAuditServer(){
@@ -436,10 +436,15 @@ try{
   // AI providers are disabled in this local server: recovery must preserve each
   // answer and route unavailable scoring to review, never invent a final grade.
   const deadline=Date.now()+90_000;
-  let pending=105;
-  while(pending && Date.now()<deadline){
+  let pending=105,reviewCount=0;
+  // Clearing pendingAsyncScore precedes review-task delivery. Wait for the
+  // complete observable outcome, including the tail of the second batch.
+  while((pending || reviewCount<ids.length) && Date.now()<deadline){
    await new Promise(resolve=>setTimeout(resolve,500));
-   pending=await db.response.count({where:{sessionId:{in:ids},metadata:{path:['pendingAsyncScore'],equals:true}}});
+   [pending,reviewCount]=await Promise.all([
+    db.response.count({where:{sessionId:{in:ids},metadata:{path:['pendingAsyncScore'],equals:true}}}),
+    db.ratingTask.count({where:{response:{sessionId:{in:ids}}}}),
+   ]);
   }
   assert.equal(pending,0,'Every persisted submission is recovered across bounded batches');
   const responses=await db.response.findMany({where:{sessionId:{in:ids}}});

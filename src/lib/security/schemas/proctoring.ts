@@ -38,7 +38,11 @@ const LegacyProctoringEventBody = CanonicalProctoringEventBody.omit({ eventType:
 }).strict().transform(({ sessionId, type, severity, metadata, ...rest }): z.input<typeof CanonicalProctoringEventBody> => ({
   ...rest, ...proctoringEventPayload(sessionId, type, severity, metadata), metadata,
 })).pipe(CanonicalProctoringEventBody);
-export const ProctoringEventBody = z.union([CanonicalProctoringEventBody, LegacyProctoringEventBody]);
+export const NativeProctoringEventBody = CanonicalProctoringEventBody.omit({ screenshotUrl: true }).extend({
+  version: z.literal(2), eventId: z.string().uuid(), sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  platform: z.enum(['ipad', 'macos', 'android']), timestamp: z.string().datetime(),
+}).strict();
+export const ProctoringEventBody = z.union([NativeProctoringEventBody, CanonicalProctoringEventBody, LegacyProctoringEventBody]);
 
 export const ProctoringAuditBody = z.object({
   sessionId: CuidLike,
