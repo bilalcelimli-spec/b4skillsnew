@@ -35,6 +35,24 @@ function normalCDF(x: number): number {
   return x > 0 ? 1 - p : p;
 }
 
+
+/**
+ * Rapid-guess heuristic used when RT-IRT (`useRtIrt`) is off.
+ * True when the answer arrived faster than 2 s, or faster than 20% of the
+ * difficulty-scaled expected time (`speedThresholdMs × max(0.5, 1 + b/4)`).
+ * Diagnostic only: callers must never alter the score based on it.
+ */
+export function isRapidGuess(
+  latencyMs: number | undefined,
+  itemB: number | undefined,
+  speedThresholdMs = 3000
+): boolean {
+  if (latencyMs === undefined || !(latencyMs > 0)) return false;
+  const b = Number.isFinite(itemB) ? (itemB as number) : 0;
+  const expectedMs = speedThresholdMs * Math.max(0.5, 1 + b / 4);
+  return latencyMs < 2000 || latencyMs < expectedMs * 0.2;
+}
+
 /**
  * b4skills Assessment Engine
  * This is the main entry point for the psychometric logic.
@@ -77,33 +95,12 @@ export class AssessmentEngine {
   ): SessionState {
     const item = items[response.itemId];
 
-    // Speed-guessing detection via log-normal response time heuristic
-    // Flags rapid-guess if the candidate answered faster than the absolute
-    // lower bound (2 s) OR faster than 20% of the expected time for this difficulty.
-    // Affects ALL items (not just hard ones) and scales penalty by item difficulty.
-    let adjustedScore = response.score;
-    const useRtIrt = this.config.useRtIrt === true;
-    const speedThreshold = this.config.speedThresholdMs ?? 3000;
-    if (
-      !useRtIrt &&
-      response.score === 1 &&
-      response.latencyMs !== undefined &&
-      response.latencyMs > 0
-    ) {
-      const difficultyBasedThreshold = speedThreshold * Math.max(0.5, 1 + item?.params.b / 4);
-      const isRapidGuess =
-        response.latencyMs < 2000 || // Absolute lower bound: 2 s
-        response.latencyMs < difficultyBasedThreshold * 0.2; // < 20% of expected time
-      if (isRapidGuess) {
-        // Penalty scales with difficulty: hard items penalised more (0.3–0.5)
-        const penalty = item?.params.b > 1.0 ? 0.3 : 0.5;
-        adjustedScore = penalty;
-      }
-    }
-
+    // Rapid-guess handling (Faz 0): a fast answer is a *flag*, never a partial
+    // score. Feeding 0.3/0.5 into a dichotomous 3PL likelihood is undefined and
+    // biased θ downward. The flag is computed by `isRapidGuess` (persisted by
+    // server-engine as Response.rtFlag) and feeds person-fit / RGI instead.
     const updatedResponse: Response = {
       ...response,
-      score: adjustedScore,
       isPretest: response.isPretest || item?.isPretest
     };
 

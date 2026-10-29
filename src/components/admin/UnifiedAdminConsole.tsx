@@ -772,6 +772,10 @@ const EngineConfigPanel: React.FC = () => {
             </div>
           </CardHeader>
           <CardContent className="p-6 space-y-4">
+            <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3 font-medium">
+              Not read by live adaptive exams: item counts and SEM thresholds come from the product-line profiles.
+              Kept for the standalone engine until roadmap Faz 1 wires or removes them.
+            </p>
             <ConfigInput
               label="Pretest Ratio (0–1)"
               hint="Fraction of items used for calibration"

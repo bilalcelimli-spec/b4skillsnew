@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { AssessmentEngine } from "../engine";
+import { AssessmentEngine, isRapidGuess } from "../engine";
 import { SkillType, type SessionState, type EngineConfig, type Response, type Item } from "../types";
 
 const baseConfig = (overrides: Partial<EngineConfig> = {}): EngineConfig => ({
@@ -234,18 +234,24 @@ describe("AssessmentEngine.processResponse — full step", () => {
     expect(next.sem).toBeLessThan(1);
   });
 
-  it("flags rapid-guess responses (latency < 2 s) and dampens score", () => {
+  it("never alters the score for a rapid-guess response; the flag is separate", () => {
     const engine = new AssessmentEngine(baseConfig());
     const items: Record<string, Item> = {
       hard: { id: "hard", skill: SkillType.READING, params: { a: 1.5, b: 1.5, c: 0.1 } },
     };
     const initial = engine.initializeSession();
-    // "Got it right" on a hard item in 1.5 s → suspicious; engine should
-    // reduce the recorded score so theta is not artificially inflated.
+    // "Got it right" on a hard item in 1.5 s → suspicious. The engine records
+    // the response as given (u ∈ {0,1} keeps the 3PL likelihood well defined)
+    // and leaves the rapid-guess signal to the flag.
     const fast: Response = { itemId: "hard", score: 1, latencyMs: 1500 };
     const next = engine.processResponse(initial, fast, items);
-    const recorded = next.responses[0].score;
-    expect(recorded).toBeLessThan(1);
+    expect(next.responses[0].score).toBe(1);
+    expect(isRapidGuess(1500, 1.5)).toBe(true);
+    expect(isRapidGuess(2500, 1.5, 3000)).toBe(false); // 20% of 3000 × 1.375 = 825 ms
+    expect(isRapidGuess(2500, 1.5, 20_000)).toBe(true); // 20% of 20000 × 1.375 = 5500 ms
+    expect(isRapidGuess(10_000, 1.5)).toBe(false);
+    expect(isRapidGuess(undefined, 1.5)).toBe(false);
+    expect(isRapidGuess(0, 1.5)).toBe(false);
   });
 });
 

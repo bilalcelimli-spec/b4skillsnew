@@ -3,6 +3,18 @@ import { z } from "zod";
 /**
  * Faz7: Typed validation for `SystemConfig` JSON (global assessment engine + priors).
  * Unknown top-level keys are allowed (passthrough) for forward compatibility.
+ *
+ * Which keys the LIVE adaptive flow (server-engine.ts → CATSelector) actually reads
+ * (Faz 0 audit, 2026-10-30):
+ *   effective  — cefrThresholds, priorMean, priorSd, useRtIrt, useGrmProductive,
+ *                useRlSelector, useMirt / useMirt2B (estimation only), speedThresholdMs
+ *                (rapid-guess flag), useOnlineRecalibration, itemRetirement, difDetection.
+ *   NOT read   — pretestRatio, minItems, maxItems, semThreshold,
+ *                classificationConfidenceThreshold, useShadowTest, sprt, mst, blueprint.
+ *                Those drive `AssessmentEngine.getNextItem/shouldStop`, which the live
+ *                section flow does not call; per-profile values come from
+ *                src/lib/product-lines/profiles.ts. See docs/ADAPTIVE_ENGINE_ROADMAP_2026_10.md
+ *                (F2) — Faz 1 wires or removes them.
  */
 export const SystemConfigPayloadSchema = z
   .object({
@@ -12,6 +24,7 @@ export const SystemConfigPayloadSchema = z
     useMirt2B: z.boolean().optional(),
     useMirt: z.boolean().optional(),
     useShadowTest: z.boolean().optional(),
+    useOnlineRecalibration: z.boolean().optional(),
     pretestRatio: z.number().min(0).max(1).optional(),
     minItems: z.number().int().min(1).max(200).optional(),
     maxItems: z.number().int().min(1).max(200).optional(),

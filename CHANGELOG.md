@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **Adaptive engine (Faz 0 locks, 2026-10-30)** — live sessions no longer rewrite item IRT parameters after each response; `CalibrationService.recalibrateItem` runs only when `SystemConfig.useOnlineRecalibration` is true (default off). Class-C parameter drift now moves an item to `REVIEW` instead of auto-retiring it, and the duplicate `exposureCount` increment inside recalibration was removed.
+- **Rapid-guess handling** — the legacy partial-score penalty (0.3/0.5 fed into the 3PL likelihood) was removed. Fast answers are recorded as `Response.rtFlag = "RAPID_GUESS"` (when RT-IRT is off) and feed person-fit/RGI; scores are never altered.
+- **Admin engine parameters** — the SystemConfig form now states that item counts and SEM thresholds for live exams come from product-line profiles; `system-config-zod.ts` documents which keys the live flow reads.
+
+### Added
+- **CAT observability** — `cat_selection_duration_seconds`, `cat_pool_size`, `cat_pool_fallback_total`, `cat_stop_reason_total`, `cat_final_sem`, `cat_item_exposure_rate`, `cat_rapid_guess_total` Prometheus metrics; `GET /metrics` endpoint (SUPER_ADMIN session or `METRICS_TOKEN` bearer) and HTTP request metrics middleware wired in `server.ts`.
+- `docs/ADAPTIVE_ENGINE_ROADMAP_2026_10.md` — adaptive engine roadmap with evidence-based findings and phases.
+
 ## [1.0.0] — 2026-04-07
 
 ### Added

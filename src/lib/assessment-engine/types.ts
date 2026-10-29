@@ -146,8 +146,17 @@ export interface EngineConfig {
   cefrThresholds?: Partial<Record<CefrLevel, number>>;
   /** Content blueprint constraints. If defined, enforced during item selection. */
   blueprint?: BlueprintConstraint[];
-  /** Speed penalty: if response < speedThresholdMs it may indicate automated guessing. */
+  /**
+   * Expected-time scale for the rapid-guess *flag* (`isRapidGuess`) when RT-IRT is off.
+   * Diagnostic only: the score is never altered (Faz 0 removed the legacy penalty).
+   */
   speedThresholdMs?: number;
+  /**
+   * Faz 0: allow `CalibrationService.recalibrateItem` to run after every response.
+   * Default false — live sessions must not rewrite operational item parameters;
+   * calibration belongs to the batch pipeline (pretest-calibration-pipeline.ts).
+   */
+  useOnlineRecalibration?: boolean;
   /**
    * Enable Multidimensional IRT (MIRT) estimation alongside unidimensional EAP.
    * When true, each step computes a full 6D ability vector stored in
