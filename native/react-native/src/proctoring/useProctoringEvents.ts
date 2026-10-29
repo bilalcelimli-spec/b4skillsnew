@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { nativePlatform } from './platform';
 import { AppState } from 'react-native';
 import type { Backend } from '../api';
-import { B4Native } from '../native';
+import { B4Native, nativeEvents } from '../native';
 import { EventQueue } from './eventQueue';
 import type { ExamAdmission, NativeEvent } from './protocol';
 
@@ -60,7 +60,13 @@ export function useProctoringEvents(backend: Backend | null, uid: string | undef
       previous = state;
       append(state === 'active' ? 'TAB_FOCUS' : 'TAB_BLUR', `native-lifecycle-${state}`);
     });
-    return () => { disposed = true; sub.remove(); };
+    // Screen protection for the exam (Android FLAG_SECURE). Screen recording, mirroring and
+    // screenshots on iPad are technical observations, not verdicts.
+    B4Native.setExamProtection(true);
+    const capture = nativeEvents.addListener('B4ScreenCapture', ({ kind }: { kind: string }) => {
+      if (['capture-started', 'capture-ended', 'screenshot'].includes(kind)) append('OTHER', `native-screen-${kind}`);
+    });
+    return () => { disposed = true; sub.remove(); capture.remove(); B4Native.setExamProtection(false); };
   }, [queue, sessionId, admission?.policy.revision, active]);
 
   const retry = useCallback(async () => {

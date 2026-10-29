@@ -9,8 +9,12 @@ jest.mock('react-native', () => ({ Platform: { OS: 'macos' }, AppState: {
 } }));
 jest.mock('../src/native', () => {
   const storage = new Map<string, string>(); let id = 0;
-  return { B4Native: { secureRead: jest.fn(async (key: string) => storage.get(key) ?? null), secureWrite: jest.fn(async (key: string, value: string) => { storage.set(key, value); }), newRequestId: jest.fn(async () => `716e724c-f93e-4684-a1a2-${String(id++).padStart(12, '0')}`) } };
+  return {
+    B4Native: { secureRead: jest.fn(async (key: string) => storage.get(key) ?? null), secureWrite: jest.fn(async (key: string, value: string) => { storage.set(key, value); }), newRequestId: jest.fn(async () => `716e724c-f93e-4684-a1a2-${String(id++).padStart(12, '0')}`), setExamProtection: jest.fn() },
+    nativeEvents: { addListener: jest.fn((name: string, handler: (body: { kind: string }) => void) => { mockCapture.set(name, handler); return { remove: () => mockCapture.delete(name) }; }) },
+  };
 });
+const mockCapture = new Map<string, (body: { kind: string }) => void>();
 const mockHandlers = new Set<(state: string) => void>();
 let tree: ReactTestRenderer, hook: ReturnType<typeof useProctoringEvents>, send: jest.Mock, account = 0;
 const admission: ExamAdmission = {
@@ -50,4 +54,24 @@ it('surfaces local write failure and records a recovery marker before clearing i
   await act(async () => { await hook.retry(); });
   expect(hook.storageError).toBeNull();
   expect(send.mock.calls[0][0].metadata.reason).toBe('native-monitoring-recovery-check');
+});
+it('protects the exam screen and records screen capture as an observation', async () => {
+  await mount(null);
+  expect(B4Native.setExamProtection).toHaveBeenLastCalledWith(true);
+  await act(async () => {
+    mockCapture.get('B4ScreenCapture')!({ kind: 'capture-started' });
+    mockCapture.get('B4ScreenCapture')!({ kind: 'screenshot' });
+    mockCapture.get('B4ScreenCapture')!({ kind: 'unknown-kind' });
+    jest.advanceTimersByTime(5000);
+  });
+  const reasons = send.mock.calls.map(call => call[0].metadata.reason);
+  expect(reasons).toEqual(['native-monitoring-attached', 'native-screen-capture-started', 'native-screen-screenshot']);
+  expect(send.mock.calls[1][0]).toMatchObject({ eventType: 'OTHER', severity: 'INFO' });
+  await act(async () => tree.unmount());
+  expect(B4Native.setExamProtection).toHaveBeenLastCalledWith(false);
+  expect(mockCapture.has('B4ScreenCapture')).toBe(false);
+});
+it('leaves the screen unprotected outside an exam', async () => {
+  await mount(null, false);
+  expect(B4Native.setExamProtection).not.toHaveBeenCalled();
 });

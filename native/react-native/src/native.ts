@@ -24,6 +24,8 @@ type B4NativeModule = {
   newRequestId(): Promise<string>;
   removePref(key: string): void;
   clearCookies(): Promise<void>;
+  /** Exam on screen: Android FLAG_SECURE; iPad reports capture as B4ScreenCapture events. */
+  setExamProtection(on: boolean): void;
 };
 
 const module = NativeModules.B4Native as B4NativeModule | undefined;

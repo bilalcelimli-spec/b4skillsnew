@@ -117,7 +117,7 @@ RCT_EXPORT_MODULE(B4Native)
 + (BOOL)requiresMainQueueSetup { return YES; }
 - (dispatch_queue_t)methodQueue { return dispatch_get_main_queue(); }
 - (NSArray<NSString *> *)supportedEvents {
-  return @[ @"B4RecordingFinished", @"B4PlaybackEnded", @"B4PlaybackFailed", @"B4Interrupted", @"B4FaceCount", @"B4CameraState" ];
+  return @[ @"B4RecordingFinished", @"B4PlaybackEnded", @"B4PlaybackFailed", @"B4Interrupted", @"B4FaceCount", @"B4CameraState", @"B4ScreenCapture" ];
 }
 - (void)startObserving { _hasListeners = YES; }
 - (void)stopObserving { _hasListeners = NO; }
@@ -129,6 +129,8 @@ RCT_EXPORT_MODULE(B4Native)
   if ((self = [super init])) {
     // Exam text views may live in a framework loaded after +load ran; installing twice is a no-op.
     B4InstallExamTextTraits();
+    // Nothing is recording yet; any clip left here is from a crash.
+    [B4Native removeStaleRecordings];
     _cameraQueue = dispatch_queue_create("com.b4skills.camera", DISPATCH_QUEUE_SERIAL);
     _faceQueue = dispatch_queue_create("com.b4skills.faces", DISPATCH_QUEUE_SERIAL);
     _vaultQueue = dispatch_queue_create("com.b4skills.photo-vault", DISPATCH_QUEUE_SERIAL);
@@ -311,6 +313,26 @@ RCT_EXPORT_METHOD(stopCamera) {
   });
 }
 
+#pragma mark - Speaking recordings on disk
+
+/// Private folder for the clip being recorded. On iPad new files are readable only while the
+/// device is unlocked, except a file already open, so a recording survives the screen locking.
+/// A clip is deleted as soon as it is read or cancelled; leftovers from a crash at next launch.
++ (NSURL *)recordingFolder {
+  NSURL *folder = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES] URLByAppendingPathComponent:@"B4SkillsRecordings" isDirectory:YES];
+  NSMutableDictionary *attributes = [@{ NSFilePosixPermissions: @0700 } mutableCopy];
+#if TARGET_OS_IOS
+  attributes[NSFileProtectionKey] = NSFileProtectionCompleteUnlessOpen;
+#endif
+  if (![[NSFileManager defaultManager] createDirectoryAtURL:folder withIntermediateDirectories:YES attributes:attributes error:nil]) return nil;
+  return folder;
+}
++ (void)removeStaleRecordings {
+  NSURL *folder = [self recordingFolder];
+  NSArray<NSURL *> *items = folder ? [[NSFileManager defaultManager] contentsOfDirectoryAtURL:folder includingPropertiesForKeys:nil options:0 error:nil] : nil;
+  for (NSURL *item in items) [[NSFileManager defaultManager] removeItemAtURL:item error:nil];
+}
+
 #pragma mark - Bounded encrypted photo storage
 - (NSURL *)photoURL:(NSString *)scope error:(NSError **)error {
   if (![scope hasPrefix:@"photo."] || scope.length > 2048) return nil;
@@ -487,7 +509,9 @@ RCT_EXPORT_METHOD(startRecording:(double)maxSeconds
     if (error) { reject(@"session", error.localizedDescription, error); return; }
 #endif
     NSString *name = [[NSUUID UUID].UUIDString stringByAppendingPathExtension:@"m4a"];
-    self->_recordingURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:name]];
+    NSURL *folder = [B4Native recordingFolder];
+    if (!folder) { reject(@"recorder", @"Kayıt başlatılamadı.", nil); return; }
+    self->_recordingURL = [folder URLByAppendingPathComponent:name];
     NSDictionary *settings = @{
       AVFormatIDKey : @(kAudioFormatMPEG4AAC),
       AVSampleRateKey : @44100,
@@ -716,6 +740,35 @@ RCT_EXPORT_METHOD(secureWrite:(NSString *)key value:(NSString *)value resolver:(
     if (status != errSecSuccess) { reject(@"secure_write", @"Secure event data could not be saved", nil); return; }
     resolve(nil);
   });
+}
+
+#pragma mark - Exam screen protection
+
+// While an exam is on screen, report screen recording, AirPlay mirroring and screenshots as
+// B4ScreenCapture events. They are observations for later review, never verdicts. macOS has no
+// public API for detecting a recording of the screen, so this is iPad only.
+#if TARGET_OS_IOS
+- (void)screenCaptureChanged {
+  [self emit:@"B4ScreenCapture" body:@{ @"kind": UIScreen.mainScreen.isCaptured ? @"capture-started" : @"capture-ended" }];
+}
+- (void)screenshotTaken {
+  [self emit:@"B4ScreenCapture" body:@{ @"kind": @"screenshot" }];
+}
+#endif
+
+RCT_EXPORT_METHOD(setExamProtection:(BOOL)on) {
+#if TARGET_OS_IOS
+  dispatch_async(dispatch_get_main_queue(), ^{
+    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+    [center removeObserver:self name:UIScreenCapturedDidChangeNotification object:nil];
+    [center removeObserver:self name:UIApplicationUserDidTakeScreenshotNotification object:nil];
+    if (!on) return;
+    [center addObserver:self selector:@selector(screenCaptureChanged) name:UIScreenCapturedDidChangeNotification object:nil];
+    [center addObserver:self selector:@selector(screenshotTaken) name:UIApplicationUserDidTakeScreenshotNotification object:nil];
+    // A recording that was already running when the exam started is reported once.
+    if (UIScreen.mainScreen.isCaptured) [self screenCaptureChanged];
+  });
+#endif
 }
 
 RCT_EXPORT_METHOD(clearCookies:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {

@@ -13,7 +13,7 @@ jest.mock('../src/native', () => ({ B4Native: {
   getPref: jest.fn(async (key: string) => key === 'ui-language' ? 'tr' : null), setPref: jest.fn(), setPrefAsync: jest.fn(async () => {}),
   requestMicrophone: jest.fn(async () => true), photoRead: jest.fn().mockResolvedValue(null), photoWrite: jest.fn().mockResolvedValue(undefined), secureRead: jest.fn(async () => null), secureWrite: jest.fn(async () => {}),
     newRequestId: jest.fn(async () => '716e724c-f93e-4684-a1a2-b611bc67d823'),
-  cancelRecording: jest.fn(), stopPlayback: jest.fn(),
+  cancelRecording: jest.fn(), stopPlayback: jest.fn(), setExamProtection: jest.fn(),
   startRecording: jest.fn(async () => {}), recordingLevel: jest.fn(async () => ({ level: 0, seconds: 1 })),
   stopRecording: jest.fn(async () => ({ base64: 'RECORDED_CLIP', bytes: 500, durationMs: 1000 })),
 }, nativeEvents: { addListener: jest.fn(() => ({ remove: jest.fn() })) } }));

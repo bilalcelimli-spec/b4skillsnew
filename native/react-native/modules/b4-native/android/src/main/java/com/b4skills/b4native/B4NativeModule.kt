@@ -7,6 +7,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.UiThreadUtil
+import android.view.WindowManager
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import android.Manifest
@@ -152,6 +153,18 @@ class B4NativeModule(context: ReactApplicationContext) : ReactContextBaseJavaMod
   @ReactMethod fun captureCamera(promise: Promise) = camera.capture(promise)
 
   // Required by NativeEventEmitter on Android.
+
+  /**
+   * During an exam the window is FLAG_SECURE: screenshots and recordings come out black, casting
+   * shows nothing, and the recents screen hides the question. Cleared when the exam ends.
+   */
+  @ReactMethod fun setExamProtection(on: Boolean) {
+    UiThreadUtil.runOnUiThread {
+      val window = reactApplicationContext.currentActivity?.window ?: return@runOnUiThread
+      if (on) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+      else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
+  }
 
   @ReactMethod fun addListener(eventName: String) = Unit
 

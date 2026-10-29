@@ -14,8 +14,8 @@ jest.mock('../src/native', () => {
     requestMicrophone: jest.fn(async () => true), secureRead: jest.fn(async () => null), secureWrite: jest.fn(async () => {}),
     // Unique ids: launch receipts and (always-on) monitoring events both draw from here.
     newRequestId: jest.fn(async () => `716e724c-f93e-4684-a1a2-${String(mockIds++).padStart(12, '0')}`),
-    cancelRecording: jest.fn(), stopPlayback: jest.fn(), clearCookies: jest.fn(async () => {}),
-  }, prefs };
+    cancelRecording: jest.fn(), stopPlayback: jest.fn(), clearCookies: jest.fn(async () => {}), setExamProtection: jest.fn(),
+  }, nativeEvents: { addListener: jest.fn(() => ({ remove: jest.fn() })) }, prefs };
 });
 jest.mock('../src/api', () => ({ ...jest.requireActual('../src/api'), Backend: jest.fn() }));
 
