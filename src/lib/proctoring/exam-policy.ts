@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AppError } from '../errors/app-error.js';
 
 export const ClientCapabilities = z.object({
-  version: z.literal(1), platform: z.enum(['ipad', 'macos']),
+  version: z.literal(1), platform: z.enum(['ipad', 'macos', 'android']),
   microphone: z.boolean(), lifecycleEvents: z.boolean(), durableEvents: z.boolean(),
   cameraEvidence: z.boolean(), assessmentMode: z.boolean(),
 }).strict();

@@ -38,6 +38,10 @@ export const nativeEvent = {
   eventType: 'TAB_BLUR', severity: 'INFO', timestamp: '2026-10-24T09:00:00.000Z', metadata: { reason: 'native-lifecycle-background' },
 };
 describe('native event wire protocol', () => {
+  it('accepts Android as a native platform for events and preflight', () => {
+    expect(NativeProctoringEventBody.safeParse({ ...nativeEvent, platform: 'android' }).success).toBe(true);
+    expect(ExamPreflight.safeParse({ policyRevision: 'a'.repeat(64), accepted: true, capabilities: { ...capabilities, platform: 'android' } }).success).toBe(true);
+  });
   it('accepts v2 and preserves canonical web event compatibility', () => {
     expect(NativeProctoringEventBody.parse(nativeEvent)).toEqual(nativeEvent);
     expect(ProctoringEventBody.safeParse({ sessionId: 's1', eventType: 'TAB_BLUR' }).success).toBe(true);

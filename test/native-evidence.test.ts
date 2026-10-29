@@ -11,13 +11,18 @@ describe('native camera evidence boundary', () => {
     expect(buildTrustReport('s1', [baseline, { ...focus, severity: 3 }]).trustScore).toBe(70);
     expect(buildTrustReport('s1', [baseline, focus]).events).toHaveLength(2);
   });
-  it('defaults off and rejects malformed pilot settings instead of guessing', () => {
-    expect(cameraPilot({}).enabled).toBe(false);
+  it('defaults on and rejects malformed pilot settings instead of guessing', () => {
+    // On by default, matching the web ProctoringMonitor; a tenant can switch it off.
+    expect(cameraPilot({})).toEqual({ enabled: true, retentionDays: 7 });
+    expect(cameraPilot({ nativeCameraPilot: { enabled: false, retentionDays: 7 } }).enabled).toBe(false);
     expect(cameraPilot({ nativeCameraPilot: { enabled: true, retentionDays: 7 } })).toEqual({ enabled: true, retentionDays: 7 });
     for (const p of [{ enabled: true }, { enabled: true, retentionDays: 0 }, { enabled: true, retentionDays: 31 }, { enabled: true, retentionDays: 7, public: true }]) expect(() => cameraPilot({ nativeCameraPilot: p })).toThrow();
   });
   it.each([{ faceCount: 0 }, { faceCount: 2 }, { bytes: 1000001 }, { platform: 'iphone' }, { mimeType: 'image/png' }, { sha256: 'abc' }, { evidenceId: '../image' }, { extra: true }])('rejects invalid reservation %j', patch => {
     expect(EvidenceReservationBody.safeParse({ ...photoReservation(), ...patch }).success).toBe(false);
+  });
+  it('accepts the three native platforms, including Android', () => {
+    for (const platform of ['ipad', 'macos', 'android']) expect(EvidenceReservationBody.safeParse({ ...photoReservation(), platform }).success).toBe(true);
   });
   it('validates actual JPEG decoding and byte integrity', () => {
     expect(validatePhoto(sampleJPEG(), photoReservation()).width).toBe(2);

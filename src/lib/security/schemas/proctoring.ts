@@ -40,7 +40,7 @@ const LegacyProctoringEventBody = CanonicalProctoringEventBody.omit({ eventType:
 })).pipe(CanonicalProctoringEventBody);
 export const NativeProctoringEventBody = CanonicalProctoringEventBody.omit({ screenshotUrl: true }).extend({
   version: z.literal(2), eventId: z.string().uuid(), sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-  platform: z.enum(['ipad', 'macos']), timestamp: z.string().datetime(),
+  platform: z.enum(['ipad', 'macos', 'android']), timestamp: z.string().datetime(),
 }).strict();
 export const ProctoringEventBody = z.union([NativeProctoringEventBody, CanonicalProctoringEventBody, LegacyProctoringEventBody]);
 

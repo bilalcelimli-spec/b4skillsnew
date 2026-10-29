@@ -8,7 +8,7 @@ import { storageReference, uploadPrivateObjectOnce } from '../storage/private-st
 export const MAX_NATIVE_PHOTO_BYTES = 1_000_000;
 export const EvidenceReservationBody = z.object({
   version: z.literal(1), evidenceId: z.string().uuid(), sessionId: z.string().regex(/^[a-z0-9_-]{1,100}$/i),
-  platform: z.enum(['ipad', 'macos']), kind: z.literal('baseline'), mimeType: z.literal('image/jpeg'),
+  platform: z.enum(['ipad', 'macos', 'android']), kind: z.literal('baseline'), mimeType: z.literal('image/jpeg'),
   sha256: z.string().regex(/^[a-f0-9]{64}$/), bytes: z.number().int().min(1).max(MAX_NATIVE_PHOTO_BYTES),
   capturedAt: z.string().datetime(), faceCount: z.literal(1),
 }).strict();
@@ -20,7 +20,9 @@ export type EvidenceReservation = z.infer<typeof EvidenceReservationBody>;
 const Pilot = z.object({ enabled: z.boolean(), retentionDays: z.number().int().min(1).max(30) }).strict();
 export function cameraPilot(settings: unknown) {
   const raw = (settings as any)?.nativeCameraPilot;
-  if (raw === undefined) return { enabled: false, retentionDays: 7 };
+  // Native camera monitoring is on by default, as it is on the web (ProctoringMonitor).
+  // A tenant can still turn it off with { enabled: false }.
+  if (raw === undefined) return { enabled: true, retentionDays: 7 };
   const parsed = Pilot.safeParse(raw);
   if (!parsed.success) throw new AppError(503, 'CAMERA_POLICY_INVALID', 'Kamera pilotu yapılandırılamadı.');
   return parsed.data;
