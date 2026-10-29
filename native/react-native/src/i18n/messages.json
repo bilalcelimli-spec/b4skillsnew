@@ -1478,5 +1478,21 @@
   "Şifrenizi girin": {
     "en": "Enter your password",
     "ar": "أدخل كلمة المرور"
+  },
+  "Uygulamayı güncelleyin": {
+    "en": "Update the app",
+    "ar": "حدّث التطبيق"
+  },
+  "Bu sürüm artık sınav için desteklenmiyor. Devam etmek için B4Skills'in son sürümünü uygulama mağazasından yükleyin. Yanıtlarınız ve sonuçlarınız sunucuda korunur.": {
+    "en": "This version is no longer supported for exams. Install the latest B4Skills from your app store to continue. Your answers and results are kept on the server.",
+    "ar": "لم يعد هذا الإصدار مدعومًا للاختبارات. ثبّت أحدث إصدار من B4Skills من متجر التطبيقات للمتابعة. تُحفظ إجاباتك ونتائجك على الخادم."
+  },
+  "Bu cihazdaki sürüm: {0}": {
+    "en": "Version on this device: {0}",
+    "ar": "الإصدار على هذا الجهاز: {0}"
+  },
+  "Yeniden kontrol et": {
+    "en": "Check again",
+    "ar": "تحقّق مرة أخرى"
   }
 }

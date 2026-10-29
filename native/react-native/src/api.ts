@@ -144,6 +144,11 @@ export class Backend {
     return this.me();
   }
 
+  /** Public, no sign-in: minimum supported builds (contract: NativeAppConfig). Checked by the caller. */
+  async appConfig(): Promise<unknown> {
+    return this.request<unknown>('api/native/app-config', undefined, false);
+  }
+
   async me(): Promise<Candidate> {
     const identity = await this.request<{ user: Candidate }>('api/auth/me');
     if (!identity?.user?.uid) throw new ApiError('Sunucudan beklenen yanıt alınamadı.');

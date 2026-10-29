@@ -21,6 +21,8 @@ import { useRecorder } from './src/useRecorder';
 import { ProctoringMonitor } from './src/components/ProctoringMonitor';
 import { useExamMonitor, type ExamMonitorState } from './src/proctoring/useExamMonitor';
 import { useAndroidBack, useAndroidKeyboardHeight } from './src/androidSystem';
+import { useUpdateGate } from './src/useUpdateGate';
+import { APP_BUILD } from './src/appUpdate';
 type SheetName = 'help' | 'skills' | 'connection' | 'logout' | null;
 export default function App() {
   useEffect(() => { void hydrateLanguage(); }, []);
@@ -49,6 +51,7 @@ function Shell() {
   // Web parity: monitoring runs in every exam, from the first item until results.
   const examActive = !!store.candidate && !!store.sessionId && ['item', 'next', 'uncertain'].includes(store.phase);
   const monitor = useExamMonitor(store.cameraBackend, store.sessionId, store.photoDelivery, store.recordFace, examActive);
+  const updateGate = useUpdateGate(store.address);
   const canShowSidebar = width >= 1000;
   const showSidebar = canShowSidebar && sidebarOpen;
   const wide = width - (showSidebar ? 272 : 0) >= 860;
@@ -118,6 +121,11 @@ function Shell() {
         </View>
       </Sheet>
     </>;
+
+  // Unsupported build: blocks sign-in and new exams, never an exam already under way.
+  if (updateGate.required && !examActive) {
+    return <UpdateRequired checking={updateGate.checking} onCheck={updateGate.check} topInset={insets.top} />;
+  }
 
   // Signed out, and while a saved sign-in is restored: always the logo page first. The
   // introduction runs once; sign-in itself lives on its last screen (no separate sign-in screen).
@@ -210,6 +218,19 @@ function Shell() {
       </View>
 
       {sheets}
+    </View>;
+}
+function UpdateRequired({ checking, onCheck, topInset }: { checking: boolean; onCheck: () => void; topInset: number }) {
+  const { rtl } = useLanguage();
+  return <View style={[styles.update, rtl ? styles.rtl : styles.ltr, { paddingTop: topInset + 24 }]}>
+      <View style={styles.updateBar}><LanguagePicker dark /></View>
+      <View style={styles.updateBody} accessibilityRole="alert">
+        <Wordmark />
+        <Text style={styles.updateTitle}>{t("Uygulamayı güncelleyin")}</Text>
+        <Text style={styles.updateText}>{t("Bu sürüm artık sınav için desteklenmiyor. Devam etmek için B4Skills'in son sürümünü uygulama mağazasından yükleyin. Yanıtlarınız ve sonuçlarınız sunucuda korunur.")}</Text>
+        <Text style={styles.updateBuild}>{t("Bu cihazdaki sürüm: {0}", [APP_BUILD])}</Text>
+        <Button label={t("Yeniden kontrol et")} loading={checking} onPress={onCheck} />
+      </View>
     </View>;
 }
 function initials(name?: string | null) {
@@ -458,6 +479,43 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     backgroundColor: color.canvas
+  },
+  update: {
+    flex: 1,
+    backgroundColor: color.aubergine,
+    paddingHorizontal: 24
+  },
+  updateBar: {
+    alignItems: 'flex-end'
+  },
+  rtl: {
+    direction: 'rtl'
+  },
+  ltr: {
+    direction: 'ltr'
+  },
+  updateBody: {
+    flex: 1,
+    maxWidth: 560,
+    width: '100%',
+    alignSelf: 'center',
+    justifyContent: 'center',
+    gap: 18
+  },
+  updateTitle: {
+    color: color.onDark,
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: '700'
+  },
+  updateText: {
+    color: color.onDarkMuted,
+    fontSize: 17,
+    lineHeight: 25
+  },
+  updateBuild: {
+    color: color.onDarkMuted,
+    fontSize: 13
   },
   loading: {
     paddingVertical: 120,

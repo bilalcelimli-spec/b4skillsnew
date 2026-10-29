@@ -2,8 +2,9 @@
 // between what the server produces or accepts and what the apps send or expect fail in CI.
 import { describe, it, expect } from 'vitest';
 import {
-  CAPABILITY_KEYS, ExamPolicySchema, NATIVE_EVENT_TYPES, NATIVE_PLATFORMS, NativeEventSchema,
+  CAPABILITY_KEYS, ExamPolicySchema, NATIVE_EVENT_TYPES, NATIVE_PLATFORMS, NativeAppConfigSchema, NativeEventSchema,
 } from '../shared/contracts/native-protocol';
+import { nativeAppConfig } from '../src/lib/proctoring/native-app-config';
 import { examPolicy } from '../src/lib/proctoring/exam-policy';
 import { NativeProctoringEventBody } from '../src/lib/security/schemas/proctoring';
 import { EvidenceReservationBody } from '../src/lib/proctoring/native-evidence';
@@ -46,4 +47,12 @@ describe('native wire contract', () => {
     }
   });
 
+  it('app config: minimum builds from NATIVE_MIN_BUILD, never locking everyone out by mistake', () => {
+    expect(nativeAppConfig(undefined)).toEqual({ version: 1, minimumBuild: { ipad: 0, macos: 0, android: 0 } });
+    expect(nativeAppConfig('{"ipad":8,"macos":8}').minimumBuild).toEqual({ ipad: 8, macos: 8, android: 0 });
+    for (const bad of ['not json', '{"ipad":"8"}', '{"ipad":-1}', '{"iphone":3}', '[8]']) {
+      expect(nativeAppConfig(bad).minimumBuild).toEqual({ ipad: 0, macos: 0, android: 0 });
+    }
+    expect(NativeAppConfigSchema.safeParse(nativeAppConfig('{"android":2}')).success).toBe(true);
+  });
 });
