@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AppError } from '../errors/app-error.js';
 
 export const ClientCapabilities = z.object({
-  version: z.literal(1), platform: z.enum(['ipad', 'macos']),
+  version: z.literal(1), platform: z.enum(['ipad', 'macos', 'android']),
   microphone: z.boolean(), lifecycleEvents: z.boolean(), durableEvents: z.boolean(),
   cameraEvidence: z.boolean(), assessmentMode: z.boolean(),
 }).strict();
@@ -17,12 +17,17 @@ const Configuration = z.object({
   lifecycleEvents: z.boolean().default(false),
 }).strict();
 
+const BASE_DISCLOSURE = 'Konuşma yanıtları ses olarak gönderilir. Etkinleştirilmişse uygulamanın ön/arka plana geçiş zamanları teknik olay olarak kaydedilir. Teknik olay tek başına ihlal kararı değildir. Canlı insan gözetimi yapılmaz.';
+export const CAMERA_DISCLOSURE = 'Sınav boyunca kamera açık kalır; yüzler cihazda sayılır ve video gönderilmez. Tek yüz göründüğünde bir başlangıç fotoğrafı otomatik olarak çekilip kuruma gönderilir.';
+
 /** Tenant-controlled rollout; malformed configuration never downgrades to standard. */
 export function examPolicy(settings: unknown) {
   const raw = (settings as Record<string, unknown> | null)?.nativeExamPolicy;
   const parsed = Configuration.safeParse(raw === undefined ? {} : raw);
   if (!parsed.success) throw new AppError(503, 'EXAM_POLICY_INVALID', 'Sınav politikası yapılandırılamadı. Kurumunuzla iletişime geçin.');
   const config = parsed.data;
+  // The native camera is on unless the tenant switched it off (see cameraPilot in native-evidence.ts).
+  const camera = (settings as any)?.nativeCameraPilot?.enabled !== false;
   const policy = {
     version: 1 as const, mode: config.mode,
     enforcePreflight: config.enforcePreflight || config.mode !== 'standard' || config.lifecycleEvents,
@@ -32,7 +37,7 @@ export function examPolicy(settings: unknown) {
       durableEvents: config.lifecycleEvents || config.mode !== 'standard',
       cameraEvidence: config.mode !== 'standard', assessmentMode: config.mode === 'secure',
     },
-    disclosure: 'Konuşma yanıtları ses olarak gönderilir. Etkinleştirilmişse uygulamanın ön/arka plana geçiş zamanları teknik olay olarak kaydedilir. Teknik olay tek başına ihlal kararı değildir. Canlı insan gözetimi yapılmaz.',
+    disclosure: (camera ? CAMERA_DISCLOSURE + ' ' : '') + BASE_DISCLOSURE,
   };
   return { ...policy, revision: createHash('sha256').update(JSON.stringify(policy)).digest('hex') };
 }
