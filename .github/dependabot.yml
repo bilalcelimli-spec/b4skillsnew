@@ -50,3 +50,53 @@ updates:
       - "docker"
     commit-message:
       prefix: "chore(docker)"
+
+  # Native apps (native/react-native). React Native and react-native-macos upgrade together
+  # by hand (roadmap 3.2 item 9); Dependabot handles everything else.
+  - package-ecosystem: "npm"
+    directory: "/native/react-native"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      native-patch-minor:
+        update-types: ["patch", "minor"]
+    labels:
+      - "dependencies"
+      - "native"
+    commit-message:
+      prefix: "deps(native)"
+    ignore:
+      - dependency-name: "react"
+      - dependency-name: "react-native"
+      - dependency-name: "react-native-macos"
+      - dependency-name: "@react-native/*"
+      - dependency-name: "@react-native-community/cli*"
+      - dependency-name: "react-test-renderer"
+
+  - package-ecosystem: "gradle"
+    directory: "/native/react-native/android"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "native"
+      - "android"
+    commit-message:
+      prefix: "deps(android)"
+
+  - package-ecosystem: "gradle"
+    directory: "/native/react-native/modules/b4-native/android"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "native"
+      - "android"
+    commit-message:
+      prefix: "deps(android)"

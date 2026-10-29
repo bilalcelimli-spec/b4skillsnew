@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Backend } from '../api';
 import { B4Native } from '../native';
 import { PhotoQueue, type QueuedPhoto } from './photoQueue';
@@ -17,8 +17,10 @@ export function usePhotoQueue(backend: Backend | null, uid?: string) {
     }
     return q;
   }, [backend, uid]);
+  // A fresh lease per queue: callbacks from a previous account's queue stop updating state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const lease = useMemo(() => ({ active: true }), [queue]);
-  const refresh = async () => { if (queue && lease.active) { const state = await queue.status(); if (lease.active) setPending(state); } };
+  const refresh = useCallback(async () => { if (queue && lease.active) { const state = await queue.status(); if (lease.active) setPending(state); } }, [queue, lease]);
   useEffect(() => {
     let disposed = false, checked = false, failures = 0, timer: ReturnType<typeof setTimeout>;
     lease.active = true; setPending([]); setError(null);
@@ -33,7 +35,7 @@ export function usePhotoQueue(backend: Backend | null, uid?: string) {
     };
     void flush();
     return () => { disposed = true; lease.active = false; clearTimeout(timer); };
-  }, [queue, lease]);
+  }, [queue, lease, refresh]);
   const enqueue = async (photo: QueuedPhoto) => {
     if (!queue || !lease.active) throw new Error('Fotoğraf için yeniden giriş yapın.');
     await queue.append(photo); await refresh();

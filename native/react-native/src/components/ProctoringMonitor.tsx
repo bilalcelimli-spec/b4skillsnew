@@ -42,7 +42,7 @@ export function ProctoringMonitor({ monitor, variant }: { monitor: ExamMonitorSt
           <View style={styles.row}><View style={[styles.dot, { backgroundColor: status.tone }]} /><Text style={styles.stripLabel}>{status.label}</Text></View>
           {warning ? <Text accessibilityLiveRegion="assertive" style={styles.stripWarning}>{warning}</Text> : null}
         </View>
-        {monitor.status === 'unavailable' ? <Button label={t('Yeniden dene')} variant="onDark" compact onPress={() => void monitor.retry()} /> : null}
+        {monitor.status === 'unavailable' ? <Button label={t('Yeniden dene')} variant="onDark" compact onPress={() => { void monitor.retry(); }} /> : null}
       </View>
     );
   }
@@ -67,7 +67,7 @@ export function ProctoringMonitor({ monitor, variant }: { monitor: ExamMonitorSt
       {monitor.status === 'unavailable' ? (
         <>
           {monitor.detail ? <Text style={styles.detail}>{translateMessage(monitor.detail)}</Text> : null}
-          <Button label={t('Yeniden dene')} variant="onDark" compact onPress={() => void monitor.retry()} />
+          <Button label={t('Yeniden dene')} variant="onDark" compact onPress={() => { void monitor.retry(); }} />
         </>
       ) : null}
       <Text style={styles.detail}>

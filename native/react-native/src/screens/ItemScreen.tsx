@@ -225,7 +225,7 @@ function ChoiceRow({
   }) => [styles.choice, { direction: "ltr" }, (hovered || pressed) && !selected && {
     borderColor: '#D9C6D3',
     backgroundColor: '#FCF8FB'
-  }, selected && styles.choiceSelected, pointerCursor as any]}>
+  }, selected && styles.choiceSelected, pointerCursor]}>
       <View style={[styles.letter, selected && {
       backgroundColor: color.plum
     }]}>
@@ -260,7 +260,7 @@ function ListeningPlayer({
   return <View style={styles.player}>
       <Pressable accessibilityRole="button" accessibilityLabel={playing || loading ? t("Dinlemeyi durdur") : t("Kaydı dinle")} disabled={disabled || !playing && left <= 0} onPress={() => playing || loading ? stop() : play()} style={[styles.playButton, (disabled || !playing && left <= 0) && {
       opacity: 0.4
-    }, pointerCursor as any]}>
+    }, pointerCursor]}>
         <Icon name={playing || loading ? 'pause' : 'play'} size={22} color={color.onDark} />
       </Pressable>
       <View style={{

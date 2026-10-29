@@ -4,7 +4,7 @@ import { localeTags } from './core';
 import { useLanguage } from './store';
 
 type Props = TextProps & { direction?: 'ltr' | 'rtl' };
-export const Text = React.forwardRef<React.ComponentRef<typeof NativeText>, Props>(function Text({ direction, style, ...props }, ref) {
+export const Text = React.forwardRef<React.ComponentRef<typeof NativeText>, Props>(function LocalizedText({ direction, style, ...props }, ref) {
   const { rtl, language } = useLanguage();
   const textDirection = direction ?? (rtl ? 'rtl' : 'ltr');
   const arabic = textDirection === 'rtl';
@@ -15,3 +15,4 @@ export const Text = React.forwardRef<React.ComponentRef<typeof NativeText>, Prop
       lineHeight: Math.max(flattened.lineHeight ?? 0, Math.ceil((flattened.fontSize ?? 14) * 1.45)),
     }]} />;
 });
+Text.displayName = 'Text';

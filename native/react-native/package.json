@@ -6,6 +6,7 @@
     "ios": "react-native run-ios",
     "android": "react-native run-android",
     "lint": "eslint .",
+    "lint:ci": "eslint . --max-warnings 167",
     "start": "react-native start",
     "test": "jest",
     "macos": "react-native run-macos",

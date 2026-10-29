@@ -6,7 +6,7 @@ import { t } from "./src/i18n/core";
 import { proctoringCoordinator } from './src/proctoring/coordinator';
 import React, { useEffect, useRef, useState } from 'react';
 import { pointerCursor, useHover } from './src/components/hover';
-import { ActivityIndicator, AppState, Linking, Platform, Pressable, StatusBar, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { AppState, Linking, Platform, Pressable, StatusBar, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './src/components/Icon';
 import { Button, Eyebrow, Field, IconButton, Message, Sheet, Wordmark } from './src/components/ui';
@@ -232,7 +232,7 @@ function NavRow({
     selected: !!active
   }} onPress={onPress} {...hoverProps} style={[styles.nav, active && styles.navActive, !active && hovered && {
     backgroundColor: 'rgba(255,255,255,0.06)'
-  }, pointerCursor as any]}>
+  }, pointerCursor]}>
       <Icon name={icon} size={17} color={active ? color.onDark : 'rgba(255,255,255,0.62)'} />
       <Text style={[styles.navText, active && {
       color: color.onDark
@@ -327,7 +327,7 @@ function Sidebar({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8
-      }, pointerCursor as any]}>
+      }, pointerCursor]}>
             <Icon name="logout" size={14} color="rgba(255,255,255,0.6)" />
             <Text style={[type.caption, {
           color: 'rgba(255,255,255,0.6)'

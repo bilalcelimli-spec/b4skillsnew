@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { Onboarding } from '../src/screens/Onboarding';
 import { Button } from '../src/components/ui';

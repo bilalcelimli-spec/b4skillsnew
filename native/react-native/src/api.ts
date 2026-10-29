@@ -216,22 +216,23 @@ export class Backend {
   }
 
   async cameraPolicy(sessionId: string): Promise<{ enabled: boolean; retentionDays: number }> {
-    const result = await this.request<any>(`api/sessions/${encodeURIComponent(sessionId)}/camera-policy`);
-    if (typeof result?.enabled !== 'boolean' || !Number.isInteger(result.retentionDays) || result.retentionDays < 1 || result.retentionDays > 30) throw new ApiError('Kamera politikası doğrulanamadı.');
-    return result;
+    const result = await this.request<Partial<{ enabled: unknown; retentionDays: unknown }> | null>(`api/sessions/${encodeURIComponent(sessionId)}/camera-policy`);
+    const enabled = result?.enabled, retentionDays = result?.retentionDays;
+    if (typeof enabled !== 'boolean' || typeof retentionDays !== 'number' || !Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 30) throw new ApiError('Kamera politikası doğrulanamadı.');
+    return { ...result, enabled, retentionDays };
   }
 
   async sendCameraPhoto(sessionId: string, evidenceId: string, photo: import('./native').CameraPhoto, platform: NativePlatform, current: () => boolean = () => true): Promise<void> {
     if (!current()) throw new ApiError('Fotoğraf gönderimi iptal edildi.');
     if (photo.faceCount !== 1) throw new ApiError('Fotoğrafta yalnız bir yüz görünmeli. Yeniden çekin.');
     const { base64, faceCount, bytes, sha256, capturedAt } = photo;
-    const reserved = await this.request<any>('api/proctoring/evidence/reserve', {
+    const reserved = await this.request<{ reserved?: unknown; evidenceId?: unknown } | null>('api/proctoring/evidence/reserve', {
       version: 1, evidenceId, sessionId, platform,
       kind: 'baseline', mimeType: 'image/jpeg', bytes, sha256, capturedAt, faceCount,
     });
     if (reserved?.reserved !== true || reserved.evidenceId !== evidenceId) throw new ApiError('Fotoğraf rezervasyonu doğrulanamadı.');
     if (!current()) throw new ApiError('Fotoğraf gönderimi iptal edildi.');
-    const ack = await this.request<any>('api/proctoring/evidence/commit', { version: 1, evidenceId, sessionId, base64 });
+    const ack = await this.request<{ accepted?: unknown; evidenceId?: unknown; eventId?: unknown } | null>('api/proctoring/evidence/commit', { version: 1, evidenceId, sessionId, base64 });
     if (ack?.accepted !== true || ack.evidenceId !== evidenceId || ack.eventId !== `evidence_${evidenceId.toLowerCase()}`) throw new ApiError('Fotoğraf teslimi doğrulanamadı. Aynı fotoğrafla yeniden deneyin.');
   }
 
@@ -274,14 +275,14 @@ export class Backend {
     }
 
     const text = await response.text();
-    let data: any = null;
+    let data: { message?: unknown; error?: unknown; code?: unknown } | null = null;
     try {
       data = text ? JSON.parse(text) : null;
     } catch {
       data = null;
     }
     if (!response.ok) {
-      const message = data?.message ?? data?.error ?? (response.status === 401 ? 'Oturumunuzun süresi doldu. Yeniden giriş yapın.' : 'İstek tamamlanamadı');
+      const message = (typeof data?.message === 'string' ? data.message : undefined) ?? (typeof data?.error === 'string' ? data.error : undefined) ?? (response.status === 401 ? 'Oturumunuzun süresi doldu. Yeniden giriş yapın.' : 'İstek tamamlanamadı');
       throw new ApiError(`${message} (HTTP ${response.status})`, response.status, typeof data?.code === 'string' ? data.code : typeof data?.error === 'string' ? data.error : undefined);
     }
     return data as T;

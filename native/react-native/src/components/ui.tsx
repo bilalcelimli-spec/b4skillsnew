@@ -160,7 +160,7 @@ export function Card({
 export const Field = React.forwardRef<TextInput, TextInputProps & {
   label: string;
   icon: IconName;
-}>(function Field({
+}>(function FieldInput({
   label,
   icon,
   ...input
@@ -185,6 +185,7 @@ export const Field = React.forwardRef<TextInput, TextInputProps & {
       </View>
     </View>;
 });
+Field.displayName = 'Field';
 export function Message({
   text,
   tone = 'info',

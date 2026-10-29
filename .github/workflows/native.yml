@@ -1,0 +1,133 @@
+name: Native apps
+
+# iPad, macOS and Android app (native/react-native). Roadmap Faz 0:
+# no merge while any of these jobs is red.
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "native/react-native/**"
+      - ".github/workflows/native.yml"
+  pull_request:
+    paths:
+      - "native/react-native/**"
+      - ".github/workflows/native.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+defaults:
+  run:
+    working-directory: native/react-native
+
+jobs:
+  js:
+    name: Type check, lint, Jest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: native/react-native/package-lock.json
+      - run: npm ci
+      - run: npm run type-check
+      # Errors fail; the inline-style warning budget may only go down (see package.json).
+      - run: npm run lint:ci
+      - run: npx jest --ci
+
+  android:
+    name: Android release build (R8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: native/react-native/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+      # Unsigned: the Play upload key never reaches CI. This proves the R8/minified
+      # release (JS bundle + Kotlin module) still builds.
+      - run: ./gradlew assembleRelease --console=plain
+        working-directory: native/react-native/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-r8-mapping
+          path: native/react-native/android/app/build/outputs/mapping/release/mapping.txt
+          retention-days: 30
+
+  apple:
+    name: ${{ matrix.name }} release build
+    runs-on: macos-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: iPad
+            pods: ios
+            workspace: ios/B4Skills.xcworkspace
+            scheme: B4Skills
+            destination: "generic/platform=iOS Simulator"
+          - name: macOS
+            pods: macos
+            workspace: macos/b4skills-native.xcworkspace
+            scheme: b4skills-native-macOS
+            destination: "generic/platform=macOS"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use the newest installed Xcode
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          xcodebuild -version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: native/react-native/package-lock.json
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: native/react-native/${{ matrix.pods }}/Pods
+          key: pods-${{ matrix.pods }}-${{ runner.os }}-${{ hashFiles(format('native/react-native/{0}/Podfile.lock', matrix.pods)) }}
+      - run: pod install
+        working-directory: native/react-native/${{ matrix.pods }}
+        env:
+          LANG: en_US.UTF-8
+      # Release configuration also bundles the JS with Hermes, as the TestFlight build does.
+      # Signing stays off in CI; archives are still made locally with scripts/release.
+      - run: |
+          set -o pipefail
+          xcodebuild build \
+            -workspace "${{ matrix.workspace }}" -scheme "${{ matrix.scheme }}" \
+            -configuration Release -destination "${{ matrix.destination }}" \
+            -derivedDataPath build/ci-${{ matrix.pods }} \
+            CODE_SIGNING_ALLOWED=NO | tail -200
+
+  audit:
+    name: npm audit (native)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm audit --audit-level=high --omit=dev --package-lock-only

@@ -197,7 +197,7 @@ export function Onboarding({
           {pages.map((_, i) => <Pressable key={i} onPress={() => {
           choose(null);
           setStep(i);
-        }} accessibilityRole="button" accessibilityLabel={t("{0}. ekran", [i + 1])} hitSlop={8} style={[styles.dot, i === step && styles.dotActive, pointerCursor as any]} />)}
+        }} accessibilityRole="button" accessibilityLabel={t("{0}. ekran", [i + 1])} hitSlop={8} style={[styles.dot, i === step && styles.dotActive, pointerCursor]} />)}
         </View>
         <View style={{
         flex: 1,
@@ -228,7 +228,7 @@ function Choice({
     backgroundColor: color.plumDark
   } : {
     backgroundColor: 'rgba(255,255,255,0.12)'
-  }), pointerCursor as any]}>
+  }), pointerCursor]}>
       <View style={[styles.choiceIcon, primary ? {
       backgroundColor: 'rgba(255,255,255,0.16)'
     } : {

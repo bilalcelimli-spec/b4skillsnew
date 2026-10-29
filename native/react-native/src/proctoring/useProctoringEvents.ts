@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { nativePlatform } from './platform';
-import { AppState, Platform } from 'react-native';
+import { AppState } from 'react-native';
 import type { Backend } from '../api';
 import { B4Native } from '../native';
 import { EventQueue } from './eventQueue';
@@ -18,6 +18,8 @@ export function useProctoringEvents(backend: Backend | null, uid: string | undef
     const created = new EventQueue({ read: () => B4Native.secureRead(key), write: value => B4Native.secureWrite(key, value) }, event => backend.sendEvent(event), () => B4Native.newRequestId());
     queues.set(key, created); return created;
   }, [backend, uid]);
+  // A fresh lease per queue: callbacks from a previous account's queue stop updating state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const lease = useMemo(() => ({ active: true }), [queue]);
   const checkStorage = useCallback(async () => {
     if (!queue) throw new Error('Önce giriş yapın.');
@@ -71,7 +73,7 @@ export function useProctoringEvents(backend: Backend | null, uid: string | undef
       setStorageError(null);
       await queue.flush(() => lease.active); setWarning(null);
     } catch (error) { setWarning(error instanceof Error ? error.message : String(error)); }
-  }, [queue, active, sessionId, admission?.policy.revision, lease]);
+  }, [queue, active, sessionId, lease]);
   const recordFace = async (eventType: 'FACE_NOT_DETECTED' | 'MULTIPLE_FACES') => {
     if (!queue || !lease.active || !active || !sessionId) return;
     try { await queue.append({ sessionId, platform: nativePlatform(), eventType, severity: 'INFO', metadata: { reason: 'native-face-count-observation-only' } }); setStorageError(null); }

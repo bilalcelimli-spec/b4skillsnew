@@ -7,10 +7,14 @@ type Props = ViewProps & {
   onPasswordSubmit?: () => void; onPasswordFocus?: () => void; onPasswordBlur?: () => void;
 };
 const SecureField = requireNativeComponent<Props>('B4SecureField');
+type Handler<K extends 'onSubmitEditing' | 'onFocus' | 'onBlur'> = NonNullable<TextInputProps[K]>;
+/** AppKit sends no RN event payload; callers only read `nativeEvent.text`, if anything. */
+const synthetic = <K extends 'onSubmitEditing' | 'onFocus' | 'onBlur'>(nativeEvent: object) =>
+  ({ nativeEvent } as unknown as Parameters<Handler<K>>[0]);
 
 /** A real AppKit secure field; RN macOS's secure cell replaces a plain NSTextField editor. */
-export const PasswordInput = React.forwardRef<TextInput, TextInputProps>(function PasswordInput(props, ref) {
-  const field = useRef<any>(null);
+export const PasswordInput = React.forwardRef<TextInput, TextInputProps>(function SecurePasswordField(props, ref) {
+  const field = useRef<React.ComponentRef<typeof SecureField>>(null);
   useImperativeHandle(ref, () => ({ focus() {
     const tag = findNodeHandle(field.current);
     if (tag != null) UIManager.dispatchViewManagerCommand(tag, 'focus', []);
@@ -18,7 +22,8 @@ export const PasswordInput = React.forwardRef<TextInput, TextInputProps>(functio
   return <SecureField ref={field} value={props.value} placeholder={props.placeholder}
     accessibilityLabel={props.accessibilityLabel} style={props.style} testID={props.testID}
     onPasswordChange={event => props.onChangeText?.(event.nativeEvent.text)}
-    onPasswordSubmit={() => props.onSubmitEditing?.({ nativeEvent: { text: props.value ?? '' } } as any)}
-    onPasswordFocus={() => props.onFocus?.({ nativeEvent: {} } as any)}
-    onPasswordBlur={() => props.onBlur?.({ nativeEvent: {} } as any)} />;
+    onPasswordSubmit={() => props.onSubmitEditing?.(synthetic<'onSubmitEditing'>({ text: props.value ?? '' }))}
+    onPasswordFocus={() => props.onFocus?.(synthetic<'onFocus'>({}))}
+    onPasswordBlur={() => props.onBlur?.(synthetic<'onBlur'>({}))} />;
 });
+PasswordInput.displayName = 'PasswordInput';

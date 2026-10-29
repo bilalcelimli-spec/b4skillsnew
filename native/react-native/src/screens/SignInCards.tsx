@@ -118,7 +118,7 @@ export function CodeCard({
           color: color.muted
         }]}>{t("Kurumunuzun verdiği sınav kodunu girin.")}</Text>
             <View style={styles.codeBox}>
-            <TextInput accessibilityLabel={t("Sınav kodu")} autoFocus={autoFocus} value={code} onChangeText={t => setCode(t.toUpperCase())} placeholder={t("SINAV KODU")} placeholderTextColor={color.faint} autoCapitalize="characters" autoCorrect={false} spellCheck={false} autoComplete="off" maxLength={64} returnKeyType="go" onSubmitEditing={verify} editable={!checking} style={[styles.codeInput, { direction: "ltr", writingDirection: "ltr", textAlign: "left" }]} />
+            <TextInput accessibilityLabel={t("Sınav kodu")} autoFocus={autoFocus} value={code} onChangeText={value => setCode(value.toUpperCase())} placeholder={t("SINAV KODU")} placeholderTextColor={color.faint} autoCapitalize="characters" autoCorrect={false} spellCheck={false} autoComplete="off" maxLength={64} returnKeyType="go" onSubmitEditing={verify} editable={!checking} style={[styles.codeInput, { direction: "ltr", writingDirection: "ltr", textAlign: "left" }]} />
             </View>
             <Button label={t("Kodu doğrula")} trailingIcon="arrowRight" block onPress={verify} loading={checking} disabled={normalised.length < 4} />
           </> : <>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { nativePlatform } from './platform';
-import { AppState, Platform } from 'react-native';
+import { AppState } from 'react-native';
 import { B4Native, nativeEvents, type CameraPhoto } from '../native';
 import type { Backend } from '../api';
 import { proctoringCoordinator } from './coordinator';

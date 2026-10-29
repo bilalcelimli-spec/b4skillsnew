@@ -2,7 +2,6 @@ import { backendForBuild, editableBackend } from './runtimeConfig';
 import { nativePlatform } from './proctoring/platform';
 import { usePhotoQueue } from './proctoring/usePhotoQueue';
 import { preparationDeadline } from './proctoring/deadline';
-import { Platform } from 'react-native';
 import { ClientCapabilities, ExamPolicy, Preflight, missingCapabilities, validatePolicy } from './proctoring/protocol';
 import { useProctoringEvents } from './proctoring/useProctoringEvents';
 // Candidate flow against the existing backend. Mirrors the verified rules of the SwiftUI prototype:
@@ -207,6 +206,7 @@ export function useAssessment() {
     if (backend && candidate) B4Native.setPref(resumeKey(candidate.uid, backend.baseUrl), id);
   }, [candidate]);
 
+  const checkAuditStorage = audit.checkStorage;
   const prepareExam = useCallback(() => perform(async () => {
     setDeviceChecks(null); setPreflight(null); setPolicy(null); setPolicyAccepted(false); setCapabilityProblems([]);
     const backend = client.current;
@@ -221,7 +221,7 @@ export function useAssessment() {
     const microphone = await preparationDeadline(B4Native.requestMicrophone(), 20000, "Mikrofon izin isteği tamamlanmadı. Sistem izin penceresini kontrol edip tekrar deneyin.");
     setPreparationStep("Teknik kayıt kontrol ediliyor…");
     let durableEvents = false;
-    try { await preparationDeadline(audit.checkStorage(), 8000, "Teknik kayıt kontrolü zaman aşımına uğradı."); durableEvents = true; } catch { /* Report the missing capability below. */ }
+    try { await preparationDeadline(checkAuditStorage(), 8000, "Teknik kayıt kontrolü zaman aşımına uğradı."); durableEvents = true; } catch { /* Report the missing capability below. */ }
     // Web parity: the camera runs in every exam, so ask for it here, before the exam starts.
     setPreparationStep("Kamera izni kontrol ediliyor. Görünen izin penceresini yanıtlayın.");
     let cameraEvidence = false;
@@ -237,7 +237,7 @@ export function useAssessment() {
     setCapabilityProblems(missing);
     if (!missing.length) setPreflight({ policyRevision: current.revision, accepted: true, capabilities });
     } finally { setPreparationStep(null); }
-  }), [perform, audit.checkStorage]);
+  }), [perform, checkAuditStorage]);
 
   const launch = useCallback(() =>
     perform(async () => {
@@ -254,13 +254,13 @@ export function useAssessment() {
       let id: string;
       try {
         ({ sessionId: id } = await backend.launch(intent.productLine, intent.organizationId, intent.id, intent.preflight));
-      } catch (error) {
-        if (error instanceof ApiError && ['EXAM_PREFLIGHT_REQUIRED', 'EXAM_POLICY_CHANGED', 'EXAM_CAPABILITY_REQUIRED', 'EXAM_POLICY_INVALID'].includes(error.code ?? '')) {
+      } catch (launchError) {
+        if (launchError instanceof ApiError && ['EXAM_PREFLIGHT_REQUIRED', 'EXAM_POLICY_CHANGED', 'EXAM_CAPABILITY_REQUIRED', 'EXAM_POLICY_INVALID'].includes(launchError.code ?? '')) {
           // These explicit gate failures occur before a session/credit is created.
           await B4Native.setPrefAsync(launchKey(candidate.uid, backend.baseUrl), '');
           launchIntent.current = null; setPreflight(null); setPolicyAccepted(false); setPhase('ready');
         }
-        throw error;
+        throw launchError;
       }
       if (!id) throw new ApiError('Sunucudan beklenen yanıt alınamadı.');
       await B4Native.setPrefAsync(resumeKey(candidate.uid, backend.baseUrl), id);
