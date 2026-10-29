@@ -240,7 +240,7 @@ function NavRow({
       {active ? <View style={styles.navDot} /> : null}
     </Pressable>;
 }
-function Sidebar({
+export function Sidebar({
   store,
   onSheet,
   topInset,
@@ -258,6 +258,9 @@ function Sidebar({
       <Wordmark />
       <Text style={styles.tagline}>{t("ENGLISH ASSESSMENT")}</Text>
       <View style={styles.sideRule} />
+      {/* The middle scrolls; the account and sign-out stay pinned at the bottom. During an exam the
+          "now" card and camera panel no longer push them off a landscape iPad (1.0.0 build 7). */}
+      <ScrollView style={styles.sideScroll} contentContainerStyle={styles.sideScrollContent} showsVerticalScrollIndicator={false}>
       <Text style={styles.sideLabel}>{t("ADAY ALANI")}</Text>
       <View style={{
       gap: 4
@@ -290,17 +293,17 @@ function Sidebar({
 
       {monitor ? <ProctoringMonitor monitor={monitor} variant="sidebar" /> : null}
 
-      <View style={{
-      flex: 1
-    }} />
-      <View style={styles.quote}>
+      <View style={styles.sideSpacer} />
+      {/* Decorative; dropped during the exam to leave room for the camera panel. */}
+      {monitor ? null : <View style={styles.quote}>
         <Icon name="sparkle" size={20} color={color.gold} />
         <Text style={styles.quoteText}>{t("Her becerinizin")}{'\n'}{t("bir hikâyesi var.")}</Text>
         <Text style={[type.caption, {
         color: color.onDarkMuted
       }]}>{t("İngilizcenizi tüm yönleriyle tanıyın.")}</Text>
-      </View>
-      <View style={styles.sideRule} />
+      </View>}
+      </ScrollView>
+      <View style={styles.sideRuleFooter} />
       {store.candidate ? <View style={{
       gap: 14
     }}>
@@ -492,6 +495,25 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: color.onDarkFaint,
     marginVertical: 26
+  },
+  sideRuleFooter: {
+    height: 1,
+    backgroundColor: color.onDarkFaint,
+    marginTop: 16,
+    marginBottom: 20
+  },
+  sideScroll: {
+    flex: 1,
+    marginHorizontal: -22
+  },
+  sideScrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 22,
+    paddingBottom: 4
+  },
+  sideSpacer: {
+    flexGrow: 1,
+    minHeight: 22
   },
   sideLabel: {
     fontSize: 10,

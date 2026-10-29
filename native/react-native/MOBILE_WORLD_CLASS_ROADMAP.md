@@ -61,7 +61,7 @@ Her madde, ilgili ayrıntı başka planda ise oraya bağlanır. **Yeni** etiketi
 ### 3.2 Kod kalitesi ve mühendislik
 
 1. **Native CI** — Her PR'da `type-check`, `lint` (0 hata, 0 uyarı), `jest`, `xcodebuild` (iPad simülatörü + macOS), `gradlew assembleRelease` + Android birim testleri. *(APPLE Faz 0; Android kısmı **yeni**)*
-2. **Lint ve tip borcu** — **Yeni.** 196 lint sorunu ve 10 `any` sıfırlanır. `@typescript-eslint/no-explicit-any` uygulama kodunda hata seviyesinde. *Durum (29 Ekim):* hata 0, `any` 0. Kalan 167 satır içi stil uyarısı tasarım sistemi v2'de (Faz 3) token'lara taşınacak; o zamana kadar CI'da tavan (`lint:ci --max-warnings 167`), sayı yalnız düşebilir.
+2. **Lint ve tip borcu** — **Yeni.** 196 lint sorunu ve 10 `any` sıfırlanır. `@typescript-eslint/no-explicit-any` uygulama kodunda hata seviyesinde. *Durum (29 Ekim):* hata 0, `any` 0. Kalan 166 satır içi stil uyarısı tasarım sistemi v2'de (Faz 3) token'lara taşınacak; o zamana kadar CI'da tavan (`lint:ci --max-warnings 166`), sayı yalnız düşebilir.
 3. **Mimari bölme** — **Yeni.** `App.tsx` gezinme + sağlayıcılar olarak kalır; ekran durumu ayrı modüllere. Sınav akışı (`useAssessment.ts`) açık bir durum makinesine çevrilir (reducer veya XState): her durum ve geçiş test edilebilir, imkânsız durumlar tipte engellenir. `ExamShell` / `ItemRenderer` / `ResponseCodec` ayrımı *(EXAM_EXPERIENCE)*.
 4. **Paylaşılan sözleşme paketi** — **Yeni.** Backend'in Zod şemaları (olay protokolü, `ExamPolicy`, `TaskSpec`, yanıt kodlaması) tek pakette; native ve web aynı tipi içe aktarır. Elle kopyalanan tipler kalkar, sözleşme kayması derleme hatası olur.
 5. **TurboModule spec'i** — `B4Native` için tek TypeScript spec; codegen iki platformda tip güvenliği sağlar. *(ANDROID öneri olarak; burada zorunlu)*
