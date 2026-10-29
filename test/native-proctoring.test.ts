@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { admitExam, CAMERA_DISCLOSURE, examPolicy, ExamPreflight } from '../src/lib/proctoring/exam-policy';
 import { NativeProctoringEventBody, ProctoringEventBody } from '../src/lib/security/schemas/proctoring';
-import { missingCapabilities } from '../native/react-native/src/proctoring/protocol';
+// Server tests never import app code (its tsconfig needs the app's node_modules); the shared
+// contract stands in for it. The app's own checks are in native/react-native/__tests__.
+import { ExamPolicySchema } from '../shared/contracts/native-protocol';
 
 const capabilities = { version: 1 as const, platform: 'ipad' as const, microphone: true, lifecycleEvents: true, durableEvents: true, cameraEvidence: false, assessmentMode: false };
 describe('exam policy admission', () => {
@@ -24,13 +26,13 @@ describe('exam policy admission', () => {
   it('blocks unsupported monitoring/security without consuming a credit or changing the profile', () => {
     for (const mode of ['monitored', 'secure']) {
       const policy = examPolicy({ nativeExamPolicy: { mode } });
-      expect(missingCapabilities(policy, capabilities)).toContain('Kamera kanıtı');
+      expect(policy.required.cameraEvidence).toBe(true);
       expect(() => admitExam(policy, { policyRevision: policy.revision, accepted: true, capabilities })).toThrow(/cameraEvidence/);
     }
   });
   it('native contract accepts server policy and refuses unknown required capabilities', () => {
-    expect(missingCapabilities(examPolicy({}), capabilities)).toEqual([]);
-    expect(() => missingCapabilities({ ...examPolicy({}), required: { ...examPolicy({}).required, faceIdentity: true } } as any, capabilities)).toThrow(/doğrulanamadı/);
+    expect(ExamPolicySchema.safeParse(examPolicy({})).success).toBe(true);
+    expect(ExamPolicySchema.safeParse({ ...examPolicy({}), required: { ...examPolicy({}).required, faceIdentity: true } }).success).toBe(false);
   });
 });
 export const nativeEvent = {
