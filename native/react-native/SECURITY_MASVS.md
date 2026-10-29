@@ -48,9 +48,9 @@ Bu liste [MOBILE_WORLD_CLASS_ROADMAP.md](MOBILE_WORLD_CLASS_ROADMAP.md) bölüm 
 | Kontrol | Durum | Kanıt | Sonraki adım |
 | --- | --- | --- | --- |
 | 1 Güncel platform sürümü | ✅ | Android `targetSdk 36`, `minSdk 29`; iPadOS 16+, macOS 14+. | Minimum sürüm kararı (yol haritası karar 3). |
-| 2 Güncelleme zorlama | ❌ | — | Sunucudan minimum sürüm kontrolü (Faz 0'dan kalan). |
+| 2 Güncelleme zorlama | ⚠️ | Açılışta ve ön plana dönüşte `GET /api/native/app-config` okunur; build minimumun altındaysa giriş ve yeni sınav engellenir, süren sınav kesilmez ([useUpdateGate.ts](src/useUpdateGate.ts), [appUpdate.ts](src/appUpdate.ts)). Minimum Render'da `NATIVE_MIN_BUILD` ile verilir. Sunucuya ulaşılamazsa engellemez. | Kontrol istemcide; sunucu sınav başlatmada build numarasını henüz denetlemiyor. |
 | 3 Güvenlik açığı olmayan bileşenler | ✅ | CI'da native `npm audit` (yüksek/kritik), Dependabot npm + Gradle ([native.yml](../../.github/workflows/native.yml)). | CocoaPods için tarama yok. |
-| 4 Girdi doğrulama | ✅ | Sunucu yanıtları kullanılmadan önce tip/aralık kontrolünden geçiyor (ör. `cameraPolicy`, kanıt makbuzu). Sunucuda strict Zod şemaları. | Paylaşılan sözleşme paketi (yol haritası 3.2 madde 4). |
+| 4 Girdi doğrulama | ✅ | Sunucu yanıtları kullanılmadan önce tip/aralık kontrolünden geçiyor (ör. `cameraPolicy`, kanıt makbuzu). Sunucuda strict Zod şemaları; tipler ve şemalar [shared/contracts](../../shared/contracts/native-protocol.ts) içinde ortak, kayma [native-contract.test.ts](../../test/native-contract.test.ts) ile yakalanır. | `TaskSpec` ve yanıt kodlamasını da ortak sözleşmeye taşı. |
 
 ## RESILIENCE
 
@@ -79,8 +79,8 @@ Bu liste [MOBILE_WORLD_CLASS_ROADMAP.md](MOBILE_WORLD_CLASS_ROADMAP.md) bölüm 
 | AUTH | 1 | 1 | 0 |
 | NETWORK | 1 | 1 | 0 |
 | PLATFORM | 1 | 1 | 0 |
-| CODE | 3 | 0 | 1 |
+| CODE | 3 | 1 | 0 |
 | RESILIENCE | 0 | 2 | 2 |
 | PRIVACY | 3 | 1 | 0 |
 
-En büyük boşluklar: cihaz ve uygulama bütünlüğü (App Attest / Play Integrity), zorunlu güncelleme, ekran yakalama algılama ve dosya koruma sınıflarının cihazda doğrulanması.
+En büyük boşluklar: cihaz ve uygulama bütünlüğü (App Attest / Play Integrity), ekran yakalama algılama ve dosya koruma sınıflarının cihazda doğrulanması.

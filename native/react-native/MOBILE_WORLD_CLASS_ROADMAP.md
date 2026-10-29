@@ -63,7 +63,7 @@ Her madde, ilgili ayrıntı başka planda ise oraya bağlanır. **Yeni** etiketi
 1. **Native CI** — Her PR'da `type-check`, `lint` (0 hata, 0 uyarı), `jest`, `xcodebuild` (iPad simülatörü + macOS), `gradlew assembleRelease` + Android birim testleri. *(APPLE Faz 0; Android kısmı **yeni**)*
 2. **Lint ve tip borcu** — **Yeni.** 196 lint sorunu ve 10 `any` sıfırlanır. `@typescript-eslint/no-explicit-any` uygulama kodunda hata seviyesinde. *Durum (29 Ekim):* hata 0, `any` 0. Kalan 166 satır içi stil uyarısı tasarım sistemi v2'de (Faz 3) token'lara taşınacak; o zamana kadar CI'da tavan (`lint:ci --max-warnings 166`), sayı yalnız düşebilir.
 3. **Mimari bölme** — **Yeni.** `App.tsx` gezinme + sağlayıcılar olarak kalır; ekran durumu ayrı modüllere. Sınav akışı (`useAssessment.ts`) açık bir durum makinesine çevrilir (reducer veya XState): her durum ve geçiş test edilebilir, imkânsız durumlar tipte engellenir. `ExamShell` / `ItemRenderer` / `ResponseCodec` ayrımı *(EXAM_EXPERIENCE)*.
-4. **Paylaşılan sözleşme paketi** — **Yeni.** Backend'in Zod şemaları (olay protokolü, `ExamPolicy`, `TaskSpec`, yanıt kodlaması) tek pakette; native ve web aynı tipi içe aktarır. Elle kopyalanan tipler kalkar, sözleşme kayması derleme hatası olur.
+4. **Paylaşılan sözleşme paketi** — **Yeni.** Backend'in Zod şemaları (olay protokolü, `ExamPolicy`, `TaskSpec`, yanıt kodlaması) tek pakette; native ve web aynı tipi içe aktarır. Elle kopyalanan tipler kalkar, sözleşme kayması derleme hatası olur. *Durum (30 Ekim):* [shared/contracts](../../shared/contracts) kuruldu; platformlar, cihaz yetenekleri, ön kontrol, `ExamPolicy`, native olay v2 ve uygulama yapılandırması burada. Uygulama yalnız tipleri ve Zod'suz sabitleri alır (Zod pakete girerse ≈400 KB büyütürdü; lint kuralı engelliyor). Sıradaki: `TaskSpec` ve yanıt kodlaması.
 5. **TurboModule spec'i** — `B4Native` için tek TypeScript spec; codegen iki platformda tip güvenliği sağlar. *(ANDROID öneri olarak; burada zorunlu)*
 6. **Test piramidi** — **Yeni** katmanlar:
    - Native birim testleri: XCTest (kayıt, kasa, kamera durumu), JUnit/Robolectric (Kotlin karşılıkları).
@@ -71,7 +71,7 @@ Her madde, ilgili ayrıntı başka planda ise oraya bağlanır. **Yeni** etiketi
    - Sözleşme testleri: her yanıt türünün golden fixture'ı backend puanlayıcısına karşı.
    - Kapsam eşiği: sınav çekirdeği, kuyruklar, kurtarma için ≥ %85.
 7. **Gözlemlenebilirlik** — Çökme + performans takibi (Sentry veya MetricKit/Android Vitals; karar 2). Oturum kimliğiyle ilişkili, kişisel veri içermeyen kayıtlar. *(APPLE Faz 0)*
-8. **Yayın mühendisliği** — **Yeni.** Fastlane ile imzalı build, sürüm numarası `release.json`'dan, TestFlight ve Play iç test kanalına otomatik yükleme, Play'de kademeli yayın. Sunucudan minimum sürüm ve özellik bayrağı *(APPLE Faz 0)*. Sınav bütünlüğü için OTA JS güncellemesi kullanılmaz.
+8. **Yayın mühendisliği** — **Yeni.** Fastlane ile imzalı build, sürüm numarası `release.json`'dan, TestFlight ve Play iç test kanalına otomatik yükleme, Play'de kademeli yayın. Sunucudan minimum sürüm *(yapıldı: `NATIVE_MIN_BUILD`, `GET /api/native/app-config`)* ve özellik bayrağı *(APPLE Faz 0)*. Sınav bütünlüğü için OTA JS güncellemesi kullanılmaz.
 9. **Bağımlılık hijyeni** — **Yeni.** React Native'i her ana sürümden en geç bir çeyrek sonra güncelleme takvimi; Renovate/Dependabot native dizinleri için; Pod ve Gradle kilit dosyaları incelemeyle değişir.
 10. **Performans bütçesi** — Soğuk açılış < 1,5 sn, soru geçişi p95 < 300 ms, 2 saatlik oturumda bellek artışı yok; düşük kapasiteli cihazda ölçülür ve sürüm kapısına bağlanır. *(APPLE Faz 4)*
 
@@ -149,11 +149,13 @@ Faz 6 kapanana kadar dışarıya "dünya standardında" yerine "ölçülmüş he
 
 ## 6 İlk iki hafta
 
-*Durum (30 Ekim):* 2, 3, 4, 6 ve 8 yapıldı.
+*Durum (30 Ekim):* 2, 3, 4, 6, 7 ve 8 yapıldı; Faz 0'ın minimum sürüm kontrolü de eklendi.
 - 2–4: [.github/workflows/native.yml](../../.github/workflows/native.yml), Dependabot'a native npm ve Gradle girişleri.
 - 6: [examInput.ts](src/components/examInput.ts) ve [B4ExamTextTraits.m](modules/b4-native/apple/B4ExamTextTraits.m); iPad simülatöründe ve macOS'ta çalışma anında doğrulandı. Dikte için açık bir kapatma yolu yok.
+- 7: [shared/contracts](../../shared/contracts), sözleşme testi [native-contract.test.ts](../../test/native-contract.test.ts).
 - 8: [SECURITY_MASVS.md](SECURITY_MASVS.md).
-- 1 hesap sahibini, 5 karar 2'yi bekliyor. 7 sırada.
+- Minimum sürüm: Render'da `NATIVE_MIN_BUILD={"ipad":N,"macos":N,"android":N}`; tanımsızsa kimse engellenmez.
+- 1 hesap sahibini, 5 karar 2'yi bekliyor.
 
 1. AAC entitlement başvurusu (yalnız Apple hesap sahibi yapabilir; onay süresi en uzun bekleme).
 2. Native CI işi: iOS simülatörü, macOS, Android release derlemesi, Jest, lint.
