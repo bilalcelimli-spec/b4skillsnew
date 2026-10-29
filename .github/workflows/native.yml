@@ -7,10 +7,12 @@ on:
     branches: [main, develop]
     paths:
       - "native/react-native/**"
+      - "shared/contracts/**"
       - ".github/workflows/native.yml"
   pull_request:
     paths:
       - "native/react-native/**"
+      - "shared/contracts/**"
       - ".github/workflows/native.yml"
   workflow_dispatch:
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CuidLike, LongText, ShortText } from "./common.js";
 import { legacyProctorEventTypes, proctoringEventPayload } from '../../proctoring/event-protocol.js';
+import { NativePlatformSchema } from '../../../../shared/contracts/native-protocol.js';
 
 const ProctorSeverity = z.enum(["INFO", "WARNING", "CRITICAL"]);
 
@@ -40,7 +41,7 @@ const LegacyProctoringEventBody = CanonicalProctoringEventBody.omit({ eventType:
 })).pipe(CanonicalProctoringEventBody);
 export const NativeProctoringEventBody = CanonicalProctoringEventBody.omit({ screenshotUrl: true }).extend({
   version: z.literal(2), eventId: z.string().uuid(), sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-  platform: z.enum(['ipad', 'macos', 'android']), timestamp: z.string().datetime(),
+  platform: NativePlatformSchema, timestamp: z.string().datetime(),
 }).strict();
 export const ProctoringEventBody = z.union([NativeProctoringEventBody, CanonicalProctoringEventBody, LegacyProctoringEventBody]);
 

@@ -2,7 +2,9 @@
   "extends": "@react-native/typescript-config",
   "compilerOptions": {
     "types": ["jest"],
+    // shared/contracts sits outside this folder; resolve its zod import to this app's copy.
+    "paths": { "zod": ["./node_modules/zod"] },
   },
-  "include": ["**/*.ts", "**/*.tsx"],
+  "include": ["**/*.ts", "**/*.tsx", "../../shared/contracts/**/*.ts"],
   "exclude": ["**/node_modules", "**/Pods", "scripts", "build"]
 }
