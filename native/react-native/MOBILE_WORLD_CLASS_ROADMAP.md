@@ -149,7 +149,11 @@ Faz 6 kapanana kadar dışarıya "dünya standardında" yerine "ölçülmüş he
 
 ## 6 İlk iki hafta
 
-*Durum (29 Ekim):* 2, 3 ve 4 yapıldı ([.github/workflows/native.yml](../../.github/workflows/native.yml), Dependabot'a native npm ve Gradle girişleri). 1 hesap sahibini, 5 karar 2'yi bekliyor. 6–8 sırada.
+*Durum (30 Ekim):* 2, 3, 4, 6 ve 8 yapıldı.
+- 2–4: [.github/workflows/native.yml](../../.github/workflows/native.yml), Dependabot'a native npm ve Gradle girişleri.
+- 6: [examInput.ts](src/components/examInput.ts) ve [B4ExamTextTraits.m](modules/b4-native/apple/B4ExamTextTraits.m); iPad simülatöründe ve macOS'ta çalışma anında doğrulandı. Dikte için açık bir kapatma yolu yok.
+- 8: [SECURITY_MASVS.md](SECURITY_MASVS.md).
+- 1 hesap sahibini, 5 karar 2'yi bekliyor. 7 sırada.
 
 1. AAC entitlement başvurusu (yalnız Apple hesap sahibi yapabilir; onay süresi en uzun bekleme).
 2. Native CI işi: iOS simülatörü, macOS, Android release derlemesi, Jest, lint.
