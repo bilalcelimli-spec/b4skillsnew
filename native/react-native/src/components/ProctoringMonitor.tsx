@@ -18,6 +18,7 @@ function statusCopy(m: ExamMonitorState): { label: string; tone: string } {
         : { label: t('Gözetim açık'), tone: '#4ADE80' };
     case 'starting': case 'checking': return { label: t('Kamera başlatılıyor…'), tone: color.onDarkMuted };
     case 'paused': return { label: t('Uygulama arka planda · olay kaydedildi'), tone: color.gold };
+    case 'interrupted': return { label: t('Kamera kesildi · olaylar kaydediliyor'), tone: color.gold };
     case 'off': return { label: t('Kamera bu kurumda kapalı · olaylar kaydediliyor'), tone: color.onDarkMuted };
     default: return { label: t('Kamera kullanılamıyor · olaylar kaydediliyor'), tone: '#FCA5A5' };
   }
@@ -62,6 +63,7 @@ export function ProctoringMonitor({ monitor, variant }: { monitor: ExamMonitorSt
       )}
       <Text accessibilityLiveRegion="polite" style={[styles.label, { color: status.tone }]}>{status.label}</Text>
       {warning ? <Text accessibilityLiveRegion="assertive" style={styles.warning}>{warning}</Text> : null}
+      {monitor.status === 'interrupted' && monitor.detail ? <Text style={styles.detail}>{translateMessage(monitor.detail)}</Text> : null}
       {monitor.status === 'unavailable' ? (
         <>
           {monitor.detail ? <Text style={styles.detail}>{translateMessage(monitor.detail)}</Text> : null}

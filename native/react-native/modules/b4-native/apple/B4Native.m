@@ -107,6 +107,7 @@ static const NSUInteger B4MaxAudioBytes = 14000000;
   NSUInteger _framePhotoGeneration;
   RCTPromiseResolveBlock _photoResolve;
   RCTPromiseRejectBlock _photoReject;
+  NSArray<id> *_cameraObservers;
 }
 
 RCT_EXPORT_MODULE(B4Native)
@@ -114,7 +115,7 @@ RCT_EXPORT_MODULE(B4Native)
 + (BOOL)requiresMainQueueSetup { return YES; }
 - (dispatch_queue_t)methodQueue { return dispatch_get_main_queue(); }
 - (NSArray<NSString *> *)supportedEvents {
-  return @[ @"B4RecordingFinished", @"B4PlaybackEnded", @"B4PlaybackFailed", @"B4Interrupted", @"B4FaceCount" ];
+  return @[ @"B4RecordingFinished", @"B4PlaybackEnded", @"B4PlaybackFailed", @"B4Interrupted", @"B4FaceCount", @"B4CameraState" ];
 }
 - (void)startObserving { _hasListeners = YES; }
 - (void)stopObserving { _hasListeners = NO; }
@@ -205,6 +206,8 @@ RCT_EXPORT_METHOD(startCamera:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromi
 #endif
 #if TARGET_OS_IOS
       session.automaticallyConfiguresApplicationAudioSession = NO;
+      // Keep the camera in Split View, Slide Over and Stage Manager windows (iPadOS 16+, no entitlement).
+      if (session.isMultitaskingCameraAccessSupported) session.multitaskingCameraAccessEnabled = YES;
 #endif
 #if TARGET_OS_OSX
       AVCapturePhotoOutput *output = nil; // Tundra still capture is not supported by every Mac camera.
@@ -230,6 +233,7 @@ RCT_EXPORT_METHOD(startCamera:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromi
       self->_faceOutput = faces;
 
       self->_cameraSession = session; self->_photoOutput = output; B4PreviewSession = session;
+      [self observeCameraSession:session generation:generation];
       dispatch_async(self->_cameraQueue, ^{
         [session startRunning];
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -246,8 +250,34 @@ RCT_EXPORT_METHOD(startCamera:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromi
   else open(status == AVAuthorizationStatusAuthorized);
 }
 
+// Tell JS when the system takes the camera away (another app, window layout, hardware error)
+// and when it comes back, so the exam monitor never shows a frozen "active" preview.
+- (void)observeCameraSession:(AVCaptureSession *)session generation:(NSUInteger)generation {
+  [self removeCameraObservers];
+  NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+  __weak B4Native *weakSelf = self;
+  void (^send)(NSString *) = ^(NSString *state) {
+    B4Native *strongSelf = weakSelf;
+    if (!strongSelf || generation != strongSelf->_cameraGeneration) return;
+    [strongSelf emit:@"B4CameraState" body:@{ @"state" : state, @"runId" : @(generation) }];
+  };
+  NSMutableArray *observers = [NSMutableArray array];
+#if TARGET_OS_IOS
+  [observers addObject:[center addObserverForName:AVCaptureSessionWasInterruptedNotification object:session queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { send(@"interrupted"); }]];
+  [observers addObject:[center addObserverForName:AVCaptureSessionInterruptionEndedNotification object:session queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { send(@"resumed"); }]];
+#endif
+  [observers addObject:[center addObserverForName:AVCaptureSessionRuntimeErrorNotification object:session queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { send(@"failed"); }]];
+  _cameraObservers = observers;
+}
+
+- (void)removeCameraObservers {
+  for (id observer in _cameraObservers) [[NSNotificationCenter defaultCenter] removeObserver:observer];
+  _cameraObservers = nil;
+}
+
 RCT_EXPORT_METHOD(stopCamera) {
   ++_cameraGeneration; _cameraStarting = NO;
+  [self removeCameraObservers];
   @synchronized(self) { _framePhotoRequested = NO; _framePhotoOutput = nil; }
   AVCaptureSession *session = _cameraSession;
   _cameraSession = nil; _photoOutput = nil; B4PreviewSession = nil;

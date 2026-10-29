@@ -91,7 +91,7 @@ export function securityHeaders(config: Partial<SecurityConfig> = {}) {
     // Referrer-Policy
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     // Permissions-Policy
-    res.setHeader("Permissions-Policy", "camera=(), microphone=(self), geolocation=()");
+    res.setHeader("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()");
     // Remove server fingerprint
     res.removeHeader("X-Powered-By");
     // Request ID for tracing

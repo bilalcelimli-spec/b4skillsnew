@@ -519,6 +519,10 @@
     "en": "This camera does not support photo capture.",
     "ar": "هذه الكاميرا لا تدعم التقاط الصور."
   },
+  "Kamera geçici olarak durdu. Başka bir uygulama veya pencere düzeni kamerayı kullanıyor olabilir; serbest kalınca kendiliğinden devam eder.": {
+    "en": "The camera paused. Another app or window layout may be using it; it resumes on its own when it is free.",
+    "ar": "توقفت الكاميرا مؤقتًا. ربما يستخدمها تطبيق آخر أو ترتيب نوافذ آخر؛ ستُستأنف تلقائيًا عند توفرها."
+  },
   "Kamera izni isteği tamamlanmadı.": {
     "en": "The camera permission request did not complete.",
     "ar": "لم يكتمل طلب إذن الكاميرا."
@@ -538,6 +542,10 @@
   "Kamera kanıtı": {
     "en": "Camera evidence",
     "ar": "أدلة الكاميرا"
+  },
+  "Kamera kesildi · olaylar kaydediliyor": {
+    "en": "Camera interrupted · events are recorded",
+    "ar": "انقطعت الكاميرا · يتم تسجيل الأحداث"
   },
   "Kamera kontrolü iptal edildi.": {
     "en": "Camera check was cancelled.",
@@ -582,10 +590,6 @@
   "Kamerayı aç": {
     "en": "Turn on camera",
     "ar": "تشغيل الكاميرا"
-  },
-  "Kamerayı açtığınızda önizleme ve cihazda yüz sayımı için kullanılır. Sınav fotoğrafı yalnızca siz onayladığınızda gönderilir. Canlı insan gözetimi yapılmaz.": {
-    "en": "Used for a preview and on-device face counting when you turn on the camera. An exam photo is sent only with your approval. There is no live human proctoring.",
-    "ar": "تُستخدم الكاميرا للمعاينة وعدّ الوجوه على الجهاز عند تشغيلها. لا تُرسل صورة الاختبار إلا بموافقتك. لا توجد مراقبة بشرية مباشرة."
   },
   "Kamerayı kapat": {
     "en": "Turn off camera",
@@ -1051,6 +1055,10 @@
     "en": "After the exam, you’ll see your provisional CEFR level and skill overview. Results update as writing and speaking answers are reviewed.",
     "ar": "بعد الاختبار سترى مستوى CEFR الأولي ونظرة على مهاراتك. وتتحدث النتائج عند مراجعة إجابات الكتابة والتحدث."
   },
+  "Sınav boyunca kamera açık kalır; yüzler cihazda sayılır ve video gönderilmez. Tek yüz göründüğünde bir başlangıç fotoğrafı otomatik olarak çekilip kuruma gönderilir. Konuşma yanıtları ses olarak gönderilir. Etkinleştirilmişse uygulamanın ön/arka plana geçiş zamanları teknik olay olarak kaydedilir. Teknik olay tek başına ihlal kararı değildir. Canlı insan gözetimi yapılmaz.": {
+    "en": "The camera stays on throughout the exam; faces are counted on the device and no video is sent. When a single face is visible, one baseline photo is taken automatically and sent to your institution. Speaking answers are sent as audio. If enabled, the times the app enters the foreground or background are recorded as technical events. A technical event alone does not determine a violation. There is no live human proctoring.",
+    "ar": "تبقى الكاميرا مفعّلة طوال الاختبار؛ تُعدّ الوجوه على الجهاز ولا يُرسل أي فيديو. عند ظهور وجه واحد تُلتقط صورة مرجعية واحدة تلقائيًا وتُرسل إلى مؤسستك. تُرسل إجابات التحدث كتسجيلات صوتية. إذا كانت الميزة مفعّلة، تُسجّل أوقات انتقال التطبيق بين الواجهة والخلفية كأحداث تقنية. الحدث التقني وحده لا يحدد وجود مخالفة. لا توجد مراقبة بشرية مباشرة."
+  },
   "Sınav gözetimi": {
     "en": "Exam monitoring",
     "ar": "مراقبة الاختبار"
@@ -1086,6 +1094,10 @@
   "Sınav politikası doğrulanamadı.": {
     "en": "The exam policy could not be verified.",
     "ar": "تعذر التحقق من سياسة الاختبار."
+  },
+  "Sınav sırasında önizleme ve cihazda yüz sayımı için kullanılır. Tek yüz göründüğünde bir başlangıç fotoğrafı otomatik olarak kuruma gönderilir; video gönderilmez. Canlı insan gözetimi yapılmaz.": {
+    "en": "Used during exams for a preview and on-device face counting. When a single face is visible, one baseline photo is sent to your institution automatically; no video is sent. There is no live human proctoring.",
+    "ar": "تُستخدم الكاميرا أثناء الاختبار للمعاينة وعدّ الوجوه على الجهاز. عند ظهور وجه واحد تُرسل صورة مرجعية واحدة تلقائيًا إلى مؤسستك، ولا يُرسل أي فيديو. لا توجد مراقبة بشرية مباشرة."
   },
   "Sınıf / Düzey": {
     "en": "Class / Level",

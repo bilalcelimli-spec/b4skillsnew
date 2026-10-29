@@ -12,11 +12,12 @@ import { FaceMonitor, type FaceObservation } from './faceMonitor';
 import { nativePlatform } from './platform';
 import type { PhotoDelivery } from './usePhotoQueue';
 
-export type MonitorStatus = 'checking' | 'starting' | 'active' | 'paused' | 'off' | 'unavailable';
+export type MonitorStatus = 'checking' | 'starting' | 'active' | 'paused' | 'interrupted' | 'off' | 'unavailable';
 
 const STEADY_FACE_MS = 2000;
 const MAX_BASELINE_ATTEMPTS = 3;
 const WARNING_MS = 6000;
+const INTERRUPTED_DETAIL = 'Kamera geçici olarak durdu. Başka bir uygulama veya pencere düzeni kamerayı kullanıyor olabilir; serbest kalınca kendiliğinden devam eder.';
 
 export function useExamMonitor(
   backend: Backend | null,
@@ -100,6 +101,23 @@ export function useExamMonitor(
     }
   };
 
+  // Retry also re-reads the policy: a failed policy request leaves the camera not yet enabled.
+  const retry = async () => {
+    if (enabled.current) return startCamera();
+    const { backend: api, sessionId: session } = live.current;
+    if (!active || !api || !session) return;
+    setStatus('checking');
+    try {
+      const policy = await api.cameraPolicy(session);
+      if (!policy.enabled) { setStatus('off'); return; }
+      enabled.current = true;
+      await startCamera();
+    } catch (e) {
+      setDetail(e instanceof Error ? e.message : String(e));
+      setStatus('unavailable');
+    }
+  };
+
   // Is the camera allowed for this session (tenant policy, on by default)?
   useEffect(() => {
     let current = true;
@@ -145,6 +163,14 @@ export function useExamMonitor(
         steadySince.current = null;
       }
     });
+    // The system took the camera away (another app, window layout) or gave it back.
+    const camera = nativeEvents.addListener('B4CameraState', ({ state, runId: id }: { state: 'interrupted' | 'resumed' | 'failed'; runId: number }) => {
+      if (id !== runId.current) return;
+      if (state === 'resumed') { lastFrameAt.current = Date.now(); setDetail(null); setStatus('active'); return; }
+      monitor.current.reset(); steadySince.current = null; setFaceCount(null);
+      if (state === 'interrupted') { setDetail(INTERRUPTED_DETAIL); setStatus('interrupted'); return; }
+      stopCamera(); setDetail('Kamera başlatılamadı.'); setStatus('unavailable');
+    });
     const app = AppState.addEventListener('change', state => {
       if (state === 'active') { if (enabled.current) void startCamera(); }
       else if (enabled.current) { stopCamera(); setStatus('paused'); }
@@ -153,13 +179,13 @@ export function useExamMonitor(
       if (runId.current !== null && Date.now() - lastFrameAt.current > 3500) { monitor.current.reset(); setFaceCount(null); }
     }, 1000);
     return () => {
-      faces.remove(); app.remove(); clearInterval(watchdog);
+      faces.remove(); camera.remove(); app.remove(); clearInterval(watchdog);
       if (warningTimer.current) clearTimeout(warningTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { status, faceCount, warning, detail, baselineSent, retry: startCamera };
+  return { status, faceCount, warning, detail, baselineSent, retry };
 }
 
 export type ExamMonitorState = ReturnType<typeof useExamMonitor>;

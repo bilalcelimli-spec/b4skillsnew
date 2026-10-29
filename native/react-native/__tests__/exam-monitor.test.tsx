@@ -6,6 +6,7 @@ import type { Backend } from '../src/api';
 
 const mockApp = { state: 'active', handlers: new Set<(s: string) => void>() };
 const mockFaces = new Set<(e: { count: number | null; monotonicMs: number; runId: number }) => void>();
+const mockCameraState = new Set<(e: { state: string; runId: number }) => void>();
 jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
   AppState: {
@@ -24,7 +25,10 @@ jest.mock('../src/native', () => {
       getPref: jest.fn(async (k: string) => prefs.get(k) ?? null),
       setPrefAsync: jest.fn(async (k: string, v: string) => { prefs.set(k, v); }),
     },
-    nativeEvents: { addListener: jest.fn((_n: string, h: any) => { mockFaces.add(h); return { remove: () => mockFaces.delete(h) }; }) },
+    nativeEvents: { addListener: jest.fn((n: string, h: any) => {
+      const set: Set<any> = n === 'B4CameraState' ? mockCameraState : mockFaces;
+      set.add(h); return { remove: () => set.delete(h) };
+    }) },
   };
 });
 
@@ -32,8 +36,8 @@ let tree: ReactTestRenderer, hook: ReturnType<typeof useExamMonitor>;
 const enqueue = jest.fn(async () => {});
 const recordFace = jest.fn(async () => {});
 let session = 0;
-async function mount(enabled: boolean) {
-  const backend = { cameraPolicy: jest.fn(async () => ({ enabled, retentionDays: 7 })) } as unknown as Backend;
+async function mount(enabled: boolean, cameraPolicy = jest.fn(async () => ({ enabled, retentionDays: 7 }))) {
+  const backend = { cameraPolicy } as unknown as Backend;
   const id = `s${session++}`;
   function Probe() { hook = useExamMonitor(backend, id, { enqueue }, recordFace, true); return null; }
   await act(async () => { tree = create(<Probe />); });
@@ -83,5 +87,28 @@ it('stops the camera in the background and restarts it on return', async () => {
   expect(hook.status).toBe('paused');
   await act(async () => { mockApp.state = 'active'; for (const h of mockApp.handlers) h('active'); });
   expect(B4Native.startCamera).toHaveBeenCalledTimes(2);
+  expect(hook.status).toBe('active');
+});
+
+it('shows an interruption while the system holds the camera and recovers when it returns', async () => {
+  await mount(true);
+  const runId = await (B4Native.startCamera as jest.Mock).mock.results[0].value;
+  await act(async () => { for (const h of mockCameraState) h({ state: 'interrupted', runId }); });
+  expect(hook.status).toBe('interrupted');
+  expect(hook.faceCount).toBeNull();
+  await act(async () => { for (const h of mockCameraState) h({ state: 'interrupted', runId: runId + 99 }); }); // stale run
+  await act(async () => { for (const h of mockCameraState) h({ state: 'resumed', runId }); });
+  expect(hook.status).toBe('active');
+  expect(hook.detail).toBeNull();
+});
+
+it('retry re-reads the camera policy after the first request failed', async () => {
+  const policy = jest.fn().mockRejectedValueOnce(new Error('Ağ hatası')).mockResolvedValue({ enabled: true, retentionDays: 7 });
+  await mount(true, policy as any);
+  expect(hook.status).toBe('unavailable');
+  expect(B4Native.startCamera).not.toHaveBeenCalled();
+  await act(async () => { await hook.retry(); });
+  expect(policy).toHaveBeenCalledTimes(2);
+  expect(B4Native.startCamera).toHaveBeenCalledTimes(1);
   expect(hook.status).toBe('active');
 });

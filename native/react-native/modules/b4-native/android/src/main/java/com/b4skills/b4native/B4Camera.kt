@@ -5,6 +5,7 @@ import android.graphics.Matrix
 import android.os.SystemClock
 import android.util.Base64
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.CameraState
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -14,6 +15,8 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.Observer
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -55,6 +58,8 @@ class B4Camera private constructor(private val context: ReactApplicationContext)
   @Volatile private var generation = 0
   @Volatile private var running = false
   @Volatile private var lastSample = 0L
+  private var stateSource: LiveData<CameraState>? = null
+  private var stateObserver: Observer<CameraState>? = null
 
   /** Preview views can mount before or after the camera starts; attach whichever is current. */
   fun attach(view: PreviewView) {
@@ -79,7 +84,8 @@ class B4Camera private constructor(private val context: ReactApplicationContext)
         val newCapture = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build()
         val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
         analysis.setAnalyzer(analysisExecutor) { image -> analyze(image, run) }
-        cameraProvider.bindToLifecycle(owner, selector, newPreview, newCapture, analysis)
+        val bound = cameraProvider.bindToLifecycle(owner, selector, newPreview, newCapture, analysis)
+        observeState(owner, bound.cameraInfo.cameraState, run)
         provider = cameraProvider; preview = newPreview; capture = newCapture
         running = true; lastSample = 0L
         promise.resolve(run)
@@ -90,10 +96,37 @@ class B4Camera private constructor(private val context: ReactApplicationContext)
     }, ContextCompat.getMainExecutor(context))
   }
 
+  /** Same B4CameraState events as Apple: another app or a policy took the camera, or it came back. */
+  private fun observeState(owner: LifecycleOwner, source: LiveData<CameraState>, run: Int) {
+    clearStateObserver()
+    var last: String? = null
+    val observer = Observer<CameraState> { state ->
+      val error = state.error
+      val next = when {
+        error != null && (error.code == CameraState.ERROR_CAMERA_DISABLED || error.code == CameraState.ERROR_CAMERA_FATAL_ERROR) -> "failed"
+        error != null || state.type == CameraState.Type.PENDING_OPEN -> "interrupted"
+        state.type == CameraState.Type.OPEN -> if (last == null) null else "resumed"
+        else -> null
+      } ?: return@Observer
+      if (next == last || run != generation) return@Observer
+      last = next
+      val body = Arguments.createMap().apply { putString("state", next); putInt("runId", run) }
+      context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java).emit("B4CameraState", body)
+    }
+    source.observe(owner, observer)
+    stateSource = source; stateObserver = observer
+  }
+
+  private fun clearStateObserver() {
+    stateObserver?.let { stateSource?.removeObserver(it) }
+    stateSource = null; stateObserver = null
+  }
+
   fun stop() {
     generation++
     running = false
     ContextCompat.getMainExecutor(context).execute {
+      clearStateObserver()
       provider?.unbindAll()
       preview?.setSurfaceProvider(null)
       preview = null; capture = null

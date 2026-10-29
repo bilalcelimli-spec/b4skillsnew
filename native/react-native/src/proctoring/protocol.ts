@@ -1,4 +1,4 @@
-import type { NativePlatform } from './platform';
+import type { NativePlatform } from './platformNames';
 export type ClientCapabilities = {
   version: 1; platform: NativePlatform; microphone: boolean; lifecycleEvents: boolean;
   durableEvents: boolean; cameraEvidence: boolean; assessmentMode: boolean;

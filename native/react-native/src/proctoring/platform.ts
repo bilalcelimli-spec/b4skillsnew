@@ -1,8 +1,7 @@
 import { Platform } from 'react-native';
+import type { NativePlatform } from './platformNames';
 
-/** Platform names on the proctoring wire protocol (server: exam-policy.ts, native-evidence.ts). */
-export type NativePlatform = 'ipad' | 'macos' | 'android';
-export const NATIVE_PLATFORMS: readonly NativePlatform[] = ['ipad', 'macos', 'android'];
+export { NATIVE_PLATFORMS, type NativePlatform } from './platformNames';
 export function nativePlatform(): NativePlatform {
   return Platform.OS === 'macos' ? 'macos' : Platform.OS === 'android' ? 'android' : 'ipad';
 }

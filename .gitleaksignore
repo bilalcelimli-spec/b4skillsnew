@@ -1,0 +1,3 @@
+# False positives: UserDefaults key name "b4skills.useMetro" (a debug flag), not a secret.
+a3f9b34d893bfdb8b139ee914fdb61ddce3ebfe1:native/react-native/ios/B4Skills/AppDelegate.swift:generic-api-key:49
+a3f9b34d893bfdb8b139ee914fdb61ddce3ebfe1:native/react-native/macos/b4skills-native-macOS/AppDelegate.swift:generic-api-key:45

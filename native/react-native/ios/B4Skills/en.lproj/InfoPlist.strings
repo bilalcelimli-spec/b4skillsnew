@@ -1,2 +1,2 @@
-"NSCameraUsageDescription" = "Used for a preview and on-device face counting when you turn on the camera. An exam photo is sent only with your approval. There is no live human proctoring.";
+"NSCameraUsageDescription" = "Used during exams for a preview and on-device face counting. When a single face is visible, one baseline photo is sent to your institution automatically; no video is sent. There is no live human proctoring.";
 "NSMicrophoneUsageDescription" = "Used to record your speaking answers and check your microphone.";

@@ -42,7 +42,7 @@ class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
 
   override func bundleURL() -> URL? {
 #if DEBUG
-    if UserDefaults.standard.bool(forKey: "b4skills.useMetro") {
+    if UserDefaults.standard.bool(forKey: "b4skills.useMetro") { // gitleaks:allow (debug flag name)
       return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
     }
     return Bundle.main.url(forResource: "main", withExtension: "jsbundle")

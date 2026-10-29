@@ -38,7 +38,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Konuşma bölümündeki yanıtlarınızı kaydetmek ve mikrofonunuzu kontrol etmek için kullanılır.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Kamerayı açtığınızda önizleme ve cihazda yüz sayımı için kullanılır. Sınav fotoğrafı yalnızca siz onayladığınızda gönderilir. Canlı insan gözetimi yapılmaz.</string>
+	<string>Sınav sırasında önizleme ve cihazda yüz sayımı için kullanılır. Tek yüz göründüğünde bir başlangıç fotoğrafı otomatik olarak kuruma gönderilir; video gönderilmez. Canlı insan gözetimi yapılmaz.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
