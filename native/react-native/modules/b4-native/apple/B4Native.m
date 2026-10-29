@@ -79,6 +79,8 @@ RCT_EXPORT_MODULE(B4CameraPreview)
 
 static const NSUInteger B4MaxAudioBytes = 14000000;
 
+void B4InstallExamTextTraits(void);
+
 @interface B4Native : RCTEventEmitter <RCTBridgeModule, AVAudioRecorderDelegate, AVCapturePhotoCaptureDelegate, AVCaptureVideoDataOutputSampleBufferDelegate>
 @end
 
@@ -125,6 +127,8 @@ RCT_EXPORT_MODULE(B4Native)
 
 - (instancetype)init {
   if ((self = [super init])) {
+    // Exam text views may live in a framework loaded after +load ran; installing twice is a no-op.
+    B4InstallExamTextTraits();
     _cameraQueue = dispatch_queue_create("com.b4skills.camera", DISPATCH_QUEUE_SERIAL);
     _faceQueue = dispatch_queue_create("com.b4skills.faces", DISPATCH_QUEUE_SERIAL);
     _vaultQueue = dispatch_queue_create("com.b4skills.photo-vault", DISPATCH_QUEUE_SERIAL);

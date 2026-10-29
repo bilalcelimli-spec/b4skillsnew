@@ -3,6 +3,7 @@ import { t } from "../i18n/core";
 import React, { useState } from 'react';
 import { pointerCursor, useHover } from '../components/hover';
 import { Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { examInputProps } from '../components/examInput';
 import { AssessmentItem, blankTask, completeBlanks, canRender, choiceText, responseMode } from '../api';
 import { Icon } from '../components/Icon';
 import { Button, Card, Eyebrow, Field, Message, ProgressBar } from '../components/ui';
@@ -89,7 +90,7 @@ export function ItemScreen({
           gap: 10
         }}>
                 <Eyebrow tone={color.muted}>{t("Yanıtınız")}</Eyebrow>
-                <TextInput accessibilityLabel={t("Yazılı yanıt")} multiline value={writing} onChangeText={setWriting} placeholder={t("Yanıtınızı buraya yazın…")} placeholderTextColor={color.faint} style={[styles.editor, { direction: "ltr", writingDirection: "ltr", textAlign: "left" }]} textAlignVertical="top" autoCorrect={false} spellCheck={false} autoCapitalize="sentences" />
+                <TextInput accessibilityLabel={t("Yazılı yanıt")} multiline value={writing} onChangeText={setWriting} placeholder={t("Yanıtınızı buraya yazın…")} placeholderTextColor={color.faint} style={[styles.editor, { direction: "ltr", writingDirection: "ltr", textAlign: "left" }]} textAlignVertical="top" {...examInputProps} autoCapitalize="sentences" />
                 <View style={styles.rowBetween}>
                   <Text style={[type.caption, {
               color: content.minWords && words < content.minWords ? color.warning : color.muted,
@@ -125,7 +126,7 @@ export function ItemScreen({
               gap: 8
             }}>
                         {task.choices.map((text, option) => <ChoiceRow key={option} index={option} text={text} selected={value === text} onPress={() => setBlanks(current => current.map((a, i) => i === index ? text : a))} />)}
-                      </View> : <Field label={t("{0}. boşluk", [index + 1])} icon="hash" value={value} onChangeText={text => setBlanks(current => current.map((a, i) => i === index ? text : a))} autoCorrect={false} spellCheck={false} autoCapitalize="none" maxLength={500} placeholder={t("Yanıtınızı yazın")} />}
+                      </View> : <Field label={t("{0}. boşluk", [index + 1])} icon="hash" value={value} onChangeText={text => setBlanks(current => current.map((a, i) => i === index ? text : a))} {...examInputProps} autoCapitalize="none" maxLength={500} placeholder={t("Yanıtınızı yazın")} />}
                   </View>)}
                 {blanks.some(a => a.includes('|')) ? <Message tone="error" text={t("Yanıtlarda | işaretini kullanmayın.")} /> : null}
               </View> : null}
