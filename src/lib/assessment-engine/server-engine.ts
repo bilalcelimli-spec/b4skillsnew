@@ -35,6 +35,15 @@ import { validateItem } from "../language-skills/item-quality-validator.js";
 import { logger } from "../observability/index.js";
 import { getCanDo, thetaToCefr, CEFR_LEVELS, CEFR_THETA_THRESHOLDS } from "../cefr/cefr-framework.js";
 import { initExposureStore, getExposureStore } from "./exposure-store.js";
+import { isRapidGuess } from "./engine.js";
+import {
+  recordCatSelection,
+  recordCatPoolFallback,
+  recordCatStop,
+  recordCatFinalSem,
+  recordCatItemExposure,
+  recordCatRapidGuess,
+} from "../observability/metrics.js";
 import { bootstrapExposureFromDb } from "./exposure-bootstrap.js";
 import { parseSystemConfigPayload } from "./system-config-zod.js";
 import type { ResponseTimeParams } from "../psychometrics/response-time-irt.js";
@@ -236,6 +245,7 @@ const DEFAULT_CONFIG: EngineConfig = {
   useGrmProductive: process.env.USE_GRM_PRODUCTIVE !== "false",  // Faz5 GRM for W/S
   useRlSelector:   process.env.USE_RL_SELECTOR   === "true",   // RL policy item selection
   useShadowTest: false,        // Shadow test off by default; enable via SystemConfig
+  useOnlineRecalibration: false, // Faz 0: never rewrite item parameters from a live session
   classificationConfidenceThreshold: 0.90,
   cefrThresholds: {
     A1: CEFR_THETA_THRESHOLDS.PRE_A1, A2: CEFR_THETA_THRESHOLDS.A1,
@@ -273,6 +283,9 @@ export async function getEngine(): Promise<AssessmentEngine> {
       const useRtIrt = (config as { useRtIrt?: boolean }).useRtIrt === true;
       const useGrmProductive = (config as { useGrmProductive?: boolean }).useGrmProductive ?? DEFAULT_CONFIG.useGrmProductive;
       const useRlSelector   = (config as { useRlSelector?:   boolean }).useRlSelector   ?? DEFAULT_CONFIG.useRlSelector;
+      const useOnlineRecalibration = (config as { useOnlineRecalibration?: boolean }).useOnlineRecalibration === true;
+      const speedThresholdMs = typeof (config as { speedThresholdMs?: unknown }).speedThresholdMs === "number"
+        ? (config as { speedThresholdMs: number }).speedThresholdMs : DEFAULT_CONFIG.speedThresholdMs;
       engineInstance = new AssessmentEngine({
         ...DEFAULT_CONFIG,
         cefrThresholds,
@@ -283,6 +296,8 @@ export async function getEngine(): Promise<AssessmentEngine> {
         useRtIrt,
         useGrmProductive,
         useRlSelector,
+        useOnlineRecalibration,
+        speedThresholdMs,
         ...(sprt?.enabled ? { sprt } : {}),
         ...(mst?.enabled && mst.moduleSizes?.length ? { mst } : {}),
       });
@@ -638,6 +653,7 @@ export const AssessmentService = {
     if (dbItems.length === 0 && crossSessionUsedIds.size > state.usedItemIds.size) {
       whereClause.id.notIn = Array.from(state.usedItemIds);
       dbItems = await getCachedItems(whereClause);
+      recordCatPoolFallback(profile.name, currentSkill as string, "cross_session_exclusion");
     }
     const itemPool: Item[] = dbItems.map((di) => dbItemToEngineItem(di));
 
@@ -662,6 +678,9 @@ export const AssessmentService = {
       operationalPool.length > 0
         ? operationalPool
         : itemPool.filter((item) => !item.isPretest);
+    if (operationalPool.length === 0 && selectionPool.length > 0) {
+      recordCatPoolFallback(profile.name, currentSkill as string, "warmup_filter");
+    }
 
     // ── POOL SHUFFLE (tie-breaking) ───────────────────────────────────────────
     // Shuffle the pool with a session-scoped seed before passing to the CAT
@@ -758,6 +777,7 @@ export const AssessmentService = {
       if (!served) throw AppError.conflict("The current assessment task is unavailable");
       outstandingItem = dbItemToEngineItem(served);
     }
+    const selectionStartedAt = process.hrtime.bigint();
     const catResult = outstandingItem ? { item: outstandingItem } : await catSelector.selectNext(
       catPool as ShadowItem[],
       selectionState,
@@ -765,9 +785,14 @@ export const AssessmentService = {
       profile.blueprint,
       engine.getConfig().useRlSelector === true,
     );
+    if (!outstandingItem) {
+      recordCatSelection(profile.name, currentSkill as string, catPool.length,
+        Number(process.hrtime.bigint() - selectionStartedAt) / 1e6);
+    }
     const nextItem = catResult?.item ?? null;
     if (!nextItem) {
       // A missing pool is an availability problem, never evidence of proficiency.
+      recordCatPoolFallback(profile.name, currentSkill as string, "pool_exhausted");
       logger.error({ sessionId, skill: currentSkill, sectionCount, profileName: profile.name }, "Adaptive item pool exhausted");
       throw new AppError(503, "ASSESSMENT_ITEMS_UNAVAILABLE", "No eligible assessment tasks are currently available. Please retry or contact your administrator.");
     }
@@ -777,9 +802,15 @@ export const AssessmentService = {
     // bootstrapped from DB on the next server restart. This prevents the D-P
     // α-weights from resetting to 1.0 (open gate) after every process restart,
     // which is the primary cause of same-item-same-order exams.
-    if (!outstandingItem) prisma.item
-      .update({ where: { id: nextItem.id }, data: { exposureCount: { increment: 1 } } })
-      .catch(() => {}); // fire-and-forget: non-critical, calibration-service also tracks this
+    if (!outstandingItem) {
+      prisma.item
+        .update({ where: { id: nextItem.id }, data: { exposureCount: { increment: 1 } } })
+        .catch(() => {}); // fire-and-forget: the only exposureCount increment (Faz 0)
+      try {
+        const exposureStore = await getExposureStore();
+        recordCatItemExposure(profile.name, exposureStore.getExposureRateSync(nextItem.id));
+      } catch { /* metrics are best-effort */ }
+    }
 
     // ── ANSWER SECURITY ──────────────────────────────────────────────────────
     // Strip sensitive answer/rubric fields before sending to client.
@@ -857,7 +888,8 @@ export const AssessmentService = {
       throw AppError.conflict("Invalid session");
     }
 
-    const maxDurationMs=getProfile((session.metadata as any)?.productLine).maxDurationMs;
+    const sessionProfile=getProfile((session.metadata as any)?.productLine);
+    const maxDurationMs=sessionProfile.maxDurationMs;
     if(sessionDeadlineReached(effectiveSessionStart(session),maxDurationMs)) {
       await this.finalizeSession(sessionId,session.theta,{stopReason:'TIME_LIMIT_EXCEEDED'});
       throw new AppError(409,'TIME_LIMIT_EXCEEDED','Assessment time limit reached; the late answer was not saved');
@@ -918,6 +950,15 @@ export const AssessmentService = {
       irtInputScore = responseTimeAdjustedScore(score, aberrant);
       rtZ = aberrant.zScore;
       rtFlag = aberrant.flag;
+    } else if (
+      !scoringMode &&
+      typeof clientLatencyMs === "number" &&
+      isRapidGuess(clientLatencyMs, item.params.b, cfg.speedThresholdMs)
+    ) {
+      // Faz 0: rapid guessing is recorded as a flag for person-fit / RGI and the
+      // admin participant panel. The score itself is never altered.
+      rtFlag = "RAPID_GUESS";
+      recordCatRapidGuess(sessionProfile.name, String(item.skill));
     }
 
     const response: Response = {
@@ -1038,8 +1079,12 @@ export const AssessmentService = {
       // Do NOT await — fire-and-forget so HTTP response returns immediately
     }
 
-    // Online item calibration — fire-and-forget, won't block the response
-    CalibrationService.recalibrateItem(itemId).catch(() => {});
+    // Online item calibration is OFF by default (Faz 0): a live session must not
+    // rewrite operational a/b/c. Batch calibration lives in the scheduled
+    // pretest-calibration pipeline. Opt in via SystemConfig.useOnlineRecalibration.
+    if (cfg.useOnlineRecalibration === true) {
+      CalibrationService.recalibrateItem(itemId).catch(() => {});
+    }
 
     // ── Clickstream: append item-level behavioural record to session metadata ─
     // We build a minimal ItemClickstream from server-observable signals:
@@ -1594,6 +1639,14 @@ export const AssessmentService = {
       scoringComplete = false;
       diagnosticReport.scoringComplete = false;
       diagnosticReport.securityFlag = true;
+    }
+    if (session.status === SessionStatus.IN_PROGRESS) {
+      // First finalization of this session: record stop reason and precision reached.
+      recordCatStop(sessionProfile.name, stopReason ?? "UNSPECIFIED");
+      recordCatFinalSem(sessionProfile.name, "OVERALL", sessionSem);
+      for (const [skill, profile] of Object.entries(skillProfilesSnapshot)) {
+        recordCatFinalSem(sessionProfile.name, skill, profile.sem);
+      }
     }
     await tx.session.update({
         where: { id: sessionId },

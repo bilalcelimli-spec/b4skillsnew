@@ -166,6 +166,9 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.use(cookieParser());
+  // Prometheus HTTP metrics (request duration / counts); scraped at GET /metrics below.
+  const { metricsMiddleware, metricsHandler } = await import("./src/lib/observability/metrics.js");
+  app.use(metricsMiddleware);
   const csrf = cookieRequestProtection(
     process.env.JWT_SECRET!, process.env.APP_URL || `http://localhost:${process.env.PORT || '3001'}`,
     process.env.NODE_ENV === 'production',
@@ -6618,6 +6621,17 @@ ${codeSection}
 
     app.get("/api/admin/slo/uptime", checkRole(["SUPER_ADMIN", "INST_ADMIN"]), (_req, res) => {
       res.json(uptimeTracker.sloStatus());
+    });
+    // Prometheus scrape endpoint. Accepts either a SUPER_ADMIN session or a
+    // `METRICS_TOKEN` bearer header for the scraper; disabled when neither applies.
+    app.get("/metrics", async (req, res) => {
+      const token = process.env.METRICS_TOKEN;
+      const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, "");
+      if (token && bearer && bearer.length === token.length &&
+          crypto.timingSafeEqual(Buffer.from(bearer), Buffer.from(token))) {
+        return metricsHandler(req, res);
+      }
+      return checkRole(["SUPER_ADMIN"])(req, res, () => void metricsHandler(req, res));
     });
   }
 

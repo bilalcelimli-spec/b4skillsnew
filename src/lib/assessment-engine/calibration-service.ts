@@ -448,11 +448,17 @@ export class CalibrationService {
         discrimination: calibResult.params.a,
         difficulty:     calibResult.params.b,
         guessing:       calibResult.params.c,
-        exposureCount:  { increment: 1 },
-        // Retire Class-C items automatically
-        ...(driftResult.action === "RETIRE" ? { status: "RETIRED" as any } : {}),
+        // exposureCount is incremented once per served item in server-engine.getNextItem;
+        // a second increment here double-counted exposure (Faz 0).
+        // Class-C drift pulls the item to REVIEW for a human decision instead of
+        // retiring it automatically; retirement stays with item-retirement-job.
+        ...(driftResult.action === "RETIRE" ? { status: "REVIEW" as any } : {}),
         metadata: {
           ...((item as any).metadata as Record<string, unknown> | null ?? {}),
+          ...(driftResult.action === "RETIRE" ? { statusChange: {
+            from: (item as any).status, to: "REVIEW", reason: "IPD_CLASS_C",
+            at: new Date().toISOString(), source: "CalibrationService.recalibrateItem",
+          } } : {}),
           ipd: {
             driftClass:       driftResult.driftClass,
             action:           driftResult.action,
