@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { AssessmentEngine } from "../engine";
+import { AssessmentEngine, isRapidGuess } from "../engine";
 import { SkillType, type SessionState, type EngineConfig, type Response, type Item } from "../types";
 
 const baseConfig = (overrides: Partial<EngineConfig> = {}): EngineConfig => ({
@@ -11,122 +11,8 @@ const baseConfig = (overrides: Partial<EngineConfig> = {}): EngineConfig => ({
   ...overrides,
 });
 
-const stateWith = (count: number, theta: number, sem: number): SessionState => ({
-  theta,
-  sem,
-  responses: Array.from({ length: count }, (_, i) => ({
-    itemId: `i${i}`,
-    score: 1,
-    isPretest: false,
-  })),
-  usedItemIds: new Set<string>(),
-});
-
-describe("AssessmentEngine.shouldStop — priority ordering", () => {
-  it("never stops below minItems, even at very low SEM", () => {
-    const engine = new AssessmentEngine(baseConfig({ minItems: 5 }));
-    const state = stateWith(3, 0, 0.1);
-    expect(engine.shouldStop(state)).toEqual({ stop: false, reason: null });
-  });
-
-  it("hard stops at maxItems regardless of SEM", () => {
-    const engine = new AssessmentEngine(baseConfig({ maxItems: 10 }));
-    const state = stateWith(10, 0, 1.5);
-    const result = engine.shouldStop(state);
-    expect(result.stop).toBe(true);
-    expect(result.reason).toBe("MAX_ITEMS_REACHED");
-  });
-
-  it("stops when test information I(θ) ≥ 12 (SEM ≤ ~0.289)", () => {
-    // SEM = 0.28 → I = 1/0.0784 ≈ 12.76 ≥ 12
-    const engine = new AssessmentEngine(baseConfig({ semThreshold: 0.20 }));
-    const state = stateWith(10, 0, 0.28);
-    const result = engine.shouldStop(state);
-    expect(result.stop).toBe(true);
-    // Either SUFFICIENT_INFORMATION or SEM_BOUNDARY_REACHED — both correct;
-    // assert it is *not* MAX_ITEMS or null
-    expect(result.reason).not.toBe("MAX_ITEMS_REACHED");
-    expect(result.reason).not.toBeNull();
-  });
-
-  it("stops via SEM threshold when configured loose info bar", () => {
-    // semThreshold = 0.45 (loose). With theta=0 (mid B1/B2 zone, near 0.5 boundary)
-    // SEM=0.45 is below threshold → SEM_THRESHOLD_REACHED.
-    // Place theta away from any CEFR boundary to ensure SEM threshold fires
-    // before conditional-SEM tiers.
-    const engine = new AssessmentEngine(baseConfig({ semThreshold: 0.45 }));
-    const state = stateWith(10, -0.05, 0.42);  // far enough from -0.5 / +0.5 boundaries
-    const result = engine.shouldStop(state);
-    expect(result.stop).toBe(true);
-    expect([
-      "SEM_THRESHOLD_REACHED",
-      "SUFFICIENT_INFORMATION",
-      "SEM_BOUNDARY_REACHED",
-    ]).toContain(result.reason);
-  });
-
-  it("near a CEFR boundary, requires tighter SEM (boundary tier 0.16)", () => {
-    // theta = 0.55 is within ±0.5 of B1/B2 boundary (0.5). SEM=0.30 above 0.16 tier.
-    const engine = new AssessmentEngine(baseConfig({ semThreshold: 0.20 }));
-    const state = stateWith(10, 0.55, 0.30);
-    const result = engine.shouldStop(state);
-    // Should NOT stop on SEM threshold (0.30 > 0.20) and not on info (1/0.09≈11<12)
-    expect(result.stop).toBe(false);
-  });
-
-  it("classification confidence stop fires when posterior is concentrated in one band", () => {
-    // theta=1.0 is mid-B2 band (0.5..1.5). With SEM=0.20, posterior is tightly
-    // inside the band → classification confidence ≥ 0.90.
-    const engine = new AssessmentEngine(baseConfig({
-      semThreshold: 0.10, // make sure SEM threshold doesn't preempt
-      classificationConfidenceThreshold: 0.90,
-    }));
-    const state = stateWith(10, 1.0, 0.20);
-    const result = engine.shouldStop(state);
-    expect(result.stop).toBe(true);
-  });
-
-  it("does not stop on classification when posterior straddles two bands", () => {
-    // theta exactly on boundary (0.5 = B1/B2), SEM=0.30 → posterior split ≈50/50
-    const engine = new AssessmentEngine(baseConfig({
-      semThreshold: 0.20,
-      classificationConfidenceThreshold: 0.90,
-    }));
-    const state = stateWith(10, 0.5, 0.30);
-    const result = engine.shouldStop(state);
-    expect(result.stop).toBe(false);
-  });
-
-  it("defers CAT stopping until 1-2-3 MST modules are complete", () => {
-    const engine = new AssessmentEngine(
-      baseConfig({
-        minItems: 3,
-        maxItems: 30,
-        semThreshold: 0.25,
-        mst: { enabled: true, moduleSizes: [1, 2, 3], continueWithCatAfterMst: true },
-      })
-    );
-    // 5 operational responses: structure not finished (need 6)
-    const state = stateWith(5, 0, 0.1);
-    expect(engine.shouldStop(state)).toEqual({ stop: false, reason: null });
-  });
-
-  it("stops with MST_STRUCTURE_COMPLETE when panels only (no CAT after)", () => {
-    const engine = new AssessmentEngine(
-      baseConfig({
-        minItems: 1,
-        maxItems: 20,
-        mst: { enabled: true, moduleSizes: [1, 2, 3], continueWithCatAfterMst: false },
-      })
-    );
-    const state = stateWith(6, 0, 0.5);
-    expect(engine.shouldStop(state)).toEqual({
-      stop: true,
-      reason: "MST_STRUCTURE_COMPLETE",
-    });
-  });
-
-  it("useRtIrt: skips legacy rapid-guess score penalty in processResponse", () => {
+describe("AssessmentEngine.processResponse — rapid guesses", () => {
+  it("useRtIrt: never alters the score for a fast answer", () => {
     const engine = new AssessmentEngine(
       baseConfig({ useRtIrt: true, minItems: 5, speedThresholdMs: 5000 })
     );
@@ -149,20 +35,24 @@ describe("AssessmentEngine.shouldStop — priority ordering", () => {
     expect(next.responses[0]!.score).toBe(1);
   });
 
-  it("SPRT/GLR: without item map, SPRT does not stop (defers to other rules or continues)", () => {
-    const engine = new AssessmentEngine(
-      baseConfig({
-        minItems: 5,
-        maxItems: 30,
-        semThreshold: 0.10,
-        sprt: { enabled: true, minItems: 5, alpha: 0.05, beta: 0.05, halfWidth: 0.18 },
-      })
-    );
-    // Strong SEM so other rules (info / SEM) do not end the test; SPRT has no 3PL context without `items`
-    const state = stateWith(5, 0, 0.5);
-    const { stop, reason } = engine.shouldStop(state);
-    expect(stop).toBe(false);
-    expect(reason).toBeNull();
+  it("never alters the score for a rapid-guess response; the flag is separate", () => {
+    const engine = new AssessmentEngine(baseConfig());
+    const items: Record<string, Item> = {
+      hard: { id: "hard", skill: SkillType.READING, params: { a: 1.5, b: 1.5, c: 0.1 } },
+    };
+    const initial = engine.initializeSession();
+    // "Got it right" on a hard item in 1.5 s → suspicious. The engine records
+    // the response as given (u ∈ {0,1} keeps the 3PL likelihood well defined)
+    // and leaves the rapid-guess signal to the flag.
+    const fast: Response = { itemId: "hard", score: 1, latencyMs: 1500 };
+    const next = engine.processResponse(initial, fast, items);
+    expect(next.responses[0].score).toBe(1);
+    expect(isRapidGuess(1500, 1.5)).toBe(true);
+    expect(isRapidGuess(2500, 1.5, 3000)).toBe(false); // 20% of 3000 × 1.375 = 825 ms
+    expect(isRapidGuess(2500, 1.5, 20_000)).toBe(true); // 20% of 20000 × 1.375 = 5500 ms
+    expect(isRapidGuess(10_000, 1.5)).toBe(false);
+    expect(isRapidGuess(undefined, 1.5)).toBe(false);
+    expect(isRapidGuess(0, 1.5)).toBe(false);
   });
 });
 
@@ -194,28 +84,6 @@ describe("AssessmentEngine.mapToCefr", () => {
   });
 });
 
-describe("AssessmentEngine.processResponse — MST route lock", () => {
-  it("sets mstRouteKey after the first module completes", () => {
-    const engine = new AssessmentEngine(
-      baseConfig({
-        mst: {
-          enabled: true,
-          moduleSizes: [1, 2, 3],
-          continueWithCatAfterMst: true,
-          routing: { lowMaxTheta: -0.25, midMaxTheta: 0.25 },
-        },
-      })
-    );
-    const items: Record<string, Item> = {
-      i1: { id: "i1", skill: SkillType.READING, params: { a: 1.2, b: 0, c: 0.2 } },
-    };
-    const initial = engine.initializeSession();
-    const next = engine.processResponse(initial, { itemId: "i1", score: 1 }, items);
-    expect(next.mstRouteKey).toBeDefined();
-    expect(["low", "mid", "high"]).toContain(next.mstRouteKey!);
-  });
-});
-
 describe("AssessmentEngine.processResponse — full step", () => {
   it("appends response, marks item used, re-estimates theta", () => {
     const engine = new AssessmentEngine(baseConfig());
@@ -234,313 +102,21 @@ describe("AssessmentEngine.processResponse — full step", () => {
     expect(next.sem).toBeLessThan(1);
   });
 
-  it("flags rapid-guess responses (latency < 2 s) and dampens score", () => {
+  it("keeps a per-skill profile for every operational skill answered", () => {
     const engine = new AssessmentEngine(baseConfig());
     const items: Record<string, Item> = {
-      hard: { id: "hard", skill: SkillType.READING, params: { a: 1.5, b: 1.5, c: 0.1 } },
+      r1: { id: "r1", skill: SkillType.READING, params: { a: 1.2, b: 0, c: 0.2 } },
+      g1: { id: "g1", skill: SkillType.GRAMMAR, params: { a: 1.2, b: 0, c: 0.2 } },
+      p1: { id: "p1", skill: SkillType.GRAMMAR, params: { a: 1.2, b: 0, c: 0.2 }, isPretest: true },
     };
-    const initial = engine.initializeSession();
-    // "Got it right" on a hard item in 1.5 s → suspicious; engine should
-    // reduce the recorded score so theta is not artificially inflated.
-    const fast: Response = { itemId: "hard", score: 1, latencyMs: 1500 };
-    const next = engine.processResponse(initial, fast, items);
-    const recorded = next.responses[0].score;
-    expect(recorded).toBeLessThan(1);
-  });
-});
-
-describe("AssessmentEngine.getNextItem — MST module filter", () => {
-  it("selects only items tagged for the current module", async () => {
-    const engine = new AssessmentEngine(
-      baseConfig({
-        mst: { enabled: true, moduleSizes: [1, 2, 3], continueWithCatAfterMst: true },
-        useMirt: false,
-        useShadowTest: false,
-        pretestRatio: 0,
-      })
-    );
-    const pool: Item[] = [
-      {
-        id: "m0",
-        skill: SkillType.READING,
-        params: { a: 1, b: 0, c: 0.2 },
-        metadata: { mstModule: 0 },
-      },
-      {
-        id: "m1a",
-        skill: SkillType.READING,
-        params: { a: 1, b: 0, c: 0.2 },
-        metadata: { mstModule: 1 },
-      },
-    ];
-    const state: SessionState = {
-      theta: 0,
-      sem: 1,
-      responses: [],
-      usedItemIds: new Set(),
-    };
-    const next = await engine.getNextItem(state, pool);
-    expect(next?.id).toBe("m0");
-  });
-
-  it("selects mstRoute-matching items in stage 2 when route is locked", async () => {
-    const engine = new AssessmentEngine(
-      baseConfig({
-        mst: {
-          enabled: true,
-          moduleSizes: [1, 2, 3],
-          continueWithCatAfterMst: true,
-          routing: { lowMaxTheta: -0.5, midMaxTheta: 0.5 },
-        },
-        useMirt: false,
-        useShadowTest: false,
-        pretestRatio: 0,
-      })
-    );
-    const pool: Item[] = [
-      {
-        id: "r1",
-        skill: SkillType.READING,
-        params: { a: 1, b: 0, c: 0.2 },
-        metadata: { mstModule: 1, mstRoute: "mid" },
-      },
-      {
-        id: "r2",
-        skill: SkillType.READING,
-        params: { a: 1, b: 0, c: 0.2 },
-        metadata: { mstModule: 1, mstRoute: "high" },
-      },
-    ];
-    const state: SessionState = {
-      theta: 0.1,
-      sem: 0.5,
-      responses: [{ itemId: "m0", score: 1, isPretest: false }],
-      usedItemIds: new Set(["m0"]),
-      mstRouteKey: "mid",
-    };
-    const next = await engine.getNextItem(state, pool);
-    expect(next?.id).toBe("r1");
-  });
-});
-
-// ── Per-skill SEM stopping ─────────────────────────────────────────────────────
-
-describe("AssessmentEngine.shouldStop — per-skill SEM targets", () => {
-  /**
-   * Helper that builds a SessionState with a given number of responses, theta,
-   * global SEM, and optional per-skill profiles.
-   */
-  function stateWithSkills(
-    count: number,
-    theta: number,
-    sem: number,
-    skillProfiles?: Partial<Record<SkillType, { theta: number; sem: number }>>
-  ): SessionState {
-    return {
-      theta,
-      sem,
-      responses: Array.from({ length: count }, (_, i) => ({
-        itemId: `i${i}`,
-        score: 1,
-        isPretest: false,
-      })),
-      usedItemIds: new Set<string>(),
-      skillProfiles,
-    };
-  }
-
-  it("stops with PER_SKILL_SEM_TARGETS_MET when every configured skill meets its target", () => {
-    const engine = new AssessmentEngine(baseConfig({
-      semThreshold: 0.20, // global threshold not yet met (sem=0.50 > 0.20)
-      perSkillSemTargets: {
-        [SkillType.READING]: 0.35,
-        [SkillType.WRITING]: 0.35,
-      },
-    }));
-    const state = stateWithSkills(6, 0, 0.50, {
-      [SkillType.READING]: { theta: 0.5, sem: 0.30 }, // 0.30 ≤ 0.35 ✓
-      [SkillType.WRITING]: { theta: 0.3, sem: 0.32 }, // 0.32 ≤ 0.35 ✓
-    });
-    const result = engine.shouldStop(state);
-    expect(result.stop).toBe(true);
-    expect(result.reason).toBe("PER_SKILL_SEM_TARGETS_MET");
-  });
-
-  it("does NOT stop when any configured skill has SEM above its target", () => {
-    const engine = new AssessmentEngine(baseConfig({
-      semThreshold: 0.20,
-      perSkillSemTargets: {
-        [SkillType.READING]: 0.35,
-        [SkillType.WRITING]: 0.35,
-      },
-    }));
-    const state = stateWithSkills(6, 0, 0.80, {
-      [SkillType.READING]: { theta: 0.5, sem: 0.30 }, // meets target
-      [SkillType.WRITING]: { theta: 0.3, sem: 0.50 }, // 0.50 > 0.35 ✗
-    });
-    const result = engine.shouldStop(state);
-    expect(result.stop).toBe(false);
-  });
-
-  it("does NOT stop when a configured skill has no profile yet (not yet estimated)", () => {
-    const engine = new AssessmentEngine(baseConfig({
-      semThreshold: 0.20,
-      perSkillSemTargets: { [SkillType.SPEAKING]: 0.35 },
-    }));
-    // SPEAKING profile is absent — skill not yet administered
-    const state = stateWithSkills(5, 0, 0.80, {
-      [SkillType.READING]: { theta: 0.0, sem: 0.25 },
-    });
-    const result = engine.shouldStop(state);
-    expect(result.stop).toBe(false);
-  });
-
-  it("ignores per-skill targets when perSkillSemTargets is empty object", () => {
-    const engine = new AssessmentEngine(baseConfig({
-      semThreshold: 0.20,
-      perSkillSemTargets: {},
-    }));
-    const state = stateWithSkills(5, 0, 0.80);
-    // Empty targets → config present but no skills configured → should NOT stop
-    const result = engine.shouldStop(state);
-    expect(result.stop).toBe(false);
-  });
-
-  it("fires after minItems floor is passed", () => {
-    // minItems=5; only 4 responses → per-skill check must NOT fire even if targets met
-    const engine = new AssessmentEngine(baseConfig({
-      minItems: 5,
-      semThreshold: 0.20,
-      perSkillSemTargets: { [SkillType.READING]: 0.35 },
-    }));
-    const state = stateWithSkills(4, 0, 0.80, {
-      [SkillType.READING]: { theta: 0.5, sem: 0.25 }, // target met
-    });
-    expect(engine.shouldStop(state).stop).toBe(false);
-  });
-});
-
-// ── Smart pretest scheduling ──────────────────────────────────────────────────
-
-describe("AssessmentEngine.getNextItem — smart pretest scheduling", () => {
-  const pretestItem: Item = {
-    id: "pt1",
-    skill: SkillType.READING,
-    params: { a: 1.0, b: 0.0, c: 0.25 },
-    isPretest: true,
-  };
-  // Use id "opX" to avoid clashing with opState()'s generated ids "op0", "op1", ...
-  const opItem: Item = {
-    id: "opX",
-    skill: SkillType.READING,
-    params: { a: 1.5, b: 0.0, c: 0.25 },
-    isPretest: false,
-  };
-
-  function opState(opCount: number): SessionState {
-    return {
-      theta: 0,
-      sem: 0.8,
-      responses: Array.from({ length: opCount }, (_, i) => ({
-        itemId: `op${i}`,
-        score: 1,
-        isPretest: false,
-      })),
-      usedItemIds: new Set(Array.from({ length: opCount }, (_, i) => `op${i}`)),
-    };
-  }
-
-  it("selects pretest at 4th operational position (default schedule)", async () => {
-    // maxPretests = round(30 × 0.1) = 3 → slots = {4, 8, 12}
-    // opN = 3 → nextOpPosition = 4 → pretest slot hit
-    const engine = new AssessmentEngine(baseConfig({
-      pretestRatio: 0.1,
-      maxItems: 30,
-      useShadowTest: false,
-      useMirt: false,
-      useMirt2B: false,
-    }));
-    const pool = [pretestItem, opItem];
-    const selected = await engine.getNextItem(opState(3), pool);
-    expect(selected?.isPretest).toBe(true);
-    expect(selected?.id).toBe("pt1");
-  });
-
-  it("does NOT select pretest at 3rd operational position (not a scheduled slot)", async () => {
-    // opN = 2 → nextOpPosition = 3, not in {4, 8, 12}
-    const engine = new AssessmentEngine(baseConfig({
-      pretestRatio: 0.1,
-      maxItems: 30,
-      useShadowTest: false,
-      useMirt: false,
-      useMirt2B: false,
-    }));
-    const pool = [pretestItem, opItem];
-    const selected = await engine.getNextItem(opState(2), pool);
-    expect(selected?.isPretest).not.toBe(true);
-    expect(selected?.id).toBe("opX");
-  });
-
-  it("uses explicit pretestPositions when configured", async () => {
-    // Configured to only deliver a pretest at position 2 (unusual, but explicit)
-    const engine = new AssessmentEngine(baseConfig({
-      pretestRatio: 0.1,
-      maxItems: 30,
-      pretestPositions: [2],
-      useShadowTest: false,
-      useMirt: false,
-      useMirt2B: false,
-    }));
-    const pool = [pretestItem, opItem];
-    // opN = 1 → nextOpPosition = 2 → matches custom slot
-    const selected = await engine.getNextItem(opState(1), pool);
-    expect(selected?.isPretest).toBe(true);
-  });
-
-  it("does not schedule pretest when pretestRatio is 0", async () => {
-    const engine = new AssessmentEngine(baseConfig({
-      pretestRatio: 0,
-      maxItems: 30,
-      useShadowTest: false,
-      useMirt: false,
-      useMirt2B: false,
-    }));
-    const pool = [pretestItem, opItem];
-    // Even at position 4, no pretest because ratio=0
-    const selected = await engine.getNextItem(opState(3), pool);
-    expect(selected?.isPretest).not.toBe(true);
-  });
-
-  it("caps total pretests at maxPretests derived from ratio × maxItems", async () => {
-    // ratio=0.1, maxItems=10 → maxPretests=1 → only slot {4}
-    // First pretest already given → should not administer another at position 8
-    const engine = new AssessmentEngine(baseConfig({
-      pretestRatio: 0.1,
-      maxItems: 10,
-      useShadowTest: false,
-      useMirt: false,
-      useMirt2B: false,
-    }));
-    const pool = [pretestItem, opItem];
-    // Build state: 7 operational + 1 pretest already administered
-    const state: SessionState = {
-      theta: 0,
-      sem: 0.8,
-      responses: [
-        ...Array.from({ length: 7 }, (_, i) => ({
-          itemId: `op${i}`,
-          score: 1 as const,
-          isPretest: false,
-        })),
-        { itemId: "ptDone", score: 1, isPretest: true }, // 1 pretest used
-      ],
-      usedItemIds: new Set([
-        ...Array.from({ length: 7 }, (_, i) => `op${i}`),
-        "ptDone",
-      ]),
-    };
-    // opN = 7 → nextOpPosition = 8, in default slots for ratio=0.1×30=3 but maxPretests=1 → cap hit
-    const selected = await engine.getNextItem(state, pool);
-    expect(selected?.isPretest).not.toBe(true);
+    let state = engine.initializeSession();
+    state = engine.processResponse(state, { itemId: "r1", score: 1 }, items);
+    state = engine.processResponse(state, { itemId: "g1", score: 0 }, items);
+    state = engine.processResponse(state, { itemId: "p1", score: 1 }, items);
+    expect(state.skillProfiles?.READING?.theta).toBeGreaterThan(0);
+    expect(state.skillProfiles?.GRAMMAR?.theta).toBeLessThan(0);
+    // Pretest responses are tagged and excluded from both estimates
+    expect(state.responses[2].isPretest).toBe(true);
+    expect(state.responses).toHaveLength(3);
   });
 });

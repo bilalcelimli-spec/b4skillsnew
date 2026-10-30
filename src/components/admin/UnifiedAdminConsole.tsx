@@ -772,6 +772,10 @@ const EngineConfigPanel: React.FC = () => {
             </div>
           </CardHeader>
           <CardContent className="p-6 space-y-4">
+            <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3 font-medium">
+              Pretest Ratio is live (calibration items embedded after every 4th operational item). Min/Max Items and
+              the SEM threshold are not read by live exams: those come from the product-line profiles.
+            </p>
             <ConfigInput
               label="Pretest Ratio (0–1)"
               hint="Fraction of items used for calibration"

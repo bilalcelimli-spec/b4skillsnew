@@ -18,6 +18,7 @@
 import { prisma } from "../prisma.js";
 import { bootstrapExposureFromSnapshot } from "./exposure-store.js";
 import { bootstrapDpStore } from "../selection/cat-selector.js";
+import { loadAndApplyAlphaTables, scheduleAlphaTableRefresh } from "../selection/alpha-table-store.js";
 
 /**
  * Bootstrap the in-memory ExposureStore from the database's item.exposureCount
@@ -45,6 +46,10 @@ export async function bootstrapExposureFromDb(): Promise<void> {
       `[ExposureStore] bootstrapped ${items.length} items from DB ` +
         `(max exposures: ${totalSessions})`,
     );
+    // Faz 5: shared, pre-warmed Davey–Parshall α tables (SystemConfig row).
+    const applied = await loadAndApplyAlphaTables(prisma);
+    if (applied) console.info(`[ExposureStore] α tables applied for ${applied.profiles} profile(s), ${applied.cells} cells`);
+    scheduleAlphaTableRefresh(prisma);
   } catch (err) {
     console.warn(
       "[ExposureStore] DB bootstrap failed (non-fatal):",

@@ -3,6 +3,19 @@ import { z } from "zod";
 /**
  * Faz7: Typed validation for `SystemConfig` JSON (global assessment engine + priors).
  * Unknown top-level keys are allowed (passthrough) for forward compatibility.
+ *
+ * Which keys the LIVE adaptive flow (server-engine.ts → CATSelector) actually reads
+ * (Faz 0 audit, 2026-10-30):
+ *   effective  — cefrThresholds, priorMean, priorSd (org prior, Faz 1), pretestRatio
+ *                (pretest slots, Faz 2), useRtIrt (default ON, flag-only), useGrmProductive,
+ *                useRlSelector, useMirt / useMirt2B (default OFF, exploratory estimation only),
+ *                speedThresholdMs (rapid-guess flag), useOnlineRecalibration, itemRetirement,
+ *                difDetection.
+ *   NOT read   — minItems, maxItems, semThreshold, blueprint (kept for standalone
+ *                flows; per-profile values come from product-lines/profiles.ts).
+ *   removed    — useShadowTest, sprt, mst, classificationConfidenceThreshold (Faz 1):
+ *                selection is CATSelector-only and section stop rules are declared per
+ *                profile (`stopRules`). Stored values are ignored via passthrough.
  */
 export const SystemConfigPayloadSchema = z
   .object({
@@ -11,34 +24,14 @@ export const SystemConfigPayloadSchema = z
     useRlSelector: z.boolean().optional(),
     useMirt2B: z.boolean().optional(),
     useMirt: z.boolean().optional(),
-    useShadowTest: z.boolean().optional(),
+    useOnlineRecalibration: z.boolean().optional(),
     pretestRatio: z.number().min(0).max(1).optional(),
     minItems: z.number().int().min(1).max(200).optional(),
     maxItems: z.number().int().min(1).max(200).optional(),
     semThreshold: z.number().min(0.01).max(2).optional(),
     speedThresholdMs: z.number().min(0).max(120_000).optional(),
-    classificationConfidenceThreshold: z.number().min(0.5).max(0.999).optional(),
     priorMean: z.number().min(-6).max(6).optional(),
     priorSd: z.number().min(0.1).max(4).optional(),
-    mst: z
-      .object({
-        enabled: z.boolean(),
-        moduleSizes: z.array(z.number().int().positive()),
-        continueWithCatAfterMst: z.boolean().optional(),
-        routing: z
-          .object({ lowMaxTheta: z.number(), midMaxTheta: z.number() })
-          .optional(),
-      })
-      .optional(),
-    sprt: z
-      .object({
-        enabled: z.boolean(),
-        alpha: z.number().min(0.001).max(0.5).optional(),
-        beta: z.number().min(0.001).max(0.5).optional(),
-        halfWidth: z.number().min(0.01).max(1).optional(),
-        minItems: z.number().int().min(1).max(200).optional(),
-      })
-      .optional(),
     cefrThresholds: z.record(z.string(), z.number().finite()).optional(),
     blueprint: z.array(z.unknown()).optional(),
     itemRetirement: z

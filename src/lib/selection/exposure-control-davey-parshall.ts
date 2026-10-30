@@ -56,8 +56,20 @@ export const DEFAULT_K_MAX = 0.20;
 /** Lower bound — items under-exposed below this rate get α boosted */
 export const K_LOWER = 0.05;
 
-/** Update α probabilities every N sessions */
+/** Update α probabilities every N sessions (legacy default for callers without a session key). */
 export const UPDATE_INTERVAL = 200;
+
+/**
+ * Update interval used by the live selector, in *candidates* (sessions).
+ * Faz 1: the former denominator counted item administrations instead of
+ * candidates, so an item given to every candidate once per ~13 selections
+ * looked like a 0.08 exposure rate and α never moved. Rates are now per
+ * candidate within a θ stratum and α converges after a few dozen sessions.
+ */
+export const DP_UPDATE_INTERVAL_SESSIONS = 25;
+
+/** Bound on remembered session keys per stratum (oldest half dropped when exceeded). */
+const MAX_SESSION_KEYS_PER_STRATUM = 5000;
 
 /** Initial α for all items (start open, converge down) */
 const ALPHA_INIT = 1.0;
@@ -83,8 +95,10 @@ export interface ItemExposureRecord {
 
 export interface ExposureStore {
   records: Map<string, ItemExposureRecord>;
-  stratumSessionCounts: number[];  // total sessions per stratum
+  stratumSessionCounts: number[];  // total sessions (candidates) per stratum
   sessionsSinceLastUpdate: number;
+  /** Session keys already counted per stratum (not persisted; rebuilt from traffic). */
+  sessionKeys?: Array<Set<string>>;
 }
 
 // ─── θ → stratum mapping ─────────────────────────────────────────────────────
@@ -280,21 +294,43 @@ export function recordSelection(
   store: ExposureStore,
   selectedItemId: string,
   stratum: number,
-  allCandidateIds: string[]
+  allCandidateIds: string[],
+  sessionKey?: string
 ): void {
-  // Increment session count for stratum
-  store.stratumSessionCounts[stratum] = (store.stratumSessionCounts[stratum] ?? 0) + 1;
-  store.sessionsSinceLastUpdate++;
-
-  // All candidates: increment totalSessions (they were eligible)
-  for (const id of allCandidateIds) {
-    const rec = getOrCreateRecord(store, id);
-    rec.strata[stratum].totalSessions++;
+  // Exposure rate = candidates who saw the item / candidates measured in the
+  // stratum. A session is counted once per stratum, on its first selection
+  // there; without a session key every selection counts (legacy behaviour).
+  let newSession = true;
+  if (sessionKey !== undefined) {
+    store.sessionKeys ??= Array.from({ length: NUM_STRATA }, () => new Set<string>());
+    const keys = store.sessionKeys[stratum]!;
+    if (keys.has(sessionKey)) {
+      newSession = false;
+    } else {
+      if (keys.size >= MAX_SESSION_KEYS_PER_STRATUM) {
+        for (const key of [...keys].slice(0, Math.floor(keys.size / 2))) keys.delete(key);
+      }
+      keys.add(sessionKey);
+    }
+  }
+  if (newSession) {
+    store.stratumSessionCounts[stratum] = (store.stratumSessionCounts[stratum] ?? 0) + 1;
+    store.sessionsSinceLastUpdate++;
+    // All candidates were eligible for this candidate in this stratum.
+    for (const id of allCandidateIds) {
+      const rec = getOrCreateRecord(store, id);
+      rec.strata[stratum].totalSessions++;
+    }
   }
 
-  // Selected item: increment selected count
+  // Selected item: increment selected count (an item is served at most once per session)
   const selectedRec = getOrCreateRecord(store, selectedItemId);
   selectedRec.strata[stratum].selected++;
+}
+
+/** Candidates measured in a stratum; the denominator for an item's exposure rate there. */
+function stratumDenominator(store: ExposureStore, record: StratumExposureRecord, stratum: number): number {
+  return Math.max(record.totalSessions, store.stratumSessionCounts[stratum] ?? 0);
 }
 
 // ─── α update (Davey-Parshall convergence step) ──────────────────────────────
@@ -312,9 +348,10 @@ export function updateAlphas(store: ExposureStore, kMax: number = DEFAULT_K_MAX)
   for (const record of store.records.values()) {
     for (let s = 0; s < NUM_STRATA; s++) {
       const stratum = record.strata[s];
-      if (stratum.totalSessions < 10) continue; // insufficient data, don't update
+      const denominator = stratumDenominator(store, stratum, s);
+      if (denominator < 10) continue; // insufficient data, don't update
 
-      const observedRate = stratum.selected / stratum.totalSessions;
+      const observedRate = stratum.selected / denominator;
 
       if (observedRate > kMax) {
         // Item over-exposed in this stratum: reduce α proportionally
@@ -370,9 +407,10 @@ export function computeExposureDiagnostics(
   for (const record of store.records.values()) {
     for (let s = 0; s < NUM_STRATA; s++) {
       const stratum = record.strata[s];
-      if (stratum.totalSessions < 5) continue;
+      const denominator = stratumDenominator(store, stratum, s);
+      if (denominator < 5) continue;
 
-      const rate = stratum.selected / stratum.totalSessions;
+      const rate = stratum.selected / denominator;
       rates.push(rate);
 
       if (rate > kMax) {

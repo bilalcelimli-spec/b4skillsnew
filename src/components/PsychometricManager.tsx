@@ -156,6 +156,12 @@ export const PsychometricManager: React.FC = () => {
           </CardHeader>
           <CardContent className="p-8 space-y-6">
             <div className="space-y-6">
+              <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3 font-medium">
+                Live adaptive exams take item counts and SEM stopping thresholds from each product-line profile
+                (src/lib/product-lines/profiles.ts); Min/Max Items and the SEM threshold below are not read by the
+                live section flow. Pretest Ratio is live: one unscored calibration item is embedded after every
+                4th operational item, up to ratio × the profile&apos;s item budget.
+              </p>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pretest Ratio (0.0 - 1.0)</label>
                 <input 

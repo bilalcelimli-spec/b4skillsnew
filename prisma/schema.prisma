@@ -219,7 +219,10 @@ model Item {
   skill           SkillType
   cefrLevel       CefrLevel
   
-  // Psychometric Parameters (IRT 3PL Model)
+  // Psychometric Parameters (IRT 3PL Model).
+  // Faz 2: these three columns are a cache of the PUBLISHED ItemParameterVersion
+  // (or the seed/prior when none is published). Only ItemParameterVersions.publish
+  // may change them; calibration jobs write DRAFT versions instead.
   difficulty      Float     @default(0.0) // b-parameter
   discrimination  Float     @default(1.0) // a-parameter
   guessing        Float     @default(0.0) // c-parameter
@@ -309,6 +312,7 @@ model Item {
   difReports      DifReportArchive[]
   difFlaggedItem  DifFlaggedItem?
   calibrationRuns CalibrationRun[]
+  parameterVersions ItemParameterVersion[]
   itemReviews     ItemReview[]
 
   createdAt       DateTime  @default(now())
@@ -888,6 +892,62 @@ model CalibrationRun {
   @@index([itemId, runAt])
   @@index([stable, runAt])
   @@index([promotedToActive])
+}
+
+// ─── ITEM PARAMETER VERSIONS (Faz 2) ─────────────────────────────────────────
+//
+// Every empirical estimate of an item's IRT parameters is a versioned record.
+// A calibration job writes a DRAFT; publishing (admin or the calibration job
+// with explicit approval) marks it PUBLISHED, supersedes the previous
+// PUBLISHED version and copies a/b/c into Item. Live sessions never alter
+// parameters. Drift is measured between versions.
+
+enum ParameterVersionStatus {
+  DRAFT
+  PUBLISHED
+  SUPERSEDED
+  REJECTED
+}
+
+model ItemParameterVersion {
+  id              String    @id @default(cuid())
+  itemId          String
+  item            Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /** 1-based per item. */
+  version         Int
+  status          ParameterVersionStatus @default(DRAFT)
+
+  // Estimate
+  a               Float
+  b               Float
+  c               Float
+  aSe             Float?
+  bSe             Float?
+  cSe             Float?
+  n               Int       // responses used
+  method          String    // STOCKING_EM | RASCH_MMLE | GRM_PML | PRIOR | SEED | MANUAL
+  /** GRM category thresholds (writing/speaking); empty for dichotomous items. */
+  thresholds      Float[]   @default([])
+  infit           Float?
+  outfit          Float?
+  pointBiserial   Float?
+  deltaB          Float?    // |b − last stable estimate|
+  driftClass      String?   // A | B | C vs previously published version
+  gateReasons     String[]  // failed publish-gate criteria at creation (empty = eligible)
+
+  // Provenance
+  sourceRunId     String?   // CalibrationRun.id
+  supersedesId    String?   @unique
+  createdAt       DateTime  @default(now())
+  createdBy       String?   // "job:calibrate-item-bank" | User.id
+  publishedAt     DateTime?
+  publishedBy     String?   // User.id or job identifier
+  notes           String?
+
+  @@unique([itemId, version])
+  @@index([itemId, status])
+  @@index([status, createdAt])
+  @@index([method])
 }
 
 // ─── AI SCORER INTER-RATER RELIABILITY ────────────────────────────────────────

@@ -24,10 +24,11 @@ export function createPsychometricsRouter(
       const { PretestCalibrationPipeline } = await import(
         "../lib/psychometrics/pretest-calibration-pipeline.js"
       );
-      const result = await PretestCalibrationPipeline.runCalibrationSweep({
-        triggerSource: "MANUAL_API",
-      });
-      res.json(result);
+      const { withJobLease } = await import("../lib/jobs/job-lease.js");
+      const outcome = await withJobLease(prisma, "pretest-calibration", () =>
+        PretestCalibrationPipeline.runCalibrationSweep({ triggerSource: "MANUAL_API" }));
+      if (outcome.status === "skipped") return res.status(409).json({ error: "Calibration sweep already running", reason: outcome.reason });
+      res.json(outcome.result);
     } catch (err: any) {
       res.status(500).json({ error: "Calibration sweep failed", detail: err?.message });
     }
@@ -35,7 +36,10 @@ export function createPsychometricsRouter(
 
   router.get("/calibration/status", async (_req, res) => {
     try {
-      const minimumResponses = Number(process.env.CALIBRATION_MIN_N ?? 80);
+      const { CALIBRATION_POLICY } = await import("../lib/psychometrics/calibration-policy.js");
+      const { calibratedShare } = await import("../lib/psychometrics/item-parameter-versions.js");
+      const minimumResponses = CALIBRATION_POLICY.estimateMinN;
+      const share = await calibratedShare(prisma);
       const activeItems = await prisma.item.findMany({
         where: { status: "ACTIVE" },
         select: { id: true, metadata: true },
@@ -64,17 +68,75 @@ export function createPsychometricsRouter(
 
       res.json({
         activeItems: activeItems.length,
-        calibratedItems: calibratedCount,
+        calibratedItems: share.publishedCalibrated,
+        legacyCalibratedTag: calibratedCount,
+        draftsPending: share.draftsPending,
+        draftsEligible: share.draftsEligible,
+        publishMinimumResponses: CALIBRATION_POLICY.publishMinN,
         priorItems: priorIds.length,
         unclassifiedItems: activeItems.length - calibratedCount - priorIds.length,
         eligiblePriorItems,
         minimumResponses,
         calibratedPercent: activeItems.length
-          ? Number(((calibratedCount / activeItems.length) * 100).toFixed(2))
+          ? Number(((share.publishedCalibrated / activeItems.length) * 100).toFixed(2))
           : 0,
       });
     } catch (err: any) {
       res.status(500).json({ error: "Calibration status failed", detail: err?.message });
+    }
+  });
+
+  // ── Item parameter versions (Faz 2) ─────────────────────────────────────────
+
+  router.get("/calibration/policy", async (_req, res) => {
+    const { CALIBRATION_POLICY, describeCalibrationPolicy } = await import("../lib/psychometrics/calibration-policy.js");
+    res.json({ policy: CALIBRATION_POLICY, summary: describeCalibrationPolicy() });
+  });
+
+  router.get("/calibration/versions", async (req, res) => {
+    try {
+      const status = typeof req.query.status === "string" ? req.query.status : "DRAFT";
+      const eligibleOnly = req.query.eligible === "true";
+      const take = Math.min(500, Math.max(1, Number(req.query.limit ?? 200)));
+      const versions = await prisma.itemParameterVersion.findMany({
+        where: { status: status as any, ...(eligibleOnly ? { gateReasons: { isEmpty: true } } : {}) },
+        orderBy: { createdAt: "desc" },
+        take,
+        include: { item: { select: { itemCode: true, skill: true, cefrLevel: true, status: true, discrimination: true, difficulty: true, guessing: true, iqScore: true } } },
+      });
+      res.json({ status, count: versions.length, versions });
+    } catch (err: any) {
+      res.status(500).json({ error: "Listing parameter versions failed", detail: err?.message });
+    }
+  });
+
+  router.post("/calibration/versions/:id/publish", async (req, res) => {
+    try {
+      const { publishVersion } = await import("../lib/psychometrics/item-parameter-versions.js");
+      const user = (req as any).user ?? {};
+      const result = await publishVersion(prisma, String(req.params.id), {
+        publishedBy: String(user.id ?? user.email ?? "admin"),
+        force: req.body?.force === true,
+        promotePretest: req.body?.promotePretest !== false,
+        notes: typeof req.body?.notes === "string" ? req.body.notes : null,
+      });
+      const { invalidateItemCache } = await import("../lib/assessment-engine/item-bank-cache.js");
+      invalidateItemCache();
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: "Publishing parameter version failed", detail: err?.message });
+    }
+  });
+
+  router.post("/calibration/versions/:id/reject", async (req, res) => {
+    try {
+      const { rejectVersion } = await import("../lib/psychometrics/item-parameter-versions.js");
+      const user = (req as any).user ?? {};
+      await rejectVersion(prisma, String(req.params.id), String(user.id ?? user.email ?? "admin"),
+        typeof req.body?.notes === "string" ? req.body.notes : undefined);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(400).json({ error: "Rejecting parameter version failed", detail: err?.message });
     }
   });
 
@@ -83,7 +145,10 @@ export function createPsychometricsRouter(
       const { ExposureAutoRetireService } = await import(
         "../lib/psychometrics/pretest-calibration-pipeline.js"
       );
-      res.json(await ExposureAutoRetireService.runExposureScan());
+      const { withJobLease } = await import("../lib/jobs/job-lease.js");
+      const outcome = await withJobLease(prisma, "exposure-auto-retire", () => ExposureAutoRetireService.runExposureScan());
+      if (outcome.status === "skipped") return res.status(409).json({ error: "Exposure scan already running", reason: outcome.reason });
+      res.json(outcome.result);
     } catch (err: any) {
       res.status(500).json({ error: "Exposure scan failed", detail: err?.message });
     }
