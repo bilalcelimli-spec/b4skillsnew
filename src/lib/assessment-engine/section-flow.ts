@@ -19,7 +19,7 @@ import { sectionItemBudget } from "./adaptive-policy.js";
 import { seededFisherYates } from "./mcq-options.js";
 import { capItemsPerPassage } from "./passage-cap.js";
 import { evaluateSectionStopRules, type StopDecision, type StopRuleInput } from "./stop-rules.js";
-import type { Item, Response, SkillProfile, SkillType } from "./types.js";
+import { SkillType, type Item, type Response, type SkillProfile } from "./types.js";
 
 export type PoolFallbackReason = "warmup_filter";
 
@@ -148,4 +148,53 @@ export function evaluateSectionStop(input: EvaluateSectionStopInput): SectionSto
     hasOutstandingItem: input.hasOutstandingItem,
   });
   return { ...decision, sectionMaxItems };
+}
+
+// ─── Pretest slots ────────────────────────────────────────────────────────────
+
+/** Default operational positions after which a pretest item is embedded (1-based). */
+export const PRETEST_SLOT_INTERVAL = 4;
+
+/** Productive sections carry no pretests: each task costs minutes and AI grading. */
+export const PRETEST_EXCLUDED_SKILLS: ReadonlySet<SkillType> = new Set([SkillType.WRITING, SkillType.SPEAKING]);
+
+export interface PretestSlotInput {
+  profile: ProductLineProfile;
+  skill: SkillType;
+  /** Share of the exam that may be pretest (SystemConfig.pretestRatio, 0–1). */
+  pretestRatio: number;
+  /** Operational responses across the session so far. */
+  totalOperationalResponses: number;
+  /** Pretest responses across the session so far. */
+  pretestAdministered: number;
+  /** Operational responses in this section so far. */
+  sectionCount: number;
+  /** Section item ceiling after reserving later sections (evaluateSectionStop). */
+  sectionMaxItems: number;
+  /** A served-but-unanswered item means no new slot. */
+  hasOutstandingItem?: boolean;
+}
+
+/**
+ * Decide whether the next item of this section should be a pretest.
+ *
+ * Deterministic, position based (roadmap Faz 2 / F1): a pretest follows the
+ * 4th, 8th, 12th … operational item of the exam, never during warm-up, never in
+ * productive sections, never once the section has used its budget, and never
+ * beyond round(pretestRatio × globalMaxItems) pretests per session. Pretest
+ * responses are unscored, so the exam grows by at most that many items.
+ */
+export function shouldAdministerPretest(input: PretestSlotInput): boolean {
+  const { profile, skill, pretestRatio, totalOperationalResponses, pretestAdministered, sectionCount, sectionMaxItems } = input;
+  if (input.hasOutstandingItem) return false;
+  if (!(pretestRatio > 0)) return false;
+  if (PRETEST_EXCLUDED_SKILLS.has(skill)) return false;
+  if (totalOperationalResponses < profile.warmupItems) return false;
+  if (sectionCount >= sectionMaxItems) return false;
+  const maxPretests = Math.round(pretestRatio * profile.globalMaxItems);
+  if (pretestAdministered >= maxPretests) return false;
+  // Slot after every PRETEST_SLOT_INTERVAL operational items; one pretest per slot.
+  if (totalOperationalResponses === 0 || totalOperationalResponses % PRETEST_SLOT_INTERVAL !== 0) return false;
+  const slotsReached = Math.floor(totalOperationalResponses / PRETEST_SLOT_INTERVAL);
+  return pretestAdministered < slotsReached;
 }

@@ -7,9 +7,10 @@
  * Run via: npm run db:job:auto-calibrate
  * Or via cron: 0 2 * * * cd /app && npm run db:job:auto-calibrate
  *
- * The shared production pipeline uses only completed-session responses. It
- * promotes eligible PRETEST items and upgrades stable prior-based ACTIVE items
- * in place by setting metadata.paramSource to "calibrated".
+ * The shared production pipeline uses only completed-session responses. Since
+ * Faz 2 it records DRAFT ItemParameterVersions and changes no live parameter;
+ * publishing / PRETEST → ACTIVE promotion is `npm run db:job:calibrate --
+ * --publish-eligible --yes` or the admin API. Prefer db:job:calibrate.
  */
 
 import { PretestCalibrationPipeline } from "../../src/lib/psychometrics/pretest-calibration-pipeline.js";

@@ -9,9 +9,10 @@ import { buildSessionProgress } from "./session-progress";
 import { buildScoringPrompt, scoringTargetCefr } from "../scoring/task-context.js";
 import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence } from "../scoring/score-evidence.js";
 import { estimateTheta } from "./estimator.js";
-import { adaptiveItemWhere, sectionAbility, profileAbilityPrior } from "./adaptive-policy.js";
+import { adaptiveItemWhere, pretestItemWhere, sectionAbility, profileAbilityPrior } from "./adaptive-policy.js";
 import type { ProductLineProfile } from "../product-lines/profiles.js";
-import { prepareSelectionPool, evaluateSectionStop } from "./section-flow.js";
+import { prepareSelectionPool, evaluateSectionStop, shouldAdministerPretest } from "./section-flow.js";
+import { selectPretestItem } from "./pretest-selection.js";
 import { DEFAULT_SECTION_STOP_RULES } from "./stop-rules.js";
 import { AssessmentEngine } from "./engine";
 import { getCATSelector, ShadowItem } from "../selection/cat-selector.js";
@@ -688,6 +689,32 @@ export const AssessmentService = {
     // Their administration is recorded only after the selected item is claimed.
     const anchorIds = new Set(dbItems.filter(item => item.isAnchor).map(item => item.id));
 
+    // ── PRETEST SLOT (Faz 2 / F1) ─────────────────────────────────────────────
+    // Deterministic, position-based embedding of one unscored calibration item
+    // after every 4th operational item (section-flow.shouldAdministerPretest).
+    // Pretest responses never enter θ, the section count or the budget; they
+    // feed the calibration pipeline (pretest-calibration-pipeline.ts).
+    const pretestAdministered = session.responses.filter((r) => r.isPretest).length;
+    let pretestItem: Item | null = null;
+    if (!hasOutstandingItem && shouldAdministerPretest({
+      profile, skill: currentSkill,
+      pretestRatio: engine.getConfig().pretestRatio ?? 0,
+      totalOperationalResponses: totalNonPretestResponses,
+      pretestAdministered, sectionCount,
+      sectionMaxItems: sectionStop.sectionMaxItems,
+    })) {
+      try {
+        const pretestRows = await getCachedItems({
+          ...pretestItemWhere(profile, currentSkill),
+          id: { notIn: Array.from(crossSessionUsedIds) },
+        });
+        pretestItem = selectPretestItem(pretestRows.map((row) => dbItemToEngineItem(row)), ability.theta);
+      } catch (err) {
+        // A pretest slot is never allowed to interrupt an exam.
+        logger.warn({ err, sessionId, skill: currentSkill }, "pretest slot: pool lookup failed; serving an operational item");
+      }
+    }
+
     // ── POOL PREPARATION (pure; shared with the simulation harness) ───────────
     // Warm-up filter → seeded shuffle → content-tag diversity → item-type
     // rotation → passage cap, in section-flow.ts so audits run the live path.
@@ -720,14 +747,14 @@ export const AssessmentService = {
       outstandingItem = dbItemToEngineItem(served);
     }
     const selectionStartedAt = process.hrtime.bigint();
-    const catResult = outstandingItem ? { item: outstandingItem } : await catSelector.selectNext(
+    const catResult = outstandingItem ? { item: outstandingItem } : pretestItem ? { item: pretestItem } : await catSelector.selectNext(
       catPool as ShadowItem[],
       selectionState,
       seqCtx,
       profile.blueprint,
       engine.getConfig().useRlSelector === true,
     );
-    if (!outstandingItem) {
+    if (!outstandingItem && !pretestItem) {
       recordCatSelection(profile.name, currentSkill as string, catPool.length,
         Number(process.hrtime.bigint() - selectionStartedAt) / 1e6);
     }
@@ -799,7 +826,8 @@ export const AssessmentService = {
     return {
       stop: false,
       sectionTransition: false,
-      item: { ...nextItem, metadata: candidateSafeContent },
+      // The candidate never learns which items are unscored calibration items.
+      item: { ...nextItem, isPretest: undefined, status: undefined, metadata: candidateSafeContent },
       currentSection: currentSkill as string,
       sectionIndex,
       totalSections: activeSectionOrder.length,

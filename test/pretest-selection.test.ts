@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { selectPretestItem, PRETEST_B_BAND } from "../src/lib/assessment-engine/pretest-selection";
+import { selectPretestItem, PRETEST_B_BAND, PRETEST_FOCUS_SET_SIZE } from "../src/lib/assessment-engine/pretest-selection";
 
 const item = (id: string, b: number, exposureCount = 0) =>
   ({ id, skill: "READING", params: { a: 1, b, c: 0.2 }, isPretest: true, exposureCount }) as any;
@@ -9,9 +9,25 @@ describe("selectPretestItem", () => {
     expect(selectPretestItem([], 0)).toBeNull();
   });
 
-  it("prefers the least-exposed item inside the b band", () => {
-    const pool = [item("near-busy", 0.05, 40), item("near-fresh", 0.6, 2), item("far-fresh", 3, 0)];
+  it("starts a fresh in-band item while the focus set has room", () => {
+    const pool = [item("near-busy", 0.05, 40), item("near-fresh", 0.6, 0), item("far-fresh", 3, 0)];
     expect(selectPretestItem(pool, 0)!.id).toBe("near-fresh");
+  });
+
+  it("finishes the most-exposed in-progress item once the focus set is full", () => {
+    const pool = [
+      ...Array.from({ length: PRETEST_FOCUS_SET_SIZE }, (_, i) => item(`p${i}`, (i - 3) / 10, 10 + i)),
+      item("fresh", 0.2, 0),
+    ];
+    expect(selectPretestItem(pool, 0)!.id).toBe(`p${PRETEST_FOCUS_SET_SIZE - 1}`);
+    // once p5 reaches the target the focus set has room again and a fresh item starts
+    expect(selectPretestItem(pool, 0, { targetN: 15 })!.id).toBe("fresh");
+  });
+
+  it("does not revisit items that reached the target while unfinished work remains", () => {
+    const pool = [item("done", 0.1, 500), item("working", 0.3, 20)];
+    expect(selectPretestItem(pool, 0)!.id).toBe("working");
+    expect(selectPretestItem([item("done-a", 0.1, 500), item("done-b", 0.3, 300)], 0)!.id).toBe("done-b");
   });
 
   it("breaks exposure ties by closeness of b, then id", () => {

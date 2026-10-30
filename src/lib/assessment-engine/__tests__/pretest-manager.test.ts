@@ -7,33 +7,34 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import * as PretestManager from "../pretest-manager.js";
+import { CALIBRATION_POLICY } from "../../psychometrics/calibration-policy.js";
 
 describe("pretest manager", () => {
   describe("checkActivationCriteria", () => {
     it("rejects items below response threshold", () => {
       const item = { discrimination: 1.0, difficulty: 0.0, guessing: 0.2 };
-      const result = PretestManager.checkActivationCriteria(item, 25);
+      const result = PretestManager.checkActivationCriteria(item, CALIBRATION_POLICY.publishMinN - 1);
       expect(result.passed).toBe(false);
       expect(result.reason).toContain("Insufficient responses");
     });
 
     it("rejects items with low discrimination", () => {
       const item = { discrimination: 0.3, difficulty: 0.0, guessing: 0.2 };
-      const result = PretestManager.checkActivationCriteria(item, 50);
+      const result = PretestManager.checkActivationCriteria(item, CALIBRATION_POLICY.publishMinN);
       expect(result.passed).toBe(false);
       expect(result.reason).toContain("Discrimination too low");
     });
 
     it("rejects items with high discrimination", () => {
       const item = { discrimination: 3.5, difficulty: 0.0, guessing: 0.2 };
-      const result = PretestManager.checkActivationCriteria(item, 50);
+      const result = PretestManager.checkActivationCriteria(item, CALIBRATION_POLICY.publishMinN);
       expect(result.passed).toBe(false);
       expect(result.reason).toContain("Discrimination too high");
     });
 
     it("accepts well-calibrated items", () => {
       const item = { discrimination: 1.2, difficulty: 0.1, guessing: 0.15 };
-      const result = PretestManager.checkActivationCriteria(item, 75);
+      const result = PretestManager.checkActivationCriteria(item, CALIBRATION_POLICY.publishMinN + 50);
       expect(result.passed).toBe(true);
     });
   });

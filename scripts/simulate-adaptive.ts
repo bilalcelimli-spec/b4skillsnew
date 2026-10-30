@@ -73,6 +73,11 @@ async function main(): Promise<void> {
       const report = await simulateProfile(bank, { profile, n, seed, shadowStrategy: strategy, skillCorrelation: rho, engineConfig, cohortSd });
       printRow(report);
       if (verbose) {
+        console.log(
+          `    PRETEST     eligible ${report.pretest.eligibleItems}  per session ${fmt(report.pretest.meanPerSession, 2)}  ` +
+          `resp/served item ${fmt(report.pretest.meanResponsesPerServedItem, 1)}  at n≥estimate ${report.pretest.itemsAtEstimateMinN}  ` +
+          `at n≥publish ${report.pretest.itemsAtPublishMinN}  sessions to estimate all ≈ ${report.pretest.sessionsToEstimateAll ?? "n/a"}`
+        );
         for (const [skill, s] of Object.entries(report.perSkill)) {
           console.log(
             `    ${skill.padEnd(11)} bias ${fmt(s.bias).padStart(7)}  rmse ${fmt(s.rmse)}  sem ${fmt(s.meanSem)}  ` +

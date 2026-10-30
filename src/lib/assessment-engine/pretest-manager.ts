@@ -6,21 +6,25 @@
  * exposureCount is incremented in server-engine.ts each time an item is served.
  * This module only holds the calibration and promotion side:
  *  1. Auto-calibration trigger — when an item reaches 30+ PRETEST responses, calibrate it
- *  2. Auto-promotion — if calibration fit is acceptable, promote PRETEST → ACTIVE
+ *  2. Promotion — PRETEST → ACTIVE happens only when a draft ItemParameterVersion
+ *     that passes the publish gate is published (item-parameter-versions.ts).
+ *     `autoCalibratePretestItems` therefore reports readiness and never changes status.
  */
 
 import { prisma } from "../prisma.js";
 import { CalibrationService } from "./calibration-service.js";
 import { logger } from "../observability/logger.js";
+import { CALIBRATION_POLICY } from "../psychometrics/calibration-policy.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIGURATION
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PRETEST_CALIBRATION_THRESHOLD = 30; // Minimum responses to trigger calibration
-const PRETEST_ACTIVATION_THRESHOLD = 50; // Minimum responses before auto-promotion
-const ACTIVATION_MIN_DISCRIMINATION = 0.5;
-const ACTIVATION_MAX_DISCRIMINATION = 3.0;
+// Faz 2: a single policy (calibration-policy.ts) replaces the former 30 / 50 thresholds.
+const PRETEST_CALIBRATION_THRESHOLD = CALIBRATION_POLICY.estimateMinN;
+const PRETEST_ACTIVATION_THRESHOLD = CALIBRATION_POLICY.publishMinN;
+const ACTIVATION_MIN_DISCRIMINATION = CALIBRATION_POLICY.aRange.min;
+const ACTIVATION_MAX_DISCRIMINATION = CALIBRATION_POLICY.aRange.max;
 const ACTIVATION_MIN_P = 0.1; // Minimum difficulty (% correct)
 const ACTIVATION_MAX_P = 0.95; // Maximum difficulty
 
@@ -108,26 +112,16 @@ export async function autoCalibratePretestItems(): Promise<{
       );
 
       if (acceptable.passed) {
-        // Promote to ACTIVE
-        await prisma.item.update({
-          where: { id: item.id },
-          data: { status: "ACTIVE" },
-        });
-
+        // Faz 2: readiness only. Promotion happens when the draft version is published.
         logger.info(
-          {
-            itemId: item.id,
-            discrimination: updated.discrimination,
-            difficulty: updated.difficulty,
-            responseCount,
-          },
-          "pretest.promoted.to.active"
+          { itemId: item.id, discrimination: updated.discrimination, difficulty: updated.difficulty, responseCount },
+          "pretest.ready.for.publication"
         );
-
         results.push({
           itemId: item.id,
           responseCount,
-          promoted: true,
+          promoted: false,
+          reason: "READY_FOR_PUBLICATION",
         });
       } else {
         results.push({

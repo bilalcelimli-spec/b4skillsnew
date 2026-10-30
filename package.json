@@ -73,6 +73,7 @@
     "verify:irt:production": "MIN_CALIBRATED_PERCENT=80 tsx scripts/verify-irt-health.ts",
     "backfill:irt-priors": "tsx scripts/backfill-irt-priors.ts",
     "db:job:calibrate-pretest": "tsx scripts/jobs/auto-calibrate-pretest.ts",
+    "db:job:calibrate": "tsx scripts/jobs/calibrate-item-bank.ts",
     "db:job:retire-items": "tsx scripts/jobs/item-retirement-job.ts",
     "db:job:detect-dif": "tsx scripts/jobs/dif-detection-job.ts",
     "iqs:batch": "tsx scripts/iqs-batch-run.ts",

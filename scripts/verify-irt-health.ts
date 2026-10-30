@@ -7,7 +7,9 @@
  *   1. No ACTIVE item may have discrimination a ≤ 0 (zero Fisher information →
  *      invisible to the Maximum-Fisher-Information selector).
  *   2. Reports the parameter-source distribution (synthetic / prior / calibrated)
- *      so we can track cold-start → calibrated migration over time.
+ *      so we can track cold-start → calibrated migration over time. Since Faz 2
+ *      "calibrated" means a PUBLISHED empirical ItemParameterVersion; the legacy
+ *      metadata tag is reported separately and does not count toward the gate.
  *   3. Reports IQS coverage (how many ACTIVE items have an iqScore).
  *
  * Exit code 1 (CI fail) if any ACTIVE item has a ≤ 0 or if the optional
@@ -20,6 +22,7 @@
  */
 
 import { prisma } from "../src/lib/prisma.js";
+import { calibratedShare } from "../src/lib/psychometrics/item-parameter-versions.js";
 
 const STRICT_PRIOR = process.env.STRICT_PRIOR === "1";
 const MIN_CALIBRATED_PERCENT = Number(process.env.MIN_CALIBRATED_PERCENT ?? "0");
@@ -82,17 +85,23 @@ async function main() {
   }
 
   // ── 2. Parameter-source distribution ─────────────────────────────────────────
-  const srcCounts: Record<string, number> = { synthetic: 0, prior: 0, calibrated: 0 };
+  // Faz 2: "calibrated" = ACTIVE item whose live a/b/c come from a PUBLISHED
+  // empirical ItemParameterVersion. The legacy metadata tag is informational.
+  const share = await calibratedShare(prisma);
+  const srcCounts: Record<string, number> = { synthetic: 0, prior: 0, calibrated: share.publishedCalibrated, legacyTag: share.legacyCalibrated };
   for (const it of items) {
     const src = (it.metadata as any)?.paramSource;
     if (src === "prior") srcCounts.prior++;
-    else if (src === "calibrated") srcCounts.calibrated++;
-    else srcCounts.synthetic++;
+    else if (src !== "calibrated") srcCounts.synthetic++;
   }
   console.log(`\n[2] Parameter source distribution:`);
   console.log(`    synthetic (untagged): ${srcCounts.synthetic} (${pct(srcCounts.synthetic, total)})`);
   console.log(`    prior (norm-based):   ${srcCounts.prior} (${pct(srcCounts.prior, total)})`);
-  console.log(`    calibrated (real):    ${srcCounts.calibrated} (${pct(srcCounts.calibrated, total)})`);
+  console.log(`    calibrated (real):    ${srcCounts.calibrated} (${pct(srcCounts.calibrated, total)})  ← published ItemParameterVersion`);
+  if (srcCounts.legacyTag > 0) {
+    console.log(`    legacy tag only:      ${srcCounts.legacyTag} (metadata.paramSource=calibrated without a published version — not counted)`);
+  }
+  console.log(`    draft versions:       ${share.draftsPending} pending, ${share.draftsEligible} pass the publish gate`);
   const calibratedPercent = total === 0 ? 0 : (srcCounts.calibrated / total) * 100;
 
   // ── 3. IQS coverage ──────────────────────────────────────────────────────────
