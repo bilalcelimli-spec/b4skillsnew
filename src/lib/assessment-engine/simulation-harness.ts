@@ -37,7 +37,8 @@ import { prepareSelectionPool, evaluateSectionStop, shouldAdministerPretest } fr
 import { AssessmentEngine } from "./engine.js";
 import { getExposureStore, resetExposureStoreForSimulation } from "./exposure-store.js";
 import { probability } from "./irt.js";
-import { distanceToNearestCut } from "./stop-rules.js";
+import { distanceToNearestCut, type StopRule } from "./stop-rules.js";
+import type { SprtConfig } from "./sequential-sprt.js";
 import { SkillType, type EngineConfig, type Item, type SessionState } from "./types.js";
 import { CALIBRATION_POLICY } from "../psychometrics/calibration-policy.js";
 
@@ -302,6 +303,14 @@ export interface SimulationOptions {
   isolateStores?: boolean;
   /** Share of the exam that may be pretest items (SystemConfig.pretestRatio; default 0.1 as in production). */
   pretestRatio?: number;
+  /** Override the profile's section stop rules for an A/B run (undefined = profile value). */
+  stopRules?: readonly StopRule[];
+  /** Override the profile's budget flex for an A/B run (undefined = profile value). */
+  sectionBudgetFlex?: boolean;
+  /** Override the CLASSIFICATION_CONFIDENCE threshold for an A/B run. */
+  classificationConfidenceThreshold?: number;
+  /** SPRT settings for an A/B run (only used when the SPRT rule is listed). */
+  sprt?: SprtConfig;
 }
 
 export interface PretestSummary {
@@ -349,6 +358,8 @@ export interface SkillSummary {
 export interface SimulationReport {
   profile: string;
   shadowStrategy: ShadowStrategy;
+  stopRules: string[];
+  sectionBudgetFlex: boolean;
   n: number;
   seed: number;
   bias: number;
@@ -409,7 +420,15 @@ const DEFAULT_ENGINE: EngineConfig = {
  * Simulate `n` candidates on one profile through the live selection path.
  */
 export async function simulateProfile(bank: BankSnapshot, options: SimulationOptions): Promise<SimulationReport> {
-  const { profile, n } = options;
+  const { n } = options;
+  // Stop-rule / budget-flex overrides produce an A/B variant of the profile.
+  const profile: ProductLineProfile = {
+    ...options.profile,
+    ...(options.stopRules ? { stopRules: options.stopRules } : {}),
+    ...(options.sectionBudgetFlex !== undefined ? { sectionBudgetFlex: options.sectionBudgetFlex } : {}),
+    ...(options.classificationConfidenceThreshold !== undefined ? { classificationConfidenceThreshold: options.classificationConfidenceThreshold } : {}),
+    ...(options.sprt ? { sprt: options.sprt } : {}),
+  };
   const seed = options.seed ?? 20261030;
   const rng = mulberry32(seed);
   const rho = options.skillCorrelation ?? 0.85;
@@ -630,6 +649,8 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
   return {
     profile: profile.name,
     shadowStrategy,
+    stopRules: [...(profile.stopRules ?? ["SEM_THRESHOLD"])],
+    sectionBudgetFlex: profile.sectionBudgetFlex === true,
     n,
     seed,
     bias,

@@ -28,6 +28,7 @@ import {
   type SimulationReport,
 } from "../src/lib/assessment-engine/simulation-harness.js";
 import type { ShadowStrategy } from "../src/lib/selection/cat-selector.js";
+import type { StopRule } from "../src/lib/assessment-engine/stop-rules.js";
 
 const arg = (name: string, fallback: string): string => {
   const index = process.argv.indexOf(`--${name}`);
@@ -46,6 +47,17 @@ const verbose = process.argv.includes("--verbose");
 const priorMode = arg("prior", "profile");
 /** --cohort-sd: SD of simulated candidate ability around the profile centre (default 1). */
 const cohortSd = Number(arg("cohort-sd", "1"));
+/** --stop-rules "SEM_THRESHOLD,CLASSIFICATION_CONFIDENCE" overrides every profile's section stop rules. */
+const stopRulesArg = arg("stop-rules", "");
+const stopRules = stopRulesArg ? (stopRulesArg.split(",").map((r) => r.trim()).filter(Boolean) as StopRule[]) : undefined;
+/** --budget-flex on|off overrides profile.sectionBudgetFlex. */
+const budgetFlexArg = arg("budget-flex", "");
+const sectionBudgetFlex = budgetFlexArg === "on" ? true : budgetFlexArg === "off" ? false : undefined;
+/** --confidence 0.85 overrides the CLASSIFICATION_CONFIDENCE threshold. */
+const confidenceArg = arg("confidence", "");
+const classificationConfidenceThreshold = confidenceArg ? Number(confidenceArg) : undefined;
+/** --sprt enables Wald SPRT (α=β=0.05, half-width 0.18, min 5 items) when SPRT is in --stop-rules. */
+const sprt = process.argv.includes("--sprt") ? { enabled: true, alpha: 0.05, beta: 0.05, halfWidth: 0.18, minItems: 5 } : undefined;
 
 const strategies: ShadowStrategy[] = strategyArg === "both" ? ["greedy", "lp"] : [strategyArg as ShadowStrategy];
 const profiles = profileArg ? [getProfile(profileArg)] : Object.values(PRODUCT_LINE_PROFILES);
@@ -58,19 +70,20 @@ function printRow(report: SimulationReport): void {
     `${report.profile.padEnd(32)} ${report.shadowStrategy.padEnd(6)} ` +
     `bias ${fmt(report.bias).padStart(7)}  rmse ${fmt(report.rmse)}  sem ${fmt(report.meanSem)}  ` +
     `cal ${fmt(report.semCalibration, 2)}/${fmt(report.compositeSemCalibration, 2)}  cefr ${fmt(report.cefrExactAccuracy, 2)}/${fmt(report.cefrAdjacentAccuracy, 2)}  ` +
-    `len ${fmt(report.meanLength, 1).padStart(5)}  expMax ${fmt(report.maxExposureRate, 2)}  ` +
-    `p95 ${fmt(report.selectionLatencyMs.p95, 1)}ms`
+    `len ${fmt(report.meanLength, 1).padStart(5)}  bnd ${fmt(report.boundaryBandAccuracy, 2)}(${report.boundaryBandN})  ` +
+    `expMax ${fmt(report.maxExposureRate, 2)}  p95 ${fmt(report.selectionLatencyMs.p95, 1)}ms`
   );
 }
 
 async function main(): Promise<void> {
   console.log(`bank: ${bank.source} (${bank.items.length} items)  n=${n}  seed=${seed}  rho=${rho}  prior=${priorMode}  cohortSd=${cohortSd}`);
-  console.log(`${"profile".padEnd(32)} ${"shadow".padEnd(6)} bias     rmse   sem    cal gen/comp  cefr exact/adj  len    expMax  p95`);
+  console.log(`${"profile".padEnd(32)} ${"shadow".padEnd(6)} bias     rmse   sem    cal gen/comp  cefr exact/adj  len    boundary   expMax  p95`);
+  if (stopRules) console.log(`stop rules override: ${stopRules.join(",")}${sectionBudgetFlex !== undefined ? `  budget flex: ${sectionBudgetFlex}` : ""}`);
   const reports: Array<Omit<SimulationReport, "simulees">> = [];
   for (const profile of profiles) {
     for (const strategy of strategies) {
       const engineConfig = priorMode === "population" ? { priorMean: 0, priorSd: 1 } : {};
-      const report = await simulateProfile(bank, { profile, n, seed, shadowStrategy: strategy, skillCorrelation: rho, engineConfig, cohortSd });
+      const report = await simulateProfile(bank, { profile, n, seed, shadowStrategy: strategy, skillCorrelation: rho, engineConfig, cohortSd, stopRules, sectionBudgetFlex, classificationConfidenceThreshold, sprt });
       printRow(report);
       if (verbose) {
         console.log(

@@ -7,7 +7,7 @@ import {
   type StopRuleInput,
 } from "../stop-rules";
 import { evaluateSectionStop, shouldAdministerPretest, PRETEST_SLOT_INTERVAL } from "../section-flow";
-import { getProfile } from "../../product-lines/profiles";
+import { getProfile, PRODUCT_LINE_PROFILES } from "../../product-lines/profiles";
 import { SkillType, type Item } from "../types";
 
 const base = (overrides: Partial<StopRuleInput> = {}): StopRuleInput => ({
@@ -153,5 +153,36 @@ describe("shouldAdministerPretest — deterministic slots", () => {
     expect(shouldAdministerPretest({ ...base, totalOperationalResponses: 4, sectionCount: 13 })).toBe(false);
     expect(shouldAdministerPretest({ ...base, totalOperationalResponses: 4, hasOutstandingItem: true })).toBe(false);
     expect(shouldAdministerPretest({ ...base, totalOperationalResponses: 4, pretestRatio: 0 })).toBe(false);
+  });
+});
+
+describe("profile stop-rule wiring (Faz 3)", () => {
+  it("every profile declares SEM_THRESHOLD and CLASSIFICATION_CONFIDENCE; only Rapid Diagnostic adds SPRT", () => {
+    for (const profile of Object.values(PRODUCT_LINE_PROFILES)) {
+      expect(profile.stopRules).toEqual(expect.arrayContaining(["SEM_THRESHOLD", "CLASSIFICATION_CONFIDENCE"]));
+      expect(profile.stopRules).not.toContain("BOUNDARY_SEM");
+      expect(profile.sectionBudgetFlex).not.toBe(true);
+      const hasSprt = profile.stopRules?.includes("SPRT") ?? false;
+      expect(hasSprt).toBe(profile.name === "15-Min Diagnostic");
+      if (hasSprt) expect(profile.sprt).toMatchObject({ enabled: true, minItems: 5 });
+    }
+  });
+
+  it("a settled band ends a section early, an unsettled one runs to its budget", () => {
+    const profile = getProfile("General English");
+    const skill = profile.sectionOrder[0];
+    const cfg = profile.sectionConfig[skill];
+    // SEM 0.60 is above the section target (so SEM_THRESHOLD stays silent) while the
+    // open-ended C2 band (θ > 2.5) is settled: P(C2) = Φ((3.5 − 2.5)/0.6) ≈ 0.95.
+    const settled = evaluateSectionStop({
+      profile, sectionIndex: 0, sectionCount: cfg.minItems, totalOperationalResponses: cfg.minItems,
+      ability: { theta: 3.5, sem: 0.60 },
+    });
+    expect(settled).toMatchObject({ stop: true, reason: "CLASSIFICATION_CONFIDENCE_REACHED" });
+    const unsettled = evaluateSectionStop({
+      profile, sectionIndex: 0, sectionCount: cfg.minItems, totalOperationalResponses: cfg.minItems,
+      ability: { theta: 0.5, sem: 0.42 }, // on the B1/B2 cut
+    });
+    expect(unsettled.stop).toBe(false);
   });
 });

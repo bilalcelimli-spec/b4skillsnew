@@ -102,6 +102,12 @@ export function prepareSelectionPool(input: PrepareSelectionPoolInput): Prepared
   return { pool, fallbacks };
 }
 
+/** Receptive-section SEM above which one extra item may be spent (budget flex). */
+export const BUDGET_FLEX_SEM = 0.40;
+
+/** Productive sections: no pretests and no budget flex — each task costs minutes and AI grading. */
+export const PRETEST_EXCLUDED_SKILLS: ReadonlySet<SkillType> = new Set([SkillType.WRITING, SkillType.SPEAKING]);
+
 export interface EvaluateSectionStopInput {
   profile: ProductLineProfile;
   sectionIndex: number;
@@ -132,7 +138,15 @@ export function evaluateSectionStop(input: EvaluateSectionStopInput): SectionSto
   const { profile, sectionIndex, sectionCount, totalOperationalResponses, ability } = input;
   const skill = profile.sectionOrder[sectionIndex];
   const config = profile.sectionConfig[skill];
-  const sectionMaxItems = sectionItemBudget(profile, sectionIndex, totalOperationalResponses, sectionCount);
+  // Budget flex (profile.sectionBudgetFlex): a receptive section still above
+  // BUDGET_FLEX_SEM may spend one item beyond its maxItems, inside the global
+  // budget and the later sections' reserved minima. Productive skills never flex.
+  const flex = profile.sectionBudgetFlex === true && !PRETEST_EXCLUDED_SKILLS.has(skill) &&
+    Number.isFinite(ability.sem) && ability.sem > BUDGET_FLEX_SEM;
+  const budgetProfile = flex
+    ? { ...profile, sectionConfig: { ...profile.sectionConfig, [skill]: { ...config, maxItems: config.maxItems + 1 } } }
+    : profile;
+  const sectionMaxItems = sectionItemBudget(budgetProfile, sectionIndex, totalOperationalResponses, sectionCount);
   const decision = evaluateSectionStopRules({
     rules: profile.stopRules,
     ability,
@@ -155,8 +169,6 @@ export function evaluateSectionStop(input: EvaluateSectionStopInput): SectionSto
 /** Default operational positions after which a pretest item is embedded (1-based). */
 export const PRETEST_SLOT_INTERVAL = 4;
 
-/** Productive sections carry no pretests: each task costs minutes and AI grading. */
-export const PRETEST_EXCLUDED_SKILLS: ReadonlySet<SkillType> = new Set([SkillType.WRITING, SkillType.SPEAKING]);
 
 export interface PretestSlotInput {
   profile: ProductLineProfile;

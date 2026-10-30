@@ -154,6 +154,12 @@ export interface ProductLineProfile {
    * An organisation prior in SystemConfig (`priorMean`/`priorSd`) overrides both.
    */
   abilityPrior?: { mean: number; sd: number };
+  /**
+   * Allow a receptive section whose SEM is still above 0.40 to spend one item
+   * beyond its maxItems (within the global budget). Off unless simulation
+   * evidence supports it (roadmap Faz 3).
+   */
+  sectionBudgetFlex?: boolean;
 }
 
 // ─── Profile Definitions ──────────────────────────────────────────────────────
@@ -218,6 +224,11 @@ const PRIMARY: ProductLineProfile = {
   estimatedDurationMin: [30, 46],
   // 46 min × 1.5 safety net (young learners may need extra time)
   maxDurationMs: 4_140_000,
+  // Faz 3 (2026-10-30, simulation n=200 × 9 profiles): CLASSIFICATION_CONFIDENCE at
+  // 0.90 never lengthens a section and ends a skill early once its band is settled
+  // (Academia −1.2 items, CEFR exact 0.66 → 0.76); BOUNDARY_SEM never fires at
+  // section SEM levels and budget flex showed no gain, so neither is enabled.
+  stopRules: ["SEM_THRESHOLD", "CLASSIFICATION_CONFIDENCE"],
 };
 
 /**
@@ -285,6 +296,11 @@ const JUNIOR_SUITE: ProductLineProfile = {
   estimatedDurationMin: [57, 79],
   // 79 min × 1.5 safety net
   maxDurationMs: 7_110_000,
+  // Faz 3 (2026-10-30, simulation n=200 × 9 profiles): CLASSIFICATION_CONFIDENCE at
+  // 0.90 never lengthens a section and ends a skill early once its band is settled
+  // (Academia −1.2 items, CEFR exact 0.66 → 0.76); BOUNDARY_SEM never fires at
+  // section SEM levels and budget flex showed no gain, so neither is enabled.
+  stopRules: ["SEM_THRESHOLD", "CLASSIFICATION_CONFIDENCE"],
 };
 
 /**
@@ -384,6 +400,13 @@ const DIAGNOSTIC_15: ProductLineProfile = {
   estimatedDurationMin: [30, 40],
   // 40 min × 1.5 safety net
   maxDurationMs: 3_600_000,
+  // Faz 3: Rapid Diagnostic is a placement product, so Wald SPRT at the nearest
+  // CEFR cut may end a section once the likelihood ratio is decisive (after the
+  // section floor). Simulation (n=200): 35 → 27 items, RMSE 0.42 → 0.38, CEFR
+  // exact 0.71 → 0.75, boundary-band accuracy unchanged. On General English the
+  // same rule cut 19 items but raised SEM 0.22 → 0.26, so it stays off elsewhere.
+  stopRules: ["SEM_THRESHOLD", "CLASSIFICATION_CONFIDENCE", "SPRT"],
+  sprt: { enabled: true, alpha: 0.05, beta: 0.05, halfWidth: 0.18, minItems: 5 },
 };
 
 /**
@@ -441,6 +464,11 @@ const EXPRESS_30: ProductLineProfile = {
   estimatedDurationMin: [30, 46],
   // 46 min × 1.5 safety net
   maxDurationMs: 4_140_000,
+  // Faz 3 (2026-10-30, simulation n=200 × 9 profiles): CLASSIFICATION_CONFIDENCE at
+  // 0.90 never lengthens a section and ends a skill early once its band is settled
+  // (Academia −1.2 items, CEFR exact 0.66 → 0.76); BOUNDARY_SEM never fires at
+  // section SEM levels and budget flex showed no gain, so neither is enabled.
+  stopRules: ["SEM_THRESHOLD", "CLASSIFICATION_CONFIDENCE"],
 };
 
 /**
@@ -501,6 +529,11 @@ const GENERAL_ENGLISH: ProductLineProfile = {
   estimatedDurationMin: [42, 62],
   // 62 dk × 1.5 güvenlik tamponu
   maxDurationMs: 5_580_000,
+  // Faz 3 (2026-10-30, simulation n=200 × 9 profiles): CLASSIFICATION_CONFIDENCE at
+  // 0.90 never lengthens a section and ends a skill early once its band is settled
+  // (Academia −1.2 items, CEFR exact 0.66 → 0.76); BOUNDARY_SEM never fires at
+  // section SEM levels and budget flex showed no gain, so neither is enabled.
+  stopRules: ["SEM_THRESHOLD", "CLASSIFICATION_CONFIDENCE"],
 };
 
 /**
@@ -566,6 +599,11 @@ const ACADEMIA: ProductLineProfile = {
   estimatedDurationMin: [90, 120],
   // 120 min × 1.5 safety net (high-stakes; extra buffer for productive tasks)
   maxDurationMs: 10_800_000,
+  // Faz 3 (2026-10-30, simulation n=200 × 9 profiles): CLASSIFICATION_CONFIDENCE at
+  // 0.90 never lengthens a section and ends a skill early once its band is settled
+  // (Academia −1.2 items, CEFR exact 0.66 → 0.76); BOUNDARY_SEM never fires at
+  // section SEM levels and budget flex showed no gain, so neither is enabled.
+  stopRules: ["SEM_THRESHOLD", "CLASSIFICATION_CONFIDENCE"],
 };
 
 /**
@@ -627,6 +665,11 @@ const CORPORATE: ProductLineProfile = {
   estimatedDurationMin: [52, 69],
   // 69 min × 1.5 safety net
   maxDurationMs: 6_210_000,
+  // Faz 3 (2026-10-30, simulation n=200 × 9 profiles): CLASSIFICATION_CONFIDENCE at
+  // 0.90 never lengthens a section and ends a skill early once its band is settled
+  // (Academia −1.2 items, CEFR exact 0.66 → 0.76); BOUNDARY_SEM never fires at
+  // section SEM levels and budget flex showed no gain, so neither is enabled.
+  stopRules: ["SEM_THRESHOLD", "CLASSIFICATION_CONFIDENCE"],
 };
 
 /**
@@ -687,6 +730,11 @@ const LANGUAGE_SCHOOLS: ProductLineProfile = {
   estimatedDurationMin: [57, 79],
   // 79 min × 1.5 safety net
   maxDurationMs: 7_110_000,
+  // Faz 3 (2026-10-30, simulation n=200 × 9 profiles): CLASSIFICATION_CONFIDENCE at
+  // 0.90 never lengthens a section and ends a skill early once its band is settled
+  // (Academia −1.2 items, CEFR exact 0.66 → 0.76); BOUNDARY_SEM never fires at
+  // section SEM levels and budget flex showed no gain, so neither is enabled.
+  stopRules: ["SEM_THRESHOLD", "CLASSIFICATION_CONFIDENCE"],
 };
 
 /**
@@ -758,6 +806,11 @@ const SPECIALIZED_INTEGRATED: ProductLineProfile = {
   estimatedDurationMin: [62, 89],
   // 89 dk × 1.5 güvenlik tamponu
   maxDurationMs: 8_010_000,
+  // Faz 3 (2026-10-30, simulation n=200 × 9 profiles): CLASSIFICATION_CONFIDENCE at
+  // 0.90 never lengthens a section and ends a skill early once its band is settled
+  // (Academia −1.2 items, CEFR exact 0.66 → 0.76); BOUNDARY_SEM never fires at
+  // section SEM levels and budget flex showed no gain, so neither is enabled.
+  stopRules: ["SEM_THRESHOLD", "CLASSIFICATION_CONFIDENCE"],
 };
 
 // ─── Registry ─────────────────────────────────────────────────────────────────

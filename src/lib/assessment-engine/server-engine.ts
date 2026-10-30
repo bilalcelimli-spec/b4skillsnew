@@ -59,6 +59,8 @@ import {
 import {
   classifyCandidate,
   computeConsistencyReport,
+  CEFR_CUT_SCORES,
+  PROVISIONAL_CUT_SCORE_SE,
 } from "../psychometrics/classification-consistency.js";
 import { computePersonFit } from "../psychometrics/person-fit.js";
 import {
@@ -1309,8 +1311,17 @@ export const AssessmentService = {
       };
 
       // ── Classification Consistency (Livingston-Lewis) ───────────────────────
-      const classificationResult = classifyCandidate(theta, sessionSem);
-      const consistencyReport = computeConsistencyReport(theta, sessionSem);
+      // Faz 3: classified with the same operational cuts as `mapToCefr`, exact
+      // cuts for the headline statistics and PROVISIONAL_CUT_SCORE_SE folded in
+      // for the "with cut uncertainty" figures until standard setting completes.
+      const orgCuts = engine.getConfig().cefrThresholds;
+      const classificationCuts = orgCuts && Object.keys(orgCuts).length > 0
+        ? CEFR_CUT_SCORES.map((cut, i) => ({ ...cut, theta: [orgCuts.A1, orgCuts.A2, orgCuts.B1, orgCuts.B2, orgCuts.C1, orgCuts.C2][i] ?? cut.theta }))
+        : CEFR_CUT_SCORES;
+      const classificationResult = classifyCandidate(theta, sessionSem, { cuts: classificationCuts });
+      const consistencyReport = computeConsistencyReport(theta, sessionSem, { cuts: classificationCuts });
+      const classificationWithCutUncertainty = classifyCandidate(theta, sessionSem, { cuts: classificationCuts, cutSe: PROVISIONAL_CUT_SCORE_SE });
+      const consistencyWithCutUncertainty = computeConsistencyReport(theta, sessionSem, { cuts: classificationCuts, cutSe: PROVISIONAL_CUT_SCORE_SE });
 
       // ── Person-Fit (Drasgow Lz + ECI + U3) ─────────────────────────────────
       const allItems = session
@@ -1572,6 +1583,23 @@ export const AssessmentService = {
           classificationAccuracy: consistencyReport.classificationAccuracy,
           meetsHighStakesThreshold: consistencyReport.decisionConsistency >= 0.80,
           meetsPlacementThreshold: consistencyReport.decisionConsistency >= 0.70,
+          withCutUncertainty: {
+            cutScoreSe: PROVISIONAL_CUT_SCORE_SE,
+            posteriorProbCorrect: classificationWithCutUncertainty.posteriorProbCorrect,
+            isBorderline: classificationWithCutUncertainty.isBorderline,
+            recommendedAction: classificationWithCutUncertainty.recommendedAction,
+            decisionConsistency: consistencyWithCutUncertainty.decisionConsistency,
+            classificationAccuracy: consistencyWithCutUncertainty.classificationAccuracy,
+          },
+        },
+        // Faz 3: the cut scores behind every CEFR label in this report are provisional
+        // until the standard-setting study (docs/standard-setting-report.md) is completed.
+        cutScores: {
+          status: "PROVISIONAL",
+          source: orgCuts && Object.keys(orgCuts).length > 0 ? "SystemConfig.cefrThresholds" : "cefr-framework.CEFR_THETA_THRESHOLDS",
+          values: Object.fromEntries(classificationCuts.map((cut) => [cut.boundary, cut.theta])),
+          assumedCutScoreSe: PROVISIONAL_CUT_SCORE_SE,
+          standardSetting: "PENDING",
         },
         personFit: personFitResult
           ? {

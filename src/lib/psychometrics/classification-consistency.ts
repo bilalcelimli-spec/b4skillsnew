@@ -23,18 +23,43 @@
 
 import { CefrLevel } from "../assessment-engine/types.js";
 
+import { CEFR_THETA_THRESHOLDS } from "../cefr/cefr-framework.js";
+
 // ─── CEFR Theta Thresholds ────────────────────────────────────────────────────
 // Closed-right convention: level applies when theta ∈ (lower, upper]
-// Values must match cefr-framework.ts CEFR_THETA_THRESHOLDS
+//
+// Faz 3 (roadmap F24): this module used to hard-code the Angoff-bootstrap cuts
+// (−1.578, −0.733, 0.168, 0.995) while the live engine classified with
+// cefr-framework.CEFR_THETA_THRESHOLDS (−1.75, −0.5, 0.5, 1.5), so a report's
+// consistency block could disagree with its own CEFR level. The operational cuts
+// are now the single default; alternative cuts (e.g. a completed standard-setting
+// study) are passed explicitly through `ClassificationOptions.cuts`.
 
-export const CEFR_CUT_SCORES: Array<{ boundary: string; theta: number }> = [
-  { boundary: "PRE_A1/A1", theta: -3.0 },
-  { boundary: "A1/A2",     theta: -1.578 }, // BCa bootstrap canonical (angoff-panel-data.ts)
-  { boundary: "A2/B1",     theta: -0.733 },
-  { boundary: "B1/B2",     theta:  0.168 },
-  { boundary: "B2/C1",     theta:  0.995 },
-  { boundary: "C1/C2",     theta:  2.0   }, // theoretical pending C1/C2 panel study
-];
+export type CutScore = { boundary: string; theta: number };
+
+const BOUNDARY_LABELS = ["PRE_A1/A1", "A1/A2", "A2/B1", "B1/B2", "B2/C1", "C1/C2"] as const;
+const THRESHOLD_KEYS = ["PRE_A1", "A1", "A2", "B1", "B2", "C1"] as const;
+
+/** Operational cuts from the canonical framework (provisional until standard setting). */
+export const CEFR_CUT_SCORES: CutScore[] = BOUNDARY_LABELS.map((boundary, i) => ({
+  boundary,
+  theta: CEFR_THETA_THRESHOLDS[THRESHOLD_KEYS[i]!]!,
+}));
+
+/**
+ * Provisional standard error of a cut score, folded into P(correct level) as
+ * √(SEM² + CUT_SE²) when `cutSe` is not supplied. Set to the half-width of the
+ * Angoff bootstrap 95% intervals (≈0.10 logit, canonical-cut-scores.ts) — an
+ * assumption until a completed standard-setting study replaces it.
+ */
+export const PROVISIONAL_CUT_SCORE_SE = 0.10;
+
+export interface ClassificationOptions {
+  /** Cut scores to classify against (default: operational CEFR_CUT_SCORES). */
+  cuts?: CutScore[];
+  /** Standard error of each cut, added in quadrature to the SEM (default 0 = cuts treated as exact). */
+  cutSe?: number;
+}
 
 const ORDERED_LEVELS: CefrLevel[] = [
   "PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2",
@@ -109,7 +134,7 @@ function pCorrectLevel(
   lowerCut: number,
   upperCut: number,
 ): number {
-  if (sem <= 0) {
+  if (!(sem > 0)) {
     return thetaHat > lowerCut && thetaHat <= upperCut ? 1 : 0;
   }
   const pUpper = normalCdf((upperCut - thetaHat) / sem);
@@ -117,22 +142,27 @@ function pCorrectLevel(
   return Math.max(0, pUpper - pLower);
 }
 
-function cefrLevelBounds(level: CefrLevel): [number, number] {
+function cefrLevelBounds(level: CefrLevel, cuts: CutScore[] = CEFR_CUT_SCORES): [number, number] {
   const idx = ORDERED_LEVELS.indexOf(level);
-  const lower = idx === 0 ? -Infinity : CEFR_CUT_SCORES[idx - 1]?.theta ?? -Infinity;
+  const lower = idx === 0 ? -Infinity : cuts[idx - 1]?.theta ?? -Infinity;
   const upper = idx >= ORDERED_LEVELS.length - 1
     ? Infinity
-    : CEFR_CUT_SCORES[idx]?.theta ?? Infinity;
+    : cuts[idx]?.theta ?? Infinity;
   return [lower, upper];
 }
 
-function thetaToCefrLevel(theta: number): CefrLevel {
-  for (let i = CEFR_CUT_SCORES.length - 1; i >= 0; i--) {
-    if (theta > CEFR_CUT_SCORES[i].theta) {
+function thetaToCefrLevel(theta: number, cuts: CutScore[] = CEFR_CUT_SCORES): CefrLevel {
+  for (let i = cuts.length - 1; i >= 0; i--) {
+    if (theta > cuts[i]!.theta) {
       return ORDERED_LEVELS[i + 1] ?? "C2";
     }
   }
   return "PRE_A1";
+}
+
+/** Effective dispersion when cut scores themselves are uncertain: √(SEM² + cutSe²). */
+function effectiveSem(sem: number, cutSe: number): number {
+  return Math.sqrt(sem * sem + cutSe * cutSe);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -146,16 +176,19 @@ function thetaToCefrLevel(theta: number): CefrLevel {
 export function classifyCandidate(
   thetaHat: number,
   sem: number,
+  options: ClassificationOptions = {},
 ): ClassificationResult {
-  const cefrLevel = thetaToCefrLevel(thetaHat);
-  const [lower, upper] = cefrLevelBounds(cefrLevel);
-  const posteriorProbCorrect = pCorrectLevel(thetaHat, sem, lower, upper);
+  const cuts = options.cuts ?? CEFR_CUT_SCORES;
+  const spread = effectiveSem(sem, options.cutSe ?? 0);
+  const cefrLevel = thetaToCefrLevel(thetaHat, cuts);
+  const [lower, upper] = cefrLevelBounds(cefrLevel, cuts);
+  const posteriorProbCorrect = pCorrectLevel(thetaHat, spread, lower, upper);
 
-  // Borderline: nearest cut within 1.96 SEM
+  // Borderline: nearest cut within 1.96 × effective SEM
   const nearestCutDistance = Math.min(
-    ...CEFR_CUT_SCORES.map((c) => Math.abs(thetaHat - c.theta)),
+    ...cuts.map((c) => Math.abs(thetaHat - c.theta)),
   );
-  const isBorderline = nearestCutDistance < 1.96 * sem;
+  const isBorderline = nearestCutDistance < 1.96 * spread;
 
   // Adjacent levels for borderline reporting
   const idx = ORDERED_LEVELS.indexOf(cefrLevel);
@@ -193,17 +226,20 @@ export function classifyCandidate(
 export function computeConsistencyReport(
   thetaHat: number,
   sem: number,
+  options: ClassificationOptions = {},
 ): ConsistencyReport {
+  const cuts = options.cuts ?? CEFR_CUT_SCORES;
+  const spread = effectiveSem(sem, options.cutSe ?? 0);
   const perLevelAccuracy: Record<string, number> = {};
   let pCorrectTotal = 0;
   let pAgree = 0;
   let pChance = 0;
 
   for (const level of ORDERED_LEVELS) {
-    const [lo, hi] = cefrLevelBounds(level);
-    const pLevel = pCorrectLevel(thetaHat, sem, lo, hi);
+    const [lo, hi] = cefrLevelBounds(level, cuts);
+    const pLevel = pCorrectLevel(thetaHat, spread, lo, hi);
     perLevelAccuracy[level] = pLevel;
-    pCorrectTotal += thetaToCefrLevel(thetaHat) === level ? pLevel : 0;
+    pCorrectTotal += thetaToCefrLevel(thetaHat, cuts) === level ? pLevel : 0;
 
     // Decision consistency: P(both forms → same level)
     pAgree += pLevel * pLevel;
