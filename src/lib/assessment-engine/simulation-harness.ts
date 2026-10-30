@@ -517,7 +517,8 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
       const skill = profile.sectionOrder[sectionIndex]!;
       const sectionItems = bankBySkill.get(skill) ?? [];
       let sectionCount = 0;
-      let reason = "POOL_EXHAUSTED";
+      // Every exit from the loop below assigns the reason (stop rule or empty pool).
+      let reason: string;
       for (;;) {
         const totalOperational = state.responses.filter((r) => !r.isPretest).length;
         const ability = sectionAbility(state, skill, totalOperational === 0 ? state.theta : priorMean, priorSd, { profile });
