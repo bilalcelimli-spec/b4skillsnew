@@ -31,13 +31,15 @@ import type { ProductLineProfile } from "../product-lines/profiles.js";
 import { allCategoryProbabilities, rubricToGrmParams } from "../psychometrics/graded-response-model.js";
 import { CATSelector, _resetDpStoreForTests, type ShadowItem, type ShadowStrategy } from "../selection/cat-selector.js";
 import type { SequencingContext } from "../selection/sequencing-rules.js";
-import { isAdaptiveEligible, profileAbilityPrior, profileThetaRange, sectionAbility } from "./adaptive-policy.js";
+import { isAdaptiveEligible, isPretestEligible, profileAbilityPrior, profileThetaRange, sectionAbility } from "./adaptive-policy.js";
+import { selectPretestItem } from "./pretest-selection.js";
+import { prepareSelectionPool, evaluateSectionStop, shouldAdministerPretest } from "./section-flow.js";
 import { AssessmentEngine } from "./engine.js";
 import { getExposureStore, resetExposureStoreForSimulation } from "./exposure-store.js";
 import { probability } from "./irt.js";
-import { prepareSelectionPool, evaluateSectionStop } from "./section-flow.js";
 import { distanceToNearestCut } from "./stop-rules.js";
 import { SkillType, type EngineConfig, type Item, type SessionState } from "./types.js";
+import { CALIBRATION_POLICY } from "../psychometrics/calibration-policy.js";
 
 // ─── Bank snapshot ────────────────────────────────────────────────────────────
 
@@ -113,6 +115,8 @@ export interface SyntheticBankOptions {
   productivePerCell?: number;
   /** Share of reading/listening items that belong to multi-item passages (default 0.6). */
   passageShare?: number;
+  /** PRETEST items per receptive skill × level cell (default 8). */
+  pretestPerCell?: number;
 }
 
 /**
@@ -126,6 +130,7 @@ export function buildSyntheticBank(options: SyntheticBankOptions = {}): BankSnap
   const receptivePerCell = options.receptivePerCell ?? 40;
   const productivePerCell = options.productivePerCell ?? 12;
   const passageShare = options.passageShare ?? 0.6;
+  const pretestPerCell = options.pretestPerCell ?? 8;
   const items: BankSnapshotItem[] = [];
   let n = 0;
   for (const skill of [...RECEPTIVE, ...PRODUCTIVE]) {
@@ -159,6 +164,27 @@ export function buildSyntheticBank(options: SyntheticBankOptions = {}): BankSnap
           tags: [],
           passageKey,
         });
+      }
+      if (!productive) {
+        for (let k = 0; k < pretestPerCell; k++) {
+          // Seed parameters (CEFR prior) differ from the generating truth so the
+          // calibration pipeline has something to recover; both stay in range.
+          const trueB = Math.max(-3.8, Math.min(3.8, centre + 0.45 * randn(rng)));
+          items.push({
+            id: `syn_pre_${n++}`,
+            skill,
+            cefrLevel: level,
+            type: rng() < 0.75 ? "MULTIPLE_CHOICE" : "FILL_IN_BLANKS",
+            a: Number(Math.max(0.6, Math.min(2.2, 1.2 + 0.3 * randn(rng))).toFixed(3)),
+            b: Number(trueB.toFixed(3)),
+            c: 0.2,
+            status: "PRETEST",
+            isPretest: true,
+            iqScore: 70 + Math.round(rng() * 30),
+            tags: [],
+            passageKey: null,
+          });
+        }
       }
     }
   }
@@ -218,6 +244,17 @@ export function eligibleBankItems(bank: BankSnapshot, profile: ProductLineProfil
     .map(toEngineItem);
 }
 
+/** Pretest (calibration) items a live session of this profile could embed for the skill. */
+export function eligiblePretestItems(bank: BankSnapshot, profile: ProductLineProfile, skill: SkillType): Item[] {
+  return bank.items
+    .filter((row) => isPretestEligible({
+      skill: row.skill, status: row.status ?? "ACTIVE", isPretest: row.isPretest ?? false,
+      cefrLevel: row.cefrLevel, discrimination: row.a, guessing: row.c, tags: row.tags ?? [],
+      content: row.productLine ? { productLine: row.productLine } : {},
+    }, profile, skill))
+    .map((row) => ({ ...toEngineItem(row), isPretest: true }));
+}
+
 // ─── Response simulation ──────────────────────────────────────────────────────
 
 function isGrmItem(item: Item): boolean {
@@ -263,6 +300,23 @@ export interface SimulationOptions {
   engineConfig?: Partial<EngineConfig>;
   /** Reset the in-process exposure stores before the run (default true). */
   isolateStores?: boolean;
+  /** Share of the exam that may be pretest items (SystemConfig.pretestRatio; default 0.1 as in production). */
+  pretestRatio?: number;
+}
+
+export interface PretestSummary {
+  /** Pretest items eligible across the profile's sections. */
+  eligibleItems: number;
+  /** Mean pretest items embedded per session. */
+  meanPerSession: number;
+  /** Mean responses accumulated per pretest item that was served at least once. */
+  meanResponsesPerServedItem: number;
+  /** Pretest items that reached the estimation threshold (CALIBRATION_POLICY.estimateMinN). */
+  itemsAtEstimateMinN: number;
+  /** Pretest items that reached the publish threshold (CALIBRATION_POLICY.publishMinN). */
+  itemsAtPublishMinN: number;
+  /** Expected sessions for the least-served eligible item to reach estimateMinN at this traffic mix. */
+  sessionsToEstimateAll: number | null;
 }
 
 export interface SimuleeResult {
@@ -276,6 +330,7 @@ export interface SimuleeResult {
   trueCefr: CefrLevel;
   estimatedCefr: CefrLevel;
   itemsAdministered: number;
+  pretestAdministered: number;
   sectionStops: Array<{ skill: SkillType; items: number; reason: string }>;
 }
 
@@ -322,6 +377,7 @@ export interface SimulationReport {
   maxExposureRate: number;
   shareOverCeiling: number;
   perSkill: Partial<Record<SkillType, SkillSummary>>;
+  pretest: PretestSummary;
   simulees: SimuleeResult[];
 }
 
@@ -382,12 +438,18 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
   const selector = new CATSelector(profile, { shadowStrategy });
 
   const bankBySkill = new Map<SkillType, Item[]>();
+  const pretestBySkill = new Map<SkillType, Array<Item & { exposureCount: number }>>();
   const itemMap: Record<string, Item> = {};
+  const pretestRatio = options.pretestRatio ?? 0.1;
   for (const skill of profile.sectionOrder) {
     const items = eligibleBankItems(bank, profile, skill);
     bankBySkill.set(skill, items);
     for (const item of items) itemMap[item.id] = item;
+    const pretests = eligiblePretestItems(bank, profile, skill).map((item) => ({ ...item, exposureCount: 0 }));
+    pretestBySkill.set(skill, pretests);
+    for (const item of pretests) itemMap[item.id] = item;
   }
+  const pretestResponses = new Map<string, number>();
 
   const exposures = new Map<string, number>();
   const latencies: number[] = [];
@@ -429,6 +491,24 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
           items: sectionDict,
         });
         if (stop.stop) { reason = stop.reason ?? "STOP"; break; }
+
+        // Pretest slot (same policy as the live flow); unscored, outside the budget.
+        const pretestsSoFar = state.responses.filter((r) => r.isPretest).length;
+        if (shouldAdministerPretest({
+          profile, skill, pretestRatio, totalOperationalResponses: totalOperational,
+          pretestAdministered: pretestsSoFar, sectionCount, sectionMaxItems: stop.sectionMaxItems,
+        })) {
+          const pool = (pretestBySkill.get(skill) ?? []).filter((item) => !state.usedItemIds.has(item.id));
+          const pretest = selectPretestItem(pool, ability.theta);
+          if (pretest) {
+            const score = simulateResponse(pretest, trueSkillTheta[skill]!, rng);
+            state = engine.processResponse(state, { itemId: pretest.id, score, latencyMs: 10_000, isPretest: true }, itemMap);
+            administered.push(pretest);
+            (pretest as Item & { exposureCount: number }).exposureCount++;
+            pretestResponses.set(pretest.id, (pretestResponses.get(pretest.id) ?? 0) + 1);
+            continue;
+          }
+        }
 
         const itemPool = sectionItems.filter((item) => !state.usedItemIds.has(item.id));
         const prepared = prepareSelectionPool({
@@ -476,7 +556,8 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
       skillProfiles: state.skillProfiles ?? {},
       trueCefr: engine.mapToCefr(trueTheta),
       estimatedCefr: engine.mapToCefr(state.theta),
-      itemsAdministered: state.responses.length,
+      itemsAdministered: state.responses.filter((r) => !r.isPretest).length,
+      pretestAdministered: state.responses.filter((r) => r.isPretest).length,
       sectionStops,
     });
   }
@@ -531,6 +612,21 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
     };
   }
 
+  const pretestEligible = [...pretestBySkill.values()].reduce((sum, items) => sum + items.length, 0);
+  const servedCounts = [...pretestResponses.values()];
+  const meanPretestPerSession = mean(simulees.map((s) => s.pretestAdministered));
+  const totalPretestResponses = servedCounts.reduce((sum, v) => sum + v, 0);
+  // Least-served eligible item sets the pace: responses per session spread over the eligible pool.
+  const perItemPerSession = pretestEligible > 0 && n > 0 ? totalPretestResponses / pretestEligible / n : 0;
+  const pretest: PretestSummary = {
+    eligibleItems: pretestEligible,
+    meanPerSession: meanPretestPerSession,
+    meanResponsesPerServedItem: mean(servedCounts),
+    itemsAtEstimateMinN: servedCounts.filter((v) => v >= CALIBRATION_POLICY.estimateMinN).length,
+    itemsAtPublishMinN: servedCounts.filter((v) => v >= CALIBRATION_POLICY.publishMinN).length,
+    sessionsToEstimateAll: perItemPerSession > 0 ? Math.ceil(CALIBRATION_POLICY.estimateMinN / perItemPerSession) : null,
+  };
+
   return {
     profile: profile.name,
     shadowStrategy,
@@ -560,6 +656,7 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
     maxExposureRate,
     shareOverCeiling,
     perSkill,
+    pretest,
     simulees,
   };
   }

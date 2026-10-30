@@ -84,6 +84,41 @@ export function isAdaptiveEligible(item: AdaptiveEligibilityItem, profile: Produ
   return typeof productLine === 'string' && sources.includes(productLine);
 }
 
+/**
+ * Pretest (calibration) pool for a section: items in PRETEST status, or ACTIVE
+ * items flagged isPretest, inside the profile's CEFR range and sources, with
+ * usable seed parameters. Responses to these items never enter θ.
+ */
+export function pretestItemWhere(profile: ProductLineProfile, skill: SkillType): Prisma.ItemWhereInput {
+  const [lo, hi] = profile.cefrRange.map(level => LEVELS.indexOf(level as CefrLevel));
+  if (lo < 0 || hi < lo) throw new Error('Invalid adaptive profile CEFR range');
+  const sources = profileSources(profile);
+  return {
+    skill,
+    OR: [{ status: 'PRETEST' }, { status: 'ACTIVE', isPretest: true }],
+    cefrLevel: { in: LEVELS.slice(lo, hi + 1) },
+    discrimination: { gt: 0 }, guessing: { gte: 0, lt: 1 },
+    ...(sources.length ? { AND: [{ OR: [{ tags: { hasSome: sources } }, { tags: { isEmpty: true } },
+      ...sources.map(source => ({ content: { path: ['productLine'], equals: source } }))] }] } : {}),
+  };
+}
+
+/** In-memory mirror of `pretestItemWhere`. */
+export function isPretestEligible(item: AdaptiveEligibilityItem, profile: ProductLineProfile, skill: SkillType): boolean {
+  const [lo, hi] = profile.cefrRange.map(level => LEVELS.indexOf(level as CefrLevel));
+  const level = LEVELS.indexOf(item.cefrLevel as CefrLevel);
+  const pretest = item.status === 'PRETEST' || (item.status === 'ACTIVE' && item.isPretest === true);
+  if (item.skill !== skill || !pretest) return false;
+  if (level < lo || level > hi) return false;
+  if (!(item.discrimination > 0) || !(item.guessing >= 0 && item.guessing < 1)) return false;
+  const sources = profileSources(profile);
+  if (sources.length === 0) return true;
+  const tags = item.tags ?? [];
+  if (tags.length === 0 || tags.some(tag => sources.includes(tag))) return true;
+  const productLine = (item.content as { productLine?: unknown } | null | undefined)?.productLine;
+  return typeof productLine === 'string' && sources.includes(productLine);
+}
+
 /** Launch and delivery must count/select the same operational population. */
 export function adaptiveItemWhere(profile: ProductLineProfile, skill: SkillType): Prisma.ItemWhereInput {
   const [lo, hi] = profile.cefrRange.map(level => LEVELS.indexOf(level as CefrLevel));

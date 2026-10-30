@@ -93,8 +93,48 @@ export interface CalibrationResult {
   deltaA: number;
   /** Marginal log-likelihood after update. */
   logLikelihood: number;
+  /**
+   * Asymptotic standard errors from the observed information (−1/∂²LL) at the
+   * accepted parameters, for the publish gate (SE(b) ≤ 0.25). `aSe` is null
+   * when a was held fixed (n < 500).
+   */
+  bSe: number | null;
+  aSe: number | null;
   /** Reason update was rejected (if !stable). */
   rejectionReason?: string;
+}
+
+/** Observed information for b at the given parameters: −∂²LL/∂b². */
+export function observedInformationB(observations: PretestObservation[], params: IrtParameters): number {
+  const { a, c } = params;
+  let info = 0;
+  for (const obs of observations) {
+    const w = obs.weight ?? 1;
+    const p = Math.max(1e-9, Math.min(1 - 1e-9, probability(obs.theta, params)));
+    const pmc = p - c;
+    const omc = 1 - c;
+    info += w * a * a * pmc * pmc * (1 - p) / (p * omc * omc);
+  }
+  return info;
+}
+
+/** Observed information for a at the given parameters: −∂²LL/∂a². */
+export function observedInformationA(observations: PretestObservation[], params: IrtParameters): number {
+  const { b, c } = params;
+  let info = 0;
+  for (const obs of observations) {
+    const w = obs.weight ?? 1;
+    const p = Math.max(1e-9, Math.min(1 - 1e-9, probability(obs.theta, params)));
+    const pmc = p - c;
+    const omc = 1 - c;
+    const d = obs.theta - b;
+    info += w * d * d * pmc * pmc * (1 - p) / (p * omc * omc);
+  }
+  return info;
+}
+
+function standardError(information: number): number | null {
+  return information > 1e-12 ? 1 / Math.sqrt(information) : null;
 }
 
 // ─── E-step helpers ───────────────────────────────────────────────────────────
@@ -242,6 +282,8 @@ export function calibratePretestItem(
       deltaB: 0,
       deltaA: 0,
       logLikelihood: eStep(observations, currentParams).weightedLL,
+      bSe: standardError(observedInformationB(observations, currentParams)),
+      aSe: null,
       rejectionReason: `n=${n} < minN=${cfg.minN}`,
     };
   }
@@ -273,6 +315,8 @@ export function calibratePretestItem(
       deltaB,
       deltaA,
       logLikelihood: eStep(observations, currentParams).weightedLL,
+      bSe: standardError(observedInformationB(observations, currentParams)),
+      aSe: null,
       rejectionReason: `|Δb|=${deltaB.toFixed(3)} > maxDeltaB=${cfg.maxDeltaB}`,
     };
   }
@@ -285,6 +329,8 @@ export function calibratePretestItem(
       deltaB,
       deltaA,
       logLikelihood: eStep(observations, currentParams).weightedLL,
+      bSe: standardError(observedInformationB(observations, currentParams)),
+      aSe: null,
       rejectionReason: `a_new=${newA.toFixed(3)} outside [${cfg.minA}, ${cfg.maxA}]`,
     };
   }
@@ -297,6 +343,8 @@ export function calibratePretestItem(
       deltaB,
       deltaA,
       logLikelihood: eStep(observations, currentParams).weightedLL,
+      bSe: standardError(observedInformationB(observations, currentParams)),
+      aSe: null,
       rejectionReason: `c_new=${newC.toFixed(3)} outside [0, ${cfg.maxC}]`,
     };
   }
@@ -311,6 +359,8 @@ export function calibratePretestItem(
     deltaB,
     deltaA,
     logLikelihood: weightedLL,
+    bSe: standardError(observedInformationB(observations, newParams)),
+    aSe: n >= 500 ? standardError(observedInformationA(observations, newParams)) : null,
   };
 }
 

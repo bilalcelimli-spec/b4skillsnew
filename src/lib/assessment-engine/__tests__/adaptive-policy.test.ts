@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAdaptiveEligible, profileAbilityPrior, profileThetaRange } from "../adaptive-policy";
+import { isAdaptiveEligible, isPretestEligible, pretestItemWhere, profileAbilityPrior, profileThetaRange } from "../adaptive-policy";
 import { PRODUCT_LINE_PROFILES, getProfile } from "../../product-lines/profiles";
 import { SkillType } from "../types";
 
@@ -63,5 +63,27 @@ describe("isAdaptiveEligible (in-memory mirror of adaptiveItemWhere)", () => {
     expect(isAdaptiveEligible({ ...base, tags: ["primary"], content: { productLine: "corporate" } }, profile, SkillType.GRAMMAR)).toBe(true);
     // General English has no non-general source: every tag is acceptable
     expect(isAdaptiveEligible({ ...base, tags: ["primary"] }, getProfile("General English"), SkillType.GRAMMAR)).toBe(true);
+  });
+});
+
+describe("pretest pool (pretestItemWhere / isPretestEligible)", () => {
+  const profile = getProfile("Corporate");
+  const base = { skill: SkillType.GRAMMAR, status: "PRETEST", isPretest: true, cefrLevel: "B1", discrimination: 1.1, guessing: 0.2, tags: [] as string[], content: {} };
+
+  it("accepts PRETEST items and ACTIVE items flagged isPretest inside the range", () => {
+    expect(isPretestEligible(base, profile, SkillType.GRAMMAR)).toBe(true);
+    expect(isPretestEligible({ ...base, status: "ACTIVE", isPretest: true }, profile, SkillType.GRAMMAR)).toBe(true);
+    expect(isPretestEligible({ ...base, status: "ACTIVE", isPretest: false }, profile, SkillType.GRAMMAR)).toBe(false);
+    expect(isPretestEligible({ ...base, status: "DRAFT" }, profile, SkillType.GRAMMAR)).toBe(false);
+    expect(isPretestEligible({ ...base, cefrLevel: "PRE_A1" }, profile, SkillType.GRAMMAR)).toBe(false);
+    expect(isPretestEligible({ ...base, tags: ["primary"] }, profile, SkillType.GRAMMAR)).toBe(false);
+  });
+
+  it("mirrors the Prisma filter shape", () => {
+    const where = pretestItemWhere(profile, SkillType.GRAMMAR);
+    expect(where).toMatchObject({ skill: SkillType.GRAMMAR, OR: [{ status: "PRETEST" }, { status: "ACTIVE", isPretest: true }], discrimination: { gt: 0 } });
+    expect((where.cefrLevel as { in: string[] }).in[0]).toBe(profile.cefrRange[0]);
+    expect(Array.isArray(where.AND)).toBe(true);
+    expect(pretestItemWhere(getProfile("General English"), SkillType.READING).AND).toBeUndefined();
   });
 });

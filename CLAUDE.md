@@ -40,7 +40,8 @@ npm run db:studio           # Prisma Studio GUI
 # Item bank operations
 npm run iqs:batch           # run IQS quality scores on unscored items
 npm run iqs:batch:all       # re-score all items
-npm run db:job:calibrate-pretest    # promote calibrated pretest items
+npm run db:job:calibrate            # calibration sweep → draft parameter versions (+ --publish-eligible --yes)
+npm run db:job:calibrate-pretest    # legacy alias for the sweep (drafts only)
 npm run db:job:detect-dif           # batch DIF detection
 npm run db:seed:anchors             # seed anchor/equating items
 npm run verify:irt          # check IRT parameter health across bank
@@ -122,7 +123,7 @@ Copy `.env.example` to `.env` and fill in at minimum `DATABASE_URL`, `JWT_SECRET
 
 ### Item Lifecycle
 
-Items in Postgres flow through: `DRAFT → REVIEW → PILOT → CALIBRATION → ACTIVE → WATCHLIST → RETIRED`. Only `ACTIVE` items are served in scored sessions. `PILOT` items are silently embedded as unscored pretests (max 10% of session). Promotion from `CALIBRATION → ACTIVE` requires ≥ 200 scored responses and IQS ≥ 65.
+Items in Postgres flow through: `DRAFT → REVIEW → PRETEST → ACTIVE → RETIRED` (`REVIEW` also pulls a live item from service). Only `ACTIVE` items are scored. `PRETEST` items are embedded unscored after every 4th operational item (bounded by `SystemConfig.pretestRatio`, never in writing/speaking). IRT parameters are versioned (`ItemParameterVersion`): calibration jobs write DRAFT versions only; publishing a draft (admin API or `npm run db:job:calibrate -- --publish-eligible --yes`) refreshes `Item.a/b/c` and promotes `PRETEST → ACTIVE`. All thresholds live in `src/lib/psychometrics/calibration-policy.ts` (estimate n ≥ 80; publish n ≥ 200, SE(b) ≤ 0.25, IQS ≥ 65, |Δb| ≤ 0.30).
 
 ### Scripts
 

@@ -6,7 +6,7 @@ import {
   DEFAULT_SECTION_STOP_RULES,
   type StopRuleInput,
 } from "../stop-rules";
-import { evaluateSectionStop } from "../section-flow";
+import { evaluateSectionStop, shouldAdministerPretest, PRETEST_SLOT_INTERVAL } from "../section-flow";
 import { getProfile } from "../../product-lines/profiles";
 import { SkillType, type Item } from "../types";
 
@@ -129,5 +129,29 @@ describe("evaluateSectionStop — profile wiring", () => {
     });
     expect(out.sectionMaxItems).toBe(cfg.minItems);
     expect(out).toMatchObject({ stop: true, reason: "ITEM_BUDGET_REACHED" });
+  });
+});
+
+describe("shouldAdministerPretest — deterministic slots", () => {
+  const profile = getProfile("General English");
+  const base = {
+    profile, skill: SkillType.GRAMMAR, pretestRatio: 0.1, pretestAdministered: 0, sectionCount: 3, sectionMaxItems: 13,
+  };
+
+  it("embeds a pretest after every 4th operational item, once per slot, within the ratio budget", () => {
+    expect(shouldAdministerPretest({ ...base, totalOperationalResponses: 3 })).toBe(false);
+    expect(shouldAdministerPretest({ ...base, totalOperationalResponses: PRETEST_SLOT_INTERVAL })).toBe(true);
+    expect(shouldAdministerPretest({ ...base, totalOperationalResponses: PRETEST_SLOT_INTERVAL, pretestAdministered: 1 })).toBe(false);
+    expect(shouldAdministerPretest({ ...base, totalOperationalResponses: 8, pretestAdministered: 1 })).toBe(true);
+    const maxPretests = Math.round(0.1 * profile.globalMaxItems);
+    expect(shouldAdministerPretest({ ...base, totalOperationalResponses: 40, pretestAdministered: maxPretests })).toBe(false);
+  });
+
+  it("never serves pretests during warm-up, in productive sections, past the section budget or with an outstanding item", () => {
+    expect(shouldAdministerPretest({ ...base, totalOperationalResponses: 0 })).toBe(false);
+    expect(shouldAdministerPretest({ ...base, totalOperationalResponses: 4, skill: SkillType.WRITING })).toBe(false);
+    expect(shouldAdministerPretest({ ...base, totalOperationalResponses: 4, sectionCount: 13 })).toBe(false);
+    expect(shouldAdministerPretest({ ...base, totalOperationalResponses: 4, hasOutstandingItem: true })).toBe(false);
+    expect(shouldAdministerPretest({ ...base, totalOperationalResponses: 4, pretestRatio: 0 })).toBe(false);
   });
 });
