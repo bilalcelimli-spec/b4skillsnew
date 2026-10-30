@@ -82,6 +82,19 @@ Kanıt durumu (27 Eylül 2026 temel çizgisi): 2.096 ACTIVE madde, **0/2.096 amp
 
 **F23. Pretest döngüsünün verimi havuz genişliğiyle sınırlı (P1, Faz 2 bulgusu).** Oturum başına 5 pretest (oran 0,10 × 53 madde) ve 160 uygun pretest maddesiyle, en az maruz kalan maddeyi seçen eşit dağıtım her maddeye 200 oturumda ≈13 yanıt getiriyor; tüm havuzun kestirim eşiğine (n≥80) ulaşması ≈2.560 oturum. Gerçek bankadaki 996 PRETEST madde için bu ≈16.000 oturum demek. Düzeltme: pretest seçimi "başlananı bitir" odak kümesine çevrildi (bantta ilerlemiş maddeler önce tamamlanır, odak kümesi dolmadıkça yeni madde başlatılmaz), böylece kalibre maddeler toplu değil sürekli akışla gelir (simülasyon: 200 oturumda kestirim eşiğine ulaşan madde 0 → 6; toplam süre aynı). Yine de kalibrasyon çalışması (7 form × ~700 kişi) kararı Faz 2'nin ön koşulu olmaya devam ediyor; pretest akışı tek başına yılda yalnızca birkaç yüz maddeyi kalibre eder.
 
+**F24. Üç farklı kesme skoru seti (P0, Faz 3'te düzeltildi).** `cefr-framework` (−1,75/−0,5/0,5/1,5; motor, raporlar ve sertifika), `classification-consistency` (Angoff bootstrap değerleri −1,578/−0,733/0,168/0,995 sabit kodlanmış; "framework ile eşleşmeli" yorumuna rağmen eşleşmiyordu) ve `canonical-cut-scores` (Angoff çalışması çıktısı, canlıda kullanılmıyor). Sonuç: raporun sınıflama tutarlılığı bloğu raporun kendi CEFR seviyesinden farklı bir seviye bildirebiliyordu (θ=0,3 → motor B1, tutarlılık bloğu B2). Düzeltme: tutarlılık modülü varsayılan olarak operasyonel eşikleri kullanır, alternatif eşikler açık parametre; rapor `cutScores: { status: PROVISIONAL, source, values, assumedCutScoreSe }` ve `withCutUncertainty` istatistiklerini taşır (kesme SE'si 0,10 — Angoff bootstrap %95 aralığının yarı genişliği — standart belirleme tamamlanana dek varsayım). Angoff panel verisinin (`angoff-panel-data.ts`, Mayıs 2026, 8 panelist) gerçek bir çalışma mı yoksa şablon mu olduğu kayıtlardan netleşmiyor; `standard-setting-report.md` hâlâ şablon. Bu karar kullanıcıya ait.
+
+**Durdurma kuralı A/B (Faz 3, sentetik banka, n=200 × 9 profil, aynı tohum):**
+
+| Varyant | Uzunluk | Doğruluk / sınır bandı | Karar |
+|---|---|---|---|
+| SEM_THRESHOLD (temel) | referans | referans | — |
+| + CLASSIFICATION_CONFIDENCE 0,90 | 7/9 profilde birebir aynı; Academia −1,2, Specialized −1,5 madde | Academia CEFR 0,66 → 0,76, sınır bandı 0,52 → 0,69; diğerleri aynı | **Tüm profillerde açık** (uzatmıyor, hazır beceriyi erken kapatıyor) |
+| + CLASSIFICATION_CONFIDENCE 0,80 | 1–2,5 madde kısa (JS 60 → 57,5; GE 53 → 51,6) | genelde aynı/iyi; Rapid sınır bandı 0,62 → 0,51 | Kapalı; profil başına `classificationConfidenceThreshold` ile açılabilir |
+| + BOUNDARY_SEM | hiç tetiklenmedi (bölüm SEM'i 0,16'nın altına inmiyor) | — | Kapalı (genel θ için tasarlanmış, bölüm düzeyinde anlamsız) |
+| Bütçe esnekliği (+1, SEM > 0,40) | uzunluk aynı (global bütçe sınırlıyor) | ±0,03 RMSE, gürültü | Kapalı (`sectionBudgetFlex` alanı duruyor) |
+| + SPRT (α=β=0,05, h=0,18, min 5) | Rapid 35 → 27; GE 53 → 34 | Rapid RMSE 0,42 → 0,38, CEFR 0,71 → 0,75; GE SEM 0,22 → 0,26 | **Yalnız Rapid Diagnostic'te açık** |
+
 **Greedy vs LP gölge test (A/B, 9 profil × n=150):** RMSE farkı ±0,04 içinde ve işaret değiştiriyor; SEM ve uzunluk farkı yok; LP seçim süresi ~1,5 ms vs ~0,1 ms. Karar: greedy varsayılan kalır, LP `shadowStrategy: "lp"` ile opsiyonel.
 
 ---
@@ -137,6 +150,8 @@ Amaç: Trafik artınca kendiliğinden devreye girecek hatalı davranışları du
 - Kabul: İlk yayınlanmış parametre sürümü; `verify:irt` kalibre yüzdesini sürüm tablosundan okur; Gate B eşiği (%80) hedef tarihiyle yazılır.
 
 ### Faz 3 — Durdurma ve karar kalitesi (3–4 hafta)
+
+> **Durum (2026-10-30):** Uygulandı. Her profil `stopRules: ["SEM_THRESHOLD","CLASSIFICATION_CONFIDENCE"]` (0,90); Rapid Diagnostic ek olarak SPRT. Kararlar yukarıdaki A/B tablosuna dayanıyor; BOUNDARY_SEM ve bütçe esnekliği ölçüldü, kazanç göstermedi, kapalı. F24 kesme skoru tutarsızlığı giderildi; rapor provizyonel kesme skoru etiketi ve kesme belirsizliği dahil istatistikleri taşıyor. Harness `--stop-rules`, `--confidence`, `--sprt`, `--budget-flex` ile yeniden üretir. Açık: standart belirleme çalışması (Angoff verisinin statüsü ve C1/C2 paneli), rapor arayüzünde "provizyonel" etiketinin gösterimi.
 
 - Bölüm durdurma: `skillSem ≤ threshold` ∨ `P(CEFR seviyesi | veri) ≥ 0,90` ∨ bütçe; CEFR sınırına koşullu SEM kademeleri (0,16 / 0,12) kullanılır. SPRT yalnızca Rapid Diagnostic gibi sınıflama amaçlı profillerde ve `minItems` sonrası.
 - Beceri bütçesi: SEM > 0,40 olan beceriye +1 esnekliği (`engine.ts:274` mantığı) bölüm akışına taşınır; üretici beceriler hariç.
