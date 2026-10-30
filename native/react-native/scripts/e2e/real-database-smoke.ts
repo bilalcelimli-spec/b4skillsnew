@@ -1,3 +1,4 @@
+import path from 'node:path';
 // Opt-in real-database integration. Never seeds items or accesses customer accounts.
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -6,7 +7,7 @@ import { PrismaClient } from '@prisma/client';
 import { Backend, blankTask, canRender, responseMode, type Answer } from '../../src/api';
 
 (globalThis as any).__DEV__ = true;
-const root = '/tmp/b4skills-realdb-validation';
+const root = path.resolve(process.cwd(), 'build/realdb-validation');
 const base = 'http://127.0.0.1:3004';
 if (process.env.B4SKILLS_API_VALIDATION_MODE !== 'true') throw new Error('Use the private validation runtime configuration.');
 const db = new PrismaClient();
@@ -71,7 +72,8 @@ async function main() {
   await assert.rejects(api.status(sessionId),(e:any)=>e.status===403);
   jar.clear();for(const [k,v] of ownCookie) jar.set(k,v);
   const result={testedAt:new Date().toISOString(),database:'real Supabase PostgreSQL',base,sessionId,organizationId:org.id,status:progress.status,progress:progress.progress,counts,mediaChecks,unsupported,oneCreditDebit:true,idempotentReplay:true,dbPersistence:true,anonymousBlocked:true,otherCandidateBlocked:true,pendingCount:progress.pendingCount,provisional:progress.provisional};
-  fs.writeFileSync(`${root}/result.json`,JSON.stringify(result,null,2)); console.log(JSON.stringify(result,null,2));
+  fs.mkdirSync(root,{recursive:true,mode:0o700});
+  fs.writeFileSync(`${root}/result.json`,JSON.stringify(result,null,2),{mode:0o600}); console.log(JSON.stringify(result,null,2));
   if(unsupported || progress.status!=='COMPLETED') process.exitCode=2;
 }
 main().catch(e=>{console.error(JSON.stringify({failure:e.message,code:e.code??e.status??null}));process.exitCode=1;}).finally(()=>db.$disconnect());

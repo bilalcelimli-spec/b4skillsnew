@@ -5,11 +5,13 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
 if(process.env.B4SKILLS_API_VALIDATION_MODE!=='true') throw new Error('Load the private validation runtime before provisioning.');
-const root='/tmp/b4skills-realdb-validation';
+const root=path.resolve(process.cwd(), 'build/realdb-validation');
 const file=path.join(root,'candidates.json');
 const db=new PrismaClient();
 try {
-  if(fs.existsSync(file)) {console.log('Existing private candidates retained; no passwords or credits reset.');}
+  let existing=false;
+  try { fs.accessSync(file); existing=true; } catch (error) { if (error.code!=='ENOENT') throw error; }
+  if(existing) {console.log('Existing private candidates retained; no passwords or credits reset.');}
   else {
     const accounts=await db.$transaction(async tx=>{
       // Unique slug prevents a repeat from silently replenishing credits or resetting identities.
@@ -25,7 +27,8 @@ try {
       return accounts;
     },{timeout:20000});
     fs.mkdirSync(root,{recursive:true,mode:0o700});fs.chmodSync(root,0o700);
-    fs.writeFileSync(file,JSON.stringify(accounts,null,2),{mode:0o600});
+    // 'wx': never overwrite a candidates file created concurrently by another run.
+    fs.writeFileSync(file,JSON.stringify(accounts,null,2),{mode:0o600,flag:'wx'});
     console.log('Three synthetic candidates and ten QA credits created in the dedicated QA organization.');
   }
 } finally {await db.$disconnect();}

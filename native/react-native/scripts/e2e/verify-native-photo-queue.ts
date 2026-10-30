@@ -1,3 +1,4 @@
+import path from 'node:path';
 // Inspect only this run's synthetic native queue fixtures; never launch a session.
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
@@ -6,7 +7,7 @@ import { downloadPrivateObject } from '../../../../src/lib/storage/private-stora
 if (process.env.B4SKILLS_API_VALIDATION_MODE !== 'true') throw Error('Private QA runtime required');
 const platform = process.argv[2], phase = process.argv[3];
 assert.ok(['macos', 'ipad'].includes(platform)); assert.ok(['before', 'after'].includes(phase));
-const file = `/tmp/b4skills-realdb-validation/${platform}-native-photo-queue-proof.json`;
+const file = path.join(path.resolve(process.cwd(), 'build/realdb-validation'), `${platform}-native-photo-queue-proof.json`);
 const p = JSON.parse(fs.readFileSync(file, 'utf8')), db = new PrismaClient();
 async function main() { try {
   const session = await db.session.findUniqueOrThrow({ where: { id: p.sessionId }, select: { organizationId: true, candidateId: true } });

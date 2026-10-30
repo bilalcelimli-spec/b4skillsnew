@@ -1,3 +1,4 @@
+import path from 'node:path';
 // Existing synthetic QA tenant only. No launch success, credit debit, migration or item writes.
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
@@ -7,7 +8,7 @@ import { Backend } from '../../src/api';
 import type { NativeEvent } from '../../src/proctoring/protocol';
 (globalThis as any).__DEV__ = true;
 if (process.env.B4SKILLS_API_VALIDATION_MODE !== 'true') throw new Error('Private validation runtime required.');
-const root = '/tmp/b4skills-realdb-validation', base = 'http://127.0.0.1:3004';
+const root = path.resolve(process.cwd(), 'build/realdb-validation'), base = 'http://127.0.0.1:3004';
 const accounts = JSON.parse(fs.readFileSync(`${root}/candidates.json`, 'utf8'));
 const own = accounts.find((a: any) => a.platform === 'client'), other = accounts.find((a: any) => a.platform === 'mac');
 const db = new PrismaClient();
@@ -47,7 +48,8 @@ async function main() {
   await api.login(other.email, other.password);
   await assert.rejects(api.sendEvent(event), (e: any) => e.status === 403);
   const result = { testedAt: new Date().toISOString(), database: 'real Supabase PostgreSQL', organizationId: org.id, sessionId: session.id, eventId: event.eventId, anonymousPolicyBlocked: true, stalePolicyBlocked: true, missingMicrophoneBlocked: true, noCreditDebit: true, noNewSession: true, concurrentDuplicateSingleRow: true, changedPayloadBlocked: true, otherCandidateBlocked: true };
-  fs.writeFileSync(`${root}/sprint1-proctoring-result.json`, JSON.stringify(result, null, 2));
+  fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(`${root}/sprint1-proctoring-result.json`, JSON.stringify(result, null, 2), { mode: 0o600 });
   console.log(JSON.stringify(result, null, 2));
 }
 main().catch(error => { console.error(JSON.stringify({ failure: error.message, code: error.code ?? error.status })); process.exitCode = 1; }).finally(() => { globalThis.fetch = originalFetch; return db.$disconnect(); });
