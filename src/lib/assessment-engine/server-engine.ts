@@ -9,7 +9,11 @@ import { buildSessionProgress } from "./session-progress";
 import { buildScoringPrompt, scoringTargetCefr } from "../scoring/task-context.js";
 import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence } from "../scoring/score-evidence.js";
 import { estimateTheta } from "./estimator.js";
-import { adaptiveItemWhere, sectionAbility, sectionItemBudget } from "./adaptive-policy.js";
+import { adaptiveItemWhere, pretestItemWhere, sectionAbility, profileAbilityPrior, crossSkillPriors } from "./adaptive-policy.js";
+import type { ProductLineProfile } from "../product-lines/profiles.js";
+import { prepareSelectionPool, evaluateSectionStop, shouldAdministerPretest } from "./section-flow.js";
+import { selectPretestItem } from "./pretest-selection.js";
+import { DEFAULT_SECTION_STOP_RULES } from "./stop-rules.js";
 import { AssessmentEngine } from "./engine";
 import { getCATSelector, ShadowItem } from "../selection/cat-selector.js";
 import { SequencingContext } from "../selection/sequencing-rules.js";
@@ -18,8 +22,7 @@ import { resolveMstPhase, buildMstTagFilter } from "../selection/mst-router.js";
 import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint, IrtParameters } from "./types";
 import { prisma } from "../prisma";
 import { stripAnswerKeys } from "../security/answer-sanitizer.js";
-import { capItemsPerPassage } from "./passage-cap.js";
-import { shuffleMcqOptions, seededFisherYates } from "./mcq-options.js";
+import { shuffleMcqOptions } from "./mcq-options.js";
 import { scoreObjectiveResponse } from "./objective-response.js";
 import { productiveScoringMode } from "./productive-response.js";
 import { validateItemBeforeSave } from "../validation/item-schema.js";
@@ -35,18 +38,28 @@ import { validateItem } from "../language-skills/item-quality-validator.js";
 import { logger } from "../observability/index.js";
 import { getCanDo, thetaToCefr, CEFR_LEVELS, CEFR_THETA_THRESHOLDS } from "../cefr/cefr-framework.js";
 import { initExposureStore, getExposureStore } from "./exposure-store.js";
+import { isRapidGuess } from "./engine.js";
+import {
+  recordCatSelection,
+  recordCatPoolFallback,
+  recordCatStop,
+  recordCatFinalSem,
+  recordCatItemExposure,
+  recordCatRapidGuess,
+} from "../observability/metrics.js";
 import { bootstrapExposureFromDb } from "./exposure-bootstrap.js";
 import { parseSystemConfigPayload } from "./system-config-zod.js";
 import type { ResponseTimeParams } from "../psychometrics/response-time-irt.js";
 import {
   detectAberrantResponseTime,
   estimateSpeed,
-  responseTimeAdjustedScore,
   responseTimeParamsFromItemContent,
 } from "../psychometrics/response-time-irt.js";
 import {
   classifyCandidate,
   computeConsistencyReport,
+  CEFR_CUT_SCORES,
+  PROVISIONAL_CUT_SCORE_SE,
 } from "../psychometrics/classification-consistency.js";
 import { computePersonFit } from "../psychometrics/person-fit.js";
 import {
@@ -179,7 +192,6 @@ function toEngineState(session: {
       };
     }),
     usedItemIds: new Set(session.responses.map((r) => r.itemId)),
-    mstRouteKey: m.mstRouteKey as SessionState["mstRouteKey"],
     skillProfiles: m.skillProfiles as SessionState["skillProfiles"],
     mirtAbilityVector: m.mirtAbilityVector as SessionState["mirtAbilityVector"],
     mirt2B: m.mirt2B as SessionState["mirt2B"],
@@ -231,12 +243,11 @@ const DEFAULT_CONFIG: EngineConfig = {
   pretestRatio: 0.1,
   speedThresholdMs: 2500,      // Responses faster than 2.5s on hard items → guessing flag
   blueprint: DEFAULT_BLUEPRINT,
-  useMirt: true,
-  useRtIrt: false,             // Faz4 RT-IRT; enable via SystemConfig
+  useMirt: false,              // Faz 4: exploratory until items carry calibrated cross-loadings
+  useRtIrt: true,              // Faz 4: van der Linden RT model as a flag-only diagnostic
   useGrmProductive: process.env.USE_GRM_PRODUCTIVE !== "false",  // Faz5 GRM for W/S
   useRlSelector:   process.env.USE_RL_SELECTOR   === "true",   // RL policy item selection
-  useShadowTest: false,        // Shadow test off by default; enable via SystemConfig
-  classificationConfidenceThreshold: 0.90,
+  useOnlineRecalibration: false, // Faz 0: never rewrite item parameters from a live session
   cefrThresholds: {
     A1: CEFR_THETA_THRESHOLDS.PRE_A1, A2: CEFR_THETA_THRESHOLDS.A1,
     B1: CEFR_THETA_THRESHOLDS.A2, B2: CEFR_THETA_THRESHOLDS.B1,
@@ -266,13 +277,19 @@ export async function getEngine(): Promise<AssessmentEngine> {
       const pretestRatio = config.pretestRatio ?? DEFAULT_CONFIG.pretestRatio;
       
       const blueprint: BlueprintConstraint[] = config.blueprint || DEFAULT_BLUEPRINT;
-      const mst = (config as { mst?: { enabled: boolean; moduleSizes: number[]; continueWithCatAfterMst?: boolean } })
-        .mst;
       const useMirt2B = (config as { useMirt2B?: boolean }).useMirt2B === true;
-      const sprt = (config as { sprt?: EngineConfig["sprt"] }).sprt;
       const useRtIrt = (config as { useRtIrt?: boolean }).useRtIrt === true;
       const useGrmProductive = (config as { useGrmProductive?: boolean }).useGrmProductive ?? DEFAULT_CONFIG.useGrmProductive;
       const useRlSelector   = (config as { useRlSelector?:   boolean }).useRlSelector   ?? DEFAULT_CONFIG.useRlSelector;
+      const useOnlineRecalibration = (config as { useOnlineRecalibration?: boolean }).useOnlineRecalibration === true;
+      const speedThresholdMs = typeof (config as { speedThresholdMs?: unknown }).speedThresholdMs === "number"
+        ? (config as { speedThresholdMs: number }).speedThresholdMs : DEFAULT_CONFIG.speedThresholdMs;
+      // Organisation-level ability prior (optional). Was declared in the schema but never
+      // copied into the engine before Faz 1; per-profile priors apply when it is absent.
+      const orgPrior = {
+        ...(typeof config.priorMean === "number" && Number.isFinite(config.priorMean) ? { priorMean: config.priorMean as number } : {}),
+        ...(typeof config.priorSd === "number" && config.priorSd > 0 ? { priorSd: config.priorSd as number } : {}),
+      };
       engineInstance = new AssessmentEngine({
         ...DEFAULT_CONFIG,
         cefrThresholds,
@@ -283,8 +300,9 @@ export async function getEngine(): Promise<AssessmentEngine> {
         useRtIrt,
         useGrmProductive,
         useRlSelector,
-        ...(sprt?.enabled ? { sprt } : {}),
-        ...(mst?.enabled && mst.moduleSizes?.length ? { mst } : {}),
+        useOnlineRecalibration,
+        speedThresholdMs,
+        ...orgPrior,
       });
       lastConfigUpdate = now;
     } catch (error) {
@@ -295,6 +313,23 @@ export async function getEngine(): Promise<AssessmentEngine> {
     }
   }
   return engineInstance;
+}
+
+// Per-profile engine views: same global config, profile-resolved ability prior.
+const profileEngines = new Map<string, { base: AssessmentEngine; engine: AssessmentEngine }>();
+
+/**
+ * Engine for a session of `profile`: the global configuration with the prior
+ * resolved by `profileAbilityPrior` (org prior → profile prior → range centre).
+ */
+export async function getEngineForProfile(profile: ProductLineProfile): Promise<AssessmentEngine> {
+  const base = await getEngine();
+  const cached = profileEngines.get(profile.name);
+  if (cached && cached.base === base) return cached.engine;
+  const prior = profileAbilityPrior(profile, base.getConfig());
+  const engine = new AssessmentEngine({ ...base.getConfig(), priorMean: prior.mean, priorSd: prior.sd });
+  profileEngines.set(profile.name, { base, engine });
+  return engine;
 }
 
 export const AssessmentService = {
@@ -315,7 +350,7 @@ export const AssessmentService = {
     const identity = { candidateId, organizationId, productLine: requestedProductLine ?? undefined, launchRequestId };
     const existing = await findLaunchSession(prisma, identity);
     if (existing) return this.launchReceipt(existing);
-    const engine = await getEngine();
+    const engine = await getEngineForProfile(getProfile(productLine));
     
     const org = await prisma.organization.findUnique({ where: { id: organizationId } });
     if (!org) {
@@ -362,8 +397,9 @@ export const AssessmentService = {
         const jitter = (Math.random() - 0.5) * 0.2;
         initialState.theta = Math.max(-4, Math.min(4, lastCompleted.theta + jitter));
       } else {
-        // New candidate: uniform noise ±0.2 so everyone doesn't start at θ=0
-        initialState.theta = (Math.random() - 0.5) * 0.4;
+        // New candidate: profile prior mean ± 0.2 uniform jitter so simultaneous
+        // first-time candidates do not all receive the same opening items.
+        initialState.theta = (engine.getConfig().priorMean ?? 0) + (Math.random() - 0.5) * 0.4;
       }
     } catch {
       // Non-fatal — fall back to default θ₀ from engine config
@@ -449,7 +485,6 @@ export const AssessmentService = {
    * VOCABULARY → GRAMMAR → LISTENING → READING → WRITING → SPEAKING
    */
   async getNextItem(sessionId: string) {
-    const engine = await getEngine();
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
       include: { responses: { orderBy: { order: "asc" }, include: { item: true } } }
@@ -474,6 +509,7 @@ export const AssessmentService = {
     //   (a) psychometric stopping criteria are met (preferred), or
     //   (b) this hard time ceiling is reached (fallback).
     const profile = getProfile(meta.productLine);
+    const engine = await getEngineForProfile(profile);
     const finish = async (reason: string) => {
       await this.finalizeSession(sessionId, session.theta, { stopReason: reason });
       const completed = await prisma.session.findUnique({
@@ -516,7 +552,7 @@ export const AssessmentService = {
     const sectionCount = sectionResponses.length;
 
     // Use evidence for this skill; a new section starts with prior uncertainty.
-    const ability = sectionAbility(state, currentSkill, state.responses.length === 0 ? state.theta : engine.getConfig().priorMean ?? 0, engine.getConfig().priorSd ?? 1);
+    const ability = sectionAbility(state, currentSkill, state.responses.length === 0 ? state.theta : engine.getConfig().priorMean ?? 0, engine.getConfig().priorSd ?? 1, { profile });
     const skillSem = ability.sem;
     const selectionState: SessionState = { ...state, ...ability };
 
@@ -524,15 +560,23 @@ export const AssessmentService = {
     // An async rating can change SEM after a task was served. The task remains
     // owed to the candidate until answered, even if the section now meets SEM.
     const hasOutstandingItem = typeof meta.currentItemId === "string" && meta.currentItemId.length > 0 && !state.usedItemIds.has(meta.currentItemId);
-    const sectionMaxItems = sectionItemBudget(profile, sectionIndex,
-      session.responses.filter(response => !response.isPretest).length, sectionCount);
-    const sectionDone =
-      !hasOutstandingItem && sectionCount >= sectionCfg.minItems &&
-      (skillSem <= sectionCfg.semThreshold || sectionCount >= sectionMaxItems);
+    // Section completion = budget + the profile's explicit stop rules (section-flow.ts / stop-rules.ts).
+    const sectionItemDict: Record<string, Item> = Object.fromEntries(
+      session.responses.filter(r => r.item && r.item.skill === (currentSkill as string))
+        .map(r => [r.itemId, dbItemToEngineItem(r.item)]));
+    const sectionStop = evaluateSectionStop({
+      profile, sectionIndex, sectionCount,
+      totalOperationalResponses: session.responses.filter(response => !response.isPretest).length,
+      ability, hasOutstandingItem,
+      cefrThresholds: engine.getConfig().cefrThresholds,
+      responses: state.responses.filter(r => !r.isPretest && sectionItemDict[r.itemId]),
+      items: sectionItemDict,
+    });
+    const sectionDone = sectionStop.stop;
 
     if (sectionDone) {
       logger.info(
-        { sessionId, completedSkill: currentSkill, sectionCount, skillSem, sectionIndex, profileName: profile.name },
+        { sessionId, completedSkill: currentSkill, sectionCount, skillSem, sectionIndex, profileName: profile.name, stopReason: sectionStop.reason },
         "Section complete — advancing to next section"
       );
       const newSectionIndex = sectionIndex + 1;
@@ -638,6 +682,7 @@ export const AssessmentService = {
     if (dbItems.length === 0 && crossSessionUsedIds.size > state.usedItemIds.size) {
       whereClause.id.notIn = Array.from(state.usedItemIds);
       dbItems = await getCachedItems(whereClause);
+      recordCatPoolFallback(profile.name, currentSkill as string, "cross_session_exclusion");
     }
     const itemPool: Item[] = dbItems.map((di) => dbItemToEngineItem(di));
 
@@ -645,97 +690,41 @@ export const AssessmentService = {
     // Their administration is recorded only after the selected item is claimed.
     const anchorIds = new Set(dbItems.filter(item => item.isAnchor).map(item => item.id));
 
-    // ── WARM-UP FILTERING ─────────────────────────────────────────────────────
-    // For the first N items across all sections, restrict to easier items so
-    // candidates build confidence before harder adaptive items appear.
-    const operationalPool = itemPool.filter((item) => {
-      if (item.isPretest) return false;
-      if (totalNonPretestResponses < profile.warmupItems) {
-        // Warm-up window: only items with b ≤ θ + offset
-        return item.params.b <= ability.theta + profile.warmupDifficultyOffset;
-      }
-      return true;
-    });
-
-    // If warm-up filter empties the pool, fall back to full operational pool
-    const selectionPool =
-      operationalPool.length > 0
-        ? operationalPool
-        : itemPool.filter((item) => !item.isPretest);
-
-    // ── POOL SHUFFLE (tie-breaking) ───────────────────────────────────────────
-    // Shuffle the pool with a session-scoped seed before passing to the CAT
-    // selector. When two items have equal composite scores (common in early
-    // sessions where θ̂ is uncertain), the selector picks the first in the
-    // sorted order. Without shuffling this is always the same DB-insertion-order
-    // item. A session-seeded shuffle ensures ties are broken differently each
-    // session while preserving full CAT psychometric properties.
-    const shuffledSelectionPool = seededFisherYates(
-      selectionPool,
-      `${sessionId}:${currentSkill}:${sectionCount}`,
-    );
-
-    // ── CAT SELECTION helpers — must be declared BEFORE content-tag block uses itemById ──
-    const administeredItems: Item[] = session.responses.map(response => dbItemToEngineItem(response.item));
-    const itemById = new Map<string, Item>([...itemPool, ...administeredItems].map(item => [item.id, item]));
-
-    // ── CONTENT-TAG DIVERSITY + ITEM-TYPE ROTATION ────────────────────────────
-    // 1. Collect tags and item types from the last 3 items administered in this
-    //    skill section so we can soft-deprioritize repeated content clusters.
-    // 2. If there are items with "fresh" tags, move them to the front of the
-    //    pool so tie-breaking in CAT composite scoring naturally prefers them.
-    //    If moving would empty the pool (all items share the same tag), we keep
-    //    the full pool (content diversity loses to measurement efficiency).
-    // 3. Similarly, if the last 2 items were both MULTIPLE_CHOICE and non-MCQ
-    //    items are available, move one to the front so it gets a fair chance.
-    {
-      const sectionItemIds = session.responses
-        .map((r) => ({ itemId: r.itemId, item: (itemById.get(r.itemId) as any) }))
-        .filter((x) => x.item && x.item.skill === currentSkill)
-        .slice(-3); // last 3 responses in this skill
-
-      // Extract recently-used content tags (e.g. passage IDs, topic clusters)
-      const recentContentTags = new Set<string>();
-      const recentTypes: string[] = [];
-      for (const { item } of sectionItemIds) {
-        const itemTags: string[] = (item as any).tags ?? [];
-        // "content:" prefixed tags mark passages/topics — track them
-        for (const t of itemTags) {
-          if (t.startsWith("content:") || t.startsWith("passage:") || t.startsWith("topic:")) {
-            recentContentTags.add(t);
-          }
-        }
-        if (item.type) recentTypes.push(item.type);
-      }
-
-      // Soft tag-diversity: prefer items without recently-used content tags
-      if (recentContentTags.size > 0) {
-        const freshPool = shuffledSelectionPool.filter((item) => {
-          const itemTags: string[] = (item as any).tags ?? [];
-          return !itemTags.some((t) => recentContentTags.has(t));
+    // ── PRETEST SLOT (Faz 2 / F1) ─────────────────────────────────────────────
+    // Deterministic, position-based embedding of one unscored calibration item
+    // after every 4th operational item (section-flow.shouldAdministerPretest).
+    // Pretest responses never enter θ, the section count or the budget; they
+    // feed the calibration pipeline (pretest-calibration-pipeline.ts).
+    const pretestAdministered = session.responses.filter((r) => r.isPretest).length;
+    let pretestItem: Item | null = null;
+    if (!hasOutstandingItem && shouldAdministerPretest({
+      profile, skill: currentSkill,
+      pretestRatio: engine.getConfig().pretestRatio ?? 0,
+      totalOperationalResponses: totalNonPretestResponses,
+      pretestAdministered, sectionCount,
+      sectionMaxItems: sectionStop.sectionMaxItems,
+    })) {
+      try {
+        const pretestRows = await getCachedItems({
+          ...pretestItemWhere(profile, currentSkill),
+          id: { notIn: Array.from(crossSessionUsedIds) },
         });
-        if (freshPool.length > 0) {
-          // Replace pool: fresh items first, then the rest (so composite tie-breaking prefers fresh)
-          const stalePool = shuffledSelectionPool.filter((item) => {
-            const itemTags: string[] = (item as any).tags ?? [];
-            return itemTags.some((t) => recentContentTags.has(t));
-          });
-          shuffledSelectionPool.length = 0;
-          shuffledSelectionPool.push(...freshPool, ...stalePool);
-        }
-      }
-
-      // Item-type rotation: if last 2 consecutive items were both MULTIPLE_CHOICE
-      // and non-MCQ alternatives exist, move one to the front as a priority candidate.
-      const last2Types = recentTypes.slice(-2);
-      if (last2Types.length === 2 && last2Types.every((t) => t === "MULTIPLE_CHOICE")) {
-        const altIdx = shuffledSelectionPool.findIndex((i) => i.type !== "MULTIPLE_CHOICE");
-        if (altIdx > 0) {
-          const [altItem] = shuffledSelectionPool.splice(altIdx, 1);
-          shuffledSelectionPool.unshift(altItem);
-        }
+        pretestItem = selectPretestItem(pretestRows.map((row) => dbItemToEngineItem(row)), ability.theta);
+      } catch (err) {
+        // A pretest slot is never allowed to interrupt an exam.
+        logger.warn({ err, sessionId, skill: currentSkill }, "pretest slot: pool lookup failed; serving an operational item");
       }
     }
+
+    // ── POOL PREPARATION (pure; shared with the simulation harness) ───────────
+    // Warm-up filter → seeded shuffle → content-tag diversity → item-type
+    // rotation → passage cap, in section-flow.ts so audits run the live path.
+    const administeredItems: Item[] = session.responses.map(response => dbItemToEngineItem(response.item));
+    const prepared = prepareSelectionPool({
+      profile, skill: currentSkill, itemPool, administeredItems, ability,
+      totalOperationalResponses: totalNonPretestResponses, sectionCount, sessionId,
+    });
+    for (const reason of prepared.fallbacks) recordCatPoolFallback(profile.name, currentSkill as string, reason);
 
     // ── CAT SELECTION (composite α/β/γ/δ + shadow-test + sequencing) ─────────
     const seqCtx: SequencingContext = {
@@ -744,10 +733,10 @@ export const AssessmentService = {
       plannedTotal: profile.globalMaxItems,
       totalAdministeredAcrossAllSections: session.responses.length,
       profile,
+      sessionId,
     };
 
-    // Cap items per reading passage / listening recording (local dependence; see passage-cap.ts).
-    const catPool = capItemsPerPassage(shuffledSelectionPool, administeredItems);
+    const catPool = prepared.pool;
 
     const catSelector = getCATSelector(profile);
     // Reconnecting must return the already served unanswered task rather than
@@ -758,16 +747,22 @@ export const AssessmentService = {
       if (!served) throw AppError.conflict("The current assessment task is unavailable");
       outstandingItem = dbItemToEngineItem(served);
     }
-    const catResult = outstandingItem ? { item: outstandingItem } : await catSelector.selectNext(
+    const selectionStartedAt = process.hrtime.bigint();
+    const catResult = outstandingItem ? { item: outstandingItem } : pretestItem ? { item: pretestItem } : await catSelector.selectNext(
       catPool as ShadowItem[],
       selectionState,
       seqCtx,
       profile.blueprint,
       engine.getConfig().useRlSelector === true,
     );
+    if (!outstandingItem && !pretestItem) {
+      recordCatSelection(profile.name, currentSkill as string, catPool.length,
+        Number(process.hrtime.bigint() - selectionStartedAt) / 1e6);
+    }
     const nextItem = catResult?.item ?? null;
     if (!nextItem) {
       // A missing pool is an availability problem, never evidence of proficiency.
+      recordCatPoolFallback(profile.name, currentSkill as string, "pool_exhausted");
       logger.error({ sessionId, skill: currentSkill, sectionCount, profileName: profile.name }, "Adaptive item pool exhausted");
       throw new AppError(503, "ASSESSMENT_ITEMS_UNAVAILABLE", "No eligible assessment tasks are currently available. Please retry or contact your administrator.");
     }
@@ -777,9 +772,15 @@ export const AssessmentService = {
     // bootstrapped from DB on the next server restart. This prevents the D-P
     // α-weights from resetting to 1.0 (open gate) after every process restart,
     // which is the primary cause of same-item-same-order exams.
-    if (!outstandingItem) prisma.item
-      .update({ where: { id: nextItem.id }, data: { exposureCount: { increment: 1 } } })
-      .catch(() => {}); // fire-and-forget: non-critical, calibration-service also tracks this
+    if (!outstandingItem) {
+      prisma.item
+        .update({ where: { id: nextItem.id }, data: { exposureCount: { increment: 1 } } })
+        .catch(() => {}); // fire-and-forget: the only exposureCount increment (Faz 0)
+      try {
+        const exposureStore = await getExposureStore();
+        recordCatItemExposure(profile.name, exposureStore.getExposureRateSync(nextItem.id));
+      } catch { /* metrics are best-effort */ }
+    }
 
     // ── ANSWER SECURITY ──────────────────────────────────────────────────────
     // Strip sensitive answer/rubric fields before sending to client.
@@ -826,7 +827,8 @@ export const AssessmentService = {
     return {
       stop: false,
       sectionTransition: false,
-      item: { ...nextItem, metadata: candidateSafeContent },
+      // The candidate never learns which items are unscored calibration items.
+      item: { ...nextItem, isPretest: undefined, status: undefined, metadata: candidateSafeContent },
       currentSection: currentSkill as string,
       sectionIndex,
       totalSections: activeSectionOrder.length,
@@ -841,7 +843,6 @@ export const AssessmentService = {
    * Submit a response
    */
   async submitResponse(sessionId: string, itemId: string, value: any, clientLatencyMs?: number) {
-    const engine = await getEngine();
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
       include: { responses: true }
@@ -857,7 +858,9 @@ export const AssessmentService = {
       throw AppError.conflict("Invalid session");
     }
 
-    const maxDurationMs=getProfile((session.metadata as any)?.productLine).maxDurationMs;
+    const sessionProfile=getProfile((session.metadata as any)?.productLine);
+    const engine = await getEngineForProfile(sessionProfile);
+    const maxDurationMs=sessionProfile.maxDurationMs;
     if(sessionDeadlineReached(effectiveSessionStart(session),maxDurationMs)) {
       await this.finalizeSession(sessionId,session.theta,{stopReason:'TIME_LIMIT_EXCEEDED'});
       throw new AppError(409,'TIME_LIMIT_EXCEEDED','Assessment time limit reached; the late answer was not saved');
@@ -915,9 +918,19 @@ export const AssessmentService = {
         rtParams,
         itemId
       );
-      irtInputScore = responseTimeAdjustedScore(score, aberrant);
+      // Faz 4: RT-IRT is diagnostic only. The flag and z-score are persisted for
+      // person-fit / the participant panel; the score is never adjusted.
       rtZ = aberrant.zScore;
       rtFlag = aberrant.flag;
+    } else if (
+      !scoringMode &&
+      typeof clientLatencyMs === "number" &&
+      isRapidGuess(clientLatencyMs, item.params.b, cfg.speedThresholdMs)
+    ) {
+      // Faz 0: rapid guessing is recorded as a flag for person-fit / RGI and the
+      // admin participant panel. The score itself is never altered.
+      rtFlag = "RAPID_GUESS";
+      recordCatRapidGuess(sessionProfile.name, String(item.skill));
     }
 
     const response: Response = {
@@ -946,7 +959,10 @@ export const AssessmentService = {
       }
       const latestItems = Object.fromEntries(latest.responses.filter(r => r.item)
         .map(r => [r.itemId, dbItemToEngineItem(r.item)]));
-      const newState = engine.processResponse(toEngineState(latest), response, { ...latestItems, [item.id]: item });
+      const latestState = toEngineState(latest);
+      const skillPriors = crossSkillPriors(latestState, sessionProfile,
+        { mean: cfg.priorMean ?? 0, sd: cfg.priorSd ?? 1 });
+      const newState = engine.processResponse(latestState, response, { ...latestItems, [item.id]: item }, { skillPriors });
       if (!Number.isFinite(newState.theta) || newState.theta < -6 || newState.theta > 6) {
         logger.warn({ sessionId, itemId, rawTheta: newState.theta }, "Theta out of bounds — clamping to [-6, 6]");
         newState.theta = Math.max(-6, Math.min(6, Number.isFinite(newState.theta) ? newState.theta : 0));
@@ -957,12 +973,7 @@ export const AssessmentService = {
                   itemId,
                   value: typeof value === 'string' ? value : JSON.stringify(value),
           score: requiresHumanReview ? null : score,
-          adjustedScore:
-            cfg.useRtIrt &&
-            typeof clientLatencyMs === "number" &&
-            clientLatencyMs > 0
-              ? irtInputScore
-              : null,
+          adjustedScore: null, // Faz 4: no response-time score adjustment
           isCorrect: requiresHumanReview ? null : score >= 0.5,
           isPretest: item.isPretest || dbItem.status === "PRETEST",
           aiScore: scoringDecision?.scoreSource === "ai_unavailable" ? null : aiResult?.score,
@@ -998,7 +1009,6 @@ export const AssessmentService = {
           metadata: {
             ...((latest?.metadata as Record<string, unknown> | null) || {}),
             currentItemId: "",
-            ...(newState.mstRouteKey != null ? { mstRouteKey: newState.mstRouteKey } : {}),
             ...(newState.skillProfiles && Object.keys(newState.skillProfiles).length
               ? { skillProfiles: newState.skillProfiles }
               : {}),
@@ -1038,8 +1048,12 @@ export const AssessmentService = {
       // Do NOT await — fire-and-forget so HTTP response returns immediately
     }
 
-    // Online item calibration — fire-and-forget, won't block the response
-    CalibrationService.recalibrateItem(itemId).catch(() => {});
+    // Online item calibration is OFF by default (Faz 0): a live session must not
+    // rewrite operational a/b/c. Batch calibration lives in the scheduled
+    // pretest-calibration pipeline. Opt in via SystemConfig.useOnlineRecalibration.
+    if (cfg.useOnlineRecalibration === true) {
+      CalibrationService.recalibrateItem(itemId).catch(() => {});
+    }
 
     // ── Clickstream: append item-level behavioural record to session metadata ─
     // We build a minimal ItemClickstream from server-observable signals:
@@ -1091,7 +1105,6 @@ export const AssessmentService = {
     theta: number,
     opts?: { stopReason?: string | null; strictAnalysis?: boolean }
   ) {
-    const engine = await getEngine();
     // Serialize finalization with scoring refreshes across server processes.
     // Read the report snapshot only after taking the same session lock as answers.
     return prisma.$transaction(async tx => {
@@ -1105,6 +1118,7 @@ export const AssessmentService = {
     if ((session?.metadata as any)?.sessionType==='FIXED_FORM') throw AppError.conflict('Fixed forms cannot be finalized as adaptive assessments');
     if (!session) throw new Error("Session not found");
     if (session.status === "PAUSED" || session.status === "EXPIRED") throw AppError.conflict("This assessment is paused or expired");
+    const engine = await getEngineForProfile(getProfile((session.metadata as Record<string, unknown> | null)?.productLine as string | undefined));
     const itemDict = Object.fromEntries(session.responses.filter(r => r.item).map(r => [r.itemId, dbItemToEngineItem(r.item)]));
     const state = toEngineState(session);
     const estimate = estimateTheta(state.responses, itemDict, engine.getConfig().priorMean ?? 0,
@@ -1213,11 +1227,14 @@ export const AssessmentService = {
           if (skillResponses.length === 0) continue;
 
           try {
+            // Own-evidence estimate under the profile prior (not the in-session
+            // cross-skill prior), so the reported skill precision reflects the
+            // skill's own items.
             const { theta: sTheta, sem: sSem } = estimateThetaFn(
               skillResponses,
               itemDict,
-              0,
-              1,
+              engine.getConfig().priorMean ?? 0,
+              engine.getConfig().priorSd ?? 1,
               { useGrmProductive: engine.getConfig().useGrmProductive === true }
             );
             const skillCefr = engine.mapToCefr(sTheta);
@@ -1245,6 +1262,36 @@ export const AssessmentService = {
       }
 
       // ── Overall CI ────────────────────────────────────────────────────────────
+      // ── Composite skill profile (Faz 4 / F18) ────────────────────────────────
+      // The headline θ/SEM is the pooled EAP, which is honest for the
+      // item-weighted mean of the skill θs. This block exposes the equal-weight
+      // mean of the skill estimates and a dispersion test so an uneven profile
+      // (skills further apart than their SEMs explain) is visible in the report.
+      // The skill-mean SEM assumes independent skill errors; shrinkage toward a
+      // common prior correlates them, so it is a LOWER bound (simulation: ×1.4–2.2).
+      const compositeProfile = (() => {
+        const skills = Object.entries(skillSubReports) as Array<[SkillType, SkillSubReport]>;
+        if (skills.length < 2) return null;
+        const skillMean = skills.reduce((sum, [, r]) => sum + r.theta, 0) / skills.length;
+        const semLowerBound = Math.sqrt(skills.reduce((sum, [, r]) => sum + r.sem * r.sem, 0)) / skills.length;
+        const dispersionChiSquare = skills.reduce((sum, [, r]) => sum + ((r.theta - skillMean) ** 2) / (r.sem * r.sem), 0);
+        const critical = [0, 3.841, 5.991, 7.815, 9.488, 11.070, 12.592][Math.min(6, skills.length - 1)] ?? 12.592;
+        const strongest = skills.reduce((a, b) => (b[1].theta > a[1].theta ? b : a));
+        const weakest = skills.reduce((a, b) => (b[1].theta < a[1].theta ? b : a));
+        return {
+          skillMean: Number(skillMean.toFixed(3)),
+          skillMeanCefr: engine.mapToCefr(skillMean),
+          semLowerBound: Number(semLowerBound.toFixed(3)),
+          dispersionChiSquare: Number(dispersionChiSquare.toFixed(2)),
+          dispersionDf: skills.length - 1,
+          uneven: dispersionChiSquare > critical,
+          strongestSkill: strongest[0],
+          weakestSkill: weakest[0],
+          spreadLogits: Number((strongest[1].theta - weakest[1].theta).toFixed(3)),
+          note: "Headline θ/SEM is the pooled EAP (item-weighted). semLowerBound ignores error correlation from shrinkage.",
+        };
+      })();
+
       const overallCI: [number, number] = [
         Number((theta - 1.96 * sessionSem).toFixed(3)),
         Number((theta + 1.96 * sessionSem).toFixed(3)),
@@ -1277,9 +1324,8 @@ export const AssessmentService = {
           useGrmProductive: ec.useGrmProductive === true,
           useMirt2B: ec.useMirt2B === true,
           useMirt: ec.useMirt === true,
-          mstEnabled: ec.mst?.enabled === true,
-          sprtEnabled: ec.sprt?.enabled === true,
-          useShadowTest: ec.useShadowTest === true,
+          mstEnabled: sessionProfile.mst?.enabled === true,
+          sectionStopRules: [...(sessionProfile.stopRules ?? DEFAULT_SECTION_STOP_RULES)],
           // Faz 2–3 features — always active regardless of config flags
           daveyParshallExposureControl: true,
           klInformationSelection: true,
@@ -1296,8 +1342,17 @@ export const AssessmentService = {
       };
 
       // ── Classification Consistency (Livingston-Lewis) ───────────────────────
-      const classificationResult = classifyCandidate(theta, sessionSem);
-      const consistencyReport = computeConsistencyReport(theta, sessionSem);
+      // Faz 3: classified with the same operational cuts as `mapToCefr`, exact
+      // cuts for the headline statistics and PROVISIONAL_CUT_SCORE_SE folded in
+      // for the "with cut uncertainty" figures until standard setting completes.
+      const orgCuts = engine.getConfig().cefrThresholds;
+      const classificationCuts = orgCuts && Object.keys(orgCuts).length > 0
+        ? CEFR_CUT_SCORES.map((cut, i) => ({ ...cut, theta: [orgCuts.A1, orgCuts.A2, orgCuts.B1, orgCuts.B2, orgCuts.C1, orgCuts.C2][i] ?? cut.theta }))
+        : CEFR_CUT_SCORES;
+      const classificationResult = classifyCandidate(theta, sessionSem, { cuts: classificationCuts });
+      const consistencyReport = computeConsistencyReport(theta, sessionSem, { cuts: classificationCuts });
+      const classificationWithCutUncertainty = classifyCandidate(theta, sessionSem, { cuts: classificationCuts, cutSe: PROVISIONAL_CUT_SCORE_SE });
+      const consistencyWithCutUncertainty = computeConsistencyReport(theta, sessionSem, { cuts: classificationCuts, cutSe: PROVISIONAL_CUT_SCORE_SE });
 
       // ── Person-Fit (Drasgow Lz + ECI + U3) ─────────────────────────────────
       const allItems = session
@@ -1540,6 +1595,9 @@ export const AssessmentService = {
         confidenceInterval: overallCI,
         canDoStatements: overallCanDo.flatMap(d => d.descriptors).slice(0, 6),
         skillProfiles: skillSubReports,
+        compositeProfile,
+        // Faz 4: MIRT outputs are exploratory until items carry calibrated cross-loadings.
+        mirtStatus: "EXPLORATORY",
         mirtAbilityVector: mirtVector,
         mirt2B,
         mirt4D: mirt4DProfile,
@@ -1559,6 +1617,23 @@ export const AssessmentService = {
           classificationAccuracy: consistencyReport.classificationAccuracy,
           meetsHighStakesThreshold: consistencyReport.decisionConsistency >= 0.80,
           meetsPlacementThreshold: consistencyReport.decisionConsistency >= 0.70,
+          withCutUncertainty: {
+            cutScoreSe: PROVISIONAL_CUT_SCORE_SE,
+            posteriorProbCorrect: classificationWithCutUncertainty.posteriorProbCorrect,
+            isBorderline: classificationWithCutUncertainty.isBorderline,
+            recommendedAction: classificationWithCutUncertainty.recommendedAction,
+            decisionConsistency: consistencyWithCutUncertainty.decisionConsistency,
+            classificationAccuracy: consistencyWithCutUncertainty.classificationAccuracy,
+          },
+        },
+        // Faz 3: the cut scores behind every CEFR label in this report are provisional
+        // until the standard-setting study (docs/standard-setting-report.md) is completed.
+        cutScores: {
+          status: "PROVISIONAL",
+          source: orgCuts && Object.keys(orgCuts).length > 0 ? "SystemConfig.cefrThresholds" : "cefr-framework.CEFR_THETA_THRESHOLDS",
+          values: Object.fromEntries(classificationCuts.map((cut) => [cut.boundary, cut.theta])),
+          assumedCutScoreSe: PROVISIONAL_CUT_SCORE_SE,
+          standardSetting: "PENDING",
         },
         personFit: personFitResult
           ? {
@@ -1594,6 +1669,14 @@ export const AssessmentService = {
       scoringComplete = false;
       diagnosticReport.scoringComplete = false;
       diagnosticReport.securityFlag = true;
+    }
+    if (session.status === SessionStatus.IN_PROGRESS) {
+      // First finalization of this session: record stop reason and precision reached.
+      recordCatStop(sessionProfile.name, stopReason ?? "UNSPECIFIED");
+      recordCatFinalSem(sessionProfile.name, "OVERALL", sessionSem);
+      for (const [skill, profile] of Object.entries(skillProfilesSnapshot)) {
+        recordCatFinalSem(sessionProfile.name, skill, profile.sem);
+      }
     }
     await tx.session.update({
         where: { id: sessionId },
@@ -1642,7 +1725,7 @@ export const AssessmentService = {
       await DiagnosticService.refreshScoring(sessionId);
       return;
     }
-    const engine = await getEngine();
+    const engine = await getEngineForProfile(getProfile((session.metadata as any)?.productLine));
     if ([SessionStatus.COMPLETED, SessionStatus.SCORING, SessionStatus.FLAGGED].includes(session.status as any)) {
       await this.finalizeSession(sessionId, session.theta, { strictAnalysis: true });
       return;
@@ -1661,7 +1744,8 @@ export const AssessmentService = {
       const skillProfiles: Record<string, { theta: number; sem: number }> = {};
       for (const skill of Object.values(SkillType)) {
         const responses = state.responses.filter(r => !r.isPretest && items[r.itemId]?.skill === skill);
-        if (responses.length) skillProfiles[skill] = estimateTheta(responses, items, 0, 1,
+        if (responses.length) skillProfiles[skill] = estimateTheta(responses, items,
+          engine.getConfig().priorMean ?? 0, engine.getConfig().priorSd ?? 1,
           { useGrmProductive: engine.getConfig().useGrmProductive === true });
       }
       await tx.session.update({ where: { id: sessionId }, data: {

@@ -3,7 +3,8 @@ import { CefrLevel, IrtParameters } from "./types";
 import { probability } from "./irt";
 import { DifAnalysisService } from "../psychometrics/dif-analysis.js";
 import { calibratePretestItem, type PretestObservation } from "../psychometrics/online-calibration.js";
-import { computeItemDrift, type IrtSnapshot } from "../psychometrics/item-parameter-drift.js";
+import { CALIBRATION_POLICY } from "../psychometrics/calibration-policy.js";
+import { createDraftVersion } from "../psychometrics/item-parameter-versions.js";
 
 /**
  * Calibration Service
@@ -414,7 +415,7 @@ export class CalibrationService {
 
     // ── Stocking (1990) concurrent EM ─────────────────────────────────────
     const calibResult = calibratePretestItem(currentParams, observations, {
-      minN: 30,          // lower threshold for operational items (not pretest)
+      minN: CALIBRATION_POLICY.estimateMinN,
       maxDeltaB: 0.50,
       nrIterations: 10,
       nrDampen: 0.5,
@@ -422,49 +423,39 @@ export class CalibrationService {
 
     if (!calibResult.stable) return; // insufficient data or stability gate failed
 
-    // ── Lord χ² item-parameter drift monitoring ───────────────────────────
-    const oldSnapshot: IrtSnapshot = {
+    // Faz 2: never rewrite the Item's live parameters here. Record a DRAFT
+    // version; drift against the published version and the publish gate are
+    // evaluated inside createDraftVersion. Publication is an explicit step.
+    const draft = await createDraftVersion(prisma, {
       itemId,
-      window: "previous",
-      a: currentParams.a,
-      b: currentParams.b,
-      c: currentParams.c,
-      calibratedAt: new Date().toISOString(),
-    };
-    const newSnapshot: IrtSnapshot = {
-      itemId,
-      window: "current",
       a: calibResult.params.a,
       b: calibResult.params.b,
       c: calibResult.params.c,
-      calibratedAt: new Date().toISOString(),
-    };
-    const driftResult = computeItemDrift(oldSnapshot, newSnapshot);
-
-    // Persist updated parameters and drift metadata
-    await prisma.item.update({
-      where: { id: itemId },
-      data: {
-        discrimination: calibResult.params.a,
-        difficulty:     calibResult.params.b,
-        guessing:       calibResult.params.c,
-        exposureCount:  { increment: 1 },
-        // Retire Class-C items automatically
-        ...(driftResult.action === "RETIRE" ? { status: "RETIRED" as any } : {}),
-        metadata: {
-          ...((item as any).metadata as Record<string, unknown> | null ?? {}),
-          ipd: {
-            driftClass:       driftResult.driftClass,
-            action:           driftResult.action,
-            deltaB:           driftResult.deltaB,
-            lordChiSquareB:   driftResult.lordChiSquareB,
-            lordPValueB:      driftResult.lordPValueB,
-            interpretation:   driftResult.interpretation,
-            calibrationN:     calibResult.n,
-            updatedAt:        new Date().toISOString(),
-          },
-        } as any,
-      },
+      aSe: calibResult.aSe,
+      bSe: calibResult.bSe,
+      n: calibResult.n,
+      method: "STOCKING_EM",
+      deltaB: calibResult.deltaB,
+      iqScore: (item as { iqScore?: number | null }).iqScore ?? null,
+      createdBy: "CalibrationService.recalibrateItem",
     });
+
+    // Class-C drift against the published parameters pulls the item to REVIEW
+    // for a human decision; retirement stays with item-retirement-job.
+    if (draft.driftClass === CALIBRATION_POLICY.blockingDriftClass && (item as { status?: string }).status === "ACTIVE") {
+      await prisma.item.update({
+        where: { id: itemId },
+        data: {
+          status: "REVIEW" as any,
+          metadata: {
+            ...((item as any).metadata as Record<string, unknown> | null ?? {}),
+            statusChange: {
+              from: "ACTIVE", to: "REVIEW", reason: "IPD_CLASS_C", at: new Date().toISOString(),
+              source: "CalibrationService.recalibrateItem", parameterVersionId: draft.id,
+            },
+          } as any,
+        },
+      });
+    }
   }
 }

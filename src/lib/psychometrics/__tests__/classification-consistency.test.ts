@@ -38,18 +38,14 @@ describe("classifyCandidate", () => {
   });
 
   it("detects borderline when theta is near a cut score", () => {
-    // A2/B1 cut = -0.733; 1.96 × 0.40 = 0.784 → borderline zone
-    const result = classifyCandidate(-0.733, 0.40);
+    // A2/B1 cut = -0.5 (cefr-framework); 1.96 × 0.40 = 0.784 → borderline zone
+    const result = classifyCandidate(-0.5, 0.40);
     expect(result.isBorderline).toBe(true);
   });
 
   it("not borderline when theta is far from all cuts", () => {
-    // B1 band center ≈ 0.0; nearest cut -0.733 or +0.168; distances = 0.73 and 0.17
-    // With SEM 0.40: 1.96 × 0.40 = 0.784 → -0.733 is within 0.784 of 0.0 ... still borderline
-    // Use very low SEM to make it definitively not borderline at band center
+    // B1 band centre = 0.0; nearest cuts −0.5 and +0.5 → 1.96 × 0.05 = 0.098 < 0.5
     const result = classifyCandidate(0.0, 0.05);
-    // Nearest cuts: -0.733 and +0.168; distances: 0.733 and 0.168
-    // 1.96 × 0.05 = 0.098 → 0.168 > 0.098 → not borderline
     expect(result.isBorderline).toBe(false);
   });
 
@@ -62,9 +58,8 @@ describe("classifyCandidate", () => {
   });
 
   it("high accuracy when theta is at band center with low SEM", () => {
-    // B2 band center ≈ 0.6 (between B1/B2 cut 0.168 and B2/C1 cut 0.995)
-    // Center = (0.168 + 0.995) / 2 ≈ 0.58
-    const result = classifyCandidate(0.58, 0.10);
+    // B2 band centre = 1.0 (between B1/B2 cut 0.5 and B2/C1 cut 1.5)
+    const result = classifyCandidate(1.0, 0.10);
     expect(result.posteriorProbCorrect).toBeGreaterThan(0.90);
   });
 
@@ -77,7 +72,7 @@ describe("classifyCandidate", () => {
 
   it("ACCEPT when posteriorProbCorrect > 0.80", () => {
     // High-confidence classification: center of B2 band, very low SEM
-    const result = classifyCandidate(0.58, 0.08);
+    const result = classifyCandidate(1.0, 0.08);
     expect(result.recommendedAction).toBe("ACCEPT");
     expect(result.posteriorProbCorrect).toBeGreaterThan(0.80);
   });
@@ -90,7 +85,7 @@ describe("classifyCandidate", () => {
   });
 
   it("returns adjacent levels for borderline assessment", () => {
-    const result = classifyCandidate(-0.733, 0.40);
+    const result = classifyCandidate(-0.5, 0.40);
     expect(result.borderlineLevels).toHaveLength(2);
     // Either null (edge) or a valid CefrLevel string
     for (const level of result.borderlineLevels) {
@@ -136,8 +131,8 @@ describe("computeConsistencyReport", () => {
   });
 
   it("higher consistency with lower SEM", () => {
-    const lowSem = computeConsistencyReport(0.58, 0.10);
-    const highSem = computeConsistencyReport(0.58, 0.60);
+    const lowSem = computeConsistencyReport(1.0, 0.10);
+    const highSem = computeConsistencyReport(1.0, 0.60);
     expect(lowSem.decisionConsistency).toBeGreaterThan(highSem.decisionConsistency);
   });
 
@@ -210,15 +205,46 @@ describe("CEFR_CUT_SCORES", () => {
     }
   });
 
-  it("A1/A2 boundary is canonical BCa bootstrap value", () => {
+  it("A1/A2 boundary is the operational framework value", () => {
     const cut = CEFR_CUT_SCORES.find((c) => c.boundary === "A1/A2");
     expect(cut).toBeDefined();
-    expect(cut!.theta).toBeCloseTo(-1.578, 2);
+    expect(cut!.theta).toBeCloseTo(-1.75, 2);
   });
 
-  it("B1/B2 boundary is canonical BCa bootstrap value", () => {
+  it("B1/B2 boundary is the operational framework value", () => {
     const cut = CEFR_CUT_SCORES.find((c) => c.boundary === "B1/B2");
     expect(cut).toBeDefined();
-    expect(cut!.theta).toBeCloseTo(0.168, 2);
+    expect(cut!.theta).toBeCloseTo(0.5, 2);
+  });
+});
+
+// ─── Faz 3: operational cuts and cut uncertainty ──────────────────────────────
+
+describe("cut scores and cut uncertainty", () => {
+  it("classifies with the same cuts as the live engine (cefr-framework)", async () => {
+    const { CEFR_THETA_THRESHOLDS, thetaToCefr } = await import("../../cefr/cefr-framework.js");
+    expect(CEFR_CUT_SCORES.map((c) => c.theta)).toEqual([
+      CEFR_THETA_THRESHOLDS.PRE_A1, CEFR_THETA_THRESHOLDS.A1, CEFR_THETA_THRESHOLDS.A2,
+      CEFR_THETA_THRESHOLDS.B1, CEFR_THETA_THRESHOLDS.B2, CEFR_THETA_THRESHOLDS.C1,
+    ]);
+    for (const theta of [-3.5, -2, -1, -0.2, 0.3, 1.2, 2.2, 3.1]) {
+      expect(classifyCandidate(theta, 0.3).cefrLevel).toBe(thetaToCefr(theta));
+    }
+  });
+
+  it("accepts alternative cuts explicitly", () => {
+    const cuts = CEFR_CUT_SCORES.map((c) => ({ ...c, theta: c.theta + 0.6 }));
+    expect(classifyCandidate(0.0, 0.3).cefrLevel).toBe("B1");
+    expect(classifyCandidate(0.0, 0.3, { cuts }).cefrLevel).toBe("A2"); // A2/B1 cut moved to +0.1
+  });
+
+  it("cut uncertainty lowers P(correct) and widens the borderline zone", () => {
+    const exact = classifyCandidate(0.9, 0.25);
+    const uncertain = classifyCandidate(0.9, 0.25, { cutSe: 0.25 });
+    expect(uncertain.posteriorProbCorrect).toBeLessThan(exact.posteriorProbCorrect);
+    expect(computeConsistencyReport(0.9, 0.25, { cutSe: 0.25 }).decisionConsistency)
+      .toBeLessThan(computeConsistencyReport(0.9, 0.25).decisionConsistency);
+    expect(classifyCandidate(0.0, 0.2, { cutSe: 0.3 }).isBorderline).toBe(true);
+    expect(classifyCandidate(0.0, 0.2).isBorderline).toBe(false);
   });
 });

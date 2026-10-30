@@ -7,8 +7,8 @@
  *   2. Collect (θ, score) observations from completed sessions.
  *   3. Run one concurrent EM cycle per item (Stocking 1990).
  *   4. Persist results to CalibrationRun table.
- *   5. Promote items that meet the ACTIVE promotion criteria:
- *        n ≥ PROMOTE_N  AND  stable  AND  |Δb| ≤ PROMOTE_MAX_DELTA_B
+ *   5. Record a DRAFT ItemParameterVersion with the publish-gate verdict
+ *      (calibration-policy.ts). Publishing / promotion is explicit.
  *
  * Triggered by:
  *   - Scheduled job (weekly) — src/lib/jobs/scheduled-jobs.ts
@@ -27,27 +27,17 @@ import { prisma } from "../prisma.js";
 import { calibratePretestItem, type PretestObservation } from "./online-calibration.js";
 import { logger } from "../observability/logger.js";
 import type { IrtParameters } from "../assessment-engine/types.js";
+import { CALIBRATION_POLICY } from "./calibration-policy.js";
+import { createDraftVersion } from "./item-parameter-versions.js";
+import { calibrateGrmItem, scoreToCategory } from "./grm-item-calibration.js";
+import { rubricToGrmParams, type GrmParameters } from "./graded-response-model.js";
 
-// ─── Config constants ─────────────────────────────────────────────────────────
+// ─── Config ──────────────────────────────────────────────────────────────────
+// Faz 2: every threshold comes from calibration-policy.ts. The sweep records
+// DRAFT ItemParameterVersions; publishing (and PRETEST → ACTIVE promotion) is a
+// separate, explicit step — see item-parameter-versions.ts.
 
-/**
- * Minimum responses to attempt any EM update.
- *
- * Default lowered to 80 for the low-stakes / pilot posture: with limited live
- * traffic the classic Stocking (1990) n≥200 rule would mean items never leave
- * their cold-start priors. 80 gives a usable (if noisier) empirical update for
- * formative use; raise via CALIBRATION_MIN_N for higher-stakes deployments.
- */
-const MIN_N = Number(process.env.CALIBRATION_MIN_N ?? 80);
-
-/** Minimum responses before promotion to ACTIVE is allowed (pilot default 150). */
-const PROMOTE_N = Number(process.env.CALIBRATION_PROMOTE_N ?? 150);
-
-/**
- * Maximum |Δb| across the last 2 stable runs to consider the item truly stable
- * before promoting to ACTIVE (Angoff 1988: ≤ 0.30 logit drift).
- */
-const PROMOTE_MAX_DELTA_B = Number(process.env.CALIBRATION_PROMOTE_MAX_DELTA_B ?? 0.30);
+const MIN_N = CALIBRATION_POLICY.estimateMinN;
 
 /** Exposure rate ceiling — items above this are auto-retired (Sympson-Hetter ψ threshold). */
 const EXPOSURE_RETIRE_THRESHOLD = Number(process.env.EXPOSURE_RETIRE_PSI ?? 0.35);
@@ -61,7 +51,8 @@ export interface CalibrationPipelineResult {
   itemsEligible: number;       // Items with n ≥ MIN_N
   itemsCalibrated: number;     // Items that completed EM cycle
   itemsStable: number;         // Items where stable = true
-  itemsPromoted: number;       // Items promoted PRETEST → ACTIVE
+  draftsCreated: number;       // DRAFT ItemParameterVersions written
+  draftsEligible: number;      // drafts that pass the publish gate (awaiting publication)
   itemsRejected: number;       // Items where stable = false
   errors: number;              // Items that threw an exception
   durationMs: number;
@@ -90,7 +81,8 @@ export class PretestCalibrationPipeline {
       itemsEligible: 0,
       itemsCalibrated: 0,
       itemsStable: 0,
-      itemsPromoted: 0,
+      draftsCreated: 0,
+      draftsEligible: 0,
       itemsRejected: 0,
       errors: 0,
       durationMs: 0,
@@ -213,50 +205,25 @@ export class PretestCalibrationPipeline {
 
         result.itemsStable++;
 
-        // 7. Promotion check: n ≥ PROMOTE_N + stable + |Δb| ≤ threshold
-        if (
-          observations.length >= PROMOTE_N &&
-          calResult.deltaB <= PROMOTE_MAX_DELTA_B
-        ) {
-          // Update item params and promote to ACTIVE
-          await prisma.$transaction([
-            prisma.item.update({
-              where: { id: item.id },
-              data: {
-                status: "ACTIVE",
-                discrimination: calResult.params.a,
-                difficulty: calResult.params.b,
-                guessing: calResult.params.c,
-              },
-            }),
-            prisma.calibrationRun.update({
-              where: { id: run.id },
-              data: { promotedToActive: true, promotedAt: new Date() },
-            }),
-          ]);
-
-          result.itemsPromoted++;
-          logger.info(
-            {
-              itemId: item.id,
-              n: observations.length,
-              deltaB: calResult.deltaB.toFixed(3),
-              b: calResult.params.b.toFixed(3),
-              a: calResult.params.a.toFixed(3),
-            },
-            "calibration-pipeline: item promoted PRETEST → ACTIVE"
-          );
-        } else {
-          // Update seed params even if not promoting yet (improves next run)
-          await prisma.item.update({
-            where: { id: item.id },
-            data: {
-              discrimination: calResult.params.a,
-              difficulty: calResult.params.b,
-              guessing: calResult.params.c,
-            },
-          });
-        }
+        // 7. Record a DRAFT version; publication (and PRETEST → ACTIVE) is explicit.
+        const iq = await prisma.item.findUnique({ where: { id: item.id }, select: { iqScore: true } });
+        const draft = await createDraftVersion(prisma, {
+          itemId: item.id,
+          a: calResult.params.a, b: calResult.params.b, c: calResult.params.c,
+          aSe: calResult.aSe, bSe: calResult.bSe,
+          n: observations.length,
+          method: "STOCKING_EM",
+          deltaB: lastRun ? Math.abs(calResult.params.b - lastRun.bEstimate) : null,
+          iqScore: iq?.iqScore ?? null,
+          sourceRunId: run.id,
+          createdBy: `job:${triggerSource}`,
+        });
+        result.draftsCreated++;
+        if (draft.gate.eligible) result.draftsEligible++;
+        logger.info(
+          { itemId: item.id, n: observations.length, version: draft.version, eligible: draft.gate.eligible, reasons: draft.gate.reasons },
+          "calibration-pipeline: draft parameter version recorded"
+        );
       } catch (err) {
         result.errors++;
         logger.error({ err, itemId: item.id }, "calibration-pipeline: error processing item");
@@ -271,6 +238,7 @@ export class PretestCalibrationPipeline {
     // re-tag paramSource → "calibrated". These items are already ACTIVE, so
     // there is no promotion step — a stable run upgrades the params in place.
     await PretestCalibrationPipeline._calibratePriorActiveItems(triggerSource, result);
+    await PretestCalibrationPipeline._calibrateProductiveItems(triggerSource, result);
 
     result.durationMs = Date.now() - t0;
 
@@ -301,6 +269,7 @@ export class PretestCalibrationPipeline {
         difficulty: true,
         guessing: true,
         metadata: true,
+        iqScore: true,
       },
     });
     const priorItems = activeItems.filter(
@@ -390,28 +359,94 @@ export class PretestCalibrationPipeline {
 
         result.itemsStable++;
 
-        // Stable → upgrade params in place and re-tag as calibrated.
-        const newMeta = {
-          ...((item.metadata as any) ?? {}),
-          paramSource: "calibrated",
-          calibratedAt: new Date().toISOString(),
-        };
-        await prisma.item.update({
-          where: { id: item.id },
-          data: {
-            discrimination: calResult.params.a,
-            difficulty: calResult.params.b,
-            guessing: calResult.params.c,
-            metadata: newMeta as any,
-          },
+        // Stable → record a DRAFT version; the Item keeps its prior until published.
+        const draft = await createDraftVersion(prisma, {
+          itemId: item.id,
+          a: calResult.params.a, b: calResult.params.b, c: calResult.params.c,
+          aSe: calResult.aSe, bSe: calResult.bSe,
+          n: observations.length,
+          method: "STOCKING_EM",
+          deltaB: lastRun ? Math.abs(calResult.params.b - lastRun.bEstimate) : null,
+          iqScore: (item as { iqScore?: number | null }).iqScore ?? null,
+          createdBy: `job:${triggerSource}`,
         });
+        result.draftsCreated++;
+        if (draft.gate.eligible) result.draftsEligible++;
         logger.info(
-          { itemId: item.id, n: observations.length, b: calResult.params.b.toFixed(3), a: calResult.params.a.toFixed(3) },
-          "calibration-pipeline: prior-ACTIVE item calibrated (prior → calibrated)"
+          { itemId: item.id, n: observations.length, version: draft.version, eligible: draft.gate.eligible },
+          "calibration-pipeline: prior-ACTIVE draft version recorded"
         );
       } catch (err) {
         result.errors++;
         logger.error({ err, itemId: item.id }, "calibration-pipeline: error on prior-ACTIVE item");
+      }
+    }
+  }
+
+  /**
+   * Faz 4: GRM threshold estimation for writing/speaking tasks from graded
+   * responses (AI or human score 0–1 → category of the task's K-point scale)
+   * with the session θ as the concurrent ability. Records DRAFT versions with
+   * `thresholds`; publishing copies them to Item.metadata.grm.
+   */
+  private static async _calibrateProductiveItems(
+    triggerSource: string,
+    result: CalibrationPipelineResult
+  ): Promise<void> {
+    const tasks = await prisma.item.findMany({
+      where: { status: { in: ["ACTIVE", "PRETEST"] }, skill: { in: ["WRITING", "SPEAKING"] },
+        type: { notIn: ["MULTIPLE_CHOICE", "FILL_IN_BLANKS", "DRAG_DROP"] } },
+      select: { id: true, discrimination: true, difficulty: true, metadata: true, iqScore: true },
+    });
+    if (tasks.length === 0) return;
+    const counts = await prisma.response.groupBy({
+      by: ["itemId"],
+      where: { itemId: { in: tasks.map((t) => t.id) }, score: { not: null }, session: { status: "COMPLETED" } },
+      _count: { _all: true },
+    });
+    const countMap = new Map(counts.map((r) => [r.itemId, r._count._all]));
+    const eligible = tasks.filter((t) => (countMap.get(t.id) ?? 0) >= MIN_N);
+    result.itemsEligible += eligible.length;
+    for (const task of eligible) {
+      try {
+        const responses = await prisma.response.findMany({
+          where: { itemId: task.id, score: { not: null }, session: { status: "COMPLETED", theta: { not: null } } },
+          select: { score: true, session: { select: { theta: true } } },
+        });
+        const existing = (task.metadata as { grm?: GrmParameters } | null)?.grm;
+        const seed: GrmParameters = existing && Array.isArray(existing.b) && typeof existing.a === "number"
+          ? existing
+          : rubricToGrmParams(task.discrimination, task.difficulty, 11);
+        const observations = responses
+          .filter((r): r is typeof r & { score: number; session: { theta: number } } => r.score != null && r.session?.theta != null)
+          .map((r) => ({ theta: r.session.theta, category: scoreToCategory(r.score, seed.categories) }));
+        if (observations.length < MIN_N) continue;
+        const fit = calibrateGrmItem(seed, observations, { minN: MIN_N });
+        result.itemsCalibrated++;
+        if (!fit.stable) { result.itemsRejected++; continue; }
+        result.itemsStable++;
+        const location = fit.params.b.reduce((sum, b) => sum + b, 0) / fit.params.b.length;
+        const locationSe = fit.thresholdSe.some((se) => se == null) ? null
+          : Math.sqrt(fit.thresholdSe.reduce((sum, se) => sum + (se as number) ** 2, 0)) / fit.params.b.length;
+        const draft = await createDraftVersion(prisma, {
+          itemId: task.id,
+          a: fit.params.a, b: location, c: 0,
+          aSe: fit.aSe, bSe: locationSe,
+          n: observations.length,
+          method: "GRM_PML",
+          thresholds: fit.params.b,
+          deltaB: fit.maxDeltaB,
+          iqScore: task.iqScore,
+          createdBy: `job:${triggerSource}`,
+          notes: fit.emptyCategories.length ? `empty categories: ${fit.emptyCategories.join(",")}` : null,
+        });
+        result.draftsCreated++;
+        if (draft.gate.eligible) result.draftsEligible++;
+        logger.info({ itemId: task.id, n: observations.length, version: draft.version, eligible: draft.gate.eligible },
+          "calibration-pipeline: GRM threshold draft recorded");
+      } catch (err) {
+        result.errors++;
+        logger.error({ err, itemId: task.id }, "calibration-pipeline: error on productive item");
       }
     }
   }

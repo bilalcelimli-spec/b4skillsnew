@@ -84,8 +84,6 @@ export interface SessionState {
   sem: number;   // Overall Standard Error of Measurement
   responses: Response[];
   usedItemIds: Set<string>;
-  /** Theta-routed MST bucket after module 0 (persist in `Session.metadata` server-side). */
-  mstRouteKey?: MstRouteKey;
   /** Multidimensional per-skill ability profiles (unidimensional, per-skill EAP) */
   skillProfiles?: Partial<Record<SkillType, SkillProfile>>;
   /** Full MIRT ability vector (when useMirt=true) */
@@ -102,52 +100,33 @@ export interface BlueprintConstraint {
 }
 
 /**
- * Multi-stage testing (MST) — panel routing on top of within-module adaptive selection.
- * Example: moduleSizes [1,2,3] = three stages with one, then two, then three operational items.
- * Items can optionally set `Item.metadata.mstModule` to 0-based module index to pin content to a stage.
+ * Global engine configuration (SystemConfig "global" row + defaults).
+ *
+ * Live adaptive sections take item counts and SEM targets from the product-line
+ * profile (`profiles.ts`) and stop via `stop-rules.ts`; `minItems`, `maxItems`
+ * and `semThreshold` here remain for standalone / legacy flows only.
  */
-/**
- * Theta bucket for stage-2+ panels. Items may set `metadata.mstRoute` to match.
- * Assigned automatically after the first module completes when `routing` is set.
- */
-export type MstRouteKey = "low" | "mid" | "high";
-
-export interface MstEngineConfig {
-  /** When true, the first sum(moduleSizes) operational responses follow the MST module structure. */
-  enabled: boolean;
-  /** Item counts per module (e.g. [1, 2, 3]). */
-  moduleSizes: number[];
-  /**
-   * After the last MST module, continue with standard CAT (MFI/blueprint) until stopping rules.
-   * If false, the session may stop with reason `MST_STRUCTURE_COMPLETE` once modules are done.
-   * @default true
-   */
-  continueWithCatAfterMst?: boolean;
-  /**
-   * Optional: after the first `moduleSizes[0]` operational items, lock a route from θ
-   * (e.g. low &lt; `lowMaxTheta`, else mid if θ &lt; `midMaxTheta`, else high).
-   * Stages 2+ filter by `Item.metadata.mstModule` and `Item.metadata.mstRoute`.
-   */
-  routing?: {
-    lowMaxTheta: number;
-    midMaxTheta: number;
-  };
-}
-
 export interface EngineConfig {
   minItems: number;
   maxItems: number;
-  semThreshold: number; // Stopping condition
+  semThreshold: number; // Legacy stopping condition (not read by live sections)
   startingTheta: number;
   startingSem: number;
   pretestRatio?: number; // Ratio of items that should be pretest (e.g., 0.1 for 10%)
-  /** Optional MST panel routing (1-2-3, etc.); when omitted, engine behaves as pure CAT. */
-  mst?: MstEngineConfig;
   cefrThresholds?: Partial<Record<CefrLevel, number>>;
   /** Content blueprint constraints. If defined, enforced during item selection. */
   blueprint?: BlueprintConstraint[];
-  /** Speed penalty: if response < speedThresholdMs it may indicate automated guessing. */
+  /**
+   * Expected-time scale for the rapid-guess *flag* (`isRapidGuess`) when RT-IRT is off.
+   * Diagnostic only: the score is never altered (Faz 0 removed the legacy penalty).
+   */
   speedThresholdMs?: number;
+  /**
+   * Faz 0: allow `CalibrationService.recalibrateItem` to run after every response.
+   * Default false — live sessions must not rewrite operational item parameters;
+   * calibration belongs to the batch pipeline (pretest-calibration-pipeline.ts).
+   */
+  useOnlineRecalibration?: boolean;
   /**
    * Enable Multidimensional IRT (MIRT) estimation alongside unidimensional EAP.
    * When true, each step computes a full 6D ability vector stored in
@@ -160,17 +139,6 @@ export interface EngineConfig {
    */
   useMirt2B?: boolean;
   /**
-   * SPRT/GLR-style stopping on 3PL likelihoods at a CEFR cut (two simple θ points).
-   * Requires `items` context when `engine.shouldStop` is called from the server.
-   */
-  sprt?: {
-    enabled: boolean;
-    alpha?: number;
-    beta?: number;
-    halfWidth?: number;
-    minItems?: number;
-  };
-  /**
    * Faz4: van der Linden log-normal response-time IRT (τ̂ from prior latencies, aberrant
    * RT flags, `responseTimeAdjustedScore`). When true, the legacy EAP `speedThresholdMs`
    * penalty in `processResponse` is skipped to avoid double counting.
@@ -181,17 +149,6 @@ export interface EngineConfig {
    * with 3PL for other skills. GRM param from `Item.metadata.grm` or `rubricToGrmParams(a,b)`.
    */
   useGrmProductive?: boolean;
-  /**
-   * Enable shadow-test item selection (van der Linden 2005).
-   * Guarantees blueprint adherence at every step without greedy look-ahead failures.
-   * Requires a blueprint to be set.
-   */
-  useShadowTest?: boolean;
-  /**
-   * Posterior CEFR classification confidence threshold for stopping.
-   * Stop when P(current CEFR level | data) >= this value. Default: 0.90.
-   */
-  classificationConfidenceThreshold?: number;
   /**
    * Organisational prior: mean theta for this org's candidate pool.
    * Used as EAP prior mean instead of population default (0).
@@ -208,22 +165,4 @@ export interface EngineConfig {
    * Default: false (composite scorer).
    */
   useRlSelector?: boolean;
-  /**
-   * Per-skill SEM stopping targets. When all listed skills have a per-skill SEM
-   * at or below their target, the session stops with reason "PER_SKILL_SEM_TARGETS_MET".
-   * Complementary to the global `semThreshold`: the global threshold governs the
-   * composite estimate; these govern individual skill precision.
-   *
-   * Example: { WRITING: 0.35, SPEAKING: 0.35 } stops once both productive skills
-   * are measured precisely regardless of overall composite SEM.
-   */
-  perSkillSemTargets?: Partial<Record<SkillType, number>>;
-  /**
-   * Explicit 1-indexed operational positions at which a pretest item is scheduled.
-   * When omitted, pretests are placed at positions 4, 8, 12, … (one every 4 items).
-   * Only applies when `pretestRatio > 0`. MST phases are always excluded.
-   *
-   * Example: [4, 9] schedules exactly two pretests at the 4th and 9th operational items.
-   */
-  pretestPositions?: number[];
 }

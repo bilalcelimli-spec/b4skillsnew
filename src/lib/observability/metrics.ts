@@ -9,6 +9,13 @@
  *   ai_scoring_duration_seconds    — histogram (skill)
  *   ai_scoring_total               — counter   (skill, source)
  *   circuit_breaker_state          — gauge     (service; 0=closed, 1=half-open, 2=open)
+ *   cat_selection_duration_seconds — histogram (profile, skill)
+ *   cat_pool_size                  — histogram (profile, skill)
+ *   cat_pool_fallback_total        — counter   (profile, skill, reason)
+ *   cat_stop_reason_total          — counter   (profile, reason)
+ *   cat_final_sem                  — histogram (profile, skill; "OVERALL" for composite)
+ *   cat_item_exposure_rate         — histogram (profile; exposure rate of the item served)
+ *   cat_rapid_guess_total          — counter   (profile, skill)
  *   nodejs_eventloop_lag_seconds   — histogram (built-in from prom-client)
  *   process_cpu_seconds_total      — counter   (built-in)
  *   process_resident_memory_bytes  — gauge     (built-in)
@@ -100,6 +107,105 @@ export const circuitBreakerState = new Gauge({
 
 // Initialise known circuit breakers so Prometheus has data points from the start
 circuitBreakerState.set({ service: "gemini" }, 0);
+
+// ── Adaptive engine (CAT) metrics ─────────────────────────────────────────────
+// Labels are kept to low-cardinality values (profile name, skill, reason) so the
+// series count stays bounded regardless of item bank size.
+
+/** Wall-clock time of one next-item selection (pool query excluded). */
+export const catSelectionDuration = new Histogram({
+  name: "cat_selection_duration_seconds",
+  help: "Duration of adaptive item selection in seconds",
+  labelNames: ["profile", "skill"] as const,
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
+  registers: [registry],
+});
+
+/** Eligible operational pool size handed to the selector. */
+export const catPoolSize = new Histogram({
+  name: "cat_pool_size",
+  help: "Eligible item pool size at selection time",
+  labelNames: ["profile", "skill"] as const,
+  buckets: [0, 5, 10, 20, 40, 80, 160, 320, 640],
+  registers: [registry],
+});
+
+/**
+ * Pool fallbacks taken during selection.
+ * reason: cross_session_exclusion | warmup_filter | pool_exhausted
+ */
+export const catPoolFallbackTotal = new Counter({
+  name: "cat_pool_fallback_total",
+  help: "Times the selector had to relax a pool filter or found no item",
+  labelNames: ["profile", "skill", "reason"] as const,
+  registers: [registry],
+});
+
+/** Why adaptive sessions ended (ALL_SECTIONS_COMPLETE, TIME_LIMIT_EXCEEDED, …). */
+export const catStopReasonTotal = new Counter({
+  name: "cat_stop_reason_total",
+  help: "Adaptive session stop reasons",
+  labelNames: ["profile", "reason"] as const,
+  registers: [registry],
+});
+
+/** Final SEM per skill (and OVERALL) at session finalization. */
+export const catFinalSem = new Histogram({
+  name: "cat_final_sem",
+  help: "Standard error of measurement at session finalization",
+  labelNames: ["profile", "skill"] as const,
+  buckets: [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.8, 1.0],
+  registers: [registry],
+});
+
+/** Exposure rate of each item at the moment it is served (max tracked via quantiles). */
+export const catItemExposureRate = new Histogram({
+  name: "cat_item_exposure_rate",
+  help: "Exposure rate of the item served, at the time of selection",
+  labelNames: ["profile"] as const,
+  buckets: [0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 1],
+  registers: [registry],
+});
+
+/** Responses flagged as rapid guesses (flag only; the score is not altered). */
+export const catRapidGuessTotal = new Counter({
+  name: "cat_rapid_guess_total",
+  help: "Responses flagged as rapid guesses",
+  labelNames: ["profile", "skill"] as const,
+  registers: [registry],
+});
+
+function catLabel(value: unknown): string {
+  return typeof value === "string" && value.length > 0 ? value : "unknown";
+}
+
+export function recordCatSelection(profile: string, skill: string, poolSize: number, durationMs: number): void {
+  const labels = { profile: catLabel(profile), skill: catLabel(skill) };
+  catPoolSize.observe(labels, Math.max(0, poolSize));
+  catSelectionDuration.observe(labels, Math.max(0, durationMs) / 1000);
+}
+
+export function recordCatPoolFallback(profile: string, skill: string, reason: string): void {
+  catPoolFallbackTotal.inc({ profile: catLabel(profile), skill: catLabel(skill), reason: catLabel(reason) });
+}
+
+export function recordCatStop(profile: string, reason: string): void {
+  catStopReasonTotal.inc({ profile: catLabel(profile), reason: catLabel(reason) });
+}
+
+export function recordCatFinalSem(profile: string, skill: string, sem: number): void {
+  if (!Number.isFinite(sem) || sem <= 0) return;
+  catFinalSem.observe({ profile: catLabel(profile), skill: catLabel(skill) }, sem);
+}
+
+export function recordCatItemExposure(profile: string, rate: number): void {
+  if (!Number.isFinite(rate) || rate < 0) return;
+  catItemExposureRate.observe({ profile: catLabel(profile) }, Math.min(1, rate));
+}
+
+export function recordCatRapidGuess(profile: string, skill: string): void {
+  catRapidGuessTotal.inc({ profile: catLabel(profile), skill: catLabel(skill) });
+}
 
 // ── Helper functions ──────────────────────────────────────────────────────────
 

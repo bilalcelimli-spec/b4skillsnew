@@ -81,14 +81,14 @@ it('applies passage set continuity before the information shortlist and releases
 });
 
 it('uses administered history for KL/MFI switching even when used questions are absent from the pool', async () => {
-  const spy = vi.spyOn(hybrid, 'hybridSelectTopK');
+  const spy = vi.spyOn(hybrid, 'hybridAlpha');
   const profile = getProfile('General English');
   const history = Array.from({ length: 7 }, (_, n) => makeItem(`used-${n}`, 0));
   const state = { ...initial(), sem: .25, usedItemIds: new Set(history.map(item => item.id)),
     responses: history.map(item => ({ itemId: item.id, score: 1 })) };
   await new CATSelector(profile).selectNext([makeItem('new', 0)], state,
     { administeredItems: history, responses: state.responses, plannedTotal: 50, profile });
-  expect(spy).toHaveBeenCalledWith(0, .25, 7, expect.any(Array), expect.any(Number));
+  expect(spy).toHaveBeenCalledWith(.25, 7);
 });
 
 it('never selects retired items, invalid IRT parameters or repeats', async () => {
@@ -102,20 +102,40 @@ it('never selects retired items, invalid IRT parameters or repeats', async () =>
   expect(await new CATSelector(profile).selectNext(pool.slice(0, -1), state, ctx)).toBeNull();
 });
 
+it('replaces an item rejected by the exposure gate with the next-best item instead of re-serving it', async () => {
+  const profile = getProfile('General English');
+  // 'hot' carries the most information at θ=0; the gate rejects it.
+  vi.spyOn(dp, 'acceptItem').mockImplementation((_store, id) => id !== 'hot');
+  const hot = { ...makeItem('hot', 0), params: { a: 2.5, b: 0, c: .1 } };
+  const pool = [hot, ...Array.from({ length: 12 }, (_, n) => makeItem(`cool-${n}`, (n - 6) / 4))];
+  const ctx = { administeredItems: [], responses: [], plannedTotal: 50, profile };
+  for (let i = 0; i < 5; i++) {
+    expect((await new CATSelector(profile).selectNext(pool, initial(), ctx))!.item.id).not.toBe('hot');
+  }
+});
+
+it('lifts the exposure gate when it would leave too few candidates', async () => {
+  const profile = getProfile('General English');
+  vi.spyOn(dp, 'acceptItem').mockReturnValue(false);
+  const pool = Array.from({ length: 6 }, (_, n) => makeItem(`only-${n}`, n / 10));
+  const ctx = { administeredItems: [], responses: [], plannedTotal: 50, profile };
+  expect(await new CATSelector(profile).selectNext(pool, initial(), ctx)).not.toBeNull();
+});
+
 it('records exposure in the same seven-stratum scale used by the acceptance gate', async () => {
   const record = vi.spyOn(dp, 'recordSelection');
   const profile = getProfile('General English'), state = { ...initial(), theta: -1 };
   await new CATSelector(profile).selectNext([makeItem('stratum-check', -1)], state,
     { administeredItems: [], responses: [], plannedTotal: 50, profile });
-  expect(record).toHaveBeenCalledWith(expect.any(Object), 'stratum-check', dp.thetaToStratumDp(-1), ['stratum-check']);
+  expect(record).toHaveBeenCalledWith(expect.any(Object), 'stratum-check', dp.thetaToStratumDp(-1), ['stratum-check'], undefined);
 });
 it('does not count pending grades as scored evidence for KL/MFI switching', async () => {
-  const spy = vi.spyOn(hybrid, 'hybridSelectTopK'), profile = getProfile('General English');
+  const spy = vi.spyOn(hybrid, 'hybridAlpha'), profile = getProfile('General English');
   const previous = makeItem('pending-grade', 0);
   const state = { ...initial(), usedItemIds: new Set([previous.id]), responses: [{ itemId: previous.id, score: 0, isPretest: true }] };
   await new CATSelector(profile).selectNext([makeItem('after-pending', 0)], state,
     { administeredItems: [previous], responses: state.responses, plannedTotal: 50, profile });
-  expect(spy).toHaveBeenCalledWith(0, 1, 0, expect.any(Array), expect.any(Number));
+  expect(spy).toHaveBeenCalledWith(1, 0);
 });
 it('does not let a top-five lottery erase adaptation in a small bank', async () => {
   vi.spyOn(Math, 'random').mockReturnValue(.9);

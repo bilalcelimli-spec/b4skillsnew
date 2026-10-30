@@ -181,6 +181,20 @@ describe("recordSelection + updateAlphas", () => {
     expect(store.records.get("item-medium")?.strata[3].totalSessions).toBe(1);
   });
 
+  it("counts a session once per stratum when a session key is given", () => {
+    const store = createExposureStore();
+    recordSelection(store, "a", 3, ["a", "b"], "session-1");
+    recordSelection(store, "b", 3, ["a", "b"], "session-1"); // same candidate, same stratum
+    recordSelection(store, "a", 3, ["a", "b"], "session-2");
+    expect(store.stratumSessionCounts[3]).toBe(2);
+    expect(store.sessionsSinceLastUpdate).toBe(2);
+    expect(store.records.get("a")?.strata[3].selected).toBe(2);
+    expect(store.records.get("a")?.strata[3].totalSessions).toBe(2);
+    // Exposure rate = candidates who saw the item / candidates in the stratum = 2/2
+    updateAlphas(store, 0.20);
+    expect(store.records.get("a")?.strata[3].alpha).toBe(1); // fewer than 10 sessions: no update yet
+  });
+
   it("updateAlphas reduces α for over-exposed items", () => {
     const store = createExposureStore();
     const stratum = 3;
