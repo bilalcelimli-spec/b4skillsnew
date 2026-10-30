@@ -65,11 +65,13 @@ Role-based rendering: `isAdmin`, `isRater`, `isOrgAdmin` booleans derived from `
 
 The CAT engine lives entirely in `src/lib/assessment-engine/`:
 
-- **`engine.ts`** — `AssessmentEngine` class: pure psychometric logic (no DB). Processes responses → updates θ via `estimator.ts` (EAP), selects next item via `selector.ts` (Max Fisher Information), checks stopping rules.
-- **`server-engine.ts`** — DB-backed orchestrator used by API routes. Wraps `engine.ts`, reads/writes Postgres sessions, calls `ScoringOrchestrator` for speaking/writing, runs all psychometric side-effects (person-fit, clickstream, MIRT-4D, CDM-DINA, collusion detection).
+- **`engine.ts`** — `AssessmentEngine` class: pure ability estimation (no DB). Processes responses → updates θ via `estimator.ts` (EAP), per-skill profiles, optional MIRT vectors. It does **not** select items or decide stopping.
+- **`../selection/cat-selector.ts`** — the only item selector (sequencing rules → Davey–Parshall α-gate → shadow test → smooth KL/MFI composite). Used by the live flow, the audit script and the simulation harness.
+- **`section-flow.ts`** — pure pool preparation (warm-up, shuffle, content diversity, passage cap) and section stop decision; **`stop-rules.ts`** — per-profile early-stop rules (`profile.stopRules`, default `SEM_THRESHOLD`).
+- **`server-engine.ts`** — DB-backed orchestrator used by API routes. Loads pools, calls section-flow + CATSelector, persists state, calls `ScoringOrchestrator` for speaking/writing, runs all psychometric side-effects (person-fit, clickstream, MIRT-4D, CDM-DINA, collusion detection).
+- **`simulation-harness.ts`** — runs simulated candidates through the live path; `npm run sim:adaptive` (offline, synthetic or snapshot bank), `npm run bank:snapshot` (anonymised DB export), `test/simulation/production-path.test.ts` (CI gate).
 - **`irt.ts`** — 3PL probability and Fisher information.
 - **`estimator.ts`** — EAP θ estimation.
-- **`selector.ts`** — Max Fisher Information selection.
 - **`mst-routing.ts`** — Multistage adaptive routing for non-MC sections.
 - **`sympson-heter.ts`** — Sympson-Hetter exposure control.
 - **`item-bank-cache.ts`** — In-process LRU cache for items; cache is warmed on session start.

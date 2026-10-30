@@ -160,6 +160,26 @@ export function rankByKL(
 
 // ─── Hybrid selector ──────────────────────────────────────────────────────────
 
+/**
+ * Smooth KL/MFI blend weight α ∈ [0, 1] (Faz 1 — replaces the binary switch in
+ * the live selector).
+ *
+ *   α → 1 : weight KL information (high uncertainty / early items)
+ *   α → 0 : weight Fisher information (reliable estimate / later items)
+ *
+ *   α = σ((SEM − 0.40) / 0.15) × σ((5 − n) / 2)
+ *
+ * The two factors are independent: the first rises as SEM climbs above 0.40,
+ * the second as n falls below 5. Either condition alone yields partial KL
+ * weighting, so the transition is gradual rather than a hard cut-over.
+ */
+export function hybridAlpha(sem: number, itemsAdministered: number): number {
+  const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
+  const s = Number.isFinite(sem) ? sem : 1;
+  const n = Number.isFinite(itemsAdministered) ? itemsAdministered : 0;
+  return sigmoid((s - 0.40) / 0.15) * sigmoid((5 - n) / 2);
+}
+
 export type SelectionMethod = "KL" | "MFI";
 
 /**

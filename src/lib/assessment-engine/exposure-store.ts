@@ -331,6 +331,18 @@ export function _resetExposureStoreForTests(): void {
   _store = new InMemoryExposureStore();
 }
 
+/**
+ * Fresh in-memory store for offline simulations (scripts, audits). Refuses to run
+ * when a shared Redis store is configured so a simulation can never reset
+ * production exposure counters.
+ */
+export function resetExposureStoreForSimulation(): void {
+  if (process.env.REDIS_URL) {
+    throw new Error("Refusing to reset the exposure store while REDIS_URL is set");
+  }
+  _store = new InMemoryExposureStore();
+}
+
 export function initExposureStore(): void {
   getExposureStore().catch(() => {});
 }

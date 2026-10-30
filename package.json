@@ -26,6 +26,8 @@
     "test": "vitest run",
     "test:item-bank": "RUN_DB_TESTS=1 vitest run test/item-bank.test.ts",
     "audit:adaptive": "tsx scripts/audit-adaptive-delivery.ts",
+    "sim:adaptive": "tsx scripts/simulate-adaptive.ts",
+    "bank:snapshot": "tsx scripts/export-bank-snapshot.ts",
     "audit:scoring": "tsx scripts/audit-objective-scoring.ts",
     "audit:items": "tsx scripts/audit-active-item-content.ts",
     "audit:item-evidence": "tsx scripts/audit-item-evidence.ts",
