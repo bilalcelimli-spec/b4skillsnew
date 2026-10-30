@@ -43,6 +43,7 @@ import { CreateItemBody, UpdateItemBody, ItemPipelineBody, ItemReviewBody, ItemC
 import { SystemConfigBody } from "./src/lib/security/schemas/calibration.js";
 import { CreateWebhookBody, BrandingPatchBody, UpdateSettingsBody, SsoConfigBody } from "./src/lib/security/schemas/organizations.js";
 import { ProctoringAuditBody, ProctoringEventBody } from "./src/lib/security/schemas/proctoring.js";
+import { nativeAppConfig } from "./src/lib/proctoring/native-app-config.js";
 import { AITutorBody, SpeakingMultimodalBody } from "./src/lib/security/schemas/ai.js";
 import { CodeRedemptionError, redeemExamCode } from "./src/lib/security/exam-code-redemption.js";
 import { GenerateCodesBody, RedeemCodeBody, ValidateCodeBody, SendExamInviteBody, CreateAssignmentBody } from "./src/lib/security/schemas/codes.js";
@@ -1351,6 +1352,12 @@ async function startServer() {
   };
 
   // API Routes
+  // Public: native apps check this before sign-in and refuse exams on an unsupported build.
+  app.get("/api/native/app-config", (_req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.json(nativeAppConfig());
+  });
+
   app.get("/api/health", async (_req, res) => {
     const available = await probeDatabase();
     const ready = available || (process.env.NODE_ENV !== "production" && !validationOnly);

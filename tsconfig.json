@@ -29,6 +29,7 @@
     "node_modules",
     "dist",
     "dev-dist",
+    "native",
     "scripts/archive",
     "scripts/seed",
     "**/*.cjs",

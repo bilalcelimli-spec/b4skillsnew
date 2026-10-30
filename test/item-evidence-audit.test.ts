@@ -6,6 +6,31 @@ const item = (changes: Partial<AuditItem> = {}): AuditItem => ({ id: 'item-1', v
     options: [{ id: 'A', text: 'first', isCorrect: true }, { id: 'B', text: 'second' }], correctAnswer: 'A' }, ...changes });
 const rules = (i: AuditItem) => auditItemEvidence(i).map(f => f.rule);
 describe('item evidence audit', () => {
+  it('blocks generator placeholder alternatives', () => {
+    const options = [{ id: 'A', text: 'bed' }, { id: 'B', text: 'sofa', isCorrect: true }, { id: 'C', text: 'sofa (variant)' }];
+    expect(rules(item({ content: { prompt: 'Grandma is sleeping on the ___.', options, correctAnswer: 'B' } }))).toContain('OPTION_PLACEHOLDER');
+    expect(rules(item())).not.toContain('OPTION_PLACEHOLDER');
+  });
+  it('blocks placeholder picture services', () => {
+    const content = { ...item().content as object, prompt: 'Look at the picture. The child has a ___.', imageUrl: 'https://picsum.photos/seed/abc/800/500' };
+    expect(rules(item({ content }))).toContain('IMAGE_PLACEHOLDER_SOURCE');
+  });
+  it('blocks a picture task with no picture, and asks for a human check when one is attached', () => {
+    const content = { ...item().content as object, prompt: 'In the picture, the fruit is a ___.' };
+    expect(rules(item({ content }))).toContain('PICTURE_REFERENCED_NO_IMAGE');
+    const withImage = rules(item({ content: { ...content, imageUrl: 'https://example.org/orange.jpg' } }));
+    expect(withImage).not.toContain('PICTURE_REFERENCED_NO_IMAGE');
+    expect(withImage).toContain('IMAGE_HUMAN_CHECK_REQUIRED');
+    expect(rules(item())).not.toContain('IMAGE_HUMAN_CHECK_REQUIRED');
+  });
+  it('blocks prompts written for a human examiner', () => {
+    const speaking = item({ type: 'SPEAKING_PROMPT', skill: 'SPEAKING', content: { prompt: 'Say the word in English!\n[EXAMINER: point to head, hand, eye]' } });
+    expect(rules(speaking)).toContain('EXAMINER_DEPENDENT_PROMPT');
+  });
+  it('flags picture descriptions left in the prompt', () => {
+    const writing = item({ type: 'WRITING_PROMPT', skill: 'WRITING', content: { prompt: 'Write the weather word.\n[Picture 2: rain falling] → ____' } });
+    expect(auditItemEvidence(writing).find(f => f.rule === 'PICTURE_DESCRIBED_IN_PROMPT')?.severity).toBe('REVIEW');
+  });
   it('accepts index zero as a real key', () => {
     expect(rules(item({ content: { prompt: 'Select.', options: ['yes', 'no'], correctIndex: 0 } }))).not.toContain('KEY_MISSING');
   });

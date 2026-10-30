@@ -2,15 +2,11 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.js';
 
-export const ClientCapabilities = z.object({
-  version: z.literal(1), platform: z.enum(['ipad', 'macos', 'android']),
-  microphone: z.boolean(), lifecycleEvents: z.boolean(), durableEvents: z.boolean(),
-  cameraEvidence: z.boolean(), assessmentMode: z.boolean(),
-}).strict();
-export const ExamPreflight = z.object({
-  policyRevision: z.string().regex(/^[a-f0-9]{64}$/), accepted: z.literal(true),
-  capabilities: ClientCapabilities,
-}).strict();
+import { ClientCapabilitiesSchema, ExamPreflightSchema } from '../../../shared/contracts/native-protocol.js';
+
+// Shared with the native apps (shared/contracts/native-protocol.ts).
+export const ClientCapabilities = ClientCapabilitiesSchema;
+export const ExamPreflight = ExamPreflightSchema;
 const Configuration = z.object({
   mode: z.enum(['standard', 'monitored', 'secure']).default('standard'),
   enforcePreflight: z.boolean().default(false),

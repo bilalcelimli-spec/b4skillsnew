@@ -1,0 +1,16 @@
+<resources>
+
+    <!-- Shown while the app starts (Android 12 splash API, backported by core-splashscreen).
+         Same purple as the opening page so there is no white flash before React renders. -->
+    <style name="Theme.B4Skills.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/b4_opening_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+        <item name="postSplashScreenTheme">@style/AppTheme</item>
+    </style>
+
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/b4_opening_background</item>
+        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+    </style>
+
+</resources>

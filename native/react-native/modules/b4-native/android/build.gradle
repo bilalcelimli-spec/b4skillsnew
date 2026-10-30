@@ -1,0 +1,36 @@
+// Android side of the b4-native module (Kotlin). Autolinked by the React Native CLI.
+def ext(name, fallback) { rootProject.ext.has(name) ? rootProject.ext.get(name) : fallback }
+
+apply plugin: "com.android.library"
+
+// AGP 9 compiles Kotlin itself; older AGP needs the Kotlin plugin.
+def agpMajor = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.tokenize('.')[0].toInteger()
+def builtInKotlin = providers.gradleProperty("android.builtInKotlin").orNull
+if (agpMajor <= 8 || (builtInKotlin != null && !builtInKotlin.toBoolean())) {
+    apply plugin: "org.jetbrains.kotlin.android"
+}
+
+android {
+    namespace "com.b4skills.b4native"
+    compileSdk ext("compileSdkVersion", 36)
+    defaultConfig {
+        minSdkVersion ext("minSdkVersion", 29)
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    implementation("com.facebook.react:react-android")
+    // Exam monitoring camera: preview, ~1 fps analysis, still photo.
+    def camerax = "1.4.2"
+    implementation("androidx.camera:camera-core:$camerax")
+    implementation("androidx.camera:camera-camera2:$camerax")
+    implementation("androidx.camera:camera-lifecycle:$camerax")
+    implementation("androidx.camera:camera-view:$camerax")
+    // On-device face counting with the bundled model (no network, no Play Services download).
+    implementation("com.google.mlkit:face-detection:16.1.7")
+}

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug only: plain HTTP for Metro and the local backend (emulator via adb reverse,
+     a physical tablet via the Mac's LAN address). Release uses the HTTPS-only file in main/. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

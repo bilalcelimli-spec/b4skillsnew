@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { NativePlatformSchema } from '../../../shared/contracts/native-protocol.js';
 import { decode, encode } from 'jpeg-js';
 import type { PrismaClient } from '@prisma/client';
 import { AppError } from '../errors/app-error.js';
@@ -8,7 +9,7 @@ import { storageReference, uploadPrivateObjectOnce } from '../storage/private-st
 export const MAX_NATIVE_PHOTO_BYTES = 1_000_000;
 export const EvidenceReservationBody = z.object({
   version: z.literal(1), evidenceId: z.string().uuid(), sessionId: z.string().regex(/^[a-z0-9_-]{1,100}$/i),
-  platform: z.enum(['ipad', 'macos', 'android']), kind: z.literal('baseline'), mimeType: z.literal('image/jpeg'),
+  platform: NativePlatformSchema, kind: z.literal('baseline'), mimeType: z.literal('image/jpeg'),
   sha256: z.string().regex(/^[a-f0-9]{64}$/), bytes: z.number().int().min(1).max(MAX_NATIVE_PHOTO_BYTES),
   capturedAt: z.string().datetime(), faceCount: z.literal(1),
 }).strict();

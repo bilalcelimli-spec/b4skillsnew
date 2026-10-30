@@ -1,0 +1,32 @@
+{
+  "tool": "built-in image_gen",
+  "original": "app-icon-source.png",
+  "outputs": {
+    "app-icon-ipad.png": {
+      "sha256": "5e54249ba0372487d2baf149221321dfd17877bf489c638f12371406faa6a649",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGB"
+    },
+    "app-icon-macos.png": {
+      "sha256": "72100989dd90511ec9fdf0c7bc8794fca279c391cffcd6db9408e19209208f01",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGBA"
+    }
+  },
+  "promptSummaries": [
+    "iPad: Preserve exact b4skills lettering and palette; remove white margin and external shadow; extend colored artwork to all square edges and corners; opaque full-bleed square, Apple applies mask.",
+    "macOS: Preserve exact rounded icon and lettering; remove white background and shadow; genuine transparent perimeter, clean antialiased silhouette; no matte fringe.",
+    "macOS refinement: Remove floating exterior specks; preserve the single rounded-square icon and lettering."
+  ],
+  "finalPrompts": [
+    "Edit this exact supplied B4Skills app icon for iPad App Store use. Preserve the exact white italic text 'b4skills', its letterforms, positioning, proportions, glossy orange/pink/purple flowing artwork. Only fix the outer framing: remove ALL external white margin and external drop shadow; extend the existing colored artwork smoothly to all four edges and all four corners of a perfectly square 1024x1024 opaque image. The colored face fills the entire square canvas, no inset rounded rectangle, no baked rounded outer corners, no border, no white or transparent pixels at edges. Apple will apply the rounded icon mask. Keep the full wordmark readable and centered with comfortable internal padding. Do not redesign or change the wordmark or palette. Return only the finished flat full-bleed square icon, no mockup.",
+    "Precise background extraction of the exact supplied B4Skills macOS app icon. Keep the existing glossy rounded square colored icon, exact white italic wordmark 'b4skills', every letterform, original orange pink magenta purple waves and proportions unchanged. Remove only the entire white background and pale external cast shadow, leaving genuine transparent alpha outside the rounded-square silhouette. No white halo or matte fringe. Center this existing rounded-square artwork on a square 1024x1024 transparent canvas with approximately 3% clear margin at each of its four straight-side extremes, crisp antialiased clean perimeter. Preserve the whole existing icon and full text. No redesign, no additional elements, no mockup.",
+    "Clean up ONLY the alpha perimeter of this macOS B4Skills icon. Remove every stray floating magenta, orange, blue or purple blob and speck outside the main large rounded-square icon. Exterior must be completely clean fully transparent, including top and bottom margins. Keep only the single connected large rounded-square icon, with a smooth clean antialiased silhouette. Preserve the existing icon face and exact white 'b4skills' letterforms pixel-faithfully. No shadow outside, no halo, no other changes."
+  ]
+}

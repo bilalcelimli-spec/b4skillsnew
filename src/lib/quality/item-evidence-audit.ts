@@ -72,6 +72,22 @@ export function auditItemEvidence(item: AuditItem): AuditFinding[] {
     if (blanks.length ? blanks.some(b => !hasAnswers(record(b).acceptableAnswers)) : !hasAnswers(c.acceptableAnswers) && !firstText(c.correctAnswer, c.answer))
       add('GAP_ANSWERS_MISSING', 'BLOCKER', 'An open gap lacks accepted answer variants.', 'Define accepted answers for every gap.');
   }
+  // Defects found by reading the Primary/Junior pools (Oct 2026); none were caught by the structural checks above.
+  const optionTexts = options.map(o => firstText(typeof o === 'string' ? o : record(o).text));
+  if (optionTexts.some(t => /\((?:variant|alternative|duplicate|copy)\)\s*$/i.test(t)))
+    add('OPTION_PLACEHOLDER', 'BLOCKER', 'An alternative is a generator placeholder copy, e.g. "sofa (variant)".', 'Replace it with a real distractor and re-check that exactly one alternative is correct.');
+  const imageUrl = text(c.imageUrl);
+  if (/picsum\.photos|placehold|placeholder|dummyimage/i.test(imageUrl))
+    add('IMAGE_PLACEHOLDER_SOURCE', 'BLOCKER', 'imageUrl points at a placeholder service that returns an arbitrary picture.', 'Attach the picture the task describes.');
+  if (/\[\s*EXAMINER\b/i.test(prompt))
+    add('EXAMINER_DEPENDENT_PROMPT', 'BLOCKER', 'Prompt contains an instruction for a human examiner; delivery has none.', 'Rewrite for on-screen delivery and attach the stimulus.');
+  const needsPicture = /\b(?:look at|in) (?:the|this|each)(?: \w+)? (?:picture|image|photo)s?\b|\bthe (?:picture|image|photo) shows\b/i.test(prompt);
+  if (needsPicture && !imageUrl && !populated(c.images))
+    add('PICTURE_REFERENCED_NO_IMAGE', 'BLOCKER', 'Prompt refers to a picture but no image is attached.', 'Attach the picture or rewrite the task.');
+  if (/\[\s*Picture\b[^\]]*:/i.test(prompt))
+    add('PICTURE_DESCRIBED_IN_PROMPT', 'REVIEW', 'Prompt contains a bracketed picture description that candidates can read.', 'Remove the description; it can give the answer away.');
+  if (imageUrl && (needsPicture || item.skill === 'SPEAKING'))
+    add('IMAGE_HUMAN_CHECK_REQUIRED', 'EVIDENCE_GAP', 'The answer depends on a picture; this static audit cannot see whether it shows what the task says.', 'Record a human check of the picture against this content version.');
   if (item.skill === 'READING' && !firstText(c.passage, c.text, c.readingText))
     add('READING_SOURCE_MISSING', 'REVIEW', 'No passage/text/readingText field.', 'Verify the shared stimulus and that the answer is supported by it.');
   if (item.skill === 'LISTENING') {
