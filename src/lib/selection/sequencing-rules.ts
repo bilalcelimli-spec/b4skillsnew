@@ -35,6 +35,8 @@ export interface SequencingContext {
    * Used by productive-last rule to know how far into the full exam we are.
    */
   totalAdministeredAcrossAllSections?: number;
+  /** Session identifier; lets exposure control count each candidate once per stratum. */
+  sessionId?: string;
 }
 
 // ─── Rule Implementations ─────────────────────────────────────────────────────

@@ -66,7 +66,21 @@ Kanıt durumu (27 Eylül 2026 temel çizgisi): 2.096 ACTIVE madde, **0/2.096 amp
 **F14.** Testlet bağımlılığı: pasaj başına üst sınır var, testlet modeli yok (bilgi %7–15 abartılı; bkz. bellek notu 2026-10-05).
 **F15.** İşler süreç içi `setInterval`; çoklu instance'ta yinelenir; dış zamanlayıcı ve advisory lock yok.
 **F16.** RL seçici deneysel, simülasyon ağırlıklı; kapalı kalmalı, kaldırılması değerlendirilmeli.
-**F17.** Profil-düzeyi MST (`selection/mst-router.ts`) ile `SystemConfig.mst.moduleSizes` tabanlı MST (`engine.ts`) iki ayrı tasarımdır; ikincisi çağrılmaz.
+**F17.** Profil-düzeyi MST (`selection/mst-router.ts`) ile `SystemConfig.mst.moduleSizes` tabanlı MST (`engine.ts`) iki ayrı tasarımdır; ikincisi çağrılmaz. *(Faz 1'de ikincisi kaldırıldı.)* Ayrıca profil-düzeyi MST'nin yol (track) süzgeci `buildMstTagFilter` bugün `undefined` döndürür: yönlendirme θ'sı ve yol etiketi oturuma yazılır ama havuz daraltılmaz; "MST" profilleri fiilen saf CAT çalışır.
+
+### Faz 1 simülasyonunun ortaya çıkardığı bulgular (2026-10-30)
+
+**F18. Tek genel SEM çok boyutluluğu gizliyor (P1).** Beceri θ'ları birbirinden ayrıştığında (simülasyonda beceri korelasyonu 0,85) beceri-başına SEM kalibrasyonu 0,95–1,06 ile dürüst, bileşik yapıya göre genel SEM kalibrasyonu ≈1,0; ama adayın "genel" yetkinliğine göre genel SEM 1,5–1,9 kat iyimser. Çözüm Faz 4'teki bileşik SEM (beceri SEM'leri + beceriler arası dağılım); rapor bu ölçüyü `compositeSemCalibration` ile ayrıca verir.
+
+**F19. Maruz kalma kontrolü fiilen çalışmıyordu (P0, Faz 1'de düzeltildi).** Davey–Parshall deposu paydayı aday yerine madde *sunumu* sayıyordu: her adaya bir kez verilen bir madde ~13 seçimde 0,08 "oran" göründüğünden α hiç düşmüyordu. Ayrıca α kapısı gölge test kurulduktan *sonra* uygulanıyordu; 2–3 maddelik üretici gölge testlerinde tüm adaylar reddedilince tam havuza geri dönülüyor ve aynı madde yeniden veriliyordu (α=0,01 olan bir yazma maddesi 200 adayın 186'sına gitti). Düzeltme: oturum anahtarıyla aday-başına sayım, kapı gölge testten önce, α güncellemesi 25 oturumda bir. Sentetik bankada maksimum maruz kalma 0,96 → 0,5–0,6 (n=200–400; α 25 oturumda bir güncellendiği için yakınsama sürer), üretici bölümlerde 0,96 → 0,36–0,48; ortalama SEM'e maliyeti ≈ +0,01. Tavan (`profile.maxExposureRate`, 0,20–0,35) henüz tutulmuyor; α ön-ısıtma (simülasyonla başlangıç α tablosu) Faz 5'e eklendi.
+
+**F20. Bölümler neredeyse yalnız bütçeyle bitiyor (P2).** Sentetik banka (a≈1,2) ile reseptif bölümlerin %90'ından fazlası SEM eşiğine ulaşamadan madde bütçesinde duruyor; eşikler (0,36–0,44) bu bilgi düzeyinde 13 maddeyle sınırda. Gerçek banka anlık görüntüsüyle yeniden ölçülmeli (`npm run bank:snapshot` → `npm run sim:adaptive`); eşik veya bütçe değişikliği bu kanıta bağlanmalı.
+
+**F21. Nüfus önseli merkezden uzak kohortları 0'a çekiyordu (P1, Faz 1'de düzeltildi).** EAP ve bölüm başlangıcı her profil için N(0,1) önseli kullanıyordu; `SystemConfig.priorMean/priorSd` şemada vardı ama motora hiç kopyalanmıyordu. Simülasyonda (profil aralığına göre örneklenmiş kohortlar, n=200) Primary +0,15, Academia −0,11, Specialized −0,14 logit sapma; profil CEFR aralığının merkezine oturan önselle sapma |0,04| altına indi, Primary RMSE 0,40 → 0,33, bileşik SEM kalibrasyonu 1,44 → 0,96. Düzeltme: `profileAbilityPrior` (kurum önseli → profil `abilityPrior` → aralık merkezi, SD 1) ve `getEngineForProfile`; başlatma, bölüm başlangıcı, yanıt işleme, sonlandırma ve yeniden puanlama aynı önseli kullanır.
+
+**F22. SEM dürüstlüğü önsel SD'ye duyarlı (P2).** Kohort dağılımı önselin varsaydığı SD=1 iken beceri-başına SEM kalibrasyonu 0,95–1,06. Kohort SD 1,4 (A1–C1 aralığını dolduran bir kitle) simüle edildiğinde kalibrasyon General English'te 1,1–1,36'ya, tek görevli Rapid Diagnostic yazma/konuşmada 1,4–1,55'e çıkıyor: kısa bölümlerde posterior önselce belirlendiği için SEM gerçek hatayı küçük gösteriyor. Kural: önsel SD'si gerçek kitle dağılımına uymalı; ilk saha verisiyle (kalibrasyon çalışması) profil başına kestirilmeli. `npm run sim:adaptive -- --cohort-sd 1.4` duyarlılığı yeniden üretir.
+
+**Greedy vs LP gölge test (A/B, 9 profil × n=150):** RMSE farkı ±0,04 içinde ve işaret değiştiriyor; SEM ve uzunluk farkı yok; LP seçim süresi ~1,5 ms vs ~0,1 ms. Karar: greedy varsayılan kalır, LP `shadowStrategy: "lp"` ile opsiyonel.
 
 ---
 
@@ -99,6 +113,8 @@ Amaç: Trafik artınca kendiliğinden devreye girecek hatalı davranışları du
 
 ### Faz 1 — Tek seçim motoru ve sahici simülasyon (3–4 hafta)
 
+> **Durum (2026-10-30):** Uygulandı. `CATSelector` tek seçim kaynağı; `engine.ts` yalnızca kestirim yapıyor (`getNextItem`/`shouldStop`, `selector.ts`, `mst-routing.ts` ve `SystemConfig` MST/SPRT/shadow bayrakları kaldırıldı). Bölüm durdurma `stop-rules.ts` + `section-flow.ts` üzerinden profil başına açık kural listesiyle (varsayılan SEM_THRESHOLD, eski davranışla aynı). Yumuşak KL/MFI karışımı seçicide; δ kaldırıldı. Harness `simulation-harness.ts`, CI testi `test/simulation/production-path.test.ts` (9 profil × n=100), rapor betiği `npm run sim:adaptive`, anlık görüntü `npm run bank:snapshot`, `audit:adaptive` harness sarmalayıcısı. F19 maruz kalma düzeltmesi ve F21 profil önseli bu fazda yapıldı. Açık: gerçek banka anlık görüntüsüyle koşu (DB erişimi gerekir) ve k6 ile p95 doğrulaması.
+
 - `CATSelector` tek seçim kaynağı olur. `engine.ts:getNextItem` kaldırılır ya da `CATSelector`'a devredilir; `shouldStop` bölüm akışına bağlanır (`server-engine.ts:529` civarı) ve profil başına etkin kurallar açıkça listelenir.
 - Yumuşak KL/MFI sigmoid'i (`selector.ts:hybridAlpha`) seçiciye taşınır; ikili anahtar kaldırılır (F6).
 - Greedy shadow test yerine LP çözücü (`shadow-test-solver.ts`), simülasyonla A/B kıyaslanarak (bilgi, blueprint ihlali, çalışma süresi).
@@ -128,13 +144,13 @@ Amaç: Trafik artınca kendiliğinden devreye girecek hatalı davranışları du
 - RT-IRT açık: τ kestirimi, `estimatedResponseTimeSec`'ten β; aberrant yanıt bayrak + opsiyonel hariç tutma (`useRtIrt` profil başına). Ceza yok.
 - GRM: AI ve insan rubrik boyut puanları `Response.metadata.rubricScores`'tan polytomous gözlem olarak saklanır; eşikler çift puanlanmış yanıtlarla kalibre edilir; `rubricToGrmParams` yalnızca kalibre eşik yoksa yedek.
 - MIRT: yalnızca kalibre çapraz yük varsa açılır; aksi halde `useMirt=false` varsayılanı (hesap ve risk azalır). 4D/2B raporu "keşif amaçlı" etiketi.
-- Bilgilendirici prior: beceriler arası korelasyon matrisi (kalibrasyon verisinden) ile bölüm başlangıç prior'ı; kurum prior'ı `Organization` düzeyinde.
+- Bilgilendirici prior: beceriler arası korelasyon matrisi (kalibrasyon verisinden) ile bölüm başlangıç prior'ı; kurum prior'ı `Organization` düzeyinde. *(Profil-merkezli önsel Faz 1'de geldi — F21; burada kalan iş beceriler arası bilgi aktarımı ve kurum düzeyi.)*
 - Testlet: pasaj üst sınırı kalır; testlet varyansı tahmin edilip SEM'e şişirme faktörü olarak raporlanır; Rasch testlet modeli yalnızca veri yeterse.
 - Kabul: Simülasyon ve gerçek veri üzerinde SEM kalibrasyonu korunur; aberrant bayrak oranı < %5 (sağlıklı kitle).
 
 ### Faz 5 — Sürekli operasyon
 
-- Tek paylaşımlı maruz kalma deposu (Redis) ve DP α tabloları; süreç içi depolar yalnız test.
+- Tek paylaşımlı maruz kalma deposu (Redis) ve DP α tabloları; süreç içi depolar yalnız test. α tabloları simülasyonla ön-ısıtılır (Davey–Parshall'ın özgün tasarımı) ve dağıtımda yeniden başlatmada yüklenir; hedef: max maruz kalma ≤ `profile.maxExposureRate`.
 - İşler dış zamanlayıcıdan (`scripts/jobs/*`) ve Postgres advisory lock ile; `setInterval` kaldırılır.
 - Haftalık "sınav sağlığı" raporu (`quality-tour.ts`'e ek): durma nedeni dağılımı, nihai SEM dağılımı, fallback sayısı, maruz kalma maksimumu, pretest yanıt birikimi, drift özetleri.
 - Aylık simülasyon yeniden koşusu (banka değiştikçe); çeyreklik drift/DIF/eşdeğerleme raporu ve parametre sürümü yayını.

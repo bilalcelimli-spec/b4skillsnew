@@ -38,6 +38,8 @@
  */
 
 import { SkillType, BlueprintConstraint } from "../assessment-engine/types.js";
+import type { StopRule } from "../assessment-engine/stop-rules.js";
+import type { SprtConfig } from "../assessment-engine/sequential-sprt.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -135,6 +137,23 @@ export interface ProductLineProfile {
    * Set to roughly estimatedDurationMin[1] × 1.5 to accommodate slow readers.
    */
   maxDurationMs: number;
+  /**
+   * Early-stop rules for every section of this profile (stop-rules.ts).
+   * Undefined = DEFAULT_SECTION_STOP_RULES (SEM_THRESHOLD only), which is the
+   * pre-Faz-1 live behaviour. Add BOUNDARY_SEM / CLASSIFICATION_CONFIDENCE /
+   * SPRT only with simulation evidence (roadmap Faz 3).
+   */
+  stopRules?: readonly StopRule[];
+  /** Threshold for the CLASSIFICATION_CONFIDENCE rule (default 0.90). */
+  classificationConfidenceThreshold?: number;
+  /** SPRT settings for the SPRT rule; ignored unless the rule is listed and `enabled`. */
+  sprt?: SprtConfig;
+  /**
+   * EAP and section-start ability prior for sessions of this profile.
+   * Undefined = N(centre of `cefrRange`, 1), see adaptive-policy.profileAbilityPrior.
+   * An organisation prior in SystemConfig (`priorMean`/`priorSd`) overrides both.
+   */
+  abilityPrior?: { mean: number; sd: number };
 }
 
 // ─── Profile Definitions ──────────────────────────────────────────────────────

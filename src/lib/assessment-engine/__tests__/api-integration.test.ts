@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AssessmentEngine } from "../engine";
+import { evaluateSectionStopRules } from "../stop-rules";
 import { SkillType, type EngineConfig, type SessionState, type Item } from "../types";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -36,52 +37,31 @@ const makeState = (responses: { itemId: string; score: number; isPretest?: boole
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe("Session lifecycle — AssessmentEngine", () => {
-  let engine: AssessmentEngine;
-
   beforeEach(() => {
-    engine = new AssessmentEngine(makeConfig());
+    // The engine owns estimation only; stopping is evaluated by stop-rules.ts.
+    expect(new AssessmentEngine(makeConfig()).initializeSession().responses).toHaveLength(0);
   });
 
-  it("does not stop before minItems threshold is reached", () => {
-    const state = makeState([
-      { itemId: "i1", score: 1 },
-      { itemId: "i2", score: 1 },
-    ]);
-    const result = engine.shouldStop(state);
+  it("does not stop before the section floor is reached", () => {
+    const result = evaluateSectionStopRules({
+      ability: { theta: 0, sem: 0.2 }, sectionCount: 2, minItems: 5, maxItems: 30, semThreshold: 0.28,
+    });
     expect(result.stop).toBe(false);
   });
 
-  it("stops when SEM is below threshold after minItems", () => {
-    const state: SessionState = {
-      theta: 1.2,
-      sem: 0.25,
-      responses: Array.from({ length: 6 }, (_, i) => ({
-        itemId: `i${i}`,
-        score: 1,
-        isPretest: false,
-      })),
-      usedItemIds: new Set(Array.from({ length: 6 }, (_, i) => `i${i}`)),
-    };
-    const result = engine.shouldStop(state);
-    expect(result.stop).toBe(true);
+  it("stops when SEM is below threshold after the floor", () => {
+    const result = evaluateSectionStopRules({
+      ability: { theta: 1.2, sem: 0.25 }, sectionCount: 6, minItems: 5, maxItems: 30, semThreshold: 0.28,
+    });
+    expect(result).toEqual({ stop: true, reason: "SEM_THRESHOLD_REACHED" });
   });
 
-  it("stops at maxItems regardless of SEM", () => {
-    const cfg = makeConfig({ maxItems: 5, minItems: 3 });
-    const eng = new AssessmentEngine(cfg);
-    const state: SessionState = {
-      theta: 0,
-      sem: 0.99,
-      responses: Array.from({ length: 5 }, (_, i) => ({
-        itemId: `i${i}`,
-        score: 1,
-        isPretest: false,
-      })),
-      usedItemIds: new Set(Array.from({ length: 5 }, (_, i) => `i${i}`)),
-    };
-    const result = eng.shouldStop(state);
+  it("stops at the section budget regardless of SEM", () => {
+    const result = evaluateSectionStopRules({
+      ability: { theta: 0, sem: 0.99 }, sectionCount: 5, minItems: 3, maxItems: 5, semThreshold: 0.28,
+    });
     expect(result.stop).toBe(true);
-    expect(result.reason).toMatch(/max/i);
+    expect(result.reason).toMatch(/budget/i);
   });
 
   it("excludes already-used items from selection pool", () => {
