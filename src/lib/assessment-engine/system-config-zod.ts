@@ -7,9 +7,10 @@ import { z } from "zod";
  * Which keys the LIVE adaptive flow (server-engine.ts → CATSelector) actually reads
  * (Faz 0 audit, 2026-10-30):
  *   effective  — cefrThresholds, priorMean, priorSd (org prior, Faz 1), pretestRatio
- *                (pretest slots, Faz 2), useRtIrt, useGrmProductive, useRlSelector,
- *                useMirt / useMirt2B (estimation only), speedThresholdMs (rapid-guess
- *                flag), useOnlineRecalibration, itemRetirement, difDetection.
+ *                (pretest slots, Faz 2), useRtIrt (default ON, flag-only), useGrmProductive,
+ *                useRlSelector, useMirt / useMirt2B (default OFF, exploratory estimation only),
+ *                speedThresholdMs (rapid-guess flag), useOnlineRecalibration, itemRetirement,
+ *                difDetection.
  *   NOT read   — minItems, maxItems, semThreshold, blueprint (kept for standalone
  *                flows; per-profile values come from product-lines/profiles.ts).
  *   removed    — useShadowTest, sprt, mst, classificationConfidenceThreshold (Faz 1):

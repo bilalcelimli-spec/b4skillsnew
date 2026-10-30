@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAdaptiveEligible, isPretestEligible, pretestItemWhere, profileAbilityPrior, profileThetaRange } from "../adaptive-policy";
+import { crossSkillPrior, crossSkillPriors, isAdaptiveEligible, isPretestEligible, pretestItemWhere, profileAbilityPrior, profileThetaRange, sectionAbility, CROSS_SKILL_PRIOR_MIN_SD } from "../adaptive-policy";
 import { PRODUCT_LINE_PROFILES, getProfile } from "../../product-lines/profiles";
 import { SkillType } from "../types";
 
@@ -85,5 +85,37 @@ describe("pretest pool (pretestItemWhere / isPretestEligible)", () => {
     expect((where.cefrLevel as { in: string[] }).in[0]).toBe(profile.cefrRange[0]);
     expect(Array.isArray(where.AND)).toBe(true);
     expect(pretestItemWhere(getProfile("General English"), SkillType.READING).AND).toBeUndefined();
+  });
+});
+
+describe("crossSkillPrior (collateral information)", () => {
+  const base = { mean: 0, sd: 1 };
+  const state = { theta: 0, sem: 1, responses: [], usedItemIds: new Set<string>(),
+    skillProfiles: { GRAMMAR: { theta: 1.2, sem: 0.4 }, VOCABULARY: { theta: 0.8, sem: 0.4 } } } as any;
+
+  it("shrinks the measured mean toward the base mean by ρ and tightens the SD", () => {
+    const prior = crossSkillPrior(state, SkillType.READING, base, { correlation: 0.85 });
+    expect(prior.mean).toBeCloseTo(0.85 * 1.0, 6);
+    const expectedSd = Math.sqrt(1 * (1 - 0.85 ** 2) + 0.85 ** 2 * (0.16 / 2));
+    expect(prior.sd).toBeCloseTo(Math.max(CROSS_SKILL_PRIOR_MIN_SD, expectedSd), 6);
+    expect(prior.sd).toBeGreaterThanOrEqual(CROSS_SKILL_PRIOR_MIN_SD);
+  });
+
+  it("falls back to the base prior with nothing measured or ρ = 0, and ignores the skill itself", () => {
+    expect(crossSkillPrior({ ...state, skillProfiles: {} }, SkillType.READING, base, { correlation: 0.85 })).toEqual(base);
+    expect(crossSkillPrior(state, SkillType.READING, base, { correlation: 0 })).toEqual(base);
+    const own = crossSkillPrior({ ...state, skillProfiles: { READING: { theta: 3, sem: 0.3 } } }, SkillType.READING, base, { correlation: 0.85 });
+    expect(own).toEqual(base);
+  });
+
+  it("is only applied when the profile enables it", () => {
+    const off = getProfile("General English");
+    expect(crossSkillPriors(state, off, base)).toBeUndefined();
+    expect(sectionAbility(state, SkillType.READING, 0, 1, { profile: off })).toEqual({ theta: 0, sem: 1 });
+    const on = { ...off, crossSkillPrior: { correlation: 0.85 } };
+    expect(crossSkillPriors(state, on, base)?.READING?.mean).toBeCloseTo(0.85, 6);
+    expect(sectionAbility(state, SkillType.READING, 0, 1, { profile: on }).theta).toBeCloseTo(0.85, 6);
+    // an already measured skill always uses its own estimate
+    expect(sectionAbility(state, SkillType.GRAMMAR, 0, 1, { profile: on })).toEqual({ theta: 1.2, sem: 0.4 });
   });
 });

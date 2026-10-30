@@ -95,6 +95,20 @@ Kanıt durumu (27 Eylül 2026 temel çizgisi): 2.096 ACTIVE madde, **0/2.096 amp
 | Bütçe esnekliği (+1, SEM > 0,40) | uzunluk aynı (global bütçe sınırlıyor) | ±0,03 RMSE, gürültü | Kapalı (`sectionBudgetFlex` alanı duruyor) |
 | + SPRT (α=β=0,05, h=0,18, min 5) | Rapid 35 → 27; GE 53 → 34 | Rapid RMSE 0,42 → 0,38, CEFR 0,71 → 0,75; GE SEM 0,22 → 0,26 | **Yalnız Rapid Diagnostic'te açık** |
 
+**F25. Beceri ortalamasının SEM'i alt sınırdır (Faz 4 bulgusu).** Beceri θ̂'larının eşit ağırlıklı ortalaması için √ΣSEM²/K formülü simülasyonda 1,3–2,3 kat iyimser çıkıyor: her beceri kestirimi aynı önsele doğru büzüldüğü için beceri hataları pozitif korelasyonlu. Beceri-başına SEM'ler dürüst (≈1,0), havuzlanmış EAP'ın SEM'i de madde-ağırlıklı ortalama için dürüst (≈1,0–1,2). Rapor bu yüzden başlık θ/SEM olarak havuzlanmış EAP'ı korur; `compositeProfile` beceri ortalamasını `semLowerBound` etiketiyle ve dağılım testi (χ², "uneven" bayrağı) ile verir.
+
+**Beceriler arası bilgilendirici önsel A/B (Faz 4, n=200 × 9 profil):**
+
+| Varsayılan ρ | Gerçek ρ (simülasyon) | Uzunluk | Doğruluk | Karar |
+|---|---|---|---|---|
+| kapalı | 0,85 | referans | referans | — |
+| 0,85 | 0,85 (eşleşiyor) | −6 … −10 madde (Primary 41 → 31, GE 53 → 46, Express 44 → 39,5) | RMSE aynı/iyi, CEFR aynı/iyi | Potansiyel büyük kazanç |
+| 0,85 | 0,70 (fazla iyimser) | aynı kısalma | Primary CEFR 0,77 → 0,68, beceri SEM'leri iyimser (kal 1,6 → 2,1) | Risk: beceri profili önsele büzülür, erken durur |
+| 0,60 | 0,85 | uzunluk aynı | GE CEFR 0,67 → 0,81, Corporate sınır bandı 0,65 → 0,74 | mütevazı kazanç |
+| 0,60 | 0,70 | uzunluk aynı | karışık, GE CEFR 0,62 → 0,58 | kazanç yok |
+
+Karar: `crossSkillPrior` profil alanı ve harness `--cross-skill` seçeneği hazır, **varsayılan kapalı**. Beceriler arası korelasyon gerçek tamamlanmış oturumlardan kestirilmeden (≥ 300 oturum, beceri θ̂ korelasyon matrisi) açılmamalı; yanlış ρ beceri raporunu bozar. Faz 5 işine "ρ kestirimi raporu" eklendi.
+
 **Greedy vs LP gölge test (A/B, 9 profil × n=150):** RMSE farkı ±0,04 içinde ve işaret değiştiriyor; SEM ve uzunluk farkı yok; LP seçim süresi ~1,5 ms vs ~0,1 ms. Karar: greedy varsayılan kalır, LP `shadowStrategy: "lp"` ile opsiyonel.
 
 ---
@@ -160,6 +174,8 @@ Amaç: Trafik artınca kendiliğinden devreye girecek hatalı davranışları du
 
 ### Faz 4 — Ölçme modeli derinliği (4–6 hafta)
 
+> **Durum (2026-10-30):** Kod tarafı uygulandı. RT-IRT varsayılan açık ve yalnız bayrak (skor hiçbir koşulda değişmez, `adjustedScore` artık yazılmıyor); MIRT varsayılan kapalı, rapor `mirtStatus: EXPLORATORY`; `compositeProfile` bloğu (beceri ortalaması, SEM alt sınırı, dağılım χ², en güçlü/en zayıf beceri) ve beceri raporunun profil önseliyle yeniden kestirimi; GRM eşik kalibrasyonu (`grm-item-calibration.ts`, cezalı ML, sentetik testte 400 yanıtla eşikler ±0,3 logit) ve kalibrasyon işinde yazma/konuşma geçişi → `thresholds` taşıyan DRAFT sürüm, yayında `Item.metadata.grm`; `012_parameter_version_thresholds` migration'ı. Beceriler arası önsel kodlandı ama kapalı (yukarıdaki A/B). Açık: gerçek RT parametrelerinin (`estimatedResponseTimeSec`) kalibrasyonu, testlet varyansı raporu, ρ kestirimi.
+
 - RT-IRT açık: τ kestirimi, `estimatedResponseTimeSec`'ten β; aberrant yanıt bayrak + opsiyonel hariç tutma (`useRtIrt` profil başına). Ceza yok.
 - GRM: AI ve insan rubrik boyut puanları `Response.metadata.rubricScores`'tan polytomous gözlem olarak saklanır; eşikler çift puanlanmış yanıtlarla kalibre edilir; `rubricToGrmParams` yalnızca kalibre eşik yoksa yedek.
 - MIRT: yalnızca kalibre çapraz yük varsa açılır; aksi halde `useMirt=false` varsayılanı (hesap ve risk azalır). 4D/2B raporu "keşif amaçlı" etiketi.
@@ -171,6 +187,7 @@ Amaç: Trafik artınca kendiliğinden devreye girecek hatalı davranışları du
 
 - Tek paylaşımlı maruz kalma deposu (Redis) ve DP α tabloları; süreç içi depolar yalnız test. α tabloları simülasyonla ön-ısıtılır (Davey–Parshall'ın özgün tasarımı) ve dağıtımda yeniden başlatmada yüklenir; hedef: max maruz kalma ≤ `profile.maxExposureRate`.
 - İşler dış zamanlayıcıdan (`scripts/jobs/*`) ve Postgres advisory lock ile; `setInterval` kaldırılır.
+- Beceriler arası korelasyon (ρ) kestirimi: tamamlanmış oturumların beceri θ̂ matrisi üzerinden, ölçüm hatası için düzeltilmiş; ≥ 300 oturumda `crossSkillPrior` kararı için rapor.
 - Haftalık "sınav sağlığı" raporu (`quality-tour.ts`'e ek): durma nedeni dağılımı, nihai SEM dağılımı, fallback sayısı, maruz kalma maksimumu, pretest yanıt birikimi, drift özetleri.
 - Aylık simülasyon yeniden koşusu (banka değiştikçe); çeyreklik drift/DIF/eşdeğerleme raporu ve parametre sürümü yayını.
 

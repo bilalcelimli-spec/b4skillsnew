@@ -29,7 +29,9 @@ export interface DraftVersionInput {
   bSe?: number | null;
   cSe?: number | null;
   n: number;
-  method: "STOCKING_EM" | "RASCH_MMLE" | "PRIOR" | "SEED" | "MANUAL";
+  method: "STOCKING_EM" | "RASCH_MMLE" | "GRM_PML" | "PRIOR" | "SEED" | "MANUAL";
+  /** GRM category thresholds for writing/speaking tasks (b = their mean, c = 0). */
+  thresholds?: number[] | null;
   infit?: number | null;
   outfit?: number | null;
   pointBiserial?: number | null;
@@ -84,6 +86,7 @@ export async function createDraftVersion(db: VersionClient, input: DraftVersionI
       method: input.method,
       infit: input.infit ?? null, outfit: input.outfit ?? null, pointBiserial: input.pointBiserial ?? null,
       deltaB: input.deltaB ?? null,
+      thresholds: input.thresholds ?? [],
       driftClass,
       gateReasons: gate.reasons,
       sourceRunId: input.sourceRunId ?? null,
@@ -148,6 +151,10 @@ export async function publishVersion(db: VersionClient, versionId: string, optio
     metadata.paramSource = "calibrated";
     metadata.calibratedAt = now.toISOString();
     metadata.parameterVersionId = draft.id;
+    // GRM thresholds: the estimator prefers Item.metadata.grm over the synthetic fallback.
+    if (draft.thresholds.length > 0) {
+      metadata.grm = { a: draft.a, b: draft.thresholds, categories: draft.thresholds.length + 1 };
+    }
     if (promote) {
       metadata.statusChange = { from: "PRETEST", to: "ACTIVE", reason: "PARAMETER_VERSION_PUBLISHED", at: now.toISOString(), source: options.publishedBy };
     }

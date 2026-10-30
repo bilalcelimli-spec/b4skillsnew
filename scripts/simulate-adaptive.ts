@@ -57,6 +57,9 @@ const sectionBudgetFlex = budgetFlexArg === "on" ? true : budgetFlexArg === "off
 const confidenceArg = arg("confidence", "");
 const classificationConfidenceThreshold = confidenceArg ? Number(confidenceArg) : undefined;
 /** --sprt enables Wald SPRT (α=β=0.05, half-width 0.18, min 5 items) when SPRT is in --stop-rules. */
+/** --cross-skill 0.85 enables the cross-skill informative prior; --cross-skill off disables it. */
+const crossArg = arg("cross-skill", "");
+const crossSkillPrior = crossArg === "off" ? null : crossArg ? { correlation: Number(crossArg) } : undefined;
 const sprt = process.argv.includes("--sprt") ? { enabled: true, alpha: 0.05, beta: 0.05, halfWidth: 0.18, minItems: 5 } : undefined;
 
 const strategies: ShadowStrategy[] = strategyArg === "both" ? ["greedy", "lp"] : [strategyArg as ShadowStrategy];
@@ -69,7 +72,7 @@ function printRow(report: SimulationReport): void {
   console.log(
     `${report.profile.padEnd(32)} ${report.shadowStrategy.padEnd(6)} ` +
     `bias ${fmt(report.bias).padStart(7)}  rmse ${fmt(report.rmse)}  sem ${fmt(report.meanSem)}  ` +
-    `cal ${fmt(report.semCalibration, 2)}/${fmt(report.compositeSemCalibration, 2)}  cefr ${fmt(report.cefrExactAccuracy, 2)}/${fmt(report.cefrAdjacentAccuracy, 2)}  ` +
+    `cal ${fmt(report.semCalibration, 2)}/${fmt(report.compositeSemCalibration, 2)}/${fmt(report.skillMeanSemCalibration, 2)}  cefr ${fmt(report.cefrExactAccuracy, 2)}/${fmt(report.cefrAdjacentAccuracy, 2)}  ` +
     `len ${fmt(report.meanLength, 1).padStart(5)}  bnd ${fmt(report.boundaryBandAccuracy, 2)}(${report.boundaryBandN})  ` +
     `expMax ${fmt(report.maxExposureRate, 2)}  p95 ${fmt(report.selectionLatencyMs.p95, 1)}ms`
   );
@@ -77,13 +80,13 @@ function printRow(report: SimulationReport): void {
 
 async function main(): Promise<void> {
   console.log(`bank: ${bank.source} (${bank.items.length} items)  n=${n}  seed=${seed}  rho=${rho}  prior=${priorMode}  cohortSd=${cohortSd}`);
-  console.log(`${"profile".padEnd(32)} ${"shadow".padEnd(6)} bias     rmse   sem    cal gen/comp  cefr exact/adj  len    boundary   expMax  p95`);
+  console.log(`${"profile".padEnd(32)} ${"shadow".padEnd(6)} bias     rmse   sem    cal gen/comp/skills cefr exact/adj  len    boundary   expMax  p95`);
   if (stopRules) console.log(`stop rules override: ${stopRules.join(",")}${sectionBudgetFlex !== undefined ? `  budget flex: ${sectionBudgetFlex}` : ""}`);
   const reports: Array<Omit<SimulationReport, "simulees">> = [];
   for (const profile of profiles) {
     for (const strategy of strategies) {
       const engineConfig = priorMode === "population" ? { priorMean: 0, priorSd: 1 } : {};
-      const report = await simulateProfile(bank, { profile, n, seed, shadowStrategy: strategy, skillCorrelation: rho, engineConfig, cohortSd, stopRules, sectionBudgetFlex, classificationConfidenceThreshold, sprt });
+      const report = await simulateProfile(bank, { profile, n, seed, shadowStrategy: strategy, skillCorrelation: rho, engineConfig, cohortSd, stopRules, sectionBudgetFlex, classificationConfidenceThreshold, sprt, crossSkillPrior });
       printRow(report);
       if (verbose) {
         console.log(
@@ -91,6 +94,7 @@ async function main(): Promise<void> {
           `resp/served item ${fmt(report.pretest.meanResponsesPerServedItem, 1)}  at n≥estimate ${report.pretest.itemsAtEstimateMinN}  ` +
           `at n≥publish ${report.pretest.itemsAtPublishMinN}  sessions to estimate all ≈ ${report.pretest.sessionsToEstimateAll ?? "n/a"}`
         );
+        console.log(`    SKILL-MEAN  bias ${fmt(report.skillMeanBias)}  rmse ${fmt(report.skillMeanRmse)}  cal ${fmt(report.skillMeanSemCalibration, 2)}  uneven ${fmt(report.profileUnevenRate, 2)}`);
         for (const [skill, s] of Object.entries(report.perSkill)) {
           console.log(
             `    ${skill.padEnd(11)} bias ${fmt(s.bias).padStart(7)}  rmse ${fmt(s.rmse)}  sem ${fmt(s.meanSem)}  ` +

@@ -9,7 +9,7 @@ import { buildSessionProgress } from "./session-progress";
 import { buildScoringPrompt, scoringTargetCefr } from "../scoring/task-context.js";
 import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence } from "../scoring/score-evidence.js";
 import { estimateTheta } from "./estimator.js";
-import { adaptiveItemWhere, pretestItemWhere, sectionAbility, profileAbilityPrior } from "./adaptive-policy.js";
+import { adaptiveItemWhere, pretestItemWhere, sectionAbility, profileAbilityPrior, crossSkillPriors } from "./adaptive-policy.js";
 import type { ProductLineProfile } from "../product-lines/profiles.js";
 import { prepareSelectionPool, evaluateSectionStop, shouldAdministerPretest } from "./section-flow.js";
 import { selectPretestItem } from "./pretest-selection.js";
@@ -53,7 +53,6 @@ import type { ResponseTimeParams } from "../psychometrics/response-time-irt.js";
 import {
   detectAberrantResponseTime,
   estimateSpeed,
-  responseTimeAdjustedScore,
   responseTimeParamsFromItemContent,
 } from "../psychometrics/response-time-irt.js";
 import {
@@ -244,8 +243,8 @@ const DEFAULT_CONFIG: EngineConfig = {
   pretestRatio: 0.1,
   speedThresholdMs: 2500,      // Responses faster than 2.5s on hard items → guessing flag
   blueprint: DEFAULT_BLUEPRINT,
-  useMirt: true,
-  useRtIrt: false,             // Faz4 RT-IRT; enable via SystemConfig
+  useMirt: false,              // Faz 4: exploratory until items carry calibrated cross-loadings
+  useRtIrt: true,              // Faz 4: van der Linden RT model as a flag-only diagnostic
   useGrmProductive: process.env.USE_GRM_PRODUCTIVE !== "false",  // Faz5 GRM for W/S
   useRlSelector:   process.env.USE_RL_SELECTOR   === "true",   // RL policy item selection
   useOnlineRecalibration: false, // Faz 0: never rewrite item parameters from a live session
@@ -553,7 +552,7 @@ export const AssessmentService = {
     const sectionCount = sectionResponses.length;
 
     // Use evidence for this skill; a new section starts with prior uncertainty.
-    const ability = sectionAbility(state, currentSkill, state.responses.length === 0 ? state.theta : engine.getConfig().priorMean ?? 0, engine.getConfig().priorSd ?? 1);
+    const ability = sectionAbility(state, currentSkill, state.responses.length === 0 ? state.theta : engine.getConfig().priorMean ?? 0, engine.getConfig().priorSd ?? 1, { profile });
     const skillSem = ability.sem;
     const selectionState: SessionState = { ...state, ...ability };
 
@@ -919,7 +918,8 @@ export const AssessmentService = {
         rtParams,
         itemId
       );
-      irtInputScore = responseTimeAdjustedScore(score, aberrant);
+      // Faz 4: RT-IRT is diagnostic only. The flag and z-score are persisted for
+      // person-fit / the participant panel; the score is never adjusted.
       rtZ = aberrant.zScore;
       rtFlag = aberrant.flag;
     } else if (
@@ -959,7 +959,10 @@ export const AssessmentService = {
       }
       const latestItems = Object.fromEntries(latest.responses.filter(r => r.item)
         .map(r => [r.itemId, dbItemToEngineItem(r.item)]));
-      const newState = engine.processResponse(toEngineState(latest), response, { ...latestItems, [item.id]: item });
+      const latestState = toEngineState(latest);
+      const skillPriors = crossSkillPriors(latestState, sessionProfile,
+        { mean: cfg.priorMean ?? 0, sd: cfg.priorSd ?? 1 });
+      const newState = engine.processResponse(latestState, response, { ...latestItems, [item.id]: item }, { skillPriors });
       if (!Number.isFinite(newState.theta) || newState.theta < -6 || newState.theta > 6) {
         logger.warn({ sessionId, itemId, rawTheta: newState.theta }, "Theta out of bounds — clamping to [-6, 6]");
         newState.theta = Math.max(-6, Math.min(6, Number.isFinite(newState.theta) ? newState.theta : 0));
@@ -970,12 +973,7 @@ export const AssessmentService = {
                   itemId,
                   value: typeof value === 'string' ? value : JSON.stringify(value),
           score: requiresHumanReview ? null : score,
-          adjustedScore:
-            cfg.useRtIrt &&
-            typeof clientLatencyMs === "number" &&
-            clientLatencyMs > 0
-              ? irtInputScore
-              : null,
+          adjustedScore: null, // Faz 4: no response-time score adjustment
           isCorrect: requiresHumanReview ? null : score >= 0.5,
           isPretest: item.isPretest || dbItem.status === "PRETEST",
           aiScore: scoringDecision?.scoreSource === "ai_unavailable" ? null : aiResult?.score,
@@ -1229,11 +1227,14 @@ export const AssessmentService = {
           if (skillResponses.length === 0) continue;
 
           try {
+            // Own-evidence estimate under the profile prior (not the in-session
+            // cross-skill prior), so the reported skill precision reflects the
+            // skill's own items.
             const { theta: sTheta, sem: sSem } = estimateThetaFn(
               skillResponses,
               itemDict,
-              0,
-              1,
+              engine.getConfig().priorMean ?? 0,
+              engine.getConfig().priorSd ?? 1,
               { useGrmProductive: engine.getConfig().useGrmProductive === true }
             );
             const skillCefr = engine.mapToCefr(sTheta);
@@ -1261,6 +1262,36 @@ export const AssessmentService = {
       }
 
       // ── Overall CI ────────────────────────────────────────────────────────────
+      // ── Composite skill profile (Faz 4 / F18) ────────────────────────────────
+      // The headline θ/SEM is the pooled EAP, which is honest for the
+      // item-weighted mean of the skill θs. This block exposes the equal-weight
+      // mean of the skill estimates and a dispersion test so an uneven profile
+      // (skills further apart than their SEMs explain) is visible in the report.
+      // The skill-mean SEM assumes independent skill errors; shrinkage toward a
+      // common prior correlates them, so it is a LOWER bound (simulation: ×1.4–2.2).
+      const compositeProfile = (() => {
+        const skills = Object.entries(skillSubReports) as Array<[SkillType, SkillSubReport]>;
+        if (skills.length < 2) return null;
+        const skillMean = skills.reduce((sum, [, r]) => sum + r.theta, 0) / skills.length;
+        const semLowerBound = Math.sqrt(skills.reduce((sum, [, r]) => sum + r.sem * r.sem, 0)) / skills.length;
+        const dispersionChiSquare = skills.reduce((sum, [, r]) => sum + ((r.theta - skillMean) ** 2) / (r.sem * r.sem), 0);
+        const critical = [0, 3.841, 5.991, 7.815, 9.488, 11.070, 12.592][Math.min(6, skills.length - 1)] ?? 12.592;
+        const strongest = skills.reduce((a, b) => (b[1].theta > a[1].theta ? b : a));
+        const weakest = skills.reduce((a, b) => (b[1].theta < a[1].theta ? b : a));
+        return {
+          skillMean: Number(skillMean.toFixed(3)),
+          skillMeanCefr: engine.mapToCefr(skillMean),
+          semLowerBound: Number(semLowerBound.toFixed(3)),
+          dispersionChiSquare: Number(dispersionChiSquare.toFixed(2)),
+          dispersionDf: skills.length - 1,
+          uneven: dispersionChiSquare > critical,
+          strongestSkill: strongest[0],
+          weakestSkill: weakest[0],
+          spreadLogits: Number((strongest[1].theta - weakest[1].theta).toFixed(3)),
+          note: "Headline θ/SEM is the pooled EAP (item-weighted). semLowerBound ignores error correlation from shrinkage.",
+        };
+      })();
+
       const overallCI: [number, number] = [
         Number((theta - 1.96 * sessionSem).toFixed(3)),
         Number((theta + 1.96 * sessionSem).toFixed(3)),
@@ -1564,6 +1595,9 @@ export const AssessmentService = {
         confidenceInterval: overallCI,
         canDoStatements: overallCanDo.flatMap(d => d.descriptors).slice(0, 6),
         skillProfiles: skillSubReports,
+        compositeProfile,
+        // Faz 4: MIRT outputs are exploratory until items carry calibrated cross-loadings.
+        mirtStatus: "EXPLORATORY",
         mirtAbilityVector: mirtVector,
         mirt2B,
         mirt4D: mirt4DProfile,

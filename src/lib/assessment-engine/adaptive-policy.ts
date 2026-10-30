@@ -133,11 +133,72 @@ export function adaptiveItemWhere(profile: ProductLineProfile, skill: SkillType)
   };
 }
 
-/** Other skills cannot provide the precision needed to finish this section. */
-export function sectionAbility(state: SessionState, skill: SkillType, priorMean = 0, priorSd = 1): SkillProfile {
+/** Lower bound on a cross-skill prior SD so collateral information never claims more than it should. */
+export const CROSS_SKILL_PRIOR_MIN_SD = 0.6;
+
+export interface CrossSkillPriorConfig {
+  /** Assumed correlation between any two skill θs in the cohort (provisional; roadmap Faz 4). */
+  correlation: number;
+}
+
+/**
+ * Informative prior for one skill from the skills already measured in this
+ * session (collateral information, Wainer et al. 2000; de la Torre & Patz 2005).
+ *
+ *   mean = μ + ρ · (m̄ − μ)              m̄ = mean of measured skill θ̂
+ *   sd   = √( σ²(1 − ρ²) + ρ² · v_m )    v_m = mean(SEM_j²) / J
+ *
+ * with (μ, σ) the profile prior. The SD is floored at CROSS_SKILL_PRIOR_MIN_SD
+ * because the single-ρ model ignores structure between skills. Falls back to
+ * the profile prior when nothing has been measured yet.
+ */
+export function crossSkillPrior(
+  state: SessionState,
+  skill: SkillType,
+  base: AbilityPrior,
+  config: CrossSkillPriorConfig,
+): AbilityPrior {
+  const rho = Math.max(0, Math.min(0.99, config.correlation));
+  const measured = Object.entries(state.skillProfiles ?? {})
+    .filter(([other, p]) => other !== skill && p && Number.isFinite(p.theta) && Number.isFinite(p.sem) && p.sem > 0)
+    .map(([, p]) => p as SkillProfile);
+  if (measured.length === 0 || rho === 0) return base;
+  const mean = measured.reduce((sum, p) => sum + p.theta, 0) / measured.length;
+  const errorVar = measured.reduce((sum, p) => sum + p.sem * p.sem, 0) / measured.length / measured.length;
+  const sigma2 = base.sd * base.sd;
+  const sd = Math.sqrt(sigma2 * (1 - rho * rho) + rho * rho * errorVar);
+  return { mean: base.mean + rho * (mean - base.mean), sd: Math.max(CROSS_SKILL_PRIOR_MIN_SD, sd) };
+}
+
+/** Priors for every skill of the profile at the current state (for the per-skill EAP). */
+export function crossSkillPriors(
+  state: SessionState,
+  profile: ProductLineProfile,
+  base: AbilityPrior,
+): Partial<Record<SkillType, AbilityPrior>> | undefined {
+  if (!profile.crossSkillPrior) return undefined;
+  const out: Partial<Record<SkillType, AbilityPrior>> = {};
+  for (const skill of profile.sectionOrder) out[skill] = crossSkillPrior(state, skill, base, profile.crossSkillPrior);
+  return out;
+}
+
+/**
+ * Ability used to run a section: the skill's own estimate once it exists,
+ * otherwise the prior (profile prior, or the cross-skill prior when the profile
+ * enables it). Other skills cannot provide the precision needed to finish a section.
+ */
+export function sectionAbility(
+  state: SessionState,
+  skill: SkillType,
+  priorMean = 0,
+  priorSd = 1,
+  crossSkill?: { profile: ProductLineProfile },
+): SkillProfile {
   const estimate = state.skillProfiles?.[skill];
-  return estimate && Number.isFinite(estimate.theta) && Number.isFinite(estimate.sem) && estimate.sem > 0
-    ? estimate : { theta: priorMean, sem: priorSd };
+  if (estimate && Number.isFinite(estimate.theta) && Number.isFinite(estimate.sem) && estimate.sem > 0) return estimate;
+  const base = { mean: priorMean, sd: priorSd };
+  const prior = crossSkill?.profile.crossSkillPrior ? crossSkillPrior(state, skill, base, crossSkill.profile.crossSkillPrior) : base;
+  return { theta: prior.mean, sem: prior.sd };
 }
 
 /** Reserve the remaining sections' minima before spending optional CAT items. */

@@ -64,7 +64,8 @@ export class AssessmentEngine {
   public processResponse(
     state: SessionState,
     response: Response,
-    items: Record<string, Item>
+    items: Record<string, Item>,
+    options: { skillPriors?: Partial<Record<SkillType, { mean: number; sd: number }>> } = {}
   ): SessionState {
     const item = items[response.itemId];
 
@@ -101,11 +102,14 @@ export class AssessmentEngine {
         r => !r.isPretest && items[r.itemId]?.skill === skill
       );
       if (skillResponses.length > 0) {
+        // Per-skill prior: the profile prior, or a cross-skill informative prior
+        // supplied by the caller (adaptive-policy.crossSkillPriors).
+        const skillPrior = options.skillPriors?.[skill];
         const skillEstimate = estimateTheta(
           skillResponses,
           items,
-          this.config.priorMean ?? 0,
-          this.config.priorSd ?? 1,
+          skillPrior?.mean ?? this.config.priorMean ?? 0,
+          skillPrior?.sd ?? this.config.priorSd ?? 1,
           { useGrmProductive: this.config.useGrmProductive === true }
         );
         updatedSkillProfiles[skill] = skillEstimate;

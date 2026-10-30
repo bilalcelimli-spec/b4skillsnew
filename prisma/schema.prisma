@@ -925,7 +925,9 @@ model ItemParameterVersion {
   bSe             Float?
   cSe             Float?
   n               Int       // responses used
-  method          String    // STOCKING_EM | RASCH_MMLE | PRIOR | SEED | MANUAL
+  method          String    // STOCKING_EM | RASCH_MMLE | GRM_PML | PRIOR | SEED | MANUAL
+  /** GRM category thresholds (writing/speaking); empty for dichotomous items. */
+  thresholds      Float[]   @default([])
   infit           Float?
   outfit          Float?
   pointBiserial   Float?

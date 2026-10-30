@@ -31,7 +31,7 @@ import type { ProductLineProfile } from "../product-lines/profiles.js";
 import { allCategoryProbabilities, rubricToGrmParams } from "../psychometrics/graded-response-model.js";
 import { CATSelector, _resetDpStoreForTests, type ShadowItem, type ShadowStrategy } from "../selection/cat-selector.js";
 import type { SequencingContext } from "../selection/sequencing-rules.js";
-import { isAdaptiveEligible, isPretestEligible, profileAbilityPrior, profileThetaRange, sectionAbility } from "./adaptive-policy.js";
+import { crossSkillPriors, isAdaptiveEligible, isPretestEligible, profileAbilityPrior, profileThetaRange, sectionAbility } from "./adaptive-policy.js";
 import { selectPretestItem } from "./pretest-selection.js";
 import { prepareSelectionPool, evaluateSectionStop, shouldAdministerPretest } from "./section-flow.js";
 import { AssessmentEngine } from "./engine.js";
@@ -311,6 +311,8 @@ export interface SimulationOptions {
   classificationConfidenceThreshold?: number;
   /** SPRT settings for an A/B run (only used when the SPRT rule is listed). */
   sprt?: SprtConfig;
+  /** Cross-skill informative prior override: a correlation enables it, `null` disables it. */
+  crossSkillPrior?: { correlation: number } | null;
 }
 
 export interface PretestSummary {
@@ -375,6 +377,16 @@ export interface SimulationReport {
   compositeBias: number;
   compositeRmse: number;
   compositeSemCalibration: number;
+  /**
+   * Equal-weight mean of the skill estimates (the "profile mean" the report
+   * exposes as compositeProfile) against the mean of the true skill θs, with
+   * SEM = √Σ SEM_k² / K. Honest by construction when skill SEMs are honest.
+   */
+  skillMeanBias: number;
+  skillMeanRmse: number;
+  skillMeanSemCalibration: number;
+  /** Share of simulees whose skill profile is flagged uneven (dispersion beyond measurement error). */
+  profileUnevenRate: number;
   cefrExactAccuracy: number;
   cefrAdjacentAccuracy: number;
   /** Exact accuracy for simulees within 0.25 logit of a CEFR cut. */
@@ -393,6 +405,12 @@ export interface SimulationReport {
 }
 
 const CEFR_ORDER: CefrLevel[] = ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"];
+
+/** χ² 95th percentile for df = 1…6 (dispersion test of a skill profile). */
+export function chiSquare95(df: number): number {
+  const table = [0, 3.841, 5.991, 7.815, 9.488, 11.070, 12.592];
+  return table[Math.max(0, Math.min(6, df))] ?? 12.592;
+}
 
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
@@ -428,6 +446,7 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
     ...(options.sectionBudgetFlex !== undefined ? { sectionBudgetFlex: options.sectionBudgetFlex } : {}),
     ...(options.classificationConfidenceThreshold !== undefined ? { classificationConfidenceThreshold: options.classificationConfidenceThreshold } : {}),
     ...(options.sprt ? { sprt: options.sprt } : {}),
+    ...(options.crossSkillPrior !== undefined ? { crossSkillPrior: options.crossSkillPrior ?? undefined } : {}),
   };
   const seed = options.seed ?? 20261030;
   const rng = mulberry32(seed);
@@ -501,7 +520,7 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
       let reason = "POOL_EXHAUSTED";
       for (;;) {
         const totalOperational = state.responses.filter((r) => !r.isPretest).length;
-        const ability = sectionAbility(state, skill, totalOperational === 0 ? state.theta : priorMean, priorSd);
+        const ability = sectionAbility(state, skill, totalOperational === 0 ? state.theta : priorMean, priorSd, { profile });
         const sectionDict: Record<string, Item> = {};
         for (const item of administered) if (item.skill === skill) sectionDict[item.id] = item;
         const stop = evaluateSectionStop({
@@ -553,7 +572,8 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
         }
         const item = result.item;
         const score = simulateResponse(item, trueSkillTheta[skill]!, rng);
-        state = engine.processResponse(state, { itemId: item.id, score, latencyMs: 10_000 }, itemMap);
+        const skillPriors = crossSkillPriors(state, profile, prior);
+        state = engine.processResponse(state, { itemId: item.id, score, latencyMs: 10_000 }, itemMap, { skillPriors });
         administered.push(item);
         exposures.set(item.id, (exposures.get(item.id) ?? 0) + 1);
         sectionCount++;
@@ -587,6 +607,18 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
   const rmse = Math.sqrt(mean(errors.map((e) => e * e)));
   const meanSem = mean(simulees.map((s) => s.estimatedSem));
   const compositeErrors = simulees.map((s) => s.estimatedTheta - s.compositeTrueTheta);
+  const skillMeanRows = simulees.map((s) => {
+    const skills = profile.sectionOrder.filter((k) => s.skillProfiles[k] && s.trueSkillTheta[k] !== undefined);
+    if (skills.length === 0) return null;
+    const estMean = skills.reduce((sum, k) => sum + s.skillProfiles[k]!.theta, 0) / skills.length;
+    const trueMean = skills.reduce((sum, k) => sum + s.trueSkillTheta[k]!, 0) / skills.length;
+    const sem = Math.sqrt(skills.reduce((sum, k) => sum + s.skillProfiles[k]!.sem ** 2, 0)) / skills.length;
+    const dispersion = skills.reduce((sum, k) => sum + ((s.skillProfiles[k]!.theta - estMean) ** 2) / (s.skillProfiles[k]!.sem ** 2), 0);
+    return { error: estMean - trueMean, sem, uneven: dispersion > chiSquare95(skills.length - 1) };
+  }).filter((r): r is { error: number; sem: number; uneven: boolean } => r !== null);
+  const skillMeanBias = mean(skillMeanRows.map((r) => r.error));
+  const skillMeanRmse = Math.sqrt(mean(skillMeanRows.map((r) => r.error ** 2)));
+  const skillMeanSem = mean(skillMeanRows.map((r) => r.sem));
   const compositeBias = mean(compositeErrors);
   const compositeRmse = Math.sqrt(mean(compositeErrors.map((e) => e * e)));
   const exact = simulees.filter((s) => s.estimatedCefr === s.trueCefr).length;
@@ -660,6 +692,10 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
     compositeBias,
     compositeRmse,
     compositeSemCalibration: meanSem > 0 ? compositeRmse / meanSem : 0,
+    skillMeanBias,
+    skillMeanRmse,
+    skillMeanSemCalibration: skillMeanSem > 0 ? skillMeanRmse / skillMeanSem : 0,
+    profileUnevenRate: skillMeanRows.length ? skillMeanRows.filter((r) => r.uneven).length / skillMeanRows.length : 0,
     cefrExactAccuracy: n ? exact / n : 0,
     cefrAdjacentAccuracy: n ? adjacent / n : 0,
     boundaryBandAccuracy: boundary.length ? boundaryExact / boundary.length : 0,
