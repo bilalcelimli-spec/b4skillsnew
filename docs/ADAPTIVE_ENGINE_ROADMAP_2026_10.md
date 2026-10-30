@@ -109,6 +109,8 @@ Kanıt durumu (27 Eylül 2026 temel çizgisi): 2.096 ACTIVE madde, **0/2.096 amp
 
 Karar: `crossSkillPrior` profil alanı ve harness `--cross-skill` seçeneği hazır, **varsayılan kapalı**. Beceriler arası korelasyon gerçek tamamlanmış oturumlardan kestirilmeden (≥ 300 oturum, beceri θ̂ korelasyon matrisi) açılmamalı; yanlış ρ beceri raporunu bozar. Faz 5 işine "ρ kestirimi raporu" eklendi.
 
+**F26. Süreç içi zamanlayıcı hiç başlatılmıyordu (Faz 5 bulgusu).** `startScheduledJobs` hiçbir yerden çağrılmıyor; bakım işleri yalnızca GitHub Actions'ın haftalık iş akışının çağırdığı üç API uç noktasıyla (DIF, kalibrasyon, maruz kalma taraması) çalışıyor, emeklilik/drift/QWK/çeldirici işleri hiç koşmuyordu. Düzeltme: dış zamanlayıcı resmi mod oldu (`npm run job -- <ad>` ile yedi iş de koşturulabilir), API uç noktaları ve işler Postgres advisory-lock kirası (`job-lease.ts`) alıyor, süreç içi zamanlayıcı yalnız `SCHEDULED_JOBS_MODE=in-process` ile ve tek instance için açılıyor.
+
 **Greedy vs LP gölge test (A/B, 9 profil × n=150):** RMSE farkı ±0,04 içinde ve işaret değiştiriyor; SEM ve uzunluk farkı yok; LP seçim süresi ~1,5 ms vs ~0,1 ms. Karar: greedy varsayılan kalır, LP `shadowStrategy: "lp"` ile opsiyonel.
 
 ---
@@ -184,6 +186,8 @@ Amaç: Trafik artınca kendiliğinden devreye girecek hatalı davranışları du
 - Kabul: Simülasyon ve gerçek veri üzerinde SEM kalibrasyonu korunur; aberrant bayrak oranı < %5 (sağlıklı kitle).
 
 ### Faz 5 — Sürekli operasyon
+
+> **Durum (2026-10-30):** Kod tarafı uygulandı. Davey–Parshall depoları profil başına (k_max profilden) ve paylaşılan α tabloları `SystemConfig/dp-alpha-tables` satırında: `npm run db:job:alpha-table` gözlenen oranlardan (son 90 gün, oturum θ katmanı) α hesaplar, `--simulate N` ile harness'ten ön-ısıtma tablosu üretir ve birleştirir (≥ 50 gerçek oturumu olan katmanda gözlenen kazanır); instance'lar başlangıçta yükler, 10 dakikada bir yeniler, canlı trafik üzerine ekler. İş kirası (`job-lease.ts`, advisory xact lock) API uç noktalarında ve CLI işlerinde; `npm run job -- <ad>` dış zamanlayıcı için; süreç içi zamanlayıcı opt-in (F26). Raporlar: `npm run report:skill-correlation` (ölçüm hatası için düzeltilmiş beceriler arası korelasyon ve `crossSkillPrior` önerisi, ≥ 300 oturum), `npm run report:exam-health` (durma nedenleri, nihai SEM dağılımları ve hedefe ulaşma payı, pretest birikimi, taslak sürümler, en çok servis edilen maddeler, hızlı tahmin/person-fit/güvenlik oranları). Açık: dış zamanlayıcıya (GitHub Actions veya cron) yeni işlerin eklenmesi, Redis'e ortak maruz kalma sayaçlarının taşınması (α tabloları paylaşıldığı için önceliği düştü), aylık simülasyon koşusu rutini.
 
 - Tek paylaşımlı maruz kalma deposu (Redis) ve DP α tabloları; süreç içi depolar yalnız test. α tabloları simülasyonla ön-ısıtılır (Davey–Parshall'ın özgün tasarımı) ve dağıtımda yeniden başlatmada yüklenir; hedef: max maruz kalma ≤ `profile.maxExposureRate`.
 - İşler dış zamanlayıcıdan (`scripts/jobs/*`) ve Postgres advisory lock ile; `setInterval` kaldırılır.

@@ -46,11 +46,28 @@ import {
   DP_UPDATE_INTERVAL_SESSIONS,
   type ExposureStore as DPExposureStore,
 } from "./exposure-control-davey-parshall.js";
+import { applyAlphaTable, type AlphaTables } from "./alpha-table.js";
 
-// ─── Davey-Parshall singleton store (in-process; survives across requests) ────
-// Persisted in-memory; for multi-process/multi-node deployments, replace with
-// a shared Redis-backed store (interface-compatible). Roadmap Faz 5.
-let _dpStore: DPExposureStore = createExposureStore();
+// ─── Davey-Parshall stores (one per profile; k_max differs by profile) ────────
+// In-process counts are refined by live traffic. What is shared across instances
+// and restarts is the α table (alpha-table.ts): loaded from the DB-backed
+// SystemConfig row when a profile's store is first created and whenever
+// `applyAlphaTables` is called by the periodic refresh (roadmap Faz 5).
+const _dpStores = new Map<string, DPExposureStore>();
+let _bootstrapSnapshot: { itemExposures: ReadonlyMap<string, number>; totalSessions: number } | null = null;
+let _alphaTables: AlphaTables = {};
+
+function dpStoreFor(profileName: string): DPExposureStore {
+  let store = _dpStores.get(profileName);
+  if (!store) {
+    store = createExposureStore();
+    if (_bootstrapSnapshot) bootstrapDpStoreFromCounts(store, _bootstrapSnapshot.itemExposures, _bootstrapSnapshot.totalSessions);
+    const table = _alphaTables[profileName];
+    if (table) applyAlphaTable(store, table);
+    _dpStores.set(profileName, store);
+  }
+  return store;
+}
 
 // ─── Composite Scoring Weights ─────────────────────────────────────────────
 // α — measurement information (smooth KL/MFI blend, see hybridAlpha)
@@ -167,10 +184,11 @@ export class CATSelector {
     // over-exposed item that fails the gate is replaced by the next-best item.
     // The gate is lifted when it would leave fewer candidates than the shadow
     // test still needs, so a thin section never starves.
+    const dpStore = dpStoreFor(this.profile.name);
     const dpStratum = thetaToStratumDp(theta);
     const eligibleIds = sequencedPool.map(item => item.id);
     const slotsRemaining = Math.max(1, totalLength - history.length);
-    const gatedPool = sequencedPool.filter(item => acceptItem(_dpStore, item.id, dpStratum));
+    const gatedPool = sequencedPool.filter(item => acceptItem(dpStore, item.id, dpStratum));
     const candidatePool = gatedPool.length >= Math.min(slotsRemaining, MIN_GATED_POOL) ? gatedPool : sequencedPool;
 
     const { nextItem: shadowCandidate, shadowTest } = this.assembleShadowTest(
@@ -273,8 +291,8 @@ export class CATSelector {
     const chosenScore = scored.find((s) => s.item.id === chosen.id)?.composite ?? 0;
 
     // Record the item actually delivered using the same stratum used for gating.
-    recordSelection(_dpStore, chosen.id, dpStratum, eligibleIds, seqCtx.sessionId);
-    maybeUpdateAlphas(_dpStore, this.profile.maxExposureRate, DP_UPDATE_INTERVAL_SESSIONS);
+    recordSelection(dpStore, chosen.id, dpStratum, eligibleIds, seqCtx.sessionId);
+    maybeUpdateAlphas(dpStore, this.profile.maxExposureRate, DP_UPDATE_INTERVAL_SESSIONS);
     await store.recordExposure(chosen.id, theta);
 
     return {
@@ -308,15 +326,32 @@ export function bootstrapDpStore(
   itemExposures: ReadonlyMap<string, number>,
   totalSessions: number,
 ): void {
-  bootstrapDpStoreFromCounts(_dpStore, itemExposures, totalSessions);
+  _bootstrapSnapshot = { itemExposures, totalSessions };
+  for (const store of _dpStores.values()) bootstrapDpStoreFromCounts(store, itemExposures, totalSessions);
 }
 
-/** @internal Test / simulation isolation only — fresh Davey-Parshall store. */
+/**
+ * Install shared α tables (alpha-table.ts): applied to every existing profile
+ * store now and to stores created later. Called at startup and on refresh.
+ */
+export function applyAlphaTables(tables: AlphaTables): { profiles: number; cells: number } {
+  _alphaTables = tables;
+  let cells = 0;
+  for (const [profileName, store] of _dpStores) {
+    const table = tables[profileName];
+    if (table) cells += applyAlphaTable(store, table);
+  }
+  return { profiles: Object.keys(tables).length, cells };
+}
+
+/** @internal Test / simulation isolation only — fresh Davey-Parshall stores and tables. */
 export function _resetDpStoreForTests(): void {
-  _dpStore = createExposureStore();
+  _dpStores.clear();
+  _bootstrapSnapshot = null;
+  _alphaTables = {};
 }
 
-/** @internal Read-only access for diagnostics in tests and simulations. */
-export function _inspectDpStore(): Readonly<DPExposureStore> {
-  return _dpStore;
+/** @internal Read-only access for diagnostics in tests, simulations and the α-table job. */
+export function _inspectDpStore(profileName: string): Readonly<DPExposureStore> {
+  return dpStoreFor(profileName);
 }

@@ -44,6 +44,10 @@ npm run db:job:calibrate            # calibration sweep → draft parameter vers
 npm run db:job:calibrate-pretest    # legacy alias for the sweep (drafts only)
 npm run db:job:detect-dif           # batch DIF detection
 npm run db:seed:anchors             # seed anchor/equating items
+npm run db:job:alpha-table          # shared Davey–Parshall α tables (observed; --simulate N pre-warms)
+npm run job -- <name>               # run one maintenance job under a lease (external scheduler)
+npm run report:exam-health          # weekly engine health report (read only)
+npm run report:skill-correlation    # inter-skill correlation evidence for crossSkillPrior
 npm run verify:irt          # check IRT parameter health across bank
 npm run verify:coverage     # check skill/CEFR coverage gaps
 ```
@@ -129,3 +133,5 @@ Items in Postgres flow through: `DRAFT → REVIEW → PRETEST → ACTIVE → RET
 ### Scripts
 
 `scripts/` contains operational tooling. Scripts prefixed `_` are one-off audit/diagnostic tools. Permanent maintenance jobs live in `scripts/jobs/`. All scripts use `tsx` for direct TypeScript execution without compilation.
+
+Maintenance jobs run from an **external scheduler** (GitHub Actions `psychometrics-weekly.yml` → API, or `npm run job -- <name>` from cron); every run takes a Postgres advisory-lock lease (`src/lib/jobs/job-lease.ts`), so overlapping triggers skip instead of duplicating. The in-process `setInterval` scheduler is opt-in (`SCHEDULED_JOBS_MODE=in-process`, single instance only). Exposure-control α tables are shared through `SystemConfig/dp-alpha-tables` (`npm run db:job:alpha-table`, optionally `--simulate N`).

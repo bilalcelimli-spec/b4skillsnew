@@ -25,6 +25,7 @@ import { PretestCalibrationPipeline } from "../../src/lib/psychometrics/pretest-
 import { CALIBRATION_POLICY, describeCalibrationPolicy } from "../../src/lib/psychometrics/calibration-policy.js";
 import { calibratedShare, publishVersion } from "../../src/lib/psychometrics/item-parameter-versions.js";
 import { invalidateItemCache } from "../../src/lib/assessment-engine/item-bank-cache.js";
+import { withJobLease } from "../../src/lib/jobs/job-lease.js";
 
 const flag = (name: string) => process.argv.includes(`--${name}`);
 const arg = (name: string, fallback: string): string => {
@@ -41,7 +42,14 @@ async function main(): Promise<void> {
   const prisma = new PrismaClient();
   try {
     console.log("calibration policy:", describeCalibrationPolicy());
-    const sweep = await PretestCalibrationPipeline.runCalibrationSweep({ triggerSource: "CLI_JOB" });
+    const leased = await withJobLease(prisma, "pretest-calibration", () =>
+      PretestCalibrationPipeline.runCalibrationSweep({ triggerSource: "CLI_JOB" }));
+    if (leased.status === "skipped") {
+      console.error("another calibration sweep holds the lease; nothing was run");
+      process.exitCode = 3;
+      return;
+    }
+    const sweep = leased.result;
     console.log("sweep:", sweep);
 
     const published: Array<{ versionId: string; itemId: string; promotedToActive: boolean }> = [];
