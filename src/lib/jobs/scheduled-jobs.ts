@@ -1,6 +1,14 @@
 /**
  * Scheduled Jobs — LinguAdapt Platform
  *
+ * Faz 5 (roadmap F26): `startScheduledJobs` is NOT called anywhere in the
+ * server; maintenance runs from an external scheduler — the GitHub Actions
+ * workflow `psychometrics-weekly.yml` calls the API endpoints, and
+ * `npm run job -- <name>` (scripts/jobs/run-job.ts) runs any job from a cron.
+ * Both go through `withJobLease` so overlapping triggers never run a job
+ * twice. The in-process timers below remain available for single-instance
+ * deployments that opt in with SCHEDULED_JOBS_MODE=in-process.
+ *
  * Runs in-process using `setInterval`. Jobs are guarded so that:
  *   1. Only one instance runs at a time (re-entrancy guard).
  *   2. Each job fires on server startup (after a short delay) and then on schedule.
@@ -478,11 +486,29 @@ async function runDistractorHealthScan(): Promise<void> {
   }
 }
 
+/** Registry for the external runner (scripts/jobs/run-job.ts). */
+export const SCHEDULED_JOBS = {
+  "dif-detection": runDifDetection,
+  "item-retirement": runItemRetirement,
+  "parameter-drift": runParameterDriftMonitor,
+  "ai-scoring-qwk": runAiScoringQwkGuard,
+  "pretest-calibration": runPretestCalibration,
+  "exposure-auto-retire": runExposureAutoRetire,
+  "distractor-health": runDistractorHealthScan,
+} as const;
+
+export type ScheduledJobName = keyof typeof SCHEDULED_JOBS;
+
 /**
- * Start all scheduled jobs. Safe to call multiple times — subsequent calls are no-ops.
+ * Start all scheduled jobs in-process. Safe to call multiple times — subsequent
+ * calls are no-ops. Only for single-instance deployments (SCHEDULED_JOBS_MODE=in-process).
  */
 export function startScheduledJobs(): void {
   if (started) return;
+  if (process.env.SCHEDULED_JOBS_MODE !== "in-process") {
+    logger.info("scheduled-jobs: in-process timers disabled (external scheduler mode)");
+    return;
+  }
   started = true;
 
   const startupDelay       = ms("JOBS_STARTUP_DELAY_MS",        60_000);

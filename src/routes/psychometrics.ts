@@ -24,10 +24,11 @@ export function createPsychometricsRouter(
       const { PretestCalibrationPipeline } = await import(
         "../lib/psychometrics/pretest-calibration-pipeline.js"
       );
-      const result = await PretestCalibrationPipeline.runCalibrationSweep({
-        triggerSource: "MANUAL_API",
-      });
-      res.json(result);
+      const { withJobLease } = await import("../lib/jobs/job-lease.js");
+      const outcome = await withJobLease(prisma, "pretest-calibration", () =>
+        PretestCalibrationPipeline.runCalibrationSweep({ triggerSource: "MANUAL_API" }));
+      if (outcome.status === "skipped") return res.status(409).json({ error: "Calibration sweep already running", reason: outcome.reason });
+      res.json(outcome.result);
     } catch (err: any) {
       res.status(500).json({ error: "Calibration sweep failed", detail: err?.message });
     }
@@ -144,7 +145,10 @@ export function createPsychometricsRouter(
       const { ExposureAutoRetireService } = await import(
         "../lib/psychometrics/pretest-calibration-pipeline.js"
       );
-      res.json(await ExposureAutoRetireService.runExposureScan());
+      const { withJobLease } = await import("../lib/jobs/job-lease.js");
+      const outcome = await withJobLease(prisma, "exposure-auto-retire", () => ExposureAutoRetireService.runExposureScan());
+      if (outcome.status === "skipped") return res.status(409).json({ error: "Exposure scan already running", reason: outcome.reason });
+      res.json(outcome.result);
     } catch (err: any) {
       res.status(500).json({ error: "Exposure scan failed", detail: err?.message });
     }
