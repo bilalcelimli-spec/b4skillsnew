@@ -29,6 +29,8 @@ import { logger } from "../observability/logger.js";
 import type { IrtParameters } from "../assessment-engine/types.js";
 import { CALIBRATION_POLICY } from "./calibration-policy.js";
 import { createDraftVersion } from "./item-parameter-versions.js";
+import { calibrateGrmItem, scoreToCategory } from "./grm-item-calibration.js";
+import { rubricToGrmParams, type GrmParameters } from "./graded-response-model.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 // Faz 2: every threshold comes from calibration-policy.ts. The sweep records
@@ -236,6 +238,7 @@ export class PretestCalibrationPipeline {
     // re-tag paramSource → "calibrated". These items are already ACTIVE, so
     // there is no promotion step — a stable run upgrades the params in place.
     await PretestCalibrationPipeline._calibratePriorActiveItems(triggerSource, result);
+    await PretestCalibrationPipeline._calibrateProductiveItems(triggerSource, result);
 
     result.durationMs = Date.now() - t0;
 
@@ -376,6 +379,74 @@ export class PretestCalibrationPipeline {
       } catch (err) {
         result.errors++;
         logger.error({ err, itemId: item.id }, "calibration-pipeline: error on prior-ACTIVE item");
+      }
+    }
+  }
+
+  /**
+   * Faz 4: GRM threshold estimation for writing/speaking tasks from graded
+   * responses (AI or human score 0–1 → category of the task's K-point scale)
+   * with the session θ as the concurrent ability. Records DRAFT versions with
+   * `thresholds`; publishing copies them to Item.metadata.grm.
+   */
+  private static async _calibrateProductiveItems(
+    triggerSource: string,
+    result: CalibrationPipelineResult
+  ): Promise<void> {
+    const tasks = await prisma.item.findMany({
+      where: { status: { in: ["ACTIVE", "PRETEST"] }, skill: { in: ["WRITING", "SPEAKING"] },
+        type: { notIn: ["MULTIPLE_CHOICE", "FILL_IN_BLANKS", "DRAG_DROP"] } },
+      select: { id: true, discrimination: true, difficulty: true, metadata: true, iqScore: true },
+    });
+    if (tasks.length === 0) return;
+    const counts = await prisma.response.groupBy({
+      by: ["itemId"],
+      where: { itemId: { in: tasks.map((t) => t.id) }, score: { not: null }, session: { status: "COMPLETED" } },
+      _count: { _all: true },
+    });
+    const countMap = new Map(counts.map((r) => [r.itemId, r._count._all]));
+    const eligible = tasks.filter((t) => (countMap.get(t.id) ?? 0) >= MIN_N);
+    result.itemsEligible += eligible.length;
+    for (const task of eligible) {
+      try {
+        const responses = await prisma.response.findMany({
+          where: { itemId: task.id, score: { not: null }, session: { status: "COMPLETED", theta: { not: null } } },
+          select: { score: true, session: { select: { theta: true } } },
+        });
+        const existing = (task.metadata as { grm?: GrmParameters } | null)?.grm;
+        const seed: GrmParameters = existing && Array.isArray(existing.b) && typeof existing.a === "number"
+          ? existing
+          : rubricToGrmParams(task.discrimination, task.difficulty, 11);
+        const observations = responses
+          .filter((r): r is typeof r & { score: number; session: { theta: number } } => r.score != null && r.session?.theta != null)
+          .map((r) => ({ theta: r.session.theta, category: scoreToCategory(r.score, seed.categories) }));
+        if (observations.length < MIN_N) continue;
+        const fit = calibrateGrmItem(seed, observations, { minN: MIN_N });
+        result.itemsCalibrated++;
+        if (!fit.stable) { result.itemsRejected++; continue; }
+        result.itemsStable++;
+        const location = fit.params.b.reduce((sum, b) => sum + b, 0) / fit.params.b.length;
+        const locationSe = fit.thresholdSe.some((se) => se == null) ? null
+          : Math.sqrt(fit.thresholdSe.reduce((sum, se) => sum + (se as number) ** 2, 0)) / fit.params.b.length;
+        const draft = await createDraftVersion(prisma, {
+          itemId: task.id,
+          a: fit.params.a, b: location, c: 0,
+          aSe: fit.aSe, bSe: locationSe,
+          n: observations.length,
+          method: "GRM_PML",
+          thresholds: fit.params.b,
+          deltaB: fit.maxDeltaB,
+          iqScore: task.iqScore,
+          createdBy: `job:${triggerSource}`,
+          notes: fit.emptyCategories.length ? `empty categories: ${fit.emptyCategories.join(",")}` : null,
+        });
+        result.draftsCreated++;
+        if (draft.gate.eligible) result.draftsEligible++;
+        logger.info({ itemId: task.id, n: observations.length, version: draft.version, eligible: draft.gate.eligible },
+          "calibration-pipeline: GRM threshold draft recorded");
+      } catch (err) {
+        result.errors++;
+        logger.error({ err, itemId: task.id }, "calibration-pipeline: error on productive item");
       }
     }
   }

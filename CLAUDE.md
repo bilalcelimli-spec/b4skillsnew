@@ -72,7 +72,8 @@ The CAT engine lives entirely in `src/lib/assessment-engine/`:
 - **`server-engine.ts`** — DB-backed orchestrator used by API routes. Loads pools, calls section-flow + CATSelector, persists state, calls `ScoringOrchestrator` for speaking/writing, runs all psychometric side-effects (person-fit, clickstream, MIRT-4D, CDM-DINA, collusion detection).
 - **`simulation-harness.ts`** — runs simulated candidates through the live path; `npm run sim:adaptive` (offline, synthetic or snapshot bank), `npm run bank:snapshot` (anonymised DB export), `test/simulation/production-path.test.ts` (CI gate).
 - **`irt.ts`** — 3PL probability and Fisher information.
-- **`estimator.ts`** — EAP θ estimation.
+- **`estimator.ts`** — EAP θ estimation (3PL + GRM joint likelihood; GRM thresholds from `Item.metadata.grm` when published, else synthetic).
+- RT-IRT (`psychometrics/response-time-irt.ts`) runs flag-only: `Response.rtFlag`/`rtZScore` feed person-fit and the participant panel; scores are never adjusted. MIRT is off by default (exploratory).
 - **`mst-routing.ts`** — Multistage adaptive routing for non-MC sections.
 - **`sympson-heter.ts`** — Sympson-Hetter exposure control.
 - **`item-bank-cache.ts`** — In-process LRU cache for items; cache is warmed on session start.

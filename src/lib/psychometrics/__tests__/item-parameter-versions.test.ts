@@ -26,7 +26,7 @@ function fakeClient(items: Row[]) {
     findFirst: async ({ where, orderBy, select }: Row) => { const r = sortBy(versions.filter((v) => matches(v, where)), orderBy)[0]; return r ? pick(r, select) : null; },
     findUnique: async ({ where, select }: Row) => { const r = versions.find((v) => v.id === where.id); return r ? pick(r, select) : null; },
     findMany: async ({ where, select }: Row = {}) => versions.filter((v) => matches(v, where)).map((v) => pick(v, select)),
-    create: async ({ data, select }: Row) => { const row = { id: `v${++seq}`, createdAt: new Date(), publishedAt: null, notes: null, ...data }; versions.push(row); return pick(row, select); },
+    create: async ({ data, select }: Row) => { const row = { id: `v${++seq}`, createdAt: new Date(), publishedAt: null, notes: null, thresholds: [], ...data }; versions.push(row); return pick(row, select); },
     update: async ({ where, data }: Row) => { const row = versions.find((v) => v.id === where.id)!; Object.assign(row, data); return { ...row }; },
   };
   const itemModel = {
@@ -94,6 +94,14 @@ describe("item parameter versions", () => {
     expect(db.versions[0].notes).toMatch(/REJECTED by reviewer/);
     await expect(rejectVersion(db.client, v.id, "reviewer")).rejects.toThrow(/not DRAFT/);
     await expect(publishVersion(db.client, v.id, { publishedBy: "x" })).rejects.toThrow(/not DRAFT/);
+  });
+
+  it("publishing a GRM draft copies the thresholds to Item.metadata.grm", async () => {
+    const v = await createDraftVersion(db.client, draftInput("act", { method: "GRM_PML", thresholds: [-1.5, -0.5, 0.4, 1.6], c: 0 }));
+    await publishVersion(db.client, v.id, { publishedBy: "tester" });
+    expect(db.items[1].metadata.grm).toEqual({ a: 1.3, b: [-1.5, -0.5, 0.4, 1.6], categories: 5 });
+    expect(db.items[1].discrimination).toBe(1.3);
+    expect(db.versions[0].thresholds).toEqual([-1.5, -0.5, 0.4, 1.6]);
   });
 
   it("reports coverage from published empirical versions only", async () => {

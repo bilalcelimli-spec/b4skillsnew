@@ -160,6 +160,12 @@ export interface ProductLineProfile {
    * evidence supports it (roadmap Faz 3).
    */
   sectionBudgetFlex?: boolean;
+  /**
+   * Use the skills already measured in the session as an informative prior for
+   * the next skill (adaptive-policy.crossSkillPrior). Off unless simulation
+   * evidence supports it (roadmap Faz 4).
+   */
+  crossSkillPrior?: { correlation: number };
 }
 
 // ─── Profile Definitions ──────────────────────────────────────────────────────
