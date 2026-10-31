@@ -112,7 +112,7 @@ function youngLearnerRules(cell: BlueprintCell): string {
     `- EXACTLY ONE option may be acceptable. Check each distractor: if a native speaker (British OR American) could say the sentence with it, rewrite the sentence until only the key works. Watch for: have/eat breakfast, clean/brush teeth, walk/go to school, shoes/socks on feet, collective nouns with has/have.`,
     `- The stem must not contain the key word or a form of it.`,
   );
-  if (cell.skill === "WRITING") lines.push(`- The task is one simple, friendly instruction a child understands without help, with 2-3 bullet-style things to include.`);
+  if (cell.skill === "WRITING") lines.push(`- The task is one simple, friendly instruction a child understands without help, with 2-3 bullet-style things to include, all inside "prompt". The child writes about themselves (or an imaginary event they invent); never say another character "might have" done it.`);
   if (cell.skill === "SPEAKING") lines.push(`- The task is a friendly question or a short describe/tell task about the child's own life; give 2-3 simple guiding questions.`);
   return lines.join("\n");
 }
@@ -276,10 +276,10 @@ JSON ARRAY OUTPUT — exactly ${batchSize} items, each object:
   "evidenceStatement": "...",
   "itemType":      "${itemType}",
   "content": {
-    "prompt":        "...", // the task instruction for the candidate
+    "prompt":        "...", // EVERYTHING the candidate sees: task, situation and any bullet points to include. Candidates are shown only this field.
     "audience":      "...", // who the candidate is writing/speaking to
     "purpose":       "...", // communicative purpose of the task
-    "contextNote":   "...", // any context the candidate needs
+    "contextNote":   "...", // reviewer note only (NOT shown to the candidate)
     "responseTime":  ${cell.skill === "SPEAKING" ? (isYoung ? 45 : 90) : 0},
     "prepTime":      ${cell.skill === "SPEAKING" ? (isYoung ? 15 : 30) : 0},
     "minWords":      ${cell.skill === "WRITING" ? (wc?.min ?? 80) : 0},
