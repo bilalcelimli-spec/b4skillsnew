@@ -229,6 +229,45 @@ async function replace() {
   console.log(`stored ${items.length} replacement drafts → ${idsFile}`);
 }
 
-(DRY ? dryRun() : process.argv.includes("--replace") ? replace() : run())
+// ── --revise-ws: writing/speaking manual read (2026-10-31) ──
+// Candidates see only content.prompt; the generator had put the bullet points
+// in contextNote and mixed "you" with a named character. Only the prompt
+// changes; the previous prompt/contextNote are kept in metadata.editorialRevision.
+const STORY = "Write about yourself. Remember to include:";
+const REVISIONS: Record<string, { prompt: string; reason: string }> = {
+  "WRI-A2-0011": { prompt: `Write a story about a special day when you helped someone.\n${STORY}\n• who you helped\n• what you did\n• how you both felt`, reason: "no bullet points visible; mixed perspective (Amara)" },
+  "WRI-A2-0012": { prompt: `Imagine it was a special day at school. Write a story about what happened.\n${STORY}\n• what made the day special (for example, a visitor or a game)\n• one fun thing you did\n• how the children felt`, reason: "bullets only in contextNote (not shown); mixed perspective (Kenji)" },
+  "WRI-A2-0013": { prompt: `Write a story about a special present you got or gave to someone.\n${STORY}\n• what the present was\n• who gave it or got it\n• why it made the day special`, reason: "bullets only in contextNote (not shown); mixed perspective (Sofia)" },
+  "WRI-A2-0014": { prompt: `Imagine a special animal visited your home or school. Write a story about this day.\nRemember to include:\n• what animal it was\n• what it did\n• how everyone felt`, reason: "bullets only in contextNote (not shown); mixed perspective (Ravi)" },
+  "WRI-A2-0015": { prompt: `Write a story about a fun trip to a special place, for example a park, a museum or the beach. You can write about a real trip or invent one.\n${STORY}\n• where you went\n• one exciting thing you saw\n• what you liked most about the day`, reason: "bullets only in contextNote (not shown); mixed perspective (Amara); assumes a trip happened" },
+  "WRI-A2-0016": { prompt: `Write about a day when you made some food at home or at school, for example a cake, cookies or a sandwich.\n${STORY}\n• what you made\n• who helped you\n• how it tasted or how you felt`, reason: "bullets only in contextNote (not shown); mixed perspective (Kenji)" },
+  "WRI-A2-0017": { prompt: `Imagine you found something special, for example a toy, a coin or something interesting in the playground. Write a story.\nRemember to include:\n• what you found\n• where you found it\n• what you did with it`, reason: "bullets only in contextNote (not shown); mixed perspective (Sofia)" },
+  "WRI-A2-0018": { prompt: `Write a story about a fun game you played with friends, at school, in the park or at a friend's house.\n${STORY}\n• what game you played\n• who was with you\n• why it was a great day`, reason: "bullets only in contextNote (not shown); mixed perspective (Ravi)" },
+  "WRI-PRE_A1-0017": { prompt: `Write about someone in your family. It can be anyone in your family.\nTell me:\n• their name\n• what they like to do\n• one thing about what they look like`, reason: "listed only mum, dad, brother/sister" },
+  "SPE-PRE_A1-0041": { prompt: `Tell me about a toy or a thing you really like. What is it? What colour is it?`, reason: "too vague for PRE_A1; no guiding questions" },
+  "SPE-PRE_A1-0044": { prompt: `What is your favourite food or drink? Why do you like it?`, reason: "yes/no question invites a one-word answer" },
+  "SPE-A2-0057": { prompt: `Sofia is looking at old photos. Tell her about a fun day out you remember. It can be a holiday, a trip or a day at the park. Where did you go? What did you see? What did you do there?`, reason: "assumed the child had been on a holiday" },
+};
+
+async function reviseWs() {
+  const items = await prisma.item.findMany({ where: { itemCode: { in: Object.keys(REVISIONS) } }, select: { id: true, itemCode: true, status: true, content: true, metadata: true } });
+  const at = new Date().toISOString();
+  let changed = 0;
+  for (const it of items) {
+    const m: any = it.metadata ?? {};
+    const c: any = it.content ?? {};
+    if (it.status !== "DRAFT" || m.triggeredBy !== "claude-code:primary-expansion" || m.editorialRevision) { console.log(`skip ${it.itemCode}`); continue; }
+    const rev = REVISIONS[it.itemCode!];
+    await prisma.item.update({ where: { id: it.id }, data: {
+      content: { ...c, prompt: rev.prompt, contextNote: "Reviewer note: the candidate sees only the prompt." },
+      version: { increment: 1 },
+      metadata: { ...m, editorialRevision: { at, by: "claude-code:primary-expansion-review", reason: rev.reason, previous: { prompt: c.prompt, contextNote: c.contextNote } } },
+    } });
+    changed++;
+  }
+  console.log(`revised ${changed}/${Object.keys(REVISIONS).length} writing/speaking drafts`);
+}
+
+(DRY ? dryRun() : process.argv.includes("--revise-ws") ? reviseWs() : process.argv.includes("--replace") ? replace() : run())
   .catch((e) => { console.error(e); process.exitCode = 1; })
   .finally(() => prisma.$disconnect());
