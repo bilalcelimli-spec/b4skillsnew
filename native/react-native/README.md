@@ -50,6 +50,8 @@ Soru türleri, sınav profilleri, erişilebilirlik ve teslim aşamaları: [Sına
 
 Web özelliklerinin iPad/macOS'a taşınması, otomatik kamera gözetimi ve Apple güvenli değerlendirme modu: [Web özellikleri ve gözetmenlik planı](WEB_FEATURE_PARITY_ROADMAP.md).
 
+Tüm planları tek sıraya koyan Apple platform yol haritası (native CI, çökme takibi, erişilebilirlik, Assessment Mode, MDM): [Apple yol haritası](APPLE_ROADMAP.md).
+
 - `src/api.ts` — backend istemcisi: `/api/auth/*`, `/api/sessions/launch|:id/next|:id/respond|:id/status`. 401'de tek yenileme; ağda kaybolan `respond` POST'u asla tekrar gönderilmez.
 - `src/useAssessment.ts` — oturum akışı: bölüm geçişleri, `answeredItemIds` ile doğrulama, oturuma devam, geçici sonuçlar.
 - `src/useRecorder.ts`, `modules/b4-native/` — iki platformda ortak ObjC modülü: AAC/M4A kayıt (en fazla 180 sn, `{audio, mimeType: "audio/mp4"}`), dinleme oynatma (soru başına 2), ayarlar, çıkışta cookie temizliği.
