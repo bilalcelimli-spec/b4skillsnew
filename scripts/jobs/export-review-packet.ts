@@ -22,6 +22,9 @@ const SOURCES: Array<{ file: string; label: string }> = [
   { file: "reading-headings-ids.json", label: "Reading — paragraph headings" },
   { file: "reading-headings-v2-ids.json", label: "Reading — paragraph headings (v2, position-neutral rules)" },
   { file: "listening-expansion-ids.json", label: "Listening — MCQ (inference / attitude / synthesis)" },
+  { file: "primary-expansion-ids.json", label: "Primary (7-10) — all skills, PRE_A1–A2" },
+  { file: "primary-replacement-ids.json", label: "Primary (7-10) — grammar/vocabulary replacements" },
+  { file: "primary-replacement-rl-ids.json", label: "Primary (7-10) — reading/listening replacements" },
 ];
 
 const CHECKLIST = [

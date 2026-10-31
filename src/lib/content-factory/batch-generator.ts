@@ -77,6 +77,46 @@ const DIVERSE_SETTINGS = [
   "an online platform", "a cultural exchange programme", "a sports facility",
 ];
 
+const YOUNG_LEARNER_SETTINGS = [
+  "a classroom", "the school playground", "a zoo", "a farm", "a birthday party",
+  "the beach", "a family kitchen", "a toy shop", "a school trip", "a garden",
+  "the school library", "a swimming pool", "a picnic in the park", "a child's bedroom",
+];
+
+/** Extra writing rules for children's items (ages 7-10, PRE_A1–A2). */
+function youngLearnerRules(cell: BlueprintCell): string {
+  const [lo, hi] = cell.ageRange ?? [7, 10];
+  const lines = [
+    `YOUNG LEARNER RULES (candidates are children aged ${lo}-${hi}):`,
+    `- Use only high-frequency, concrete words a child of this age meets in class (animals, family, food, toys, school, colours, numbers, body, clothes, weather, home, sports, days, places in town).`,
+    `- Sentences short and simple: present simple/continuous, can, there is/are, simple past only at A2. No idioms, no abstract nouns, no phrasal verbs above A2.`,
+    `- Characters are children, parents, teachers or pets. No adult work, money problems, news, romance, scary or sad events.`,
+    `- Question stems are one short sentence. Options are single words or very short phrases of the same kind (all nouns, all colours, all times …).`,
+    `- Do not rely on pictures, emojis or images — the item must work as text only.`,
+    `- Tasks about the child's own life must work for every child: never assume a mum and a dad, siblings, a pet, a garden, holidays abroad or owning particular things. Offer choices ("someone in your family or a friend", "a pet you have or an animal you like").`,
+    `- Items in one batch must differ in situation and sentence pattern, not just swapped names and colours.`,
+  ];
+  if (cell.skill === "READING") lines.push(`- Passage: ${cell.cefr === "PRE_A1" ? "3-5 very short sentences (20-40 words)" : cell.cefr === "A1" ? "4-7 short sentences (35-70 words)" : "a short text of 60-110 words"}. One question per passage.`);
+  if (cell.skill === "LISTENING") lines.push(`- ttsScript: a short, clear exchange or monologue (${cell.cefr === "PRE_A1" ? "2-4 turns, 20-40 words" : cell.cefr === "A1" ? "4-6 turns, 40-70 words" : "6-8 turns, 60-110 words"}), speakers named (e.g. "Mum:", "Tom:"). The answer must be said once clearly; other options should also be mentioned or plausible so the item needs listening.`);
+  if (cell.skill === "READING" || cell.skill === "LISTENING") lines.push(
+    `- All four options answer the question in the same form: a colour question has four colours, a "when" question four times/days. No option that is a different kind of thing (no "fast" or "fun" among colours, no names among animals).`,
+    `- Exactly one option is TRUE according to the text; every other option must be FALSE according to the text, not just less complete (avoid keys like "getting ready for the party" next to "talking about the party"; avoid "tomorrow" as a distractor when the event is tomorrow).`,
+    `- For before/after/first questions, the other options must happen at a clearly different point, so only one action fits.`,
+    `- Plain text only: no *, **, quotes around single words or other markup in the passage, script or options.`,
+  );
+  if (cell.skill === "GRAMMAR" || cell.skill === "VOCABULARY") lines.push(
+    `- Every item is ONE sentence (or two very short ones) with ONE gap "____". The candidate chooses the word/form that fills the gap. Never ask a comprehension question about a story ("Which animal…?", "What is a rule…?").`,
+    cell.skill === "GRAMMAR"
+      ? `- All four options are forms of the target structure (e.g. big / bigger / biggest / more big; can / can't / must / mustn't). Only the target grammar decides the key; meaning or general knowledge must not.`
+      : `- All four options are real words of the same word class and topic set (all clothes, all body parts …). No odd-one-out distractors from another topic (no "table" among animals).`,
+    `- EXACTLY ONE option may be acceptable. Check each distractor: if a native speaker (British OR American) could say the sentence with it, rewrite the sentence until only the key works. Watch for: have/eat breakfast, clean/brush teeth, walk/go to school, shoes/socks on feet, collective nouns with has/have.`,
+    `- The stem must not contain the key word or a form of it.`,
+  );
+  if (cell.skill === "WRITING") lines.push(`- The task is one simple, friendly instruction a child understands without help, with 2-3 bullet-style things to include.`);
+  if (cell.skill === "SPEAKING") lines.push(`- The task is a friendly question or a short describe/tell task about the child's own life; give 2-3 simple guiding questions.`);
+  return lines.join("\n");
+}
+
 function pickDistinct<T>(arr: T[], n: number, used: Set<number>): T[] {
   const result: T[] = [];
   const indices = arr.map((_, i) => i).filter((i) => !used.has(i));
@@ -97,11 +137,15 @@ export function buildSystemPrompt(
   opts: { legacy?: boolean } = {}
 ): string {
   const legacy = !!opts.legacy;
-  const wc = WORD_COUNT_GUIDANCE[cell.cefr];
+  const isYoung = cell.ageSuitability === "YOUNG_LEARNER";
+  const baseWc = WORD_COUNT_GUIDANCE[cell.cefr];
+  const wc = cell.wordCountMin != null && cell.wordCountMax != null
+    ? { min: cell.wordCountMin, max: cell.wordCountMax, label: `${cell.wordCountMin}-${cell.wordCountMax} words` }
+    : baseWc;
   const usedNames = new Set<number>();
   const usedSettings = new Set<number>();
   const names = pickDistinct(DIVERSE_NAMES, 4, usedNames);
-  const settings = pickDistinct(DIVERSE_SETTINGS, 2, usedSettings);
+  const settings = pickDistinct(isYoung ? YOUNG_LEARNER_SETTINGS : DIVERSE_SETTINGS, 2, usedSettings);
 
   const itemType = cell.itemType ?? DEFAULT_ITEM_TYPE[cell.skill] ?? "MULTIPLE_CHOICE";
   const isMCQ = itemType === "MULTIPLE_CHOICE" || itemType === "FILL_IN_BLANKS" || itemType === "DRAG_DROP";
@@ -121,7 +165,7 @@ export function buildSystemPrompt(
   const registerLine = cell.register ? `REGISTER:            ${cell.register}` : "";
   const wcLine = wc ? `TEXT LENGTH:         ${wc.label}` : "";
   const ageNote = cell.ageSuitability === "YOUNG_LEARNER"
-    ? "Age: young learner (8-12). Use age-appropriate, school-safe topics. No adult work/complex politics."
+    ? `Age: young learner (${cell.ageRange ? cell.ageRange.join("-") : "8-12"}). Use age-appropriate, school-safe topics. No adult work/complex politics.\n\n${youngLearnerRules(cell)}`
     : cell.ageSuitability === "TEEN"
     ? "Age: teen (13-17). School and social contexts appropriate."
     : "Age: adult / universal (avoid child-inappropriate material but assume adult candidates).";
@@ -236,8 +280,8 @@ JSON ARRAY OUTPUT — exactly ${batchSize} items, each object:
     "audience":      "...", // who the candidate is writing/speaking to
     "purpose":       "...", // communicative purpose of the task
     "contextNote":   "...", // any context the candidate needs
-    "responseTime":  ${cell.skill === "SPEAKING" ? 90 : 0},
-    "prepTime":      ${cell.skill === "SPEAKING" ? 30 : 0},
+    "responseTime":  ${cell.skill === "SPEAKING" ? (isYoung ? 45 : 90) : 0},
+    "prepTime":      ${cell.skill === "SPEAKING" ? (isYoung ? 15 : 30) : 0},
     "minWords":      ${cell.skill === "WRITING" ? (wc?.min ?? 80) : 0},
     "maxWords":      ${cell.skill === "WRITING" ? (wc?.max ?? 300) : 0},
     "rubric": {
@@ -457,6 +501,7 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
 
     // Normalize content: ensure options have rationale field
     const content: Record<string, unknown> = { ...raw.content };
+    if (cell.productLine) content.productLine = cell.productLine;
     let guessingParam = ["WRITING", "SPEAKING"].includes(cell.skill) ? 0.0 : 0.25;
     if (Array.isArray((content as any).correct)) {
       const { correct, distractors, ...rest } = content as any;
@@ -543,7 +588,7 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
           discrimination: 1.0,
           guessing: guessingParam,
           content: content as any,
-          tags: [cell.skill, cell.cefr, cell.subskill, cell.genre, cell.topic].filter(Boolean) as string[],
+          tags: [cell.skill, cell.cefr, cell.subskill, cell.genre, cell.topic, cell.productLine].filter(Boolean) as string[],
           status: "DRAFT",
           pipelineStage: "AI_DRAFT",
           subskill: cell.subskill,
