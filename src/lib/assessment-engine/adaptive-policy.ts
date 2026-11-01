@@ -1,6 +1,6 @@
-import type { Prisma, CefrLevel } from '@prisma/client';
+import { Prisma, type CefrLevel } from '@prisma/client';
 import { CEFR_META } from '../cefr/cefr-framework.js';
-import type { ProductLineProfile } from '../product-lines/profiles.js';
+import { PRODUCT_LINE_PROFILES, type ProductLineProfile } from '../product-lines/profiles.js';
 import type { SessionState, SkillType, SkillProfile } from './types.js';
 
 export interface AbilityPrior { mean: number; sd: number }
@@ -66,6 +66,51 @@ function profileSources(profile: ProductLineProfile): string[] {
     .flatMap(source => SOURCE_ALIASES[source] ?? [source]))];
 }
 
+/** Products written for an age band; their items never serve a profile whose youngest candidate is older than that band. */
+const AGE_BOUND_SOURCES: Record<string, { maxAge: number }> = {
+  primary: { maxAge: PRODUCT_LINE_PROFILES['Primary (7-10)'].ageRange[1] },
+  junior: { maxAge: PRODUCT_LINE_PROFILES['Junior Suite (11-14)'].ageRange[1] },
+};
+
+/**
+ * Tags / productLine values that disqualify an item for this profile.
+ * A general-only profile (General English, Express, Rapid Diagnostic) has no
+ * source filter of its own, so without this it accepts the whole bank —
+ * including Primary (7-10) worksheets served to adults (bank review 2026-11-01).
+ */
+export function excludedSources(profile: ProductLineProfile): string[] {
+  const own = new Set(profile.examSources);
+  return Object.entries(AGE_BOUND_SOURCES)
+    .filter(([source, { maxAge }]) => !own.has(source) && profile.ageRange[0] > maxAge)
+    .flatMap(([source]) => SOURCE_ALIASES[source] ?? [source]);
+}
+
+function isExcludedForProfile(item: Pick<AdaptiveEligibilityItem, 'tags' | 'content'>, profile: ProductLineProfile): boolean {
+  const excluded = excludedSources(profile);
+  if (excluded.length === 0) return false;
+  if ((item.tags ?? []).some(tag => excluded.includes(tag))) return true;
+  const productLine = (item.content as { productLine?: unknown } | null | undefined)?.productLine;
+  return typeof productLine === 'string' && excluded.includes(productLine);
+}
+
+/**
+ * Prisma mirror of `isExcludedForProfile`. A JSON path comparison on an item
+ * without `content.productLine` yields SQL NULL, and NOT NULL drops the row,
+ * so rows with no productLine are let through explicitly (AnyNull) before the
+ * value is compared.
+ */
+function excludedSourcesWhere(profile: ProductLineProfile): { NOT?: Prisma.ItemWhereInput[]; AND?: Prisma.ItemWhereInput[] } {
+  const excluded = excludedSources(profile);
+  if (excluded.length === 0) return {};
+  return {
+    NOT: [{ tags: { hasSome: excluded } }],
+    AND: [{ OR: [
+      { content: { path: ['productLine'], equals: Prisma.AnyNull } },
+      { NOT: excluded.map(source => ({ content: { path: ['productLine'], equals: source } })) },
+    ] }],
+  };
+}
+
 /**
  * In-memory mirror of `adaptiveItemWhere` for simulations and audits.
  * Keep the two in lockstep: any new filter in one must appear in the other.
@@ -76,6 +121,7 @@ export function isAdaptiveEligible(item: AdaptiveEligibilityItem, profile: Produ
   if (item.skill !== skill || item.status !== 'ACTIVE' || item.isPretest) return false;
   if (level < lo || level > hi) return false;
   if (!(item.discrimination > 0) || !(item.guessing >= 0 && item.guessing < 1)) return false;
+  if (isExcludedForProfile(item, profile)) return false;
   const sources = profileSources(profile);
   if (sources.length === 0) return true;
   const tags = item.tags ?? [];
@@ -93,13 +139,19 @@ export function pretestItemWhere(profile: ProductLineProfile, skill: SkillType):
   const [lo, hi] = profile.cefrRange.map(level => LEVELS.indexOf(level as CefrLevel));
   if (lo < 0 || hi < lo) throw new Error('Invalid adaptive profile CEFR range');
   const sources = profileSources(profile);
+  const excluded = excludedSourcesWhere(profile);
+  const and: Prisma.ItemWhereInput[] = [
+    ...(excluded.AND ?? []),
+    ...(sources.length ? [{ OR: [{ tags: { hasSome: sources } }, { tags: { isEmpty: true } },
+      ...sources.map(source => ({ content: { path: ['productLine'], equals: source } }))] }] : []),
+  ];
   return {
     skill,
     OR: [{ status: 'PRETEST' }, { status: 'ACTIVE', isPretest: true }],
     cefrLevel: { in: LEVELS.slice(lo, hi + 1) },
     discrimination: { gt: 0 }, guessing: { gte: 0, lt: 1 },
-    ...(sources.length ? { AND: [{ OR: [{ tags: { hasSome: sources } }, { tags: { isEmpty: true } },
-      ...sources.map(source => ({ content: { path: ['productLine'], equals: source } }))] }] } : {}),
+    ...(excluded.NOT ? { NOT: excluded.NOT } : {}),
+    ...(and.length ? { AND: and } : {}),
   };
 }
 
@@ -111,6 +163,7 @@ export function isPretestEligible(item: AdaptiveEligibilityItem, profile: Produc
   if (item.skill !== skill || !pretest) return false;
   if (level < lo || level > hi) return false;
   if (!(item.discrimination > 0) || !(item.guessing >= 0 && item.guessing < 1)) return false;
+  if (isExcludedForProfile(item, profile)) return false;
   const sources = profileSources(profile);
   if (sources.length === 0) return true;
   const tags = item.tags ?? [];
@@ -128,6 +181,7 @@ export function adaptiveItemWhere(profile: ProductLineProfile, skill: SkillType)
     skill, status: 'ACTIVE', isPretest: false,
     cefrLevel: { in: LEVELS.slice(lo, hi + 1) },
     discrimination: { gt: 0 }, guessing: { gte: 0, lt: 1 },
+    ...excludedSourcesWhere(profile),
     ...(sources.length ? { OR: [{ tags: { hasSome: sources } }, { tags: { isEmpty: true } },
       ...sources.map(source => ({ content: { path: ['productLine'], equals: source } }))] } : {}),
   };
