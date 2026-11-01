@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MIN_ROTATION_ALTERNATIVES, MIN_ROTATION_FAMILIES, prepareSelectionPool } from "../section-flow";
-import { distinctFamilies, taskFamilyKey } from "../task-family";
+import { MIN_POOL_AFTER_FAMILY_CAP, distinctFamilies, taskFamilyKey } from "../task-family";
 import { getProfile } from "../../product-lines/profiles";
 import { SkillType, type Item } from "../types";
 
@@ -57,6 +57,23 @@ describe("prepareSelectionPool — task-family diversity and gated rotation", ()
     const firstSheet = pool.findIndex((p) => p.type === "FILL_IN_BLANKS");
     expect(firstSheet).toBe(mcqs.length); // every worksheet now sits behind all MCQs
     expect(pool).toHaveLength(mcqs.length + sheets.length); // soft rule: nothing removed
+  });
+
+  it("caps a task family at MAX_ITEMS_PER_FAMILY per section", () => {
+    const served = [worksheet("s1"), worksheet("s2")]; // two from MOVERS already
+    const pool = prepare([...sheets, ...mcqs], served);
+    expect(pool.some((p) => p.type === "FILL_IN_BLANKS")).toBe(false);
+    expect(pool).toHaveLength(mcqs.length);
+    // other skills' items do not count toward this section's cap
+    const otherSkill = served.map((s) => ({ ...s, skill: SkillType.READING }));
+    expect(prepare([...sheets, ...mcqs], otherSkill).some((p) => p.type === "FILL_IN_BLANKS")).toBe(true);
+  });
+
+  it("lifts the family cap when it would leave fewer than MIN_POOL_AFTER_FAMILY_CAP items", () => {
+    const thin = [...sheets, item("m0"), item("m1")];
+    expect(MIN_POOL_AFTER_FAMILY_CAP).toBeGreaterThan(2);
+    const pool = prepare(thin, [worksheet("s1"), worksheet("s2")]);
+    expect(pool).toHaveLength(thin.length);
   });
 
   it("leaves a pool with no families untouched", () => {

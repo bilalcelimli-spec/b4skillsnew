@@ -20,6 +20,35 @@ export function taskFamilyKey(item: FamilyItem): string | null {
   return typeof taskId === "string" && taskId.trim() ? `cambridge:${taskId.trim()}` : null;
 }
 
+export const MAX_ITEMS_PER_FAMILY = 2;
+export const MIN_POOL_AFTER_FAMILY_CAP = 5;
+
+/**
+ * Hard cap: at most `max` items of one task family per section. Ordering the
+ * pool is not enough — the CAT selector ranks by information, so a family
+ * that dominates a thin pool kept winning (simulation 2026-11-01: Primary
+ * listening served 3–6 worksheet items in 159/200 sessions). Lifted when it
+ * would leave fewer than `minRemaining` candidates, like the passage cap.
+ */
+export function capItemsPerFamily<T extends FamilyItem>(
+  pool: T[],
+  administeredInSection: FamilyItem[],
+  max = MAX_ITEMS_PER_FAMILY,
+  minRemaining = MIN_POOL_AFTER_FAMILY_CAP,
+): T[] {
+  const seen = new Map<string, number>();
+  for (const item of administeredInSection) {
+    const key = taskFamilyKey(item);
+    if (key) seen.set(key, (seen.get(key) ?? 0) + 1);
+  }
+  if (seen.size === 0) return pool;
+  const allowed = pool.filter((item) => {
+    const key = taskFamilyKey(item);
+    return !key || (seen.get(key) ?? 0) < max;
+  });
+  return allowed.length >= minRemaining ? allowed : pool;
+}
+
 /** Number of distinct task families in a pool; an item without a family counts as its own. */
 export function distinctFamilies(items: FamilyItem[]): number {
   const keys = new Set<string>();
