@@ -1,8 +1,8 @@
 # Active Item Content Audit
 
-Generated: 2026-11-01T01:46:35.259Z
+Generated: 2026-11-01T01:51:38.681Z
 Scope: 2926 ACTIVE/PRETEST items
-Findings: 55 (1 blockers, 54 reviews)
+Findings: 54 (0 blockers, 54 reviews)
 
 ## Inventory
 
@@ -15,7 +15,6 @@ Findings: 55 (1 blockers, 54 reviews)
 
 ## Findings by rule
 
-- IMAGE_DESCRIPTION_SHOWN: 1
 - IMAGE_EXTERNAL_HOTLINK: 38
 - MULTI_BLANK_ALL_OR_NOTHING: 12
 - TTS_SCRIPT_MARKUP: 4
@@ -183,19 +182,6 @@ Findings: 55 (1 blockers, 54 reviews)
 - Media: https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800&q=80&fit=crop&auto=format
 - Evidence: Image served from images.unsplash.com; it breaks when the host removes it
 - Prompt: To ___ information means to look at it carefully and understand it.
-
-### BLOCKER · IMAGE_DESCRIPTION_SHOWN · WRI-PRE_A1-0023-MVX1N4NN
-
-- ID: `cmoukelbo000bnu8bybm60pn8`
-- Skill / CEFR: WRITING / PRE_A1
-- Module: (none)
-- Media: /images/assessment/cat-pre-a1.svg
-- Evidence: The image-generation note is part of the prompt the candidate reads
-- Prompt: Look at the picture and write YES or NO.
-[Picture: a cat]
-Is this a cat? ___________
-Is this a dog? ___________
-Is this an animal? ___________
 
 ### REVIEW · MULTI_BLANK_ALL_OR_NOTHING · LIS-A1-0068
 
