@@ -7,18 +7,31 @@
  * - single-response items that ask more than one explicit question
  * - response prompts whose requested information load is high for the limit
  * - basic option/key integrity
+ * - the defect classes from the 2026-11-01 bank review
+ *   (src/lib/quality/item-content-rules.ts): option count, nothing to answer,
+ *   image description shown, URL in prompt, TTS markup, key in stem,
+ *   shared option sets, duplicate stems, all-or-nothing multi-blank items,
+ *   externally hotlinked images
  *
- * Usage: npx tsx scripts/audit-active-item-content.ts
+ * Usage: npx tsx scripts/audit-active-item-content.ts [--check-images] [--statuses ACTIVE,PRETEST,REVIEW] [--no-write]
+ *   --check-images  also fetch every imageUrl and report broken ones (network)
+ *   --statuses      audit other statuses, e.g. to confirm the rules catch quarantined items
+ *   --no-write      print the summary only; leave reports/ untouched
  */
 
 import "dotenv/config";
 import fs from "fs";
 import path from "path";
 import { PrismaClient } from "@prisma/client";
+import { crossItemRules, itemRules } from "../src/lib/quality/item-content-rules.js";
 
 const prisma = new PrismaClient();
 const PAGE_SIZE = 40;
 const REPORT_DIR = path.join(process.cwd(), "reports");
+const argOf = (name: string) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined);
+const STATUSES = (argOf("--statuses") ?? "ACTIVE,PRETEST").split(",").map((s) => s.trim().toUpperCase());
+const CHECK_IMAGES = process.argv.includes("--check-images");
+const WRITE = !process.argv.includes("--no-write");
 
 type Severity = "BLOCKER" | "REVIEW";
 
@@ -105,7 +118,7 @@ async function fetchAllItems(): Promise<any[]> {
 
   while (true) {
     const page = await prisma.item.findMany({
-      where: { status: { in: ["ACTIVE", "PRETEST"] } },
+      where: { status: { in: STATUSES as any } },
       orderBy: { id: "asc" },
       take: PAGE_SIZE,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -236,6 +249,34 @@ function audit(items: any[]): Finding[] {
     }
   }
 
+  // Defect classes from the 2026-11-01 bank review.
+  const byId = new Map(items.map((item) => [item.id, item]));
+  for (const hit of [...items.flatMap((item) => itemRules(item)), ...crossItemRules(items)]) {
+    addFinding(findings, byId.get(hit.itemId), hit.rule, hit.severity, hit.evidence);
+  }
+
+  return findings;
+}
+
+/** Network check: every imageUrl must return an image. */
+async function imageFindings(items: any[]): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  const queue = items.filter((item) => /^https?:\/\//i.test(text(item.content?.imageUrl)));
+  await Promise.all(Array.from({ length: 8 }, async () => {
+    while (queue.length) {
+      const item = queue.shift()!;
+      const url = text(item.content.imageUrl);
+      let status = "";
+      try {
+        const res = await fetch(url, { headers: { Range: "bytes=0-0" }, signal: AbortSignal.timeout(15_000) });
+        const type = res.headers.get("content-type") ?? "";
+        if (!res.ok || !type.startsWith("image/")) status = `HTTP ${res.status} ${type.split(";")[0]}`;
+      } catch (error) {
+        status = `fetch failed: ${(error as Error).message}`;
+      }
+      if (status) addFinding(findings, item, "IMAGE_URL_BROKEN", "BLOCKER", `${status} — ${url.slice(0, 80)}`);
+    }
+  }));
   return findings;
 }
 
@@ -263,7 +304,7 @@ function markdown(items: any[], findings: Finding[]): string {
     "# Active Item Content Audit",
     "",
     `Generated: ${new Date().toISOString()}`,
-    `Scope: ${items.length} ACTIVE/PRETEST items`,
+    `Scope: ${items.length} ${STATUSES.join("/")} items${CHECK_IMAGES ? " (image URLs fetched)" : ""}`,
     `Findings: ${findings.length} (${findings.filter((f) => f.severity === "BLOCKER").length} blockers, ${findings.filter((f) => f.severity === "REVIEW").length} reviews)`,
     "",
     "## Inventory",
@@ -284,15 +325,18 @@ function markdown(items: any[], findings: Finding[]): string {
 async function main() {
   const items = await fetchAllItems();
   const findings = audit(items);
+  if (CHECK_IMAGES) findings.push(...await imageFindings(items));
   const multiSpeakerFindings = findings.filter((finding) => finding.rule === "MULTI_SPEAKER_TTS_COLLAPSED");
   const affectedListeningRecordings = new Set(
     multiSpeakerFindings.map((finding) => finding.mediaUrl || finding.moduleId || finding.itemId),
   );
-  fs.mkdirSync(REPORT_DIR, { recursive: true });
   const jsonPath = path.join(REPORT_DIR, "active-item-content-audit.json");
   const markdownPath = path.join(REPORT_DIR, "active-item-content-audit.md");
-  fs.writeFileSync(jsonPath, `${JSON.stringify({ generatedAt: new Date().toISOString(), itemCount: items.length, findings }, null, 2)}\n`);
-  fs.writeFileSync(markdownPath, markdown(items, findings));
+  if (WRITE) {
+    fs.mkdirSync(REPORT_DIR, { recursive: true });
+    fs.writeFileSync(jsonPath, `${JSON.stringify({ generatedAt: new Date().toISOString(), itemCount: items.length, findings }, null, 2)}\n`);
+    fs.writeFileSync(markdownPath, markdown(items, findings));
+  }
 
   console.log(JSON.stringify({
     itemCount: items.length,
