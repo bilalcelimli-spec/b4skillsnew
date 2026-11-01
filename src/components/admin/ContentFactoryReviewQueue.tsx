@@ -8,7 +8,7 @@
  *           → MODERATION → APPROVED_FOR_PILOT
  * Each stage uses POST /api/items/:id/review with dimension scores + verdict.
  */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import {
   ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, XCircle,
   RotateCcw, Eye, Layers, BookOpen, Headphones, PenLine, Mic,
@@ -315,7 +315,9 @@ export function ContentFactoryReviewQueue() {
   const viewKey=`${activeStage}:${item?.id}:${item?.version}:${item?.reviewContentHash}`;
   const currentView=useRef(viewKey);currentView.current=viewKey;
   useEffect(()=>()=>{listGeneration.current++;if(advanceTimer.current)clearTimeout(advanceTimer.current);},[]);
-  useEffect(()=>{
+  // Layout effect: reset the form before the new item is painted or clickable, so a
+  // verdict chosen on the freshly shown item is never wiped by a late reset.
+  useLayoutEffect(()=>{
     if(advanceTimer.current){clearTimeout(advanceTimer.current);advanceTimer.current=null;}
     setVerdict(null);setNotes("");setRevisionsReq("");setSubmitOk(false);setSubmitErr(null);
     setDims({constructClarity:70,cefrFit:70,cefrFitLabel:"TARGET_FIT",languageNaturalness:70,distractorQuality:70,fairnessScore:80,ambiguityRisk:10});
