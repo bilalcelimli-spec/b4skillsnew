@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-01T01:46:35.256Z",
+  "generatedAt": "2026-11-01T01:51:38.644Z",
   "itemCount": 2926,
   "findings": [
     {
@@ -217,18 +217,6 @@
       "mediaUrl": "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800&q=80&fit=crop&auto=format",
       "prompt": "To ___ information means to look at it carefully and understand it.",
       "evidence": "Image served from images.unsplash.com; it breaks when the host removes it"
-    },
-    {
-      "severity": "BLOCKER",
-      "rule": "IMAGE_DESCRIPTION_SHOWN",
-      "itemCode": "WRI-PRE_A1-0023-MVX1N4NN",
-      "itemId": "cmoukelbo000bnu8bybm60pn8",
-      "skill": "WRITING",
-      "cefrLevel": "PRE_A1",
-      "moduleId": "",
-      "mediaUrl": "/images/assessment/cat-pre-a1.svg",
-      "prompt": "Look at the picture and write YES or NO.\n[Picture: a cat]\nIs this a cat? ___________\nIs this a dog? ___________\nIs this an animal? ___________",
-      "evidence": "The image-generation note is part of the prompt the candidate reads"
     },
     {
       "severity": "REVIEW",
