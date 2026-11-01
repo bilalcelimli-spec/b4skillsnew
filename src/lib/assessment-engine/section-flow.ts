@@ -5,7 +5,7 @@
  * what candidates get.
  *
  *   prepareSelectionPool  warm-up filter → seeded shuffle → content-tag /
- *                         task-family diversity → gated item-type rotation → passage cap
+ *                         task-family diversity → gated item-type rotation → family cap → passage cap
  *   evaluateSectionStop   section budget + per-profile stop rules
  *
  * server-engine.ts owns everything that touches Postgres (loading the pool,
@@ -18,7 +18,7 @@ import type { ProductLineProfile } from "../product-lines/profiles.js";
 import { sectionItemBudget } from "./adaptive-policy.js";
 import { seededFisherYates } from "./mcq-options.js";
 import { capItemsPerPassage } from "./passage-cap.js";
-import { distinctFamilies, taskFamilyKey } from "./task-family.js";
+import { capItemsPerFamily, distinctFamilies, taskFamilyKey } from "./task-family.js";
 import { evaluateSectionStopRules, type StopDecision, type StopRuleInput } from "./stop-rules.js";
 import { SkillType, type Item, type Response, type SkillProfile } from "./types.js";
 
@@ -114,7 +114,9 @@ export function prepareSelectionPool(input: PrepareSelectionPoolInput): Prepared
   }
 
   // Local dependence: cap items per reading passage / listening recording.
-  const pool = capItemsPerPassage(selectionPool, administeredItems);
+  // Same task template: at most MAX_ITEMS_PER_FAMILY per section (hard, lifted only in a thin pool).
+  const familyCapped = capItemsPerFamily(selectionPool, administeredItems.filter((item) => item.skill === skill) as Array<Item & { tags?: string[] }>);
+  const pool = capItemsPerPassage(familyCapped, administeredItems);
   return { pool, fallbacks };
 }
 

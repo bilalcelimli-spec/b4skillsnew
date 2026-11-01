@@ -7,7 +7,8 @@
  *
  * What is exported per ACTIVE/PRETEST item: a salted hash of the id, skill,
  * CEFR level, type, IRT a/b/c, status, pretest/anchor flags, IQS, tags, the
- * product-line pin and a hash of the passage/recording text. No prompt,
+ * product-line pin, the task-template key (e.g. "cambridge:MOVERS_L_PART1")
+ * and a hash of the passage/recording text. No prompt,
  * option, key, rubric or media text leaves the database.
  */
 
@@ -17,6 +18,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { passageKey } from "../src/lib/assessment-engine/passage-cap.js";
+import { taskFamilyKey } from "../src/lib/assessment-engine/task-family.js";
 import type { BankSnapshot, BankSnapshotItem } from "../src/lib/assessment-engine/simulation-harness.js";
 
 const arg = (name: string, fallback: string): string => {
@@ -54,6 +56,7 @@ async function main(): Promise<void> {
         tags: row.tags,
         passageKey: passageKey({ metadata: content }),
         productLine: typeof content.productLine === "string" ? content.productLine : null,
+        taskFamily: taskFamilyKey({ metadata: content, tags: row.tags }),
       };
     });
     const snapshot: BankSnapshot = { generatedAt: new Date().toISOString(), source: "database", items };

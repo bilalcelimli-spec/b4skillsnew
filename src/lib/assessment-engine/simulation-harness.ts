@@ -34,6 +34,7 @@ import type { SequencingContext } from "../selection/sequencing-rules.js";
 import { crossSkillPriors, isAdaptiveEligible, isPretestEligible, profileAbilityPrior, profileThetaRange, sectionAbility } from "./adaptive-policy.js";
 import { selectPretestItem } from "./pretest-selection.js";
 import { prepareSelectionPool, evaluateSectionStop, shouldAdministerPretest } from "./section-flow.js";
+import { taskFamilyKey } from "./task-family.js";
 import { AssessmentEngine } from "./engine.js";
 import { getExposureStore, resetExposureStoreForSimulation } from "./exposure-store.js";
 import { probability } from "./irt.js";
@@ -61,6 +62,8 @@ export interface BankSnapshotItem {
   passageKey?: string | null;
   /** `content.productLine` when the item is pinned to a product line. */
   productLine?: string | null;
+  /** Task template key (task-family.taskFamilyKey), e.g. "cambridge:MOVERS_L_PART1". No content. */
+  taskFamily?: string | null;
 }
 
 export interface BankSnapshot {
@@ -220,6 +223,10 @@ function toEngineItem(row: BankSnapshotItem): Item & { tags: string[]; cefrLevel
     metadata.setId = row.passageKey;
   }
   if (row.productLine) metadata.productLine = row.productLine;
+  const tags = [...(row.tags ?? [])];
+  // Restore the field taskFamilyKey reads, so section-flow sees the same family as live.
+  if (row.taskFamily?.startsWith("cambridge:")) metadata.cambridge_task_id = row.taskFamily.slice("cambridge:".length);
+  else if (row.taskFamily && !tags.includes(row.taskFamily)) tags.push(row.taskFamily);
   return {
     id: row.id,
     skill: row.skill,
@@ -229,7 +236,7 @@ function toEngineItem(row: BankSnapshotItem): Item & { tags: string[]; cefrLevel
     params: { a: row.a, b: row.b, c: row.c },
     iqScore: row.iqScore ?? null,
     metadata,
-    tags: row.tags ?? [],
+    tags,
     cefrLevel: row.cefrLevel,
   };
 }
@@ -264,6 +271,22 @@ function isGrmItem(item: Item): boolean {
 }
 
 /** Sample a response from the true ability: Bernoulli(3PL) or a GRM category (score = k/10). */
+/** Per skill, the largest number of items that came from one task family. */
+export function familyMaxBySkill(items: Array<Item & { tags?: string[] }>): Partial<Record<SkillType, number>> {
+  const counts = new Map<string, number>();
+  const out: Partial<Record<SkillType, number>> = {};
+  for (const item of items) {
+    out[item.skill] ??= 0;
+    const family = taskFamilyKey(item);
+    if (!family) continue;
+    const key = `${item.skill}|${family}`;
+    const n = (counts.get(key) ?? 0) + 1;
+    counts.set(key, n);
+    out[item.skill] = Math.max(out[item.skill]!, n);
+  }
+  return out;
+}
+
 export function simulateResponse(item: Item, trueTheta: number, rng: () => number): number {
   if (isGrmItem(item)) {
     const grm = rubricToGrmParams(item.params.a, item.params.b, 11);
@@ -343,6 +366,8 @@ export interface SimuleeResult {
   itemsAdministered: number;
   pretestAdministered: number;
   sectionStops: Array<{ skill: SkillType; items: number; reason: string }>;
+  /** Per skill: the most operational items served from one task family (0 = no family items). */
+  familyMax: Partial<Record<SkillType, number>>;
 }
 
 export interface SkillSummary {
@@ -598,6 +623,7 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
       itemsAdministered: state.responses.filter((r) => !r.isPretest).length,
       pretestAdministered: state.responses.filter((r) => r.isPretest).length,
       sectionStops,
+      familyMax: familyMaxBySkill(administered.filter((item) => !item.isPretest)),
     });
   }
 
