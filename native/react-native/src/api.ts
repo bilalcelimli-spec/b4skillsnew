@@ -135,6 +135,9 @@ export function normaliseBaseUrl(raw: string): string {
   return `${scheme}://${match[2]}`;
 }
 
+/** Must match ACCOUNT_DELETION_CONFIRMATION in src/lib/compliance/account-deletion.ts. */
+export const ACCOUNT_DELETION_CONFIRMATION = 'DELETE_MY_ACCOUNT';
+
 export class Backend {
   constructor(readonly baseUrl: string) {}
 
@@ -161,6 +164,18 @@ export class Backend {
     } catch {
       // Cookies are cleared locally regardless.
     }
+  }
+
+  /**
+   * POST /api/auth/delete-account — permanently deletes the signed-in candidate's account
+   * (App Store 5.1.1(v)). Accounts created with an exam code have no password; the server
+   * answers 403 `password_required` when one is needed. The server clears the auth cookies.
+   */
+  async deleteAccount(password?: string): Promise<void> {
+    const data = await this.request<{ deleted?: boolean }>('api/auth/delete-account', {
+      confirm: ACCOUNT_DELETION_CONFIRMATION, ...(password ? { password } : {}),
+    });
+    if (data?.deleted !== true) throw new ApiError('Hesap silme doğrulanamadı. Lütfen tekrar deneyin.');
   }
 
   /** POST /api/codes/validate — read-only check; does not consume the code. */

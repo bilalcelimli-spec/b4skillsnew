@@ -1,9 +1,9 @@
 import { backendForBuild, editableBackend } from './runtimeConfig';
 import { nativePlatform } from './proctoring/platform';
-import { usePhotoQueue } from './proctoring/usePhotoQueue';
+import { forgetPhotoQueue, usePhotoQueue } from './proctoring/usePhotoQueue';
 import { preparationDeadline } from './proctoring/deadline';
 import { ClientCapabilities, ExamPolicy, Preflight, missingCapabilities, validatePolicy } from './proctoring/protocol';
-import { useProctoringEvents } from './proctoring/useProctoringEvents';
+import { forgetProctoringEvents, useProctoringEvents } from './proctoring/useProctoringEvents';
 // Candidate flow against the existing backend. Mirrors the verified rules of the SwiftUI prototype:
 // - a section transition has no item, so /next is fetched again (bounded loop);
 // - a respond POST whose outcome is unknown is never replayed; it is reconciled via answeredItemIds;
@@ -174,6 +174,37 @@ export function useAssessment() {
       setCandidate(null); setSessionId(''); setItem(null); setProgress(null);
       setNotice(null); setAnswered(0); setPhase('signedOut');
     }), [perform]);
+
+  /**
+   * Permanently deletes the account on the server, then everything this device holds for it.
+   * Errors are rethrown (with `code`, e.g. `password_required`) for the confirmation sheet.
+   * Resolves false when nothing was attempted (signed out or another action running).
+   */
+  const deleteAccount = useCallback(async (password?: string) => {
+    const backend = client.current;
+    const user = candidate;
+    if (!backend || !user || busyRef.current) return false;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      B4Native.cancelRecording();
+      B4Native.stopPlayback();
+      await backend.deleteAccount(password);
+      for (const key of [resumeKey(user.uid, backend.baseUrl), launchKey(user.uid, backend.baseUrl)]) B4Native.removePref(key);
+      await Promise.allSettled([forgetPhotoQueue(backend.baseUrl, user.uid), forgetProctoringEvents(backend.baseUrl, user.uid)]);
+      await B4Native.clearCookies();
+      client.current = null;
+      activeSession.current = '';
+      pendingItemId.current = null;
+      launchIntent.current = null;
+      setCandidate(null); setSessionId(''); setItem(null); setProgress(null); setError(null);
+      setAnswered(0); setPhase('signedOut');
+      return true;
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }, [candidate]);
 
   const loadNext = useCallback(async (id: string, preserveItemId?: string) => {
     const backend = client.current;
@@ -373,7 +404,7 @@ export function useAssessment() {
     restoring, error, notice, answered, setError, setNotice,
     policy, deviceChecks, preparationStep, policyAccepted, setPolicyAccepted, capabilityProblems, prepareExam, canLaunch: !!preflight && policyAccepted,
     auditWarning: audit.storageError || audit.warning, retryAudit: audit.retry,
-    login, logout, checkCode, redeemCode, launch, resume, retryNext, submit, reconcile, refreshProgress, leaveResults, interrupted,
+    login, logout, deleteAccount, checkCode, redeemCode, launch, resume, retryNext, submit, reconcile, refreshProgress, leaveResults, interrupted,
     mediaUrl: (raw?: string | null) => client.current?.mediaUrl(raw) ?? null,
     cameraBackend: client.current, photoDelivery, recordFace: audit.recordFace,
   };

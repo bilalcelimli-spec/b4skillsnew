@@ -17,13 +17,14 @@ import { ItemScreen } from './src/screens/ItemScreen';
 import { LaunchRecovery, NextStep, Recovery, Results } from './src/screens/Results';
 import { color, font, IconName, skillMeta, type } from './src/theme';
 import { AssessmentState, useAssessment } from './src/useAssessment';
+import { ApiError } from './src/api';
 import { useRecorder } from './src/useRecorder';
 import { ProctoringMonitor } from './src/components/ProctoringMonitor';
 import { useExamMonitor, type ExamMonitorState } from './src/proctoring/useExamMonitor';
 import { useAndroidBack, useAndroidKeyboardHeight } from './src/androidSystem';
 import { useUpdateGate } from './src/useUpdateGate';
 import { APP_BUILD } from './src/appUpdate';
-type SheetName = 'help' | 'skills' | 'connection' | 'logout' | null;
+type SheetName = 'help' | 'skills' | 'connection' | 'logout' | 'deleteAccount' | null;
 export default function App() {
   useEffect(() => { void hydrateLanguage(); }, []);
   return <SafeAreaProvider>
@@ -103,7 +104,7 @@ function Shell() {
         <SkillGrid />
       </Sheet>
       <ConnectionSheet visible={sheet === 'connection'} onClose={() => setSheet(null)} store={store} />
-      <Sheet visible={sheet === 'logout'} onClose={() => setSheet(null)} eyebrow={t("Çıkış")} title={t("Çıkış yapılsın mı?")}>
+      <Sheet visible={sheet === 'logout'} onClose={() => setSheet(null)} eyebrow={t("Hesap")} title={t("Çıkış yapılsın mı?")}>
         <Text style={[type.body, {
         color: color.muted
       }]}>{t("Gönderilmemiş yanıtlar bu cihazdan silinir. Başladığınız sınavın sunucudaki süresi durmaz; aynı oturum kimliğiyle yeniden girebilirsiniz.")}</Text>
@@ -119,7 +120,9 @@ function Shell() {
         }} />
           <Button label={t("Vazgeç")} variant="ghost" onPress={() => setSheet(null)} />
         </View>
+        <Button label={t("Hesabımı sil")} variant="ghost" onPress={() => setSheet('deleteAccount')} />
       </Sheet>
+      <DeleteAccountSheet visible={sheet === 'deleteAccount'} onClose={() => setSheet(null)} store={store} onDeleted={() => recorder.clear()} />
     </>;
 
   // Unsupported build: blocks sign-in and new exams, never an exam already under way.
@@ -422,6 +425,78 @@ function Footer({
       }]}>{t("· İngilizcenizi tüm yönleriyle tanıyın.")}</Text>
       </View>
     </View>;
+}
+/** App Store 5.1.1(v): candidates delete their own account in the app. */
+function DeleteAccountSheet({
+  visible,
+  onClose,
+  store,
+  onDeleted
+}: {
+  visible: boolean;
+  onClose: () => void;
+  store: AssessmentState;
+  onDeleted: () => void;
+}) {
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [deleted, setDeleted] = useState(false);
+  useEffect(() => {
+    if (visible) {
+      setNeedsPassword(false); setPassword(''); setError(null); setDeleted(false);
+    }
+  }, [visible]);
+  const remove = async () => {
+    setError(null);
+    try {
+      if (!(await store.deleteAccount(needsPassword ? password : undefined))) return;
+      setPassword('');
+      setDeleted(true);
+      onDeleted();
+    } catch (e) {
+      const code = e instanceof ApiError ? e.code : undefined;
+      if (code === 'password_required') {
+        setNeedsPassword(true);
+        setError(t("Devam etmek için şifrenizi girin."));
+      } else if (code === 'invalid_password') {
+        setNeedsPassword(true);
+        setError(t("Şifre yanlış. Tekrar deneyin."));
+      } else if (code === 'staff_account') {
+        setError(t("Bu hesap kurumunuz tarafından yönetiliyor. Silinmesi için kurum yöneticinize başvurun."));
+      } else if (code === 'storage_unavailable') {
+        setError(t("Dosyalarınız şu anda silinemedi ve hesabınızda hiçbir değişiklik yapılmadı. Daha sonra tekrar deneyin."));
+      } else {
+        setError(t("Hesap silinemedi. Bağlantınızı kontrol edip tekrar deneyin. Sorun sürerse hello@b4skills.com adresine yazın."));
+      }
+    }
+  };
+  if (deleted) {
+    return <Sheet visible={visible} onClose={onClose} eyebrow={t("Hesap")} title={t("Hesabınız silindi")}>
+        <Text style={[type.body, {
+        color: color.muted
+      }]}>{t("Hesabınız ve kişisel verileriniz silindi. Bu cihazdaki bekleyen kayıtlar da kaldırıldı.")}</Text>
+        <Button label={t("Tamam")} onPress={onClose} />
+      </Sheet>;
+  }
+  return <Sheet visible={visible} onClose={onClose} eyebrow={t("Hesap")} title={t("Hesabınız kalıcı olarak silinsin mi?")}>
+      <Text style={[type.body, {
+      color: color.muted
+    }]}>{t("Bu işlem geri alınamaz. Adınız, e-posta adresiniz, giriş bilgileriniz, ses kayıtlarınız ve kamera fotoğraflarınız silinir; süren sınavınız kapatılır.")}</Text>
+      <Text style={[type.small, {
+      color: color.body
+    }]}>{t("Puanlarınız kimliğinizden ayrılarak kurumunuzun toplu sonuçlarında ve ölçme kalitesi çalışmalarında kalır; adınızla ilişkilendirilemez. Ödeme kayıtları yasal süre boyunca saklanır.")}</Text>
+      {needsPassword ? <Field label={t("Şifre")} icon="lock" value={password} onChangeText={setPassword} placeholder={t("Şifrenizi girin")} secureTextEntry textContentType="password" autoComplete="password" returnKeyType="go" onSubmitEditing={remove} /> : null}
+      {error ? <Message tone="error" text={error} /> : null}
+      <View style={{
+      flexDirection: 'row',
+      gap: 10,
+      flexWrap: 'wrap'
+    }}>
+        <Button label={t("Hesabımı kalıcı olarak sil")} variant="danger" onPress={remove} loading={store.busy} disabled={needsPassword && !password} />
+        <Button label={t("Vazgeç")} variant="ghost" onPress={onClose} />
+      </View>
+    </Sheet>;
 }
 function HelpSheet({
   visible,

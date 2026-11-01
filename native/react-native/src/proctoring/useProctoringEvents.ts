@@ -8,6 +8,12 @@ import type { ExamAdmission, NativeEvent } from './protocol';
 
 // Reuse one serialized queue per account/origin across quick sign-out/sign-in or remount.
 const queues = new Map<string, EventQueue>();
+/** Account deleted: drop the cached queue and erase that account's unsent events. */
+export async function forgetProctoringEvents(baseUrl: string, uid: string) {
+  const key = `proctoring.${baseUrl}.${uid}`;
+  queues.delete(key);
+  await B4Native.secureWrite(key, JSON.stringify({ version: 1, nextSequence: 0, events: [] }));
+}
 export function useProctoringEvents(backend: Backend | null, uid: string | undefined, sessionId: string, admission: ExamAdmission | null | undefined, active: boolean) {
   const [warning, setWarning] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
