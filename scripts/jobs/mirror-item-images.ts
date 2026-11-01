@@ -100,8 +100,11 @@ async function main() {
     }
   }
 
-  mkdirSync("scripts/jobs/.out", { recursive: true });
-  writeFileSync(`scripts/jobs/.out/mirror-item-images${APPLY ? "" : "-plan"}.json`, JSON.stringify(report, null, 1));
+  // Keep the last real run's report: an idle re-run must not overwrite it with an empty list.
+  if (report.length) {
+    mkdirSync("scripts/jobs/.out", { recursive: true });
+    writeFileSync(`scripts/jobs/.out/mirror-item-images${APPLY ? "" : "-plan"}.json`, JSON.stringify(report, null, 1));
+  }
   console.log(APPLY ? `switched ${switched}, failed ${failed}` : `would copy ${targets.length - failed}, unreachable ${failed} — nothing written`);
 }
 
