@@ -97,6 +97,12 @@ function mcqContent(skill: SkillType, level: CefrLevel, index: number) {
     correctAnswer: "a",
   };
 
+  if (skill === SkillType.GRAMMAR || skill === SkillType.VOCABULARY) {
+    // A real item shows a sentence with a gap; an instruction alone is rejected by
+    // validateItemStructure (hasNothingToAnswer).
+    return { ...base, prompt: `Choose the best answer for this ${label} assessment item: The ___ fits this sentence.` };
+  }
+
   if (skill === SkillType.READING) {
     return {
       ...base,

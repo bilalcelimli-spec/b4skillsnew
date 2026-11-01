@@ -4,8 +4,8 @@
  * database (simulation harness, audits, unit tests) and stay identical to
  * what candidates get.
  *
- *   prepareSelectionPool  warm-up filter → seeded shuffle → content-tag
- *                         diversity → item-type rotation → passage cap
+ *   prepareSelectionPool  warm-up filter → seeded shuffle → content-tag /
+ *                         task-family diversity → gated item-type rotation → family cap → passage cap
  *   evaluateSectionStop   section budget + per-profile stop rules
  *
  * server-engine.ts owns everything that touches Postgres (loading the pool,
@@ -18,6 +18,7 @@ import type { ProductLineProfile } from "../product-lines/profiles.js";
 import { sectionItemBudget } from "./adaptive-policy.js";
 import { seededFisherYates } from "./mcq-options.js";
 import { capItemsPerPassage } from "./passage-cap.js";
+import { capItemsPerFamily, distinctFamilies, taskFamilyKey } from "./task-family.js";
 import { evaluateSectionStopRules, type StopDecision, type StopRuleInput } from "./stop-rules.js";
 import { SkillType, type Item, type Response, type SkillProfile } from "./types.js";
 
@@ -46,6 +47,9 @@ export interface PreparedSelectionPool {
 }
 
 const CONTENT_TAG_PREFIXES = ["content:", "passage:", "topic:"];
+/** Item-type rotation needs this many non-MCQ candidates from this many task families. */
+export const MIN_ROTATION_ALTERNATIVES = 5;
+export const MIN_ROTATION_FAMILIES = 3;
 
 /**
  * Build the candidate pool handed to CATSelector for one selection.
@@ -69,28 +73,40 @@ export function prepareSelectionPool(input: PrepareSelectionPoolInput): Prepared
   // Session-seeded shuffle so equal composite scores break ties differently per session.
   selectionPool = seededFisherYates(selectionPool, `${sessionId}:${skill}:${sectionCount}`);
 
-  // Content-tag diversity (soft) and item-type rotation over the last 3 items of this skill.
+  // Content-tag / task-family diversity (soft) and item-type rotation over the last 3 items of this skill.
   const recentInSkill = administeredItems.filter((item) => item.skill === skill).slice(-3);
   const recentContentTags = new Set<string>();
+  const recentFamilies = new Set<string>();
   const recentTypes: string[] = [];
   for (const item of recentInSkill) {
     const tags: string[] = (item as Item & { tags?: string[] }).tags ?? [];
     for (const tag of tags) {
       if (CONTENT_TAG_PREFIXES.some((prefix) => tag.startsWith(prefix))) recentContentTags.add(tag);
     }
+    const family = taskFamilyKey(item as Item & { tags?: string[] });
+    if (family) recentFamilies.add(family);
     if (item.type) recentTypes.push(item.type);
   }
-  if (recentContentTags.size > 0) {
-    const hasRecentTag = (item: Item) =>
-      ((item as Item & { tags?: string[] }).tags ?? []).some((tag) => recentContentTags.has(tag));
-    const fresh = selectionPool.filter((item) => !hasRecentTag(item));
+  if (recentContentTags.size > 0 || recentFamilies.size > 0) {
+    const isRecent = (item: Item) => {
+      const tagged = ((item as Item & { tags?: string[] }).tags ?? []).some((tag) => recentContentTags.has(tag));
+      const family = taskFamilyKey(item as Item & { tags?: string[] });
+      return tagged || (family !== null && recentFamilies.has(family));
+    };
+    const fresh = selectionPool.filter((item) => !isRecent(item));
     if (fresh.length > 0) {
-      selectionPool = [...fresh, ...selectionPool.filter(hasRecentTag)];
+      selectionPool = [...fresh, ...selectionPool.filter(isRecent)];
     }
   }
+  // Rotate to a non-MCQ format only when the bank offers real variety there.
+  // With one worksheet template as the only alternative, rotation served it
+  // every third item (bank review 2026-11-01).
   const lastTwoTypes = recentTypes.slice(-2);
   if (lastTwoTypes.length === 2 && lastTwoTypes.every((type) => type === "MULTIPLE_CHOICE")) {
-    const altIndex = selectionPool.findIndex((item) => item.type !== "MULTIPLE_CHOICE");
+    const alternatives = selectionPool.filter((item) => item.type !== "MULTIPLE_CHOICE");
+    const varied = alternatives.length >= MIN_ROTATION_ALTERNATIVES
+      && distinctFamilies(alternatives as Array<Item & { tags?: string[] }>) >= MIN_ROTATION_FAMILIES;
+    const altIndex = varied ? selectionPool.findIndex((item) => item.type !== "MULTIPLE_CHOICE") : -1;
     if (altIndex > 0) {
       const [alt] = selectionPool.splice(altIndex, 1);
       selectionPool.unshift(alt);
@@ -98,7 +114,9 @@ export function prepareSelectionPool(input: PrepareSelectionPoolInput): Prepared
   }
 
   // Local dependence: cap items per reading passage / listening recording.
-  const pool = capItemsPerPassage(selectionPool, administeredItems);
+  // Same task template: at most MAX_ITEMS_PER_FAMILY per section (hard, lifted only in a thin pool).
+  const familyCapped = capItemsPerFamily(selectionPool, administeredItems.filter((item) => item.skill === skill) as Array<Item & { tags?: string[] }>);
+  const pool = capItemsPerPassage(familyCapped, administeredItems);
   return { pool, fallbacks };
 }
 

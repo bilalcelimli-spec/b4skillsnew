@@ -216,6 +216,28 @@ export function validateStructuredKey(content: any): string[] {
   return errors;
 }
 
+const INSTRUCTION_ONLY = /^(please\s+)?(drag( and drop)?|choose|select|pick|complete|fill( in)?|put|write|tick|circle)\b[^.?!:]*[.!]?\s*$/i;
+// Only a written-out gap counts; "[[GAP_1]]" or "gap (1)" in an instruction points at text that may be missing.
+const GAP_MARKER = /_{2,}/;
+
+/**
+ * True when a grammar/vocabulary MCQ shows the candidate an instruction
+ * ("Drag the correct word to complete the sentence.") but stores neither the
+ * sentence with its gap nor a question — the generator dropped it (bank
+ * review 2026-11-01: 23 live PRETEST items). Items whose options are the
+ * sentences themselves ("Select the correct sentence:") are fine.
+ */
+export function hasNothingToAnswer(content: any): boolean {
+  const prompt = String(content?.prompt ?? content?.question ?? content?.stem ?? "").trim();
+  if (!INSTRUCTION_ONLY.test(prompt)) return false;
+  const context = [content?.passage, content?.scaffold, content?.sentence, content?.context, content?.text, content?.stem !== prompt ? content?.stem : ""]
+    .filter((v) => typeof v === "string" && v.trim()).join(" ");
+  if (context.length > 0 || GAP_MARKER.test(prompt)) return false;
+  const opts: any[] = Array.isArray(content?.options) ? content.options : [];
+  const sentenceOptions = opts.length > 0 && opts.every((o) => String(o?.text ?? o ?? "").trim().split(/\s+/).length >= 4);
+  return !sentenceOptions;
+}
+
 export function validateItemStructure(skill: string, content: any): string[] {
   const errors: string[] = [];
 
@@ -237,6 +259,9 @@ export function validateItemStructure(skill: string, content: any): string[] {
     }
     if (!opts.some((o: any) => o.isCorrect === true)) {
       errors.push("No correct option marked (isCorrect: true)");
+    }
+    if (skill !== "READING" && hasNothingToAnswer(content)) {
+      errors.push("Prompt is only an instruction (e.g. 'Complete the sentence.') and no sentence, gap or question is stored");
     }
   }
 

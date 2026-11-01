@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { crossSkillPrior, crossSkillPriors, isAdaptiveEligible, isPretestEligible, pretestItemWhere, profileAbilityPrior, profileThetaRange, sectionAbility, CROSS_SKILL_PRIOR_MIN_SD } from "../adaptive-policy";
+import { adaptiveItemWhere, crossSkillPrior, crossSkillPriors, excludedSources, isAdaptiveEligible, isPretestEligible, pretestItemWhere, profileAbilityPrior, profileThetaRange, sectionAbility, CROSS_SKILL_PRIOR_MIN_SD } from "../adaptive-policy";
 import { PRODUCT_LINE_PROFILES, getProfile } from "../../product-lines/profiles";
 import { SkillType } from "../types";
 
@@ -60,9 +60,34 @@ describe("isAdaptiveEligible (in-memory mirror of adaptiveItemWhere)", () => {
     expect(isAdaptiveEligible({ ...base, tags: ["corporate"] }, profile, SkillType.GRAMMAR)).toBe(true);
     expect(isAdaptiveEligible({ ...base, tags: ["Corporate"] }, profile, SkillType.GRAMMAR)).toBe(true);
     expect(isAdaptiveEligible({ ...base, tags: ["primary"] }, profile, SkillType.GRAMMAR)).toBe(false);
-    expect(isAdaptiveEligible({ ...base, tags: ["primary"], content: { productLine: "corporate" } }, profile, SkillType.GRAMMAR)).toBe(true);
-    // General English has no non-general source: every tag is acceptable
-    expect(isAdaptiveEligible({ ...base, tags: ["primary"] }, getProfile("General English"), SkillType.GRAMMAR)).toBe(true);
+    expect(isAdaptiveEligible({ ...base, tags: ["academia"], content: { productLine: "corporate" } }, profile, SkillType.GRAMMAR)).toBe(true);
+    // a child-product tag disqualifies an adult profile even when productLine matches
+    expect(isAdaptiveEligible({ ...base, tags: ["primary"], content: { productLine: "corporate" } }, profile, SkillType.GRAMMAR)).toBe(false);
+    // General English has no non-general source: adult-suitable tags are all acceptable
+    expect(isAdaptiveEligible({ ...base, tags: ["academia"] }, getProfile("General English"), SkillType.GRAMMAR)).toBe(true);
+  });
+
+  it("keeps items written for a younger age band out of older profiles", () => {
+    const general = getProfile("General English"); // 12+
+    expect(excludedSources(general)).toContain("primary");
+    expect(excludedSources(general)).not.toContain("junior"); // 11-14 overlaps 12+
+    expect(excludedSources(getProfile("Academia"))).toEqual(expect.arrayContaining(["primary", "junior"]));
+    expect(excludedSources(getProfile("Primary (7-10)"))).toEqual([]);
+    expect(excludedSources(getProfile("Junior Suite (11-14)"))).toContain("primary"); // 11+ never sees 7-10 material
+    expect(excludedSources(getProfile("Junior Suite (11-14)"))).not.toContain("junior");
+
+    for (const profile of [general, getProfile("15-Min Diagnostic"), getProfile("Express Assessment (30-Min)")]) {
+      expect(isAdaptiveEligible({ ...base, tags: ["primary", "general"] }, profile, SkillType.GRAMMAR)).toBe(false);
+      expect(isAdaptiveEligible({ ...base, tags: ["Primary (7-10)"] }, profile, SkillType.GRAMMAR)).toBe(false);
+      expect(isAdaptiveEligible({ ...base, content: { productLine: "PRIMARY" } }, profile, SkillType.GRAMMAR)).toBe(false);
+      expect(isAdaptiveEligible({ ...base, tags: ["junior"] }, profile, SkillType.GRAMMAR)).toBe(true);
+      expect(isAdaptiveEligible(base, profile, SkillType.GRAMMAR)).toBe(true);
+    }
+    // The Prisma filter carries the same exclusion
+    const where = adaptiveItemWhere(general, SkillType.LISTENING);
+    expect(where.NOT).toEqual(expect.arrayContaining([{ tags: { hasSome: expect.arrayContaining(["primary", "PRIMARY"]) } }]));
+    expect(adaptiveItemWhere(getProfile("Primary (7-10)"), SkillType.LISTENING).NOT).toBeUndefined();
+    expect(isPretestEligible({ ...base, status: "PRETEST", isPretest: true, tags: ["primary"] }, general, SkillType.GRAMMAR)).toBe(false);
   });
 });
 
@@ -84,7 +109,17 @@ describe("pretest pool (pretestItemWhere / isPretestEligible)", () => {
     expect(where).toMatchObject({ skill: SkillType.GRAMMAR, OR: [{ status: "PRETEST" }, { status: "ACTIVE", isPretest: true }], discrimination: { gt: 0 } });
     expect((where.cefrLevel as { in: string[] }).in[0]).toBe(profile.cefrRange[0]);
     expect(Array.isArray(where.AND)).toBe(true);
-    expect(pretestItemWhere(getProfile("General English"), SkillType.READING).AND).toBeUndefined();
+    // Corporate: source clause AND the age exclusion both survive in one AND list
+    expect((where.AND as unknown[]).length).toBe(2);
+    expect(where.NOT).toEqual([{ tags: { hasSome: expect.arrayContaining(["primary", "junior"]) } }]);
+    // General English has no source clause, only the age exclusion
+    const general = pretestItemWhere(getProfile("General English"), SkillType.READING);
+    expect((general.AND as unknown[]).length).toBe(1);
+    expect(general.NOT).toBeDefined();
+    // Primary excludes nothing and has a source clause only
+    const primary = pretestItemWhere(getProfile("Primary (7-10)"), SkillType.READING);
+    expect(primary.NOT).toBeUndefined();
+    expect((primary.AND as unknown[]).length).toBe(1);
   });
 });
 

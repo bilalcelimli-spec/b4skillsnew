@@ -39,6 +39,12 @@ export interface BlueprintCell {
   ageSuitability?: string;  // YOUNG_LEARNER | TEEN | ADULT | UNIVERSAL
   culturalLoad?: string;    // LOW | MEDIUM | HIGH
   englishVariant?: string;  // BRITISH | AMERICAN | INTERNATIONAL
+
+  // Product targeting
+  /** Product source key (e.g. "primary"). Stored as a tag and content.productLine so the profile's pool can serve it. */
+  productLine?: string;
+  /** Candidate age range for the prompt, e.g. [7, 10]. Defaults to the ageSuitability band. */
+  ageRange?: [number, number];
 }
 
 // ── Phase 1 target (§120 Bank target matrix) ─────────────────────────────────
