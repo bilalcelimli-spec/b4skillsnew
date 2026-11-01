@@ -8,11 +8,16 @@
  *   npx tsx scripts/jobs/quarantine-bank-review-2026-11.ts
  *   npx tsx scripts/jobs/quarantine-bank-review-2026-11.ts --apply
  *   npx tsx scripts/jobs/quarantine-bank-review-2026-11.ts --set images [--apply]
+ *   npx tsx scripts/jobs/quarantine-bank-review-2026-11.ts --set content [--apply]
  *
  * Sets: default = 6 KET Part 1 items + 4 picture items without an image
  * (applied 2026-11-01); "images" = 30 items whose attached image is broken
  * (404) or unrelated to the task (checked by eye against the downloaded
- * image, 2026-11-01; scripts/jobs/.out/image-mismatch-ids.json).
+ * image, 2026-11-01; scripts/jobs/.out/image-mismatch-ids.json);
+ * "content" = 23 PRETEST grammar items whose sentence was never stored (the
+ * candidate sees only "Complete the sentence."), 5 items with the key in the
+ * stem or two defensible keys, and one item of each of 4 exact-duplicate
+ * pairs (the copy at the less fitting level or in the larger pool).
  *
  * Report: scripts/jobs/.out/bank-review-2026-11-01.md
  */
@@ -69,10 +74,49 @@ const IMAGE_BY_ID: Record<string, string> = {
   "cmogdurn1003onu775seo3v88": BROKEN, // GRM-A2-0031                The train ___ be delayed; look at the board.
 };
 
+const NO_SENTENCE = "only an instruction is stored ('Complete the sentence.'); the sentence with the gap was lost at generation";
+const CONTENT_BY_CODE: Record<string, string> = {
+  "GRM-A1-0011": "two defensible keys ('The research' / zero article 'Research suggests…'); sentence is not A1",
+  "VOC-A1-0040": "key in the stem ('We eat ___ and chips at the fish restaurant')",
+  "VOC-B2-0066": "key in the stem ('In formal writing … more ___ synonyms', key 'formal')",
+  "VOC-C2-0050": "key in the stem ('… appropriate epistemic uncertainty', key 'epistemic')",
+  "GRM-B2-0096": "two defensible keys (general truth in reported speech: 'rises' and 'rose')",
+  "GRM-B1-0122": "exact duplicate of junior-grammar-a2-zero-conditional-055; zero conditional is A2, keep the A2 copy",
+  "VOC-A2-0030": "exact duplicate stem of VOC-A1-0057 ('The opposite of cheap'); A1 word, keep the A1 copy",
+  "VOC-A1-0039": "exact duplicate stem of primary-vocabulary-prea1-family-006; keep the copy in the small Primary pool",
+  "GRM-A2-0083": "exact duplicate stem of junior-grammar-b1-passive-past-071 (also open to General profiles); keep one",
+};
+const CONTENT_BY_ID: Record<string, string> = {
+  "cmp4g3tbz001io76li1mafggo": NO_SENTENCE, // A1 "Drag the correct words to complete the sentence."
+  "cmp4k26ux0014o7c42kb07oga": NO_SENTENCE, // PRE_A1 "Drag the correct word to complete the sentence."
+  "cmp4f8gf50001o76lib5jdpp8": NO_SENTENCE, // A1 "Choose the correct word to complete the sentence."
+  "cmp4fkc6f000lo76lsl0f3mpv": NO_SENTENCE, // A1 "Drag the correct phrase to complete the sentence."
+  "cmp4fkc6c000ko76l6i8ntjq4": NO_SENTENCE, // A1 "Drag and drop the correct words to complete the sentence."
+  "cmp4k26v00015o7c4q3761bow": NO_SENTENCE, // PRE_A1 "Complete the sentence by dragging the correct word into the "
+  "cmp4gbcj3001so76lxyy9c03t": NO_SENTENCE, // A1 "Complete the sentence."
+  "cmp4g9ax6001ro76lroxop0gl": NO_SENTENCE, // A1 "Drag the correct word to complete the sentence."
+  "cmp4hurf6000wo7ap13n9oofb": NO_SENTENCE, // A2 "Choose the best option to complete the sentence."
+  "cmp4ieiku001mo7apz964nop2": NO_SENTENCE, // A2 "Choose the best word to complete the gap."
+  "cmp4is76y0021o7apw3g6a7la": NO_SENTENCE, // A2 "Choose the best word for the gap."
+  "cmp4izkjz002co7apvm59ntzc": NO_SENTENCE, // A2 "Choose the correct option to fill the blank."
+  "cmp4h95xc0007o7apu7mhujs4": NO_SENTENCE, // A2 "Choose the best word to complete the sentence."
+  "cmp4i7qa8001fo7apn15h2ouw": NO_SENTENCE, // A2 "Choose the best option to complete the blank."
+  "cmp4g5mvr001jo76l6ftfkmff": NO_SENTENCE, // A1 "Choose the correct option to complete the sentence."
+  "cmp4h48kh0001o7apo65f7023": NO_SENTENCE, // A2 "Choose the correct option to complete the sentence."
+  "cmp4hgmwq000jo7aphda3obg2": NO_SENTENCE, // A2 "Choose the correct word to complete the sentence."
+  "cmp4jwzjf000wo7c4vprfttti": NO_SENTENCE, // PRE_A1 "Drag the correct word into the gap."
+  "cmp4jc3ds002so7ap49zhdiax": NO_SENTENCE, // A2 "Choose the best option for gap (4)."
+  "cmp4i0h2j0015o7ap110scxag": NO_SENTENCE, // A2 "Choose the best word for gap (1)."
+  "cmp4h95xf0008o7apxwkmije5": NO_SENTENCE, // A2 "Choose the best option to complete blank (1)."
+  "cmp4is7740023o7ap1jxgak0x": NO_SENTENCE, // A2 "Choose the best word to fill gap (1)."
+  "cmp4jc3di002qo7apor34h1ar": NO_SENTENCE, // A2 "Choose the best word for [[GAP_1]]."
+};
+
 const SET = process.argv.includes("--set") ? process.argv[process.argv.indexOf("--set") + 1] : "default";
 
 async function main() {
   if (SET === "images") return quarantine({}, IMAGE_BY_ID);
+  if (SET === "content") return quarantine(CONTENT_BY_CODE, CONTENT_BY_ID);
   if (SET !== "default") throw new Error(`unknown set "${SET}"`);
   return quarantine(BY_CODE, BY_ID);
 }
