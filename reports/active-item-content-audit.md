@@ -1,17 +1,17 @@
 # Active Item Content Audit
 
-Generated: 2026-10-13T22:42:10.079Z
-Scope: 3020 ACTIVE/PRETEST items
+Generated: 2026-11-01T01:29:13.486Z
+Scope: 2926 ACTIVE/PRETEST items
 Findings: 0 (0 blockers, 0 reviews)
 
 ## Inventory
 
-- GRAMMAR: 899
+- GRAMMAR: 870
 - LISTENING: 224
-- READING: 725
-- SPEAKING: 403
-- VOCABULARY: 583
-- WRITING: 186
+- READING: 714
+- SPEAKING: 362
+- VOCABULARY: 574
+- WRITING: 182
 
 ## Findings by rule
 
