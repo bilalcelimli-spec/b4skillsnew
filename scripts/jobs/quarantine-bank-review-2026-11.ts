@@ -9,6 +9,7 @@
  *   npx tsx scripts/jobs/quarantine-bank-review-2026-11.ts --apply
  *   npx tsx scripts/jobs/quarantine-bank-review-2026-11.ts --set images [--apply]
  *   npx tsx scripts/jobs/quarantine-bank-review-2026-11.ts --set content [--apply]
+ *   npx tsx scripts/jobs/quarantine-bank-review-2026-11.ts --set images-2 [--apply]
  *
  * Sets: default = 6 KET Part 1 items + 4 picture items without an image
  * (applied 2026-11-01); "images" = 30 items whose attached image is broken
@@ -112,11 +113,38 @@ const CONTENT_BY_ID: Record<string, string> = {
   "cmp4jc3di002qo7apor34h1ar": NO_SENTENCE, // A2 "Choose the best word for [[GAP_1]]."
 };
 
+// Second image pass (2026-11-01, all 38 hotlinked live images viewed): to REVIEW,
+// or the picture removed where the item is complete without it.
+const IMAGES2_REVIEW: Record<string, string> = {
+  "VOC-PA1-0007": "the photo (a beach at sunset) contradicts the key 'library' of 'The photo looks like a ___'",
+  "SPE-A2-0059-MVX1NDCI": "task asks about two pictures (city / countryside); one unrelated placeholder photo is attached",
+  "SPE-B1-0070": "task asks about two pictures; a single photo of a phone is attached",
+};
+const IMAGES2_DROP_IMAGE: Record<string, string> = {
+  "GRM-B1-0002": "photo shows rain already falling, which supports the distractor 'is raining'; the sentence works without it",
+  "primary-vocabulary-prea1-colors-001": "placeholder photo (hand writing) next to 'Look at this color: 🔴'; the emoji is the stimulus",
+};
+
+async function images2() {
+  await quarantine(IMAGES2_REVIEW, {});
+  const items = await prisma.item.findMany({ where: { itemCode: { in: Object.keys(IMAGES2_DROP_IMAGE) } }, select: { id: true, itemCode: true, status: true, content: true, metadata: true } });
+  for (const it of items) {
+    const c = (it.content ?? {}) as Record<string, any>;
+    if (!c.imageUrl) { console.log(`${it.itemCode!.padEnd(26)} image already removed`); continue; }
+    console.log(`${it.itemCode!.padEnd(26)} ${it.status} → remove image: ${IMAGES2_DROP_IMAGE[it.itemCode!]}`);
+    if (!APPLY) continue;
+    const { imageUrl, ...rest } = c;
+    await prisma.item.update({ where: { id: it.id }, data: { content: rest, version: { increment: 1 },
+      metadata: { ...((it.metadata as object) ?? {}), editorialRevision: { at: new Date().toISOString(), by: ACTOR, reason: IMAGES2_DROP_IMAGE[it.itemCode!], previous: { imageUrl } } } } });
+  }
+}
+
 const SET = process.argv.includes("--set") ? process.argv[process.argv.indexOf("--set") + 1] : "default";
 
 async function main() {
   if (SET === "images") return quarantine({}, IMAGE_BY_ID);
   if (SET === "content") return quarantine(CONTENT_BY_CODE, CONTENT_BY_ID);
+  if (SET === "images-2") return images2();
   if (SET !== "default") throw new Error(`unknown set "${SET}"`);
   return quarantine(BY_CODE, BY_ID);
 }
