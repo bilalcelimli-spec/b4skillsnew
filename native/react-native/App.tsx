@@ -488,11 +488,7 @@ function DeleteAccountSheet({
     }]}>{t("Puanlarınız kimliğinizden ayrılarak kurumunuzun toplu sonuçlarında ve ölçme kalitesi çalışmalarında kalır; adınızla ilişkilendirilemez. Ödeme kayıtları yasal süre boyunca saklanır.")}</Text>
       {needsPassword ? <Field label={t("Şifre")} icon="lock" value={password} onChangeText={setPassword} placeholder={t("Şifrenizi girin")} secureTextEntry textContentType="password" autoComplete="password" returnKeyType="go" onSubmitEditing={remove} /> : null}
       {error ? <Message tone="error" text={error} /> : null}
-      <View style={{
-      flexDirection: 'row',
-      gap: 10,
-      flexWrap: 'wrap'
-    }}>
+      <View style={styles.sheetActions}>
         <Button label={t("Hesabımı kalıcı olarak sil")} variant="danger" onPress={remove} loading={store.busy} disabled={needsPassword && !password} />
         <Button label={t("Vazgeç")} variant="ghost" onPress={onClose} />
       </View>
@@ -719,6 +715,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 12,
     backgroundColor: color.navy
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    gap: 10,
+    flexWrap: 'wrap'
   },
   helpNote: {
     gap: 8,
