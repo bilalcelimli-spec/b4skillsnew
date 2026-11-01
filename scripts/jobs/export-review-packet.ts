@@ -26,6 +26,7 @@ const SOURCES: Array<{ file: string; label: string }> = [
   { file: "primary-replacement-ids.json", label: "Primary (7-10) — grammar/vocabulary replacements" },
   { file: "primary-replacement-rl-ids.json", label: "Primary (7-10) — reading/listening replacements" },
   { file: "ket-rebuild-ids.json", label: "Junior — KET Reading Part 1 rebuilt (matching + MCQ)" },
+  { file: "a1-listening-adult-ids.json", label: "General — adult A1 listening (coverage gap)" },
 ];
 
 const CHECKLIST = [

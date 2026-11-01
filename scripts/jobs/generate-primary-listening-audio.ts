@@ -7,6 +7,7 @@
  *   npx tsx scripts/jobs/generate-primary-listening-audio.ts            # plan: speakers, voices, script
  *   npx tsx scripts/jobs/generate-primary-listening-audio.ts --apply    # synthesise, upload, set audioUrl
  *   npx tsx scripts/jobs/generate-primary-listening-audio.ts --apply --limit 2
+ *   npx tsx scripts/jobs/generate-primary-listening-audio.ts --trigger claude-code:a1-listening-adult --audience adult [--apply]
  *
  * Voices follow the speaker label (Mum → adult female, Kenji → boy …) instead
  * of turn order, so "Dad" never gets a female voice. Gemini dialogue mode
@@ -29,6 +30,11 @@ import { inspectWav } from "../../src/lib/audio/wav-evidence.js";
 import { supabaseStorageClient } from "../../src/lib/storage/private-storage.js";
 
 const APPLY = process.argv.includes("--apply");
+const argOf = (name: string) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined);
+/** Which generation batch to voice (metadata.triggeredBy) and who listens. */
+const TRIGGER = argOf("--trigger") ?? "claude-code:primary-expansion";
+const ADULT = argOf("--audience") === "adult";
+const KEY_PREFIX = ADULT ? "general" : "primary";
 const li = process.argv.indexOf("--limit");
 const LIMIT = li >= 0 ? Number(process.argv[li + 1]) : Infinity;
 const BUCKET = "question-audio";
@@ -44,6 +50,11 @@ const M_ADULT = /^(dad|father|grandpa|grandad|uncle|mr|coach)\b/i;
 const F_CHILD = /^(amara|sofia|lily|maya|mia|yuna|priya|fatima|leila|zara|hana|nadia|elif|rosa|aiko|ingrid|malia|lena)\b/i;
 const M_CHILD = /^(kenji|ravi|liam|leo|tom|omar|elias|tobias|kwame|tariq|marcus|soren|arnav|emeka|jonas|daniel|dario|chidi)\b/i;
 function kindOf(label: string): Kind {
+  const k = childOrAdult(label);
+  // Adult listening: every named speaker is an adult.
+  return ADULT ? (k === "childF" ? "adultF" : k === "childM" ? "adultM" : k) : k;
+}
+function childOrAdult(label: string): Kind {
   if (F_ADULT.test(label)) return "adultF";
   if (M_ADULT.test(label)) return "adultM";
   if (M_CHILD.test(label)) return "childM";
@@ -60,13 +71,15 @@ interface Plan { prompt: string; speechConfig: Record<string, unknown>; voices: 
 function plan(script: string): Plan {
   const turns = script.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => parseSpeakerTurn(l) ?? { speaker: "", utterance: l });
   const speakers = [...new Set(turns.map((t) => t.speaker).filter(Boolean))];
-  const pre = "Read this conversation for children aged 7 to 10 who are learning English. Speak slowly and clearly, in a warm, friendly way, with a short pause between turns.\n\n";
+  const pre = ADULT
+    ? "Read this conversation for adult beginners learning English (CEFR A1). Speak naturally but slowly and clearly, with a short pause between turns.\n\n"
+    : "Read this conversation for children aged 7 to 10 who are learning English. Speak slowly and clearly, in a warm, friendly way, with a short pause between turns.\n\n";
 
   if (speakers.length < 2) {
     const kind = kindOf(speakers[0] ?? "");
     const voice = VOICE[kind][0];
     const text = turns.map((t) => clean(t.utterance)).join("\n");
-    return { prompt: buildTtsPrompt("primary-item", text, "A1", "primary"), speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }, voices: voice, speakers, sharedVoices: false };
+    return { prompt: (ADULT ? buildTtsPrompt("general-item", text, "A1") : buildTtsPrompt("primary-item", text, "A1", "primary")), speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }, voices: voice, speakers, sharedVoices: false };
   }
 
   // Two voice channels. Two speakers: one each. 3+: adults vs children (a teacher
@@ -123,7 +136,7 @@ async function missingTurns(ai: GoogleGenAI, wav: Buffer, script: string): Promi
 /** Read-only: run the turn check on every audio this job produced. */
 async function check() {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const items = await prisma.item.findMany({ where: { skill: "LISTENING", status: "DRAFT", metadata: { path: ["triggeredBy"], equals: "claude-code:primary-expansion" } }, select: { itemCode: true, content: true }, orderBy: { itemCode: "asc" } });
+  const items = await prisma.item.findMany({ where: { skill: "LISTENING", status: "DRAFT", metadata: { path: ["triggeredBy"], equals: TRIGGER } }, select: { itemCode: true, content: true }, orderBy: { itemCode: "asc" } });
   const failed: string[] = [];
   const unchecked: string[] = [];
   for (const it of items) {
@@ -150,12 +163,12 @@ async function main() {
   const ri = process.argv.indexOf("--redo");
   const REDO = new Set(ri >= 0 ? process.argv[ri + 1].split(",") : []);
   const items = (await prisma.item.findMany({
-    where: { skill: "LISTENING", status: "DRAFT", metadata: { path: ["triggeredBy"], equals: "claude-code:primary-expansion" } },
+    where: { skill: "LISTENING", status: "DRAFT", metadata: { path: ["triggeredBy"], equals: TRIGGER } },
     select: { id: true, itemCode: true, cefrLevel: true, content: true, metadata: true },
     orderBy: { itemCode: "asc" },
   })).filter((it) => (it.content as any)?.ttsScript && (REDO.size ? REDO.has(it.itemCode!) : !(it.content as any)?.audioUrl));
   const targets = items.slice(0, LIMIT);
-  console.log(`${targets.length} Primary listening drafts need audio${APPLY ? "" : " (dry run — nothing written)"}`);
+  console.log(`${targets.length} listening drafts need audio (${TRIGGER})${APPLY ? "" : " (dry run — nothing written)"}`);
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const storage = APPLY ? supabaseStorageClient() : null;
@@ -193,7 +206,7 @@ async function main() {
         }
       }
 
-      const key = `primary/${run}/${it.id}.wav`;
+      const key = `${KEY_PREFIX}/${run}/${it.id}.wav`;
       const up = await storage!.storage.from(BUCKET).upload(key, wav!, { contentType: "audio/wav", upsert: false, cacheControl: "31536000" });
       if (up.error) throw new Error(`upload failed: ${up.error.message}`);
       const audioUrl = storage!.storage.from(BUCKET).getPublicUrl(key).data.publicUrl;
