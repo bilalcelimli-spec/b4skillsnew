@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { configure, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import App from '../../App';
@@ -11,10 +11,11 @@ vi.mock('../admin/ContentFactoryReviewQueue',()=>({ContentFactoryReviewQueue:()=
 vi.mock('../RatingDashboard',()=>({RatingDashboard:({raterId}:any)=><h1>Rater workspace {raterId}</h1>}));
 vi.mock('../CandidateProfile',()=>({CandidateProfile:()=><h1>Account settings</h1>}));
 vi.mock('../SharedReportPage',()=>({SharedReportPage:({token}:any)=><h1>Shared {token}</h1>}));
+configure({ asyncUtilTimeout: 10000 });
 function LocationProbe(){return <output data-testid="path">{useLocation().pathname}</output>;}
 function open(path:string,role='CANDIDATE'){
   window.history.replaceState({},'',path);
-  vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url==='/api/auth/me'
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url==='/api/auth/session'
     ? {user:{uid:'candidate',email:'user@example.test',role,organizationId:'org'}}:[]})));
   render(<MemoryRouter initialEntries={[path]}><App/><LocationProbe/></MemoryRouter>);
 }
@@ -51,7 +52,7 @@ it('connects the authenticated rater identity to task actions',async()=>{
 
 it('returns to the dashboard after exit and resumes the same stored attempt', async()=>{
   window.history.replaceState({},'', '/exam/existing-session');
-  vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url==='/api/auth/me'
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url==='/api/auth/session'
     ? {user:{uid:'candidate',email:'user@example.test',role:'CANDIDATE',organizationId:'org',allowedProductLine:'15-Min Diagnostic'}}
     : url.endsWith('/history') ? [{id:'existing-session',status:'IN_PROGRESS',organizationId:'org',metadata:{productLine:'15-Min Diagnostic'}}] : []})));
   render(<MemoryRouter initialEntries={['/exam/existing-session']}><App/><LocationProbe/></MemoryRouter>);
@@ -64,7 +65,7 @@ it('returns to the dashboard after exit and resumes the same stored attempt', as
 
 it('starts with the server candidate identity after code redemption switches accounts',async()=>{
   window.history.replaceState({},'', '/dashboard');
-  vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url==='/api/auth/me'
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url==='/api/auth/session'
     ? {user:{uid:'old-candidate',email:'old@example.test',role:'CANDIDATE',organizationId:null}}
     : url==='/api/codes/validate' ? {valid:true,productLine:'General English'}
     : url==='/api/codes/redeem' ? {success:true,candidateId:'new-candidate',organizationId:'new-org',productLine:'General English'} : []})));
@@ -75,14 +76,16 @@ it('starts with the server candidate identity after code redemption switches acc
   await screen.findByRole('heading',{name:'Candidate Details'});
   for(const [label,value] of [['First Name','Ada'],['Last Name','Yılmaz'],['Email Address','ada@example.test'],['School / Organization','School'],['Grade / Level','5']])fireEvent.change(screen.getByLabelText(label),{target:{value}});
   fireEvent.click(screen.getByRole('button',{name:'Start Exam'}));
-  fireEvent.click(await screen.findByRole('button',{name:/Start Test/}));
+  const startButton = await screen.findByRole('button',{name:/Start Test/});
+  await waitFor(() => expect((startButton as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(startButton);
   expect(await screen.findByText('Candidate new-candidate')).toBeTruthy();
   expect(screen.queryByText('Candidate old-candidate')).toBeNull();
 });
 
 it('keeps a code-assigned candidate on the dashboard and signs out after leaving',async()=>{
  window.history.replaceState({},'', '/exam/existing-session');
- const fetchMock=vi.fn(async(url:string)=>({ok:true,json:async()=>url==='/api/auth/me'
+ const fetchMock=vi.fn(async(url:string)=>({ok:true,json:async()=>url==='/api/auth/session'
   ? {user:{uid:'candidate',email:'user@example.test',role:'CANDIDATE',organizationId:'org',allowedProductLine:'15-Min Diagnostic'}}:[]}));
  vi.stubGlobal('fetch',fetchMock);
  render(<MemoryRouter initialEntries={['/exam/existing-session']}><App/><LocationProbe/></MemoryRouter>);
@@ -112,7 +115,7 @@ it('uses the server certificate endpoint contract after a scored finish',async()
 
 it('keeps logout retryable when the server rejects it',async()=>{
  window.history.replaceState({},'', '/dashboard');let attempts=0;
- vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:url==='/api/auth/logout'?++attempts>1:true,json:async()=>url==='/api/auth/me'
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:url==='/api/auth/logout'?++attempts>1:true,json:async()=>url==='/api/auth/session'
   ? {user:{uid:'candidate',email:'user@example.test',role:'CANDIDATE',organizationId:'org',allowedProductLine:'15-Min Diagnostic'}}:[]})));
  render(<MemoryRouter initialEntries={['/dashboard']}><App/><LocationProbe/></MemoryRouter>);
  fireEvent.click((await screen.findAllByRole('button',{name:/Sign out/i}))[0]);
@@ -121,4 +124,11 @@ it('keeps logout retryable when the server rejects it',async()=>{
  fireEvent.click(screen.getAllByRole('button',{name:/Sign out/i})[0]);
  expect(await screen.findByRole('heading',{name:'Welcome back'})).toBeTruthy();
  expect(attempts).toBe(2);
+});
+
+it('keeps an authenticated buyer on the requested checkout plan',async()=>{
+ open('/checkout?plan=pro-bundle');
+ expect(await screen.findByRole('heading',{name:'Satın alma bilgisi'})).toBeTruthy();
+ expect(screen.getByTestId('path').textContent).toBe('/checkout');
+ expect(screen.queryByRole('checkbox')).toBeNull();
 });

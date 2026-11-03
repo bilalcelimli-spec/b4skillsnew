@@ -7,6 +7,8 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 
 // Marketing page imports — all SSR-safe (browser APIs wrapped in useEffect/callbacks)
+import { LegalPage } from "./components/LegalPage";
+import { VerificationPage } from "./components/VerificationPage";
 import { LandingPage } from "./components/LandingPage";
 import { PricingPage } from "./components/PricingPage";
 import { MethodologyPage } from "./components/MethodologyPage";
@@ -29,6 +31,13 @@ const NOOP = () => {};
 // Props that are navigation callbacks get NOOP — they're inert during SSR.
 // Only initial render state matters; useEffect never fires during renderToString.
 const ROUTE_FACTORIES: Record<string, () => React.ReactElement> = {
+  "/refund-policy": () => <LegalPage kind="refund" />,
+  "/sales-terms": () => <LegalPage kind="sales" />,
+  "/privacy": () => <LegalPage kind="privacy" />,
+  "/kvkk": () => <LegalPage kind="kvkk" />,
+  "/terms": () => <LegalPage kind="terms" />,
+  "/support": () => <LegalPage kind="support" />,
+  "/verify": () => <VerificationPage />,
   "/": () => <LandingPage onStart={NOOP} onCodeEntry={NOOP} />,
   "/pricing": () => <PricingPage onBack={NOOP} onStart={NOOP} />,
   "/methodology": () => <MethodologyPage onBack={NOOP} />,

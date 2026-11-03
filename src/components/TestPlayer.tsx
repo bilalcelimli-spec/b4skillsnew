@@ -36,12 +36,13 @@ interface TestPlayerProps {
   productLine?: string;
   startingSkill?: string;
   initialSessionId?: string;
+  earlyStartConsentId?: string;
   onSessionStarted?: (sessionId: string) => void;
   onComplete: (finalTheta: number | null, sessionId: string) => void;
   onCancel?: () => void;
 }
 
-const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidateId, productLine, startingSkill, initialSessionId, onSessionStarted, onComplete, onCancel }) => {
+const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candidateId, productLine, startingSkill, initialSessionId, earlyStartConsentId, onSessionStarted, onComplete, onCancel }) => {
   const { t, i18n } = useTranslation();
   const [fixedSession, setFixedSession] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -158,7 +159,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
           signal: AbortSignal.timeout(20000),
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ candidateId, organizationId, productLine, ...(startingSkill ? { startingSkill } : {}) })
+          body: JSON.stringify({ candidateId, organizationId, productLine, earlyStartConsentId, ...(startingSkill ? { startingSkill } : {}) })
         });
         const data = await res.json();
         

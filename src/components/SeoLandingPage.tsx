@@ -17,40 +17,40 @@ interface Props {
 
 const META: Record<SeoVariant, { title: string; description: string; h1: string; sub: string; keywords: string; icon: React.ReactNode; audience: string; bullets: string[] }> = {
   "english-level-test": {
-    title: "Free English Level Test — CEFR A1 to C2 | B4Skills",
-    description: "Take a free adaptive English level test and get your official CEFR level in under 15 minutes. Instant results, no account required.",
+    title: "Free English Level Test — CEFR A1 to C2 | b4skills",
+    description: "Take a free adaptive English level test and get your provisional CEFR estimate in about 20–30 minutes. Instant results, no account required.",
     h1: "Free English Level Test",
-    sub: "Find your CEFR level — A1 to C2 — in 15 minutes with our adaptive assessment engine.",
+    sub: "Find your CEFR level — A1 to C2 — in about 20–30 minutes with our adaptive assessment engine.",
     keywords: "english level test, free english test, cefr test, english proficiency test",
     icon: <Zap size={28} className="text-[#9b276c]" />,
     audience: "Individuals",
     bullets: [
       "Adaptive CAT engine — no two tests are identical",
-      "CEFR level (A1–C2) in under 15 minutes",
-      "Reading, Listening, Writing & Speaking",
+      "CEFR level (A1–C2) in about 20–30 minutes",
+      "Six skill areas; open writing/speaking are not evaluated",
       "Instant results — no signup required for Quick Check",
       "Powered by IRT 3PL psychometrics",
     ],
   },
   "ingilizce-seviye-testi": {
-    title: "İngilizce Seviye Testi — CEFR A1-C2 | B4Skills",
-    description: "Ücretsiz adaptif İngilizce seviye testiyle CEFR seviyenizi (A1–C2) 15 dakikada öğrenin. Anında sonuç, kayıt gerektirmez.",
+    title: "İngilizce Seviye Testi — CEFR A1-C2 | b4skills",
+    description: "Ücretsiz adaptif İngilizce seviye testiyle CEFR seviyenizi (A1–C2) yaklaşık 20–30 dakikada öğrenin. Anında sonuç, kayıt gerektirmez.",
     h1: "İngilizce Seviye Testi",
-    sub: "CEFR A1'den C2'ye adaptif sınav motoruyla 15 dakikada İngilizce seviyenizi keşfedin.",
+    sub: "CEFR A1'den C2'ye adaptif sınav motoruyla yaklaşık 20–30 dakikada İngilizce seviyenizi keşfedin.",
     keywords: "ingilizce seviye testi, cefr testi, ingilizce sınav, b4skills",
     icon: <Star size={28} className="text-[#9b276c]" />,
     audience: "Bireyler",
     bullets: [
       "Adaptif CAT motoru — her sınav benzersiz",
-      "15 dakikada CEFR seviyesi (A1–C2)",
-      "Okuma, Dinleme, Yazma ve Konuşma",
+      "yaklaşık 20–30 dakikada CEFR seviyesi (A1–C2)",
+      "Altı beceri alanı; açık yazma/konuşma yanıtları puanlanmaz",
       "Quick Check için kayıt gerekmez",
       "IRT 3PL psikometrik altyapı",
     ],
   },
   "cefr-english-test": {
-    title: "CEFR English Test — Adaptive Assessment | B4Skills",
-    description: "Certified CEFR-aligned adaptive English test. Get a verifiable CEFR certificate (A1–C2) with QR code validation. Accepted by universities and employers worldwide.",
+    title: "CEFR English Test — Adaptive Assessment | b4skills",
+    description: "CEFR-aligned adaptive English test. Get a verifiable CEFR certificate (A1–C2) with QR code validation. Acceptance is determined by each receiving institution.",
     h1: "CEFR English Test",
     sub: "A fully adaptive, psychometrically rigorous assessment aligned to the Common European Framework of Reference.",
     keywords: "cefr english test, cefr assessment, cefr certificate, cefr level test online",
@@ -60,12 +60,12 @@ const META: Record<SeoVariant, { title: string; description: string; h1: string;
       "Aligned to CEFR & Council of Europe Companion Volume",
       "QR-verifiable CEFR certificate (PDF)",
       "4-skill adaptive assessment (R/L/W/S)",
-      "Multi-model AI scoring (Gemini + Claude + GPT-4)",
+      "AI-assisted scoring with configured providers",
       "Human review for borderline cases",
     ],
   },
   "english-assessment-for-universities": {
-    title: "English Assessment for Universities — CEFR Placement | B4Skills",
+    title: "English Assessment for Universities — CEFR Placement | b4skills",
     description: "Adaptive English placement and proficiency testing for universities. CEFR-aligned, bulk import, LMS integration, and cohort analytics for language centres.",
     h1: "English Assessment for Universities",
     sub: "Adaptive CEFR placement testing built for language centres, EAP departments, and admissions teams.",
@@ -82,7 +82,7 @@ const META: Record<SeoVariant, { title: string; description: string; h1: string;
     ],
   },
   "english-assessment-for-companies": {
-    title: "English Assessment for Companies — Corporate Proficiency Test | B4Skills",
+    title: "English Assessment for Companies — Corporate Proficiency Test | b4skills",
     description: "Fast, reliable English proficiency testing for HR teams and L&D departments. CEFR-aligned assessment, bulk testing, and workforce skill analytics.",
     h1: "English Assessment for Companies",
     sub: "Screen, place, and develop English skills across your workforce with adaptive CEFR-aligned assessments.",
@@ -91,7 +91,7 @@ const META: Record<SeoVariant, { title: string; description: string; h1: string;
     audience: "HR & L&D Teams",
     bullets: [
       "Pre-hire English screening in under 60 minutes",
-      "CEFR certificate for visa and compliance filing",
+      "b4skills assessment report and certificate",
       "Team-level skill gap dashboards",
       "Webhook & API integration with ATS/HRIS",
       "Volume pricing from €6/assessment",
@@ -101,10 +101,10 @@ const META: Record<SeoVariant, { title: string; description: string; h1: string;
 };
 
 const SOCIAL_PROOF = [
-  { stat: "50k+", label: "Assessments Completed" },
+  { stat: "Adaptive", label: "Question Selection" },
   { stat: "A1–C2", label: "Full CEFR Coverage" },
-  { stat: "99.2%", label: "Uptime SLA" },
-  { stat: "< 15 min", label: "Quick Check Duration" },
+  { stat: "12–24", label: "Quick Check Questions" },
+  { stat: "20–30 min", label: "Approx. Quick Check Duration" },
 ];
 
 export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing }) => {
@@ -207,7 +207,7 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
             url: `https://b4skills.com/${variant}`,
             publisher: {
               "@type": "Organization",
-              name: "B4Skills",
+              name: "b4skills",
               url: "https://b4skills.com",
             },
           }),

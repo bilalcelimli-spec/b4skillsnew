@@ -240,7 +240,7 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
       <p className="mt-8 text-xs text-slate-400 text-center max-w-sm">
         This page verifies the authenticity of proficiency certificates issued by b4skills.
         For institutional integration, contact{" "}
-        <a href="mailto:support@b4skills.com" className="underline hover:text-slate-600">
+        <a href="mailto:hello@b4skills.com" className="underline hover:text-slate-600">
           support@b4skills.com
         </a>.
       </p>

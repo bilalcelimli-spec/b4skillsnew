@@ -38,13 +38,13 @@ export interface ItemAnalysisRow {
   module: string;
   n: number;               // number of responses
   pValue: number;          // proportion correct
-  pointBiserial: number;   // item-total correlation
+  pointBiserial: number | null;   // item-total correlation
   a: number | null;        // IRT discrimination
   b: number | null;        // IRT difficulty
   c: number | null;        // IRT pseudo-guessing
   infit: number | null;    // Rasch infit MNSQ
   outfit: number | null;   // Rasch outfit MNSQ
-  difFlag: boolean;        // flagged for differential item functioning
+  difFlag: boolean | null;        // flagged for differential item functioning
 }
 
 export interface ReliabilityStats {
@@ -72,10 +72,10 @@ export interface PublicationDataPackage {
   packageId: string;
   generatedAt: string;
   dataVersion: string;
-  totalCandidates: number;        // anonymised
+  totalCandidates: number | null;        // anonymised
   totalItems: number;
   totalResponses: number;
-  dateRange: { from: string; to: string };
+  dateRange: { from: string | null; to: string };
   itemAnalysis: ItemAnalysisRow[];
   reliability: ReliabilityStats[];
   concurrentValidity: ConcurrentValidityEvidence[];
@@ -128,9 +128,7 @@ export async function computeItemAnalysis(opts: {
     const stats = statsMap[item.id];
     if (!stats || stats.n < minN) continue;
 
-    // Point-biserial approximation from IRT parameters
     const a = item.discrimination ?? null;
-    const pb = a ? Math.min(0.99, a / Math.sqrt(a * a + (Math.PI * Math.PI) / 3)) : 0;
 
     rows.push({
       itemId: pseudonymiseId(item.id),
@@ -140,13 +138,13 @@ export async function computeItemAnalysis(opts: {
       module: (item.metadata as any)?.module ?? "GENERAL",
       n: stats.n,
       pValue: stats.pValue,
-      pointBiserial: Math.round(pb * 1000) / 1000,
+      pointBiserial: null, // Requires observed item/total score covariance.
       a: a ? Math.round(a * 1000) / 1000 : null,
-      b: item.difficulty ? Math.round(item.difficulty * 1000) / 1000 : null,
-      c: item.guessing   ? Math.round(item.guessing   * 1000) / 1000 : null,
+      b: item.difficulty != null ? Math.round(item.difficulty * 1000) / 1000 : null,
+      c: item.guessing != null ? Math.round(item.guessing   * 1000) / 1000 : null,
       infit:  null,  // Rasch infit requires raw data computation
       outfit: null,
-      difFlag: false, // would query DIF analysis results
+      difFlag: null, // No linked empirical DIF result in this export.
     });
   }
 
@@ -156,25 +154,10 @@ export async function computeItemAnalysis(opts: {
 // ── Reliability ───────────────────────────────────────────────────────────────
 
 export async function computeReliabilityStats(): Promise<ReliabilityStats[]> {
-  // Aggregate per-skill counts
-  const skillGroups = await prisma.response.groupBy({
-    by: ["sessionId" as any],
-    _count: { id: true },
-    _avg:   { score: true },
-  });
-
-  // We approximate Cronbach α from the IRT marginal reliability formula
-  // α ≈ ω ≈ ρ_marginal for well-fitting IRT models
-  const MOCK_STATS: ReliabilityStats[] = [
-    { skill: "READING",    cefrLevel: "ALL", n: 500, nItems: 40, cronbachAlpha: 0.87, mcdonaldOmega: 0.88, irtMarginalReliability: 0.86, sem: 0.31, splitHalfR: 0.85 },
-    { skill: "LISTENING",  cefrLevel: "ALL", n: 500, nItems: 35, cronbachAlpha: 0.84, mcdonaldOmega: 0.85, irtMarginalReliability: 0.83, sem: 0.34, splitHalfR: 0.82 },
-    { skill: "WRITING",    cefrLevel: "ALL", n: 300, nItems: 10, cronbachAlpha: 0.79, mcdonaldOmega: 0.81, irtMarginalReliability: 0.80, sem: 0.38, splitHalfR: null },
-    { skill: "SPEAKING",   cefrLevel: "ALL", n: 250, nItems: 8,  cronbachAlpha: 0.76, mcdonaldOmega: 0.78, irtMarginalReliability: 0.77, sem: 0.41, splitHalfR: null },
-    { skill: "GRAMMAR",    cefrLevel: "ALL", n: 600, nItems: 30, cronbachAlpha: 0.89, mcdonaldOmega: 0.90, irtMarginalReliability: 0.88, sem: 0.28, splitHalfR: 0.88 },
-    { skill: "VOCABULARY", cefrLevel: "ALL", n: 600, nItems: 25, cronbachAlpha: 0.85, mcdonaldOmega: 0.86, irtMarginalReliability: 0.85, sem: 0.32, splitHalfR: 0.84 },
-  ];
-
-  return MOCK_STATS;
+  // No per-skill common-item or theta/SEM study is linked to this export.
+  // Do not substitute illustrative statistics for measured evidence. Public
+  // product-level IRT estimates are computed separately in public-reliability.ts.
+  return [];
 }
 
 // ── CSV export ────────────────────────────────────────────────────────────────
@@ -182,7 +165,7 @@ export async function computeReliabilityStats(): Promise<ReliabilityStats[]> {
 export function itemAnalysisToCSV(rows: ItemAnalysisRow[]): string {
   const header = ["itemId","skill","cefrLevel","format","module","n","pValue","pointBiserial","a","b","c","infit","outfit","difFlag"].join(",");
   const body = rows.map((r) =>
-    [r.itemId, r.skill, r.cefrLevel, r.format, r.module, r.n, r.pValue, r.pointBiserial, r.a ?? "", r.b ?? "", r.c ?? "", r.infit ?? "", r.outfit ?? "", r.difFlag ? 1 : 0].join(",")
+    [r.itemId, r.skill, r.cefrLevel, r.format, r.module, r.n, r.pValue, r.pointBiserial ?? "", r.a ?? "", r.b ?? "", r.c ?? "", r.infit ?? "", r.outfit ?? "", r.difFlag == null ? "" : r.difFlag ? 1 : 0].join(",")
   ).join("\n");
   return header + "\n" + body;
 }
@@ -201,11 +184,7 @@ export async function generatePublicationPackage(opts: {
   const totalItems    = itemAnalysis.length;
   const totalResponses = itemAnalysis.reduce((s, r) => s + r.n, 0);
 
-  const concurrentValidity: ConcurrentValidityEvidence[] = [
-    { externalTest: "IELTS Academic",  n: 0, pearsonR: 0, spearmanRho: 0, concordanceStudyId: "study-001", publicationYear: null },
-    { externalTest: "TOEFL iBT",       n: 0, pearsonR: 0, spearmanRho: 0, concordanceStudyId: "study-002", publicationYear: null },
-    { externalTest: "TOEIC L&R",       n: 0, pearsonR: 0, spearmanRho: 0, concordanceStudyId: "study-003", publicationYear: null },
-  ];
+  const concurrentValidity: ConcurrentValidityEvidence[] = []; // No linked empirical study in this export.
 
   const packageId = crypto.randomUUID();
 
@@ -213,16 +192,16 @@ export async function generatePublicationPackage(opts: {
     packageId,
     generatedAt: new Date().toISOString(),
     dataVersion: "1.0",
-    totalCandidates: 0,
+    totalCandidates: null,
     totalItems,
     totalResponses,
-    dateRange: { from: "2025-01-01", to: new Date().toISOString().slice(0, 10) },
+    dateRange: { from: null, to: new Date().toISOString().slice(0, 10) },
     itemAnalysis,
     reliability,
     concurrentValidity,
-    equatingStudies: ["src/lib/psychometrics/concordance.ts — EXTERNAL_CONCORDANCE_TABLE"],
-    irtSoftwareNote: "Item parameters estimated using custom 3PL EM-NR implementation (LinguAdapt IRT Engine v1.0) with EAP theta estimation on 41-point quadrature grid.",
-    ethicsStatement: "All data anonymised via HMAC-SHA256 pseudonymisation prior to export. Personal identifiers removed in compliance with GDPR Art. 89 and institutional IRB requirements.",
+    equatingStudies: [],
+    irtSoftwareNote: "Item parameters are exported from the b4skills item bank. Their presence does not establish empirical calibration. Unavailable statistics are left blank.",
+    ethicsStatement: "Item identifiers are pseudonymised with HMAC-SHA256; pseudonymisation is not anonymisation. No institutional ethics approval or legal compliance certification is asserted by this export.",
     citationTemplate: `LinguAdapt Assessment Platform (2026). Adaptive English Proficiency Assessment Technical Manual. LinguAdapt Inc. https://linguadapt.com/technical-manual`,
     csvFiles: {
       "item_analysis.csv":  itemAnalysisToCSV(itemAnalysis),

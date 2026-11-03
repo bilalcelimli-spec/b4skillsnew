@@ -126,6 +126,10 @@ model PaymentTransaction {
   amount          Int       // In cents
   currency        String    @default("USD")
   status          String    // PENDING, COMPLETED, FAILED
+  metadata        Json?
+  completedAt     DateTime?
+  licenseId       String?    @unique
+  license         License?   @relation(fields: [licenseId], references: [id])
   stripeSessionId String?   @unique
   creditsAdded    Int       @default(0)
   
@@ -1104,6 +1108,7 @@ enum AssignmentStatus {
 }
 
 model License {
+  purchase        PaymentTransaction?
   id              String    @id @default(cuid())
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id])

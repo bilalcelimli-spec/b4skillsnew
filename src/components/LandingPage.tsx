@@ -153,7 +153,7 @@ const SampleQuestionDemo: React.FC<{ onStartFullTest: () => void }> = ({ onStart
                   <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">
                     {activeSkill.charAt(0).toUpperCase() + activeSkill.slice(1)} · Level {q.cefrBand}
                   </p>
-                  <p className="text-xs text-slate-600 font-semibold">Question {q.questionNum} of 20–35</p>
+                  <p className="text-xs text-slate-600 font-semibold">Sample question {q.questionNum}</p>
                 </div>
               </div>
               <div className="flex flex-col items-end gap-1">
@@ -263,7 +263,7 @@ const SampleQuestionDemo: React.FC<{ onStartFullTest: () => void }> = ({ onStart
               Take the Full Adaptive Test — Free
               <ArrowRight size={16} />
             </button>
-            <p className="text-xs text-slate-400 font-medium mt-3">~25 min · No account needed · Full CEFR report</p>
+            <p className="text-xs text-slate-400 font-medium mt-3">20–30 min · No account needed · Provisional CEFR estimate</p>
           </div>
         </div>
       </div>
@@ -292,21 +292,21 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
       <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 px-6 max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-12">
         <div className="lg:w-1/2 z-10 relative">
           <motion.h1 
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
+            initial={{ opacity: 1, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
             className="text-5xl lg:text-6xl font-bold leading-[1.1] text-slate-900 tracking-tight"
           >
             Secure Online <Highlight>Testing</Highlight><br />
             & Assessment Platform
           </motion.h1>
           <motion.p 
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.1 }}
+            initial={{ opacity: 1, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.1 }}
             className="mt-8 text-lg lg:text-xl text-slate-600 max-w-lg leading-relaxed"
           >
-            b4skills offers innovative English assessment solutions powered by IRT psychometrics and Gemini AI in a secure environment. For universities, schools, and global enterprises.
+            b4skills offers innovative English assessment solutions powered by IRT psychometrics and AI-assisted scoring in a secure environment. For universities, schools, and global enterprises.
           </motion.p>
           
           <motion.div 
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}
+            initial={{ opacity: 1, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}
             className="mt-10"
           >
             <p className="text-sm font-bold tracking-wide text-slate-400 mb-6">We specialize in English assessments.</p>
@@ -324,7 +324,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
 
             {/* Free placement test CTA */}
             <motion.div
-              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.4 }}
+              initial={{ opacity: 1, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.4 }}
               className="mt-6 flex items-center gap-4"
             >
               <button
@@ -334,14 +334,14 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
                 <Zap size={16} />
                 Test Your Level — Free
               </button>
-              <span className="text-xs text-slate-400 font-medium">~25 min · No account needed · A1–C2</span>
+              <span className="text-xs text-slate-400 font-medium">20–30 min · No account needed · A1–C2</span>
             </motion.div>
           </motion.div>
         </div>
 
         {/* Hero Background Image */}
         <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }}
+          initial={{ opacity: 1, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }}
           className="lg:w-1/2 w-full relative pl-0 lg:pl-10"
         >
           <div className="aspect-[4/3] w-full rounded-[2.5rem] overflow-hidden relative shadow-2xl">
@@ -358,79 +358,11 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
               <Check size={24} strokeWidth={3} />
             </div>
             <div>
-              <div className="font-bold text-slate-900">CEFR Certified</div>
+              <div className="font-bold text-slate-900">CEFR-aligned</div>
               <div className="text-sm text-slate-500">A1 through C2 levels</div>
             </div>
           </div>
         </motion.div>
-      </section>
-
-      {/* ─── TRUSTED BY ─── */}
-      <section className="py-14 bg-white border-y border-slate-100" id="partners">
-        <div className="max-w-6xl mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-slate-400 mb-8">
-            Trusted by institutions & pilot partners
-          </p>
-          {/* Logo strip — SVG wordmarks so no external image dependency */}
-          <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-6 opacity-60">
-            {[
-              { label: "Ankara Bilim Üniversitesi", abbr: "ABÜ" },
-              { label: "Istanbul Tech Language Centre", abbr: "ITLC" },
-              { label: "Global HR Solutions", abbr: "GHR" },
-              { label: "EduCorp Training", abbr: "EDU" },
-              { label: "Language Academy Istanbul", abbr: "LAI" },
-              { label: "İTÜ Language School", abbr: "İTÜ" },
-            ].map(({ label, abbr }) => (
-              <div key={abbr} className="flex items-center gap-2 text-slate-500" title={label}>
-                <span className="flex items-center justify-center w-8 h-8 rounded bg-slate-100 text-[10px] font-black text-slate-600">{abbr}</span>
-                <span className="text-sm font-semibold hidden sm:block">{label}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Testimonials */}
-          <div className="mt-12 grid md:grid-cols-3 gap-6">
-            {[
-              {
-                quote: "b4skills cut our placement testing time by 60%. The CEFR-mapped reports are exactly what our academic board needs.",
-                name: "Dr. Ayşe K.",
-                role: "Director of Language Programs",
-                org: "Pilot University Partner",
-              },
-              {
-                quote: "Our HR team uses the Corporate track for pre-hire English screening. The adaptive engine is genuinely impressive — no two sessions look the same.",
-                name: "Mehmet D.",
-                role: "Talent Acquisition Lead",
-                org: "Enterprise Pilot Partner",
-              },
-              {
-                quote: "The AI scoring on writing tasks is fast and consistent. It's freed our examiners to focus on edge cases and appeals.",
-                name: "Sarah L.",
-                role: "Chief Examiner",
-                org: "Language School Pilot",
-              },
-            ].map(({ quote, name, role, org }) => (
-              <figure key={name} className="bg-slate-50 rounded-2xl p-6 flex flex-col gap-4">
-                <Quote size={20} className="text-[#9b276c]/40 flex-shrink-0" />
-                <blockquote className="text-slate-700 text-sm leading-relaxed flex-grow">"{quote}"</blockquote>
-                <figcaption>
-                  <p className="text-sm font-bold text-slate-900">{name}</p>
-                  <p className="text-xs text-slate-500">{role} · <span className="italic">{org}</span></p>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-
-          <div className="mt-8 flex justify-center">
-            <a
-              href="/verify"
-              className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-[#9b276c] transition-colors"
-            >
-              <ShieldCheck size={14} />
-              Verify a certificate issued by b4skills →
-            </a>
-          </div>
-        </div>
       </section>
 
       {/* ─── FREE PLACEMENT TEST SECTION ─── */}
@@ -448,11 +380,11 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
               Measure Your Exact English Level<br className="hidden md:block" /> with Adaptive IRT
             </h2>
             <p className="text-white/80 text-base leading-relaxed mb-4">
-              No account needed. Our AI-powered adaptive engine serves the best questions from our certified item bank,
+              No account needed. Our AI-powered adaptive engine serves the best questions from our item bank,
               personalised to your level in real time using IRT psychometrics.
             </p>
             <div className="flex flex-wrap gap-3 text-sm text-white/70 font-medium">
-              {["✓ Completely free", "✓ CEFR A1–C2 scale", "✓ 10–30 adaptive questions", "✓ Instant results"].map((t) => (
+              {["✓ Completely free", "✓ CEFR A1–C2 scale", "✓ 12–24 adaptive questions", "✓ Instant results"].map((t) => (
                 <span key={t}>{t}</span>
               ))}
             </div>
@@ -513,14 +445,14 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
               </div>
               <h3 className="text-2xl font-bold mb-4 leading-tight">Zero-Trust<br/>Proctoring</h3>
               <p className="text-slate-300 leading-relaxed text-[15px] mb-8">
-                Continuous webcam anomaly detection and structural tab-locking ensure your certifications remain globally credible and manipulation-free.
+                Camera and browser activity signals can support human review of assessment integrity. Monitoring cannot guarantee the prevention of misconduct.
               </p>
               <div className="mt-auto flex items-center gap-3">
                 <div className="flex -space-x-3">
                   <div className="w-8 h-8 rounded-full border-2 border-slate-900 bg-emerald-500 flex items-center justify-center"><Check size={14} className="text-emerald-900 stroke-[3]" /></div>
                   <div className="w-8 h-8 rounded-full border-2 border-slate-900 bg-emerald-500 flex items-center justify-center"><Check size={14} className="text-emerald-900 stroke-[3]" /></div>
                 </div>
-                <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">A.I. Audited</span>
+                <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Review signals</span>
               </div>
             </div>
 
@@ -545,7 +477,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
                 </div>
                 <h3 className="text-2xl md:text-3xl font-bold mb-4 text-slate-900">Multimodal AI Scoring</h3>
                 <p className="text-slate-600 leading-relaxed text-[17px]">
-                  Powered by advanced Gemini models. We don't just score multiple choice. Our engine listens to spoken responses and reads essays, grading nuance, lexical range, and grammar against strict CEFR rubrics.
+                  AI-assisted scoring uses the providers configured for the assessment. We don't just score multiple choice. Our engine listens to spoken responses and reads essays, grading nuance, lexical range, and grammar against strict CEFR rubrics.
                 </p>
               </div>
               <div className="w-full md:w-56 aspect-[4/3] md:aspect-square rounded-3xl bg-white border-2 border-indigo-100 flex flex-col items-center justify-center text-indigo-600 flex-shrink-0 relative overflow-hidden shadow-sm group-hover:scale-105 transition-transform duration-700">
@@ -572,7 +504,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
             <div className="lg:w-1/2 w-full space-y-10">
               <div>
                 <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 1, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600 text-sm font-bold tracking-wide mb-6"
@@ -610,7 +542,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
                 ].map((feature, i) => (
                   <motion.div 
                     key={i}
-                    initial={{ opacity: 0, x: -20 }}
+                    initial={{ opacity: 1, x: -20 }}
                     whileInView={{ opacity: 1, x: 0 }}
                     viewport={{ once: true }}
                     transition={{ delay: i * 0.15 }}
@@ -643,7 +575,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
             {/* INTERACTIVE UI SHOWCASE INSTEAD OF IMAGE */}
             <div className="lg:w-1/2 w-full relative">
               <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
+                initial={{ opacity: 1, scale: 0.95 }}
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.7, type: "spring", bounce: 0.2 }}
@@ -733,8 +665,8 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
                   <Check size={20} className="stroke-[3]" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Confidence Interval</div>
-                  <div className="font-black text-slate-900">98.5%</div>
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Measurement precision</div>
+                  <div className="font-black text-slate-900">Reported as SEM</div>
                 </div>
               </motion.div>
 
@@ -787,7 +719,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
                 "Deploy independent testing blocks. Assess speaking, writing, reading, or listening—separately or combined into a unified workflow.",
                 "Built on a fluid architecture that adjusts complexity on-the-fly, pinpointing exact proficiency without discouraging the learner.",
                 "Granular CEFR alignments designed specifically for demanding academic admissions, corporate hiring, and continuous training.",
-                "Eliminate assessment fatigue. Our algorithms optimize test duration, stopping the moment a statistically significant metric is locked in."
+                "Adaptive stopping rules use product-specific precision targets and question limits. Actual measurement error is reported with the result."
               ].map((text, i) => (
                 <div key={i} className="flex gap-4 items-start group">
                   <div className="mt-1 flex-shrink-0 text-indigo-600 bg-indigo-50 p-1.5 rounded-xl border border-indigo-100 group-hover:scale-110 transition-transform">
@@ -828,62 +760,11 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
       {/* ─── SAMPLE QUESTION / INTERACTIVE DEMO ─── */}
       <SampleQuestionDemo onStartFullTest={() => setShowFreemiumTest(true)} />
 
-      {/* ─── NEWS / CASE STUDIES SECTION ─── */}
-      <section className="py-24 bg-[#FAFAFA]">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex justify-between items-end mb-12 border-b border-slate-200 pb-6">
-            <h2 className="text-3xl font-bold text-slate-900">b4skills News</h2>
-            <div className="hidden md:flex gap-2">
-              <button className="w-10 h-10 rounded-full border border-slate-300 flex items-center justify-center hover:bg-slate-100 transition-colors">
-                <ChevronRight size={20} className="rotate-180" />
-              </button>
-              <button className="w-10 h-10 rounded-full border border-slate-300 flex items-center justify-center hover:bg-slate-100 transition-colors">
-                <ChevronRight size={20} />
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                img: "https://images.unsplash.com/photo-1543269865-cbf427effbad?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
-                title: "Business English - 4 Skills Now AI-Certified",
-                desc: "We are thrilled to announce that the b4skills Business English suite has achieved a significant milestone in fully AI-powered scoring..."
-              },
-              {
-                img: "https://images.unsplash.com/photo-1552664730-d307ca884978?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
-                title: "Global Academies Accredit b4skills IRT Models!",
-                desc: "Renowned European university consortiums have officially registered our Computer Adaptive logic as their standard benchmark."
-              },
-              {
-                img: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
-                title: "b4skills Partners with National Science Academy",
-                desc: "b4skills is now officially recognized by leading science camps globally as an accepted proficiency exam format."
-              }
-            ].map((news, i) => (
-              <div key={i} className="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-200 hover:shadow-lg transition-all cursor-pointer group flex flex-col items-center">
-                <div className="w-full h-48 overflow-hidden relative">
-                  <img src={news.img} alt={news.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                  <div className="absolute inset-0 shadow-[inset_0_0_20px_rgba(0,0,0,0.1)] pointer-events-none" />
-                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 px-4 py-2 text-sm font-bold rounded-lg whitespace-nowrap text-slate-900 shadow-sm border border-white/50">
-                    Read Story
-                  </div>
-                </div>
-                <div className="p-8 text-center bg-slate-50 flex-grow w-full">
-                  <h3 className="text-lg font-bold mb-4 leading-snug group-hover:text-[#9b276c] transition-colors text-slate-900">{news.title}</h3>
-                  <p className="text-slate-600 text-[15px] leading-relaxed line-clamp-3">{news.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          
-          {/* Carousel dots */}
-          <div className="flex justify-center gap-2 mt-8 md:hidden">
-            <span className="w-2 h-2 rounded-full bg-[#9b276c]"></span>
-            <span className="w-2 h-2 rounded-full bg-slate-300"></span>
-            <span className="w-2 h-2 rounded-full bg-slate-300"></span>
-          </div>
-        </div>
+      <section id="contact" className="py-20 px-6 bg-slate-50 text-center">
+        <h2 className="text-3xl font-bold text-slate-900 mb-4">Contact b4skills</h2>
+        <p className="text-slate-600 mb-6">Discuss institutional assessments, integrations, or a custom platform.</p>
+        <a href="mailto:hello@b4skills.com" className="font-semibold text-[#9b276c] underline">hello@b4skills.com</a>
+        <p className="mt-6"><a href="/verify" className="text-sm text-slate-600 underline">Verify a b4skills certificate</a></p>
       </section>
 
       {/* ─── FOOTER ─── */}

@@ -24,7 +24,10 @@ interface BankHealthData {
   meanSEM: number | null;
   sessionsLast12m: number;
   cronbachAlpha: number | null;
-  meanDiscrimination: number | null;
+  reliabilityByProduct?: Array<{ product: string; nCandidates: number; meanSEM: number; marginalReliability: number | null; status: string }>;
+  reliabilityMinCandidates?: number;
+  reliabilitySampleLimit?: number;
+  reliabilitySampledSessions?: number;
   mock?: boolean;
 }
 
@@ -81,17 +84,18 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
 
   const [bankHealth, setBankHealth] = useState<BankHealthData | null>(null);
   const [bankLoading, setBankLoading] = useState(true);
+  const [bankError, setBankError] = useState(false);
 
   useEffect(() => {
     fetch("/api/research/concurrent-validity/summary")
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error("Unavailable"); return r.json(); })
       .then((d) => { setSummary(d); setLoading(false); })
       .catch(() => { setError("Data temporarily unavailable."); setLoading(false); });
 
     fetch("/api/research/item-bank-health")
-      .then((r) => r.json())
-      .then((d) => { setBankHealth(d); setBankLoading(false); })
-      .catch(() => { setBankLoading(false); });
+      .then((r) => { if (!r.ok) throw new Error("Unavailable"); return r.json(); })
+      .then((d) => { if (d.mock) throw new Error("No live data"); setBankHealth(d); setBankLoading(false); })
+      .catch(() => { setBankError(true); setBankLoading(false); });
   }, []);
 
   const hasSufficientData = summary && summary.tests.some((t) => t.n >= 30);
@@ -152,7 +156,7 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
               </p>
               <p className="text-xs text-slate-400 mt-4">
                 {summary.totalPairs} pair{summary.totalPairs !== 1 ? "s" : ""} collected so far.
-                Are you a researcher? <a href="mailto:research@b4skills.com" className="text-indigo-600 hover:underline">Contact us</a>.
+                Are you a researcher? <a href="mailto:hello@b4skills.com" className="text-indigo-600 hover:underline">Contact us</a>.
               </p>
             </div>
           )}
@@ -205,7 +209,7 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
           </h2>
           <p className="text-slate-500 text-sm mb-6 max-w-2xl">
             Aggregate item statistics for the {bankHealth?.year ?? new Date().getFullYear()} assessment year.
-            Only <strong>ACTIVE</strong> items (≥ 200 calibration responses, IQS ≥ 65) are included.
+            Only items currently marked <strong>ACTIVE</strong> are counted. Active status alone does not establish empirical calibration or a minimum response count. Session statistics cover completions in the last 12 months.
           </p>
 
           {bankLoading && (
@@ -215,6 +219,8 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
             </div>
           )}
 
+          {bankError && <p role="status" className="text-sm text-amber-700 py-4">Live item bank statistics are temporarily unavailable.</p>}
+
           {bankHealth && (
             <div className="space-y-6">
               {/* KPI row */}
@@ -223,7 +229,7 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
                   { label: "Active Items",       value: bankHealth.totalActive.toLocaleString(),     sub: "in scored bank" },
                   { label: "Sessions (12 m)",    value: bankHealth.sessionsLast12m?.toLocaleString() ?? "—", sub: "completed assessments" },
                   { label: "Mean SEM",           value: bankHealth.meanSEM != null ? bankHealth.meanSEM.toFixed(3) : "—", sub: "θ standard error" },
-                  { label: "Approx. Reliability",value: bankHealth.cronbachAlpha != null ? `α = ${bankHealth.cronbachAlpha.toFixed(3)}` : "—", sub: "KR-proxy (Cronbach)" },
+                  { label: "Cronbach α", value: "Not established", sub: "No common-item study published" },
                 ].map(({ label, value, sub }) => (
                   <div key={label} className="bg-slate-50 border border-slate-200 rounded-2xl p-5 text-center">
                     <p className="text-3xl font-black text-slate-900 tabular-nums">{value}</p>
@@ -271,16 +277,34 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
                 </div>
               )}
 
-              {bankHealth.mock && (
-                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2">
-                  Live database not connected — statistics shown are indicative only.
+              <div className="rounded-2xl border border-slate-200 p-6 space-y-4">
+                <h3 className="font-bold text-slate-900">IRT marginal reliability by assessment type</h3>
+                <p className="text-sm text-slate-600">
+                  Descriptive estimate: ρ = 1 − mean(SEM²) / sample variance(θ).
+                  Each group uses the latest fully scored session per candidate for that product and assessment type.
+                  Estimates require at least {bankHealth.reliabilityMinCandidates ?? 30} candidates and non-zero θ variance.
+                  This reporting threshold does not establish validity. No Cronbach α is inferred from item parameters.
                 </p>
-              )}
-              <p className="text-xs text-slate-400">
-                Statistics computed from the live item bank at time of page load.
-                Mean discrimination: {bankHealth.meanDiscrimination?.toFixed(3) ?? "n/a"}.
-                Items in PILOT or CALIBRATION status are excluded.
-                Full technical manual available to institutional partners on request.
+                <p className="text-xs text-slate-500">
+                  Latest {bankHealth.reliabilitySampledSessions ?? 0} completed sessions sampled, up to {bankHealth.reliabilitySampleLimit ?? 3000}, from the last 12 months.
+                  Only sessions with complete scored skill coverage contribute. Repeated candidates, incomplete scoring, and unknown products are excluded within each group.
+                </p>
+                {bankHealth.reliabilityByProduct?.length ? (
+                  <ul className="space-y-3 text-sm">
+                    {bankHealth.reliabilityByProduct.map(row => (
+                      <li key={row.product} className="rounded-xl bg-slate-50 p-4">
+                        <strong>{row.product}</strong> · n = {row.nCandidates} · Mean SEM {row.meanSEM.toFixed(3)}
+                        <p>{row.marginalReliability != null
+                          ? `IRT marginal reliability ρ = ${row.marginalReliability.toFixed(3)}${row.marginalReliability < 0 ? " (error exceeds observed variance)" : ""}`
+                          : row.status === "no_variance" ? "Not estimable: no observed ability variance." : "Not reported: insufficient fully scored candidates."}</p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p className="text-sm text-amber-700">No eligible assessment group is available for a reliability estimate.</p>}
+              </div>
+              <p className="text-xs text-slate-500">
+                Item counts reflect the live bank at page load; PILOT and CALIBRATION items are excluded.
+                Mean SEM above includes all completed sessions and is not itself a reliability coefficient.
               </p>
             </div>
           )}
@@ -298,27 +322,27 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
                 {
                   icon: <TrendingUp size={20} className="text-indigo-500" />,
                   title: "Item Response Theory (3PL)",
-                  body: "Every item is calibrated under the three-parameter logistic model. Discrimination (a), difficulty (b), and pseudo-guessing (c) parameters are estimated via marginal maximum likelihood using ≥ 200 responses per item.",
+                  body: "Objective-item scoring uses a three-parameter logistic model with discrimination (a), difficulty (b), and pseudo-guessing (c). Parameters may be provisional; empirical calibration must be demonstrated with response-level evidence rather than inferred from active status.",
                 },
                 {
                   icon: <BarChart3 size={20} className="text-indigo-500" />,
                   title: "CAT — EAP θ Estimation",
-                  body: "The adaptive engine uses Expected A Posteriori (EAP) θ estimation with a normal N(0,1) prior. Item selection maximises Fisher information at the current θ estimate. Sessions terminate when SEM ≤ 0.30.",
+                  body: "The adaptive engine uses Expected A Posteriori (EAP) θ estimation with a normal N(0,1) prior. Item selection maximises Fisher information at the current θ estimate. Stopping rules use product-specific precision targets and item limits; reaching an item limit does not guarantee the precision target.",
                 },
                 {
                   icon: <CheckCircle2 size={20} className="text-indigo-500" />,
                   title: "CEFR Alignment",
-                  body: "Cut scores are anchored to the CEFR via a standard-setting study using the Bookmark method. Provisional thresholds are reviewed against concurrent validity evidence and updated when n ≥ 200 per level boundary.",
+                  body: "CEFR levels are derived using the platform’s configured thresholds. They are provisional alignment estimates. No completed independent standard-setting or external validation study is presented here.",
                 },
                 {
                   icon: <Users size={20} className="text-indigo-500" />,
                   title: "DIF & Fairness Analysis",
-                  body: "Differential Item Functioning (DIF) is monitored using the Mantel-Haenszel statistic across gender, age group, and L1 language. Items flagged for DIF are reviewed and retired if bias is confirmed.",
+                  body: "The platform includes Mantel-Haenszel DIF screening tools. Meaningful fairness conclusions require sufficient responses in comparison groups; the availability of these tools does not establish that the item bank is bias-free.",
                 },
                 {
                   icon: <FlaskConical size={20} className="text-indigo-500" />,
                   title: "AI Scoring Governance",
-                  body: "Open-ended responses (Writing & Speaking) are scored by a multi-rater ensemble (Gemini, GPT-4, Claude). Low-confidence outputs are escalated to a human examiner queue. Inter-rater reliability (QWK) is monitored monthly.",
+                  body: "Full assessments support AI-assisted writing and speaking scoring using configured providers, including Google, OpenAI, and Anthropic. Review requirements depend on assessment configuration. No independently validated human–AI agreement coefficient is claimed. The free Quick Check does not evaluate open writing or speaking responses.",
                 },
                 {
                   icon: <BookOpen size={20} className="text-indigo-500" />,
@@ -368,11 +392,11 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
               can provide IELTS/TOEFL/Cambridge scores alongside b4skills assessments, we would like to hear from you.
             </p>
             <a
-              href="mailto:research@b4skills.com"
+              href="mailto:hello@b4skills.com"
               className="inline-flex items-center gap-2 bg-white text-indigo-700 font-bold px-6 py-3 rounded-xl hover:bg-indigo-50 transition-colors text-sm"
             >
               <ExternalLink size={16} />
-              research@b4skills.com
+              hello@b4skills.com
             </a>
           </div>
         </section>

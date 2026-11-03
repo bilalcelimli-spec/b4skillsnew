@@ -346,7 +346,7 @@ export const AssessmentService = {
     };
   },
 
-  async launchSession(candidateId: string, organizationId: string, productLine?: string, launchRequestId?: string, requestedProductLine: string | null = productLine ?? null, preflight?: z.infer<typeof ExamPreflight>) {
+  async launchSession(candidateId: string, organizationId: string, productLine?: string, launchRequestId?: string, requestedProductLine: string | null = productLine ?? null, preflight?: z.infer<typeof ExamPreflight>, earlyStartConsentId?: string) {
     const identity = { candidateId, organizationId, productLine: requestedProductLine ?? undefined, launchRequestId };
     const existing = await findLaunchSession(prisma, identity);
     if (existing) return this.launchReceipt(existing);
@@ -372,7 +372,7 @@ export const AssessmentService = {
     }
 
     // --- CREDIT CHECK ---
-    const hasCredits = await BillingService.hasSufficientCredits(organizationId);
+    const hasCredits = await BillingService.hasSufficientCredits(organizationId, candidateId);
     if (!hasCredits && !launchRequestId) {
       throw new AppError(402, "INSUFFICIENT_CREDITS", "Insufficient assessment credits. Please top up your account.");
     }
@@ -439,7 +439,7 @@ export const AssessmentService = {
     let created = false;
     const session = await createSessionOnce(prisma, identity, async tx => {
       const admission = await admitCurrentExam(tx, organizationId, preflight);
-      await BillingService.consumeCredit(organizationId, tx);
+      const purchaseId = await BillingService.consumeCredit(organizationId, tx, candidateId, earlyStartConsentId);
       const launched = await tx.session.create({
         data: {
           candidateId,
@@ -448,6 +448,7 @@ export const AssessmentService = {
           theta: initialState.theta,
           sem: initialState.sem,
           metadata: {
+            ...(purchaseId ? { purchaseId, earlyStartConsentId: earlyStartConsentId ?? null } : {}),
             ...(admission ? { examAdmission: admission } : {}),
             ...(productLine ? { productLine } : {}),
             ...(launchRequestId ? { launchRequestId, launchProductLine: requestedProductLine ?? 'General English' } : {}),

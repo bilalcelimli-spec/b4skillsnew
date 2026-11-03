@@ -2,7 +2,10 @@ import React, { useState } from "react";
 import { Check, Zap, Building2, GraduationCap } from "lucide-react";
 import { cn } from "../lib/utils";
 import { SiteNav } from "./SiteNav";
+import { FreemiumTestWidget } from "./FreemiumTestWidget";
 import { SiteFooter } from "./SiteFooter";
+
+import { PURCHASE_PLANS } from "../lib/payments/purchase-policy";
 
 interface PricingPageProps {
   onBack?: () => void;
@@ -26,47 +29,16 @@ const B2C_PLANS: Plan[] = [
     name: "Quick Check",
     price: "Free",
     period: "",
-    description: "Get your CEFR level in under 15 minutes. No account required.",
+    description: "Get a provisional CEFR estimate in about 20–30 minutes. No account required.",
     features: [
-      "15-minute adaptive placement",
-      "Overall CEFR level (A1–C2)",
-      "4-skill snapshot",
-      "Instant results",
+      "20–30 minute adaptive placement",
+      "Provisional CEFR estimate (A1–C2)",
+      "12–24 questions across six skill areas",
+      "Instant objectively scored results",
     ],
     cta: "Start Free",
   },
-  {
-    name: "Full Assessment",
-    badge: "Most Popular",
-    price: "€19",
-    period: "per test",
-    description: "Full adaptive four-skills assessment with detailed skill map and certificate.",
-    features: [
-      "45–60 minute adaptive test",
-      "Reading, Listening, Writing, Speaking",
-      "CEFR certificate (PDF + QR-verified)",
-      "Detailed skill gap report",
-      "3 sub-skill dimensions per skill",
-      "AI writing & speaking scoring",
-      "Valid 2 years",
-    ],
-    cta: "Buy Assessment",
-    highlighted: true,
-  },
-  {
-    name: "Pro Bundle",
-    price: "€49",
-    period: "3 assessments",
-    description: "Reassess over time and track your English progress longitudinally.",
-    features: [
-      "Everything in Full Assessment × 3",
-      "Progress comparison across tests",
-      "Longitudinal skill trend charts",
-      "Priority scoring (< 2 h)",
-      "Downloadable score history",
-    ],
-    cta: "Buy Bundle",
-  },
+
 ];
 
 const B2B_PLANS: Plan[] = [
@@ -125,20 +97,20 @@ const B2B_PLANS: Plan[] = [
 
 const FAQ = [
   {
-    q: "How does B4Skills score Writing and Speaking?",
-    a: "Writing and speaking responses are evaluated by a multi-model AI ensemble (Gemini, Claude, GPT-4) against CEFR-anchored rubrics. Borderline cases are queued for human review by a certified examiner. Every score is versioned and reproducible.",
+    q: "How does b4skills score Writing and Speaking?",
+    a: "Full Assessment writing and speaking responses use AI-assisted scoring against CEFR-based rubrics. Providers and review requirements depend on the assessment configuration. The free Quick Check does not evaluate open writing or speaking responses.",
   },
   {
     q: "Is the CEFR level official?",
-    a: "B4Skills produces an adaptive computer-based assessment aligned to the CEFR framework and Companion Volume. The CEFR level is a standardised estimate — it is not an official qualification like IELTS or Cambridge, but is widely accepted for placement and HR screening.",
+    a: "b4skills produces an adaptive computer-based assessment aligned to the CEFR framework and Companion Volume. The CEFR level is a standardised estimate — it is not an official qualification like IELTS or Cambridge, and acceptance is decided by each receiving institution.",
   },
   {
     q: "How long does scoring take?",
     a: "Grammar, vocabulary, reading, and listening are scored instantly. AI writing and speaking scoring completes within 10–30 minutes. Human review, when triggered, adds up to 24 hours.",
   },
   {
-    q: "Can I use B4Skills for high-stakes placement?",
-    a: "Yes. Many universities and language schools use B4Skills for placement decisions. For high-stakes contexts we recommend the Full Assessment with human review enabled, and recommend pairing it with an institution-level standard-setting process.",
+    q: "Can I use b4skills for high-stakes placement?",
+    a: "Suitability must be established by the receiving institution. Independent validation is still in progress; high-stakes decisions require additional evidence, human review, and an institution-level standard-setting process.",
   },
   {
     q: "Can credits expire?",
@@ -147,6 +119,7 @@ const FAQ = [
 ];
 
 export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => {
+  const [showFreeTest, setShowFreeTest] = useState(false);
   const [tab, setTab] = useState<"individual" | "institution">("individual");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
@@ -155,16 +128,19 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
   const handleCta = (plan: Plan) => {
     if (plan.cta === "Contact Sales" || plan.price === "Custom") {
       window.location.href = `mailto:hello@b4skills.com?subject=${encodeURIComponent(`${plan.name} Plan Enquiry`)}`;
-    } else if (plan.price === "Free" && onStart) {
-      onStart();
-    } else if (onStart) {
-      try { localStorage.setItem("b4_intent_plan", plan.name); } catch {}
-      onStart();
+    } else if (plan.price === "Free") {
+      setShowFreeTest(true);
+    } else if (plan.name === "Full Assessment" || plan.name === "Pro Bundle") {
+      window.location.href = `/checkout?plan=${plan.name === "Pro Bundle" ? "pro-bundle" : "full-assessment"}`;
+    } else {
+      window.location.href = "mailto:hello@b4skills.com?subject=Institutional%20plan%20enquiry";
     }
   };
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] font-sans text-slate-800">
+
+      {showFreeTest && <FreemiumTestWidget onClose={() => setShowFreeTest(false)} onSignup={() => { setShowFreeTest(false); onStart?.(); }} />}
 
       {/* ── Shared Nav ─── */}
       <SiteNav onStart={onStart ?? (() => {})} />
@@ -213,7 +189,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
       <section className="max-w-6xl mx-auto px-6 py-16">
         <div className={cn(
           "grid gap-6",
-          plans.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2"
+          plans.length === 1 ? "max-w-md mx-auto" : plans.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2"
         )}>
           {plans.map((plan) => (
             <div
@@ -298,6 +274,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
       </section>
 
       {/* ── Footer ─── */}
+      <p className="px-6 py-6 text-center text-sm text-slate-600">Individual paid checkout is not available on this website. Apple In-App Purchase is not enabled. Review our <a href="/refund-policy" className="underline">refund and withdrawal policy</a> and <a href="/sales-terms" className="underline">purchase information</a>.</p>
       <SiteFooter />
     </div>
   );
