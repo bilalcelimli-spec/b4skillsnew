@@ -10,6 +10,7 @@
  */
 
 import { prisma } from "../prisma.js";
+import { RETENTION } from "./retention-policy.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -89,7 +90,7 @@ const deletionRequests = new Map<string, DeletionRequest>();
 // ---------------------------------------------------------------------------
 
 export class PrivacyManager {
-  private readonly DATA_RETENTION_DAYS_DEFAULT = 730; // 2 years
+  private readonly DATA_RETENTION_DAYS_DEFAULT = RETENTION.resultsYears * 365; // see retention-policy.ts
   private readonly CONSENT_VERSION = "2.0";
 
   // -------------------------------------------------------------------------
@@ -321,41 +322,8 @@ export class PrivacyManager {
     });
   }
 
-  // -------------------------------------------------------------------------
-  // Retention policy enforcement
-  // -------------------------------------------------------------------------
-
-  async deleteExpiredData(): Promise<{ deletedSessions: number; deletedResponses: number }> {
-    const results = { deletedSessions: 0, deletedResponses: 0 };
-
-    // Default: delete sessions older than 2 years
-    const cutoff = new Date();
-    cutoff.setFullYear(cutoff.getFullYear() - 2);
-
-    const expiredSessions = await prisma.session.findMany({
-      where: { createdAt: { lt: cutoff } },
-      select: { id: true },
-    });
-
-    if (expiredSessions.length > 0) {
-      const sessionIds = expiredSessions.map((s) => s.id);
-      const { count: responseCount } = await prisma.response.deleteMany({
-        where: { sessionId: { in: sessionIds } },
-      });
-      const { count: sessionCount } = await prisma.session.deleteMany({
-        where: { id: { in: sessionIds } },
-      });
-      results.deletedSessions = sessionCount;
-      results.deletedResponses = responseCount;
-    }
-
-    console.log(`♻️  Retention sweep: ${results.deletedSessions} sessions, ${results.deletedResponses} responses removed`);
-    return results;
-  }
-
-  // -------------------------------------------------------------------------
-  // Audit log
-  // -------------------------------------------------------------------------
+  // Retention is enforced by the data-retention job (retention-sweep.ts), which
+  // anonymises old sessions instead of deleting them.
 
   async getAuditLog(userId: string, limit = 100): Promise<ConsentRecord[]> {
     return consentHistory.filter((c) => c.userId === userId).slice(-limit);

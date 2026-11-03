@@ -46,6 +46,7 @@ npm run db:job:detect-dif           # batch DIF detection
 npm run db:seed:anchors             # seed anchor/equating items
 npm run db:job:alpha-table          # shared Davey–Parshall α tables (observed; --simulate N pre-warms)
 npm run job -- <name>               # run one maintenance job under a lease (external scheduler)
+npm run job -- data-retention       # retention sweep, dry run (RETENTION_APPLY=1 applies; periods in src/lib/compliance/retention-policy.ts)
 npm run report:exam-health          # weekly engine health report (read only)
 npm run report:skill-correlation    # inter-skill correlation evidence for crossSkillPrior
 npm run verify:irt          # check IRT parameter health across bank
