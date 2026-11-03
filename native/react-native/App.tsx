@@ -464,6 +464,14 @@ function DeleteAccountSheet({
         setError(t("Şifre yanlış. Tekrar deneyin."));
       } else if (code === 'staff_account') {
         setError(t("Bu hesap kurumunuz tarafından yönetiliyor. Silinmesi için kurum yöneticinize başvurun."));
+      } else if (code === 'rate_limited') {
+        setError(t("Çok fazla deneme yapıldı. 15 dakika sonra tekrar deneyin."));
+      } else if (e instanceof ApiError && e.status === 401) {
+        // The account may already be deleted (e.g. the reply was lost): its session no longer works.
+        setNeedsPassword(false);
+        setPassword('');
+        store.logout();
+        setError(t("Oturumunuz kapandı. Hesabınız silinmiş olabilir; emin olmak için yeniden giriş yapmayı deneyin."));
       } else if (code === 'storage_unavailable') {
         setError(t("Dosyalarınız şu anda silinemedi ve hesabınızda hiçbir değişiklik yapılmadı. Daha sonra tekrar deneyin."));
       } else {

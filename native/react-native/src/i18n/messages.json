@@ -1554,5 +1554,13 @@
   "Hesap silme doğrulanamadı. Lütfen tekrar deneyin.": {
     "en": "Account deletion could not be confirmed. Please try again.",
     "ar": "تعذر تأكيد حذف الحساب. يرجى المحاولة مرة أخرى."
+  },
+  "Çok fazla deneme yapıldı. 15 dakika sonra tekrar deneyin.": {
+    "en": "Too many attempts. Try again in 15 minutes.",
+    "ar": "محاولات كثيرة جدًا. حاول مرة أخرى بعد 15 دقيقة."
+  },
+  "Oturumunuz kapandı. Hesabınız silinmiş olabilir; emin olmak için yeniden giriş yapmayı deneyin.": {
+    "en": "You have been signed out. Your account may already be deleted; to check, try signing in again.",
+    "ar": "تم تسجيل خروجك. ربما حُذف حسابك بالفعل؛ للتحقق، حاول تسجيل الدخول مرة أخرى."
   }
 }

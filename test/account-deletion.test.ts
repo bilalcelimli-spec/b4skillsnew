@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  ACCOUNT_DELETION_CONFIRMATION, AccountDeletionError, deleteOwnAccount, scrubAudio, type AccountDeletionDeps,
+  ACCOUNT_DELETION_CONFIRMATION, AccountDeletionError, deleteOwnAccount, isDeletedAccountEmail, scrubAudio, type AccountDeletionDeps,
 } from '../src/lib/compliance/account-deletion';
 
 type Row = Record<string, any>;
@@ -27,7 +27,7 @@ function fakeDb(seed: { users: Row[]; reports?: Row[]; sessions?: Row[]; events?
       create: async ({ data }: any) => { t.audit.push(data); },
     },
   };
-  db.$transaction = async (fn: (tx: any) => unknown) => fn(db);
+  db.$transaction = vi.fn(async (fn: (tx: any) => unknown, _options?: unknown) => fn(db));
   return { db, t };
 }
 
@@ -144,5 +144,22 @@ describe('deleteOwnAccount', () => {
     expect(error).toMatchObject({ status: 503, code: 'storage_unavailable' });
     expect(t.users[0].email).toBe('ada@example.com');
     expect(t.events[0].type).toBe('SCREENSHOT');
+  });
+
+  it('runs in one transaction with a timeout long enough for many sessions, reading only rows that can hold audio', async () => {
+    const { db } = fakeDb({ users: [candidate()], sessions: [{ id: 's1', candidateId: 'u1', status: 'COMPLETED', metadata: {} }] });
+    const findMany = vi.spyOn(db.response, 'findMany');
+    await deleteOwnAccount(db, 'u1', { confirm: ACCOUNT_DELETION_CONFIRMATION }, deps());
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+    expect(db.$transaction.mock.calls[0][1]).toMatchObject({ timeout: 60_000 });
+    expect((findMany.mock.calls[0][0] as any).where.OR).toEqual([{ value: { contains: '"audio"' } }, { artifactUrl: { not: null } }]);
+  });
+});
+
+describe('isDeletedAccountEmail', () => {
+  it('recognises only anonymised deleted accounts', () => {
+    expect(isDeletedAccountEmail('deleted-u1@deleted.invalid')).toBe(true);
+    expect(isDeletedAccountEmail('ada@example.com')).toBe(false);
+    expect(isDeletedAccountEmail(null)).toBe(false);
   });
 });

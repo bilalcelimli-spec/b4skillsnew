@@ -23,6 +23,10 @@ import type { StorageProvider, StorageReference } from '../storage/private-stora
 
 export const ACCOUNT_DELETION_CONFIRMATION = 'DELETE_MY_ACCOUNT';
 
+/** Deleted accounts keep an anonymised row whose e-mail ends with this domain. */
+export const DELETED_ACCOUNT_DOMAIN = '@deleted.invalid';
+export const isDeletedAccountEmail = (email: string | null | undefined) => !!email && email.endsWith(DELETED_ACCOUNT_DOMAIN);
+
 export class AccountDeletionError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message); }
 }
@@ -130,7 +134,7 @@ export async function deleteOwnAccount(
 
   const now = (deps.now ?? (() => new Date()))();
   const erasedAt = now.toISOString();
-  const anonEmail = `deleted-${userId}@deleted.invalid`;
+  const anonEmail = `deleted-${userId}${DELETED_ACCOUNT_DOMAIN}`;
 
   return db.$transaction(async tx => {
     for (const event of mediaEvents) {
@@ -154,7 +158,11 @@ export async function deleteOwnAccount(
 
     let erasedAudio = 0;
     if (sessionIds.length) {
-      const responses = await tx.response.findMany({ where: { sessionId: { in: sessionIds } }, select: { id: true, value: true, artifactUrl: true } });
+      // Only rows that can hold audio; the rest of the candidate's answers stay untouched and unread.
+      const responses = await tx.response.findMany({
+        where: { sessionId: { in: sessionIds }, OR: [{ value: { contains: '"audio"' } }, { artifactUrl: { not: null } }] },
+        select: { id: true, value: true, artifactUrl: true },
+      });
       for (const response of responses) {
         const scrubbed = scrubAudio(response.value);
         if (scrubbed === null && !response.artifactUrl) continue;
@@ -199,5 +207,5 @@ export async function deleteOwnAccount(
       details: { ...result, erasedAt } as unknown as Prisma.InputJsonValue,
     } });
     return result;
-  });
+  }, { timeout: 60_000, maxWait: 10_000 }); // a candidate with many sessions needs more than the 5 s default
 }
