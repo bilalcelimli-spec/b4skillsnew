@@ -37,7 +37,7 @@
     "react": "19.2.0",
     "react-native": "0.83.10",
     "react-native-macos": "^0.83.0",
-    "react-native-safe-area-context": "^5.5.2",
+    "react-native-safe-area-context": "^5.11.0",
     "react-native-svg": "^15.16.0"
   },
   "devDependencies": {
@@ -59,7 +59,7 @@
     "prettier": "2.8.8",
     "react-test-renderer": "19.2.0",
     "typescript": "^5.8.3",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "engines": {
     "node": ">=20"
