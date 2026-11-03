@@ -66,6 +66,6 @@ it('returns aggregate retention inventory without fetching answers or modifying 
   const sessionCount = vi.fn().mockResolvedValue(2), responseCount = vi.fn().mockResolvedValue(3), reviewCount = vi.fn().mockResolvedValue(1);
   const result = await previewDataRetention({ session: { count: sessionCount }, response: { count: responseCount }, ratingTask: { count: reviewCount } } as any, new Date('2026-10-07T12:00:00Z'));
   expect(result).toMatchObject({ dryRun: true, enforced: false, inventory: { expiredSessions: 2, expiredAudioReferences: 3, openReviews: 1 },
-    cutoffs: { sessions: '2021-10-07T12:00:00.000Z', audio: '2026-07-09T12:00:00.000Z' } });
+    cutoffs: { sessions: '2024-10-07T12:00:00.000Z', audio: '2026-09-07T12:00:00.000Z' } });
   expect(sessionCount.mock.calls[0][0].where.status.in).toEqual(['COMPLETED', 'EXPIRED']);
 });

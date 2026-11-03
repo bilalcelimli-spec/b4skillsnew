@@ -486,6 +486,28 @@ async function runDistractorHealthScan(): Promise<void> {
   }
 }
 
+// ─── Data retention (retention-policy.ts) ─────────────────────────────────────
+
+/**
+ * Applies the retention periods only when RETENTION_APPLY=1; otherwise logs what
+ * it would delete. Not started by the in-process scheduler: run it from the
+ * external scheduler (npm run job -- data-retention) after reviewing a dry run.
+ */
+async function runDataRetention(): Promise<void> {
+  const t0 = Date.now();
+  const apply = process.env.RETENTION_APPLY === "1";
+  const { prisma } = await import("../prisma.js");
+  const { runRetentionSweep } = await import("../compliance/retention-sweep.js");
+  const { deletePrivateObject, storageReference } = await import("../storage/private-storage.js");
+  const result = await runRetentionSweep(prisma, { apply }, {
+    deleteObject: deletePrivateObject,
+    reference: (purpose, key, provider, bucket) => storageReference(purpose, key, provider, bucket),
+    log: (message, details) => logger.warn(details ?? {}, message),
+  });
+  logger.info({ ...result, ms: Date.now() - t0 }, `scheduled-jobs: data retention ${apply ? "applied" : "dry run"}`);
+  if (result.camera.storageFailures > 0) throw new Error(`data-retention: ${result.camera.storageFailures} storage deletions failed`);
+}
+
 /** Registry for the external runner (scripts/jobs/run-job.ts). */
 export const SCHEDULED_JOBS = {
   "dif-detection": runDifDetection,
@@ -495,6 +517,7 @@ export const SCHEDULED_JOBS = {
   "pretest-calibration": runPretestCalibration,
   "exposure-auto-retire": runExposureAutoRetire,
   "distractor-health": runDistractorHealthScan,
+  "data-retention": runDataRetention,
 } as const;
 
 export type ScheduledJobName = keyof typeof SCHEDULED_JOBS;

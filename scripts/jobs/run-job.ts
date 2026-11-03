@@ -5,6 +5,7 @@
  *   npm run job -- pretest-calibration
  *   npm run job -- dif-detection | item-retirement | parameter-drift |
  *                  ai-scoring-qwk | exposure-auto-retire | distractor-health
+ *   RETENTION_APPLY=1 npm run job -- data-retention   (without it: dry run)
  *   npm run job -- --list
  *
  * Every run takes the job's advisory-lock lease (job-lease.ts), so a run that

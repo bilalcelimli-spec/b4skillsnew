@@ -1,13 +1,12 @@
 import type { PrismaClient } from '@prisma/client';
+import { RETENTION, daysAgo, yearsAgo } from './retention-policy.js';
 
-/** Inventory only. The legacy two-year hard-delete policy conflicts with the
- * workflow's five-year anonymisation policy; neither is silently applied here.
- * No storage object or database record is changed by this service.
+/** Inventory only (the data-retention job applies the policy). Uses RETENTION
+ * from retention-policy.ts. No storage object or database record is changed here.
  */
 export async function previewDataRetention(prisma: PrismaClient, now = new Date()) {
-  const audioCutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-  const sessionCutoff = new Date(now);
-  sessionCutoff.setUTCFullYear(sessionCutoff.getUTCFullYear() - 5);
+  const audioCutoff = daysAgo(now, RETENTION.audioDays);
+  const sessionCutoff = yearsAgo(now, RETENTION.resultsYears);
   const terminal = { status: { in: ['COMPLETED', 'EXPIRED'] as ('COMPLETED' | 'EXPIRED')[] } };
   const [expiredSessions, expiredAudioReferences, openReviews] = await Promise.all([
     prisma.session.count({ where: { ...terminal, createdAt: { lt: sessionCutoff } } }),
@@ -22,7 +21,6 @@ export async function previewDataRetention(prisma: PrismaClient, now = new Date(
     inventory: { expiredSessions, expiredAudioReferences, openReviews },
     limitations: ['Inventory counts are not deletion eligibility decisions.',
       'Audio embedded in answer JSON, integrated tasks and storage-only objects are not included in the reference count.',
-      'Legal holds, storage ownership and complete anonymisation across related records must be defined before applying retention.',
-      'Legacy two-year deletion conflicts with the workflow five-year anonymisation policy.'],
+      'Legal holds are not modelled; the data-retention job (npm run job -- data-retention) applies the policy.'],
   };
 }
