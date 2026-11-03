@@ -5,7 +5,6 @@ import { SiteNav } from "./SiteNav";
 import { FreemiumTestWidget } from "./FreemiumTestWidget";
 import { SiteFooter } from "./SiteFooter";
 
-import { PURCHASE_PLANS } from "../lib/payments/purchase-policy";
 
 interface PricingPageProps {
   onBack?: () => void;
