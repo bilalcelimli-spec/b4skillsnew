@@ -60,8 +60,20 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v4
+      - name: Install verified Trivy release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          trivy_dir="$RUNNER_TEMP/trivy-release"
+          mkdir -p "$trivy_dir"
+          gh release download v0.70.0 --repo aquasecurity/trivy --pattern trivy_0.70.0_Linux-64bit.tar.gz --dir "$trivy_dir"
+          printf '%s  %s\n' '8b4376d5d6befe5c24d503f10ff136d9e0c49f9127a4279fd110b727929a5aa9' "$trivy_dir/trivy_0.70.0_Linux-64bit.tar.gz" | sha256sum --check -
+          tar -xzf "$trivy_dir/trivy_0.70.0_Linux-64bit.tar.gz" -C "$trivy_dir" trivy
+          echo "$trivy_dir" >> "$GITHUB_PATH"
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
+          skip-setup-trivy: true
+          version: v0.70.0
           scan-type: "fs"
           scan-ref: "."
           format: "sarif"
