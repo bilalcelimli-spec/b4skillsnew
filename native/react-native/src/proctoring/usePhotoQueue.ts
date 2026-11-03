@@ -3,6 +3,12 @@ import type { Backend } from '../api';
 import { B4Native } from '../native';
 import { PhotoQueue, type QueuedPhoto } from './photoQueue';
 const queues = new Map<string, PhotoQueue>();
+/** Account deleted: drop the cached queue and erase the stored photos of that account. */
+export async function forgetPhotoQueue(baseUrl: string, uid: string) {
+  const scope = `photo.${baseUrl}.${uid}`;
+  queues.delete(scope);
+  await B4Native.photoWrite(scope, JSON.stringify({ version: 1, entries: [] }));
+}
 export function usePhotoQueue(backend: Backend | null, uid?: string) {
   const [pending, setPending] = useState<Awaited<ReturnType<PhotoQueue['status']>>>([]);
   const [error, setError] = useState<string | null>(null);

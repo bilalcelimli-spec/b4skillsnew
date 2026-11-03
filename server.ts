@@ -56,7 +56,8 @@ import type { Response as PlacementResponse, Item as PlacementItem } from "./src
 import { shouldExcludeResponseFromAbility } from "./src/lib/scoring/score-evidence.js";
 import { stripAnswerKeys } from "./src/lib/security/answer-sanitizer.js";
 import { staticCacheControl, noStoreMissingAsset } from "./src/lib/security/static-cache.js";
-import { uploadPrivateObject, downloadPrivateObject, storageReference, StorageConfigurationError } from "./src/lib/storage/private-storage.js";
+import { uploadPrivateObject, downloadPrivateObject, deletePrivateObject, storageReference, StorageConfigurationError } from "./src/lib/storage/private-storage.js";
+import { AccountDeletionError, deleteOwnAccount, isDeletedAccountEmail } from "./src/lib/compliance/account-deletion.js";
 import { cameraPilot, reserveEvidence, commitEvidence, EvidenceReservationBody, EvidenceCommitBody } from './src/lib/proctoring/native-evidence.js';
 
 
@@ -337,6 +338,8 @@ async function startServer() {
             where: { id: decoded.userId },
             select: { role: true, organizationId: true, email: true },
           });
+          // A deleted account keeps its row (anonymised) but must not use a still-valid access token.
+          if (isDeletedAccountEmail(profile?.email)) return res.status(401).json({ error: 'Account deleted' });
           if (profile) {
             baseUser.role = profile.role;
             if (profile.email) baseUser.email = profile.email;
@@ -504,6 +507,40 @@ async function startServer() {
     res.clearCookie('accessToken', cookieOpts);
     res.clearCookie('refreshToken', cookieOpts);
     return res.json({ success: true });
+  });
+
+  // Self-service account deletion (App Store 5.1.1(v), GDPR Art. 17). Candidates only;
+  // password accounts re-enter their password. See src/lib/compliance/account-deletion.ts.
+  // Own limiter, keyed by account: sharing the IP-based password-reset limit would lock out a
+  // whole school network after three deletions and report it as a password-reset problem.
+  const accountDeletionLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    keyGenerator: (req) => `delete-account:${(req as any).user?.id ?? 'anonymous'}`,
+    message: { error: 'Too many account deletion attempts. Please try again in 15 minutes.', code: 'rate_limited' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: () => process.env.NODE_ENV === "test",
+  });
+  app.post("/api/auth/delete-account", authMiddleware, accountDeletionLimiter, async (req: express.Request, res: express.Response) => {
+    if (!dbAvailable) return res.status(503).json({ error: "Account deletion needs the database. Please try again later.", code: "unavailable" });
+    try {
+      const userId = (req as any).user.id as string;
+      const result = await deleteOwnAccount(prisma, userId, req.body ?? {}, {
+        verifyPassword: (plain, hash) => bcrypt.compare(plain, hash),
+        deleteObject: deletePrivateObject,
+        reference: (purpose, key, provider, bucket) => storageReference(purpose, key, provider, bucket),
+      });
+      const isProd = process.env.NODE_ENV === 'production';
+      const cookieOpts = { httpOnly: true, secure: isProd, sameSite: 'lax' as const };
+      res.clearCookie('accessToken', cookieOpts);
+      res.clearCookie('refreshToken', cookieOpts);
+      return res.json(result);
+    } catch (err) {
+      if (err instanceof AccountDeletionError) return res.status(err.status).json({ error: err.message, code: err.code });
+      console.error("[auth/delete-account]", err);
+      return res.status(500).json({ error: "Account deletion failed. Please try again.", code: "failed" });
+    }
   });
 
   app.get("/api/auth/me", authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -1332,6 +1369,7 @@ async function startServer() {
               where: { id: decoded.userId },
               select: { id: true, role: true, organizationId: true, email:true }
             });
+            if (jwtUser && isDeletedAccountEmail(jwtUser.email)) return res.status(401).json({ error: "Account deleted" });
             if (jwtUser) {
               if (roles.includes(jwtUser.role) || jwtUser.role === "SUPER_ADMIN") {
                 // Expose both `id` and `userId` so route handlers can use either spelling.
