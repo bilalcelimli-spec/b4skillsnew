@@ -106,14 +106,10 @@ export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
                     </div>
                     <div className="grid grid-cols-2 gap-x-16 gap-y-5 mt-2">
                       {([
-                        ["b4skills Diagnostic",        "/assessment"],
-                        ["b4skills Career Context",    "/corporate"],
-                        ["Early Years (Ages 7-10)",    "/schools"],
-                        ["Video & Writing Interviews", "/corporate"],
-                        ["Junior Suite (Ages 11-15)",  "/schools"],
-                        ["General English Adaptive",   "/assessment"],
-                        ["Academic Admissions (C1+)",  "/academia"],
-                        ["Business English Core",      "/corporate"],
+                        ["General English & Diagnostic", "/assessment"],
+                        ["School Assessments", "/schools"],
+                        ["Academic Assessment", "/academia"],
+                        ["Business English", "/corporate"],
                       ] as [string, string][]).map(([item, href]) => (
                         <a
                           href={href}

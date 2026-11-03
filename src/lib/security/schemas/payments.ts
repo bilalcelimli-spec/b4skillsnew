@@ -1,15 +1,18 @@
 import { z } from "zod";
-import { CuidLike, NonEmptyString, Url } from "./common.js";
+import { PURCHASE_POLICY_VERSION } from "../../payments/purchase-policy";
 
 export const CheckoutBody = z.object({
-  priceId: NonEmptyString.max(200),
-  quantity: z.number().int().min(1).max(10_000).optional(),
-  mode: z.enum(["payment", "subscription", "setup"]).optional(),
-  successUrl: Url.optional(),
-  cancelUrl: Url.optional(),
-  customerEmail: z.string().email().max(254).optional(),
-  organizationId: CuidLike.optional(),
-  metadata: z.record(z.string(), z.string().max(500)).optional(),
+  planId: z.enum(['full-assessment', 'pro-bundle']),
+  requestId: z.string().uuid(),
+  policyVersion: z.literal(PURCHASE_POLICY_VERSION),
+  acceptedPurchaseTerms: z.literal(true),
+}).strict();
+
+export const EarlyStartBody = z.object({
+  transactionId: z.string().min(1).max(250),
+  policyVersion: z.string().min(1).max(100),
+  requestEarlyStart: z.literal(true),
+  acknowledgeWithdrawalEffect: z.literal(true),
 }).strict();
 
 export const OnboardingBulkBody = z.object({

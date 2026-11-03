@@ -22,8 +22,8 @@ export default defineConfig(({ isSsrBuild }) => {
         // serve stale exam assets. Enable only for an explicit PWA test run.
         devOptions: { enabled: process.env.ENABLE_PWA_DEV === 'true' },
         manifest: {
-          name: 'LinguAdapt — Adaptive English Assessment',
-          short_name: 'LinguAdapt',
+          name: 'b4skills — Adaptive English Assessment',
+          short_name: 'b4skills',
           description: 'CEFR-aligned adaptive English proficiency testing — take your exam anywhere.',
           theme_color: '#1a56db',
           background_color: '#ffffff',

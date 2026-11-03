@@ -65,22 +65,9 @@ export const CandidateProfile: React.FC<{ user: any; onLogout: () => void }> = (
         <div className="absolute top-10 right-10 flex gap-3">
           <Button 
             className="bg-white text-indigo-600 hover:bg-indigo-50 h-12 px-6 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl"
-            onClick={async () => {
-              try {
-                const res = await fetch("/api/payments/checkout", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  credentials: "include",
-                  body: JSON.stringify({ userId: user.uid, credits: 1 })
-                });
-                const data = await res.json();
-                if (data.url) window.location.href = data.url;
-              } catch {
-                toast({ title: "Checkout failed", description: "Unable to start checkout. Please try again.", variant: "error" });
-              }
-            }}
+            onClick={() => { window.location.href = '/checkout?plan=full-assessment'; }}
           >
-            <Zap size={16} className="mr-2" /> Buy Credits
+            <Zap size={16} className="mr-2" /> Purchase information
           </Button>
           <Button onClick={onLogout} variant="ghost" className="bg-white/10 text-white hover:bg-white/20 rounded-xl font-bold gap-2">
             <LogOut size={18} /> Logout

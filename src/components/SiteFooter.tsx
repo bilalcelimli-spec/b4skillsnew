@@ -1,4 +1,5 @@
 import React from "react";
+import { COMPANY } from "../lib/site/company";
 
 export const SiteFooter: React.FC = () => (
   <footer className="bg-white border-t border-slate-200 py-16">
@@ -27,24 +28,26 @@ export const SiteFooter: React.FC = () => (
         <ul className="space-y-3 text-sm text-slate-600">
           <li><a href="/methodology" className="hover:text-[#9b276c] transition-colors">Assessment Methodology</a></li>
           <li><a href="/research" className="hover:text-[#9b276c] transition-colors">Validity Research</a></li>
-          <li><a href="mailto:hello@b4skills.com" className="hover:text-[#9b276c] transition-colors">Support</a></li>
-          <li><a href="/pricing" className="hover:text-[#9b276c] transition-colors">Pricing</a></li>
+          <li><a href="/support" className="hover:text-[#9b276c] transition-colors">Support</a></li>
         </ul>
       </div>
       <div>
         <h4 className="text-slate-900 font-bold mb-4">Company</h4>
         <ul className="space-y-3 text-sm text-slate-600">
-          <li><a href="mailto:hello@b4skills.com" className="hover:text-[#9b276c] transition-colors">Contact Us</a></li>
-          <li><a href="mailto:privacy@b4skills.com" className="hover:text-[#9b276c] transition-colors">Privacy Policy</a></li>
-          <li><a href="mailto:hello@b4skills.com" className="hover:text-[#9b276c] transition-colors">Terms of Service</a></li>
+          <li><a href="/support" className="hover:text-[#9b276c] transition-colors">Contact Us</a></li>
+          <li><a href="/kvkk" className="hover:text-[#9b276c] transition-colors">KVKK Notice</a></li>
+          <li><a href="/refund-policy" className="hover:text-[#9b276c] transition-colors">Refund & Withdrawal</a></li>
+          <li><a href="/sales-terms" className="hover:text-[#9b276c] transition-colors">Purchase Information</a></li>
+          <li><a href="/privacy" className="hover:text-[#9b276c] transition-colors">Privacy Policy</a></li>
+          <li><a href="/terms" className="hover:text-[#9b276c] transition-colors">Terms of Service</a></li>
           <li><a href="/accessibility-statement" className="hover:text-[#9b276c] transition-colors">Accessibility</a></li>
         </ul>
       </div>
     </div>
     <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between text-xs text-slate-500 border-t border-slate-100 pt-8">
-      <p>&copy; {new Date().getFullYear()} b4skills Inc. All rights reserved.</p>
+      <div className="space-y-2"><p>&copy; {new Date().getFullYear()} {COMPANY.brand} · {COMPANY.legalName}</p><p>{COMPANY.address}</p><p>{COMPANY.taxOffice} · {COMPANY.taxNumber}</p></div>
       <div className="flex gap-4 mt-4 md:mt-0">
-        <span>Powered by IRT & Gemini AI</span>
+        <span>IRT & AI-assisted scoring</span>
       </div>
     </div>
   </footer>

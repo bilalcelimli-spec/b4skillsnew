@@ -1,3 +1,4 @@
+import { serializeJsonLd } from "./src/lib/site/seo-serialization.js";
 import { storeNativeEvent } from "./src/lib/proctoring/native-events.js";
 import { cookieRequestProtection } from './src/lib/security/cookie-request-protection.js';
 import { examPolicy, admitExam } from "./src/lib/proctoring/exam-policy.js";
@@ -506,7 +507,13 @@ async function startServer() {
     return res.json({ success: true });
   });
 
-  app.get("/api/auth/me", authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get(["/api/auth/me", "/api/auth/session"], (req, res, next) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (req.path === "/api/auth/session" && !req.cookies.accessToken && !req.cookies.refreshToken && !req.headers.authorization) {
+      return res.json({ user: null });
+    }
+    next();
+  }, authMiddleware, async (req: express.Request, res: express.Response) => {
     try {
       const userId = (req as any).user.id;
       const user = await prisma.user.findUnique({
@@ -1550,7 +1557,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           productLine,
           body.launchRequestId,
           body.productLine ?? null,
-          body.preflight
+          body.preflight,
+          body.earlyStartConsentId
         );
       } catch (err: any) {
         if (!validationOnly && !body.launchRequestId && process.env.NODE_ENV !== "production" && (isDBError(err) || err.name === "PrismaClientInitializationError")) {
@@ -4104,66 +4112,13 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   });
 
   // --- PHASE 6: COMMERCIALIZATION & ECOSYSTEM ---
-  app.post("/api/payments/checkout", authMiddleware, async (req: any, res) => {
-    const credits = Number(req.body?.credits);
-    if (!Number.isInteger(credits) || credits < 1 || credits > 10_000) {
-      return res.status(400).json({ error: "credits must be an integer between 1 and 10000" });
-    }
-    const requestedOrgId = req.body?.organizationId as string | undefined;
-    const callerOrgId = req.user?.organizationId as string | undefined;
-    const canBuyForAnyOrg = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"].includes(req.user?.role);
-    if (requestedOrgId && requestedOrgId !== callerOrgId && !canBuyForAnyOrg) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-    let organizationId = requestedOrgId ?? callerOrgId;
-    try {
-      // Self-service candidates may have registered without an institution.
-      // Give them a private tenant so purchased credits cannot spill into a
-      // shared/default organization and the resulting assessment is billable.
-      if (!organizationId && req.user?.role === "CANDIDATE") {
-        const personalOrgId = `personal-${req.user.id}`;
-        const personalSlug = personalOrgId.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 64);
-        const personalOrg = await prisma.organization.upsert({
-          where: { id: personalOrgId },
-          update: {},
-          create: {
-            id: personalOrgId,
-            name: `${req.user.email ?? "Candidate"} — Personal`,
-            slug: personalSlug,
-          },
-          select: { id: true },
-        });
-        await prisma.user.update({ where: { id: req.user.id }, data: { organizationId: personalOrg.id } });
-        organizationId = personalOrg.id;
-      }
-      if (!organizationId) return res.status(400).json({ error: "organizationId required" });
-      const orgExists = await prisma.organization.findUnique({ where: { id: organizationId }, select: { id: true } });
-      if (!orgExists) return res.status(404).json({ error: "Organization not found" });
-      const { PaymentService } = await import("./src/lib/payments/payment-service.js");
-      const url = await PaymentService.createCheckoutSession(req.user.id, organizationId, credits);
-      res.json({ url });
-    } catch (err) {
-      res.status(500).json({ error: "Failed to create checkout session" });
-    }
-  });
+  const { createBillingRouter } = await import('./src/routes/billing');
 
-  app.post("/api/payments/webhook", express.raw({ type: "application/json" }), async (req, res) => {
-    try {
-      const { PaymentService } = await import("./src/lib/payments/payment-service.js");
-      const sig = req.headers["stripe-signature"];
-      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-      if (!webhookSecret) {
-        console.error("STRIPE_WEBHOOK_SECRET is not set — rejecting webhook");
-        return res.status(400).send("Webhook configuration error");
-      }
-      if (!sig) return res.status(400).send("Missing stripe-signature header");
-      const event = PaymentService.constructWebhookEvent(req.body as Buffer, sig, webhookSecret);
-      await PaymentService.handleWebhook(event);
-      res.json({ received: true });
-    } catch (err) {
-      res.status(400).send(`Webhook Error: ${(err as Error).message}`);
-    }
-  });
+  app.post('/api/payments/webhook', (_req, res) => res.status(410).json({
+    code: 'PAYMENT_PROVIDER_DISABLED', error: 'Web ödeme sağlayıcısı etkin değil.',
+  }));
+
+  app.use('/api/payments', createBillingRouter(authMiddleware));
 
   app.get("/api/ecosystem/config", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: any, res) => {
     const organizationId = req.query.organizationId as string;
@@ -6933,9 +6888,9 @@ ${codeSection}
     // counts and psychometric quality stats suitable for the public Research page.
     app.get("/api/research/item-bank-health", async (_req, res) => {
       try {
-        if (!prisma) return res.json({ mock: true, year: new Date().getFullYear(), totalActive: 0, cefr: {}, skills: {}, meanSEM: null, cronbachAlpha: null });
+        if (!dbAvailable) return res.status(503).json({ error: "Live research statistics unavailable" });
 
-        const [activeItems, semStats, alphaStats] = await Promise.all([
+        const [activeItems, semStats, evidenceSessions] = await Promise.all([
           // Active item counts by CEFR level and skill
           prisma.item.groupBy({
             by: ["cefrLevel", "skill"],
@@ -6946,16 +6901,21 @@ ${codeSection}
           prisma.session.aggregate({
             where: {
               status: "COMPLETED",
-              createdAt: { gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) },
+              completedAt: { gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) },
             },
             _avg: { sem: true },
             _count: { id: true },
           }),
-          // Item-level discrimination stats for computing an approximate reliability index
-          prisma.item.aggregate({
-            where: { status: "ACTIVE" },
-            _avg: { discrimination: true, difficulty: true },
-            _count: { id: true },
+          // Bounded, recent evidence; no candidate-level data leaves this endpoint.
+          prisma.session.findMany({
+            where: { status: "COMPLETED", completedAt: { gte: new Date(Date.now() - 365 * 86400_000) } },
+            select: {
+              candidateId: true, theta: true, sem: true, completedAt: true, metadata: true,
+              responses: { select: { itemId: true, score: true, isPretest: true, metadata: true, item: { select: { skill: true } } } },
+              scoreReport: { select: { diagnosticReport: true } },
+            },
+            orderBy: { completedAt: "desc" },
+            take: 3000,
           }),
         ]);
 
@@ -6971,22 +6931,23 @@ ${codeSection}
           totalActive   += row._count.id;
         }
 
-        // Approximate Cronbach α from mean discrimination (Kuder-Richardson proxy)
-        // α ≈ (k / (k-1)) * (1 - Σp·q / σ²_total)
-        // We use a simplified estimation: higher mean discrimination → higher α
-        const avgA = alphaStats._avg.discrimination ?? 0.8;
-        const k    = alphaStats._count.id;
-        const approxAlpha = k > 1 ? Math.min(0.99, (avgA * 0.55 + 0.35)) : null;
+        const { summarizePublicReliability, MIN_RELIABILITY_CANDIDATES } = await import("./src/lib/research/public-reliability.js");
+        const reliabilityByProduct = summarizePublicReliability(evidenceSessions);
 
         res.json({
           year: new Date().getFullYear(),
           totalActive,
           cefr: cefrDist,
           skills: skillDist,
-          meanSEM: semStats._avg.sem ? Math.round(semStats._avg.sem * 1000) / 1000 : null,
+          meanSEM: semStats._avg.sem != null ? Math.round(semStats._avg.sem * 1000) / 1000 : null,
           sessionsLast12m: semStats._count.id,
-          cronbachAlpha: approxAlpha ? Math.round(approxAlpha * 1000) / 1000 : null,
-          meanDiscrimination: alphaStats._avg.discrimination ? Math.round(alphaStats._avg.discrimination * 1000) / 1000 : null,
+          // Alpha requires a suitable common-item response study; it is not inferred from IRT item parameters.
+          cronbachAlpha: null,
+          reliabilityByProduct,
+          reliabilityMethod: "1 - mean(SEM²) / sample variance(theta); one latest fully scored session per candidate and product/type",
+          reliabilityMinCandidates: MIN_RELIABILITY_CANDIDATES,
+          reliabilitySampleLimit: 3000,
+          reliabilitySampledSessions: evidenceSessions.length,
         });
       } catch (err) {
         res.status(500).json({ error: "Item bank stats unavailable" });
@@ -8050,9 +8011,9 @@ ${codeSection}
   app.get(["/atom.xml", "/feed.xml", "/rss.xml"], (_req, res) => {
     const now = new Date().toISOString();
     const pages = [
-      { title: "B4Skills — Adaptive CEFR English Assessment", url: "/", summary: "AI-powered adaptive English assessment. Get your certified CEFR level (A1–C2) in 15–60 minutes." },
-      { title: "English Level Test — Free CEFR Placement", url: "/english-level-test", summary: "Take a free adaptive English level test and get your CEFR level in under 15 minutes." },
-      { title: "CEFR English Test — Certified Assessment", url: "/cefr-english-test", summary: "Certified CEFR-aligned adaptive English test with QR-verifiable certificate." },
+      { title: "B4Skills — Adaptive CEFR English Assessment", url: "/", summary: "AI-powered adaptive English assessment. Get a CEFR-aligned estimate with adaptive assessment." },
+      { title: "English Level Test — Free CEFR Placement", url: "/english-level-test", summary: "Take a free adaptive English level test and get your CEFR level in about 20–30 minutes." },
+      { title: "CEFR English Test — Adaptive Assessment", url: "/cefr-english-test", summary: "CEFR-aligned adaptive English test with QR-verifiable certificate." },
       { title: "English Assessment for Universities", url: "/english-assessment-for-universities", summary: "Adaptive CEFR placement testing for language centres and admissions teams." },
       { title: "English Assessment for Companies", url: "/english-assessment-for-companies", summary: "Screen and develop English skills across your workforce with CEFR-aligned assessments." },
       { title: "Pricing — B4Skills", url: "/pricing", summary: "Transparent pricing for adaptive CEFR English testing. Free Quick Check to institutional plans." },
@@ -8259,8 +8220,152 @@ ${entries}
     "/", "/pricing", "/methodology", "/schools", "/corporate", "/academia",
     "/language-schools", "/english-level-test", "/ingilizce-seviye-testi",
     "/cefr-english-test", "/english-assessment-for-universities",
-    "/english-assessment-for-companies", "/accessibility-statement", "/research",
+    "/english-assessment-for-companies", "/accessibility-statement", "/research", "/verify", "/privacy", "/kvkk", "/terms", "/support", "/refund-policy", "/sales-terms",
   ]);
+
+    interface RouteMeta {
+      title: string;
+      description: string;
+      keywords?: string;
+      jsonLd?: object;
+    }
+
+    const WEBSITE_LD = {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "b4skills",
+      url: APP_BASE_URL,
+      potentialAction: {
+        "@type": "SearchAction",
+        target: `${APP_BASE_URL}/english-level-test`,
+        "query-input": "required name=search_term_string",
+      },
+    };
+
+    const ROUTE_META: Record<string, RouteMeta> = {
+      "/checkout": { title: "Satın Alma — b4skills", description: "Sipariş özeti ve satın alma ön bilgilendirmesi." },
+      "/payment/success": { title: "Ödeme Durumu — b4skills", description: "Siparişinizin ödeme durumunu kontrol edin." },
+      "/payment/cancel": { title: "Ödeme İptal Edildi — b4skills", description: "Ödemeniz tamamlanmadı." },
+      "/refund-policy": { title: "İade ve Cayma Politikası — b4skills", description: "14 günlük cayma, paket iadeleri ve teknik sorunlarda iade koşulları." },
+      "/sales-terms": { title: "Ön Bilgilendirme ve Mesafeli Satış Koşulları — b4skills", description: "İşletme bilgileri, hizmet kapsamı, fiyatlar, ödeme ve cayma koşulları." },
+      "/privacy": { title: "Gizlilik Politikası — b4skills", description: "b4skills veri işleme bilgileri ve gizlilik politikası inceleme taslağı." },
+      "/kvkk": { title: "KVKK Aydınlatma Metni — b4skills", description: "Veri sorumlusu bilgileri, ilgili kişi hakları ve KVKK aydınlatma metni inceleme taslağı." },
+      "/terms": { title: "Kullanım Koşulları — b4skills", description: "b4skills kullanım koşulları inceleme taslağı." },
+      "/support": { title: "İletişim ve Destek — b4skills", description: "b4skills işletme bilgileri, teknik destek ve başvuru kanalı." },
+      "/verify": {
+        title: "Verify a Certificate — b4skills",
+        description: "Check the status and details of a certificate issued by b4skills using its certificate ID.",
+      },
+      "/": {
+        title: "b4skills — Adaptive English Assessment Platform",
+        description: "AI-powered adaptive CEFR English assessment for individuals, schools, universities, and corporates. Get a CEFR-aligned estimate with adaptive assessment.",
+        keywords: "english assessment, cefr test, adaptive english test, english proficiency, b4skills",
+        // Organization JSON-LD is present in index.html for both development
+        // and production; inject only the route-specific WebSite entity here.
+        jsonLd: WEBSITE_LD,
+      },
+      "/pricing": {
+        title: "Pricing — b4skills English Assessment",
+        description: "Free Quick Check and institutional assessment enquiries. Individual paid checkout is not available on this website.",
+        keywords: "english test price, cefr test cost, english assessment pricing, b4skills pricing",
+        jsonLd: { "@context": "https://schema.org", "@type": "WebPage", name: "b4skills Pricing", description: "Pricing plans for adaptive CEFR English assessment.", url: `${APP_BASE_URL}/pricing` },
+      },
+      "/methodology": {
+        title: "Assessment Methodology — b4skills",
+        description: "How b4skills works: adaptive CAT engine, IRT 3PL, CEFR alignment, AI multi-model scoring, DIF fairness monitoring, and certificate validation.",
+        keywords: "cefr methodology, adaptive testing methodology, irt 3pl, cat engine, english assessment methodology",
+        jsonLd: {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: [
+            { "@type": "Question", name: "Why does my result differ from IELTS?", acceptedAnswer: { "@type": "Answer", text: "Different assessments measure proficiency through different tasks and stakes conditions." } },
+            { "@type": "Question", name: "What is theta (θ)?", acceptedAnswer: { "@type": "Answer", text: "Theta is the latent ability estimate from IRT with a known measurement error, making it more informative than a percentage score." } },
+          ],
+        },
+      },
+      "/schools": {
+        title: "English Assessment for Schools — b4skills",
+        description: "Adaptive CEFR English testing for primary and secondary schools. Class management, teacher dashboards, and cohort analytics.",
+        keywords: "english assessment schools, school english test, cefr schools, teacher english dashboard",
+      },
+      "/corporate": {
+        title: "Corporate English Assessment — b4skills",
+        description: "Screen, place, and develop English skills across your workforce. CEFR-aligned assessment with ATS/HRIS integration and volume pricing.",
+        keywords: "corporate english test, workforce english assessment, hr english screening, cefr corporate",
+      },
+      "/academia": {
+        title: "English Assessment for Academia — b4skills",
+        description: "EAP placement and proficiency testing for universities and research institutions. CEFR-aligned with LMS integration.",
+        keywords: "academia english test, university english assessment, eap placement, cefr academia",
+      },
+      "/language-schools": {
+        title: "English Assessment for Language Schools — b4skills",
+        description: "Adaptive CEFR placement and progress testing for language schools. Group analysis and institutional dashboard.",
+        keywords: "language school english test, language center placement, cefr language school",
+      },
+      "/english-level-test": {
+        title: "Free English Level Test — CEFR A1 to C2 | b4skills",
+        description: "Take a free adaptive English level test and get your provisional CEFR estimate in about 20–30 minutes. Instant results, no account required.",
+        keywords: "english level test, free english test, cefr test online, english proficiency test",
+      },
+      "/ingilizce-seviye-testi": {
+        title: "İngilizce Seviye Testi — CEFR A1-C2 | b4skills",
+        description: "Ücretsiz adaptif İngilizce seviye testiyle CEFR seviyenizi yaklaşık 20–30 dakikada öğrenin. Anında sonuç, kayıt gerektirmez.",
+        keywords: "ingilizce seviye testi, ingilizce sınav, cefr testi türkçe, ingilizce test",
+      },
+      "/cefr-english-test": {
+        title: "CEFR English Test — Adaptive Assessment | b4skills",
+        description: "CEFR-aligned adaptive English test with QR-verifiable certificate. Acceptance is determined by each receiving institution.",
+        keywords: "cefr english test, cefr assessment online, cefr certificate, cefr level test",
+      },
+      "/english-assessment-for-universities": {
+        title: "English Assessment for Universities — b4skills",
+        description: "Adaptive CEFR placement for universities: bulk import, LMS integration, cohort analytics. 14-day free pilot.",
+        keywords: "english assessment universities, english placement test university, cefr university test",
+      },
+      "/english-assessment-for-companies": {
+        title: "English Assessment for Companies — b4skills",
+        description: "Fast, reliable English proficiency testing for HR teams. CEFR-aligned, bulk testing, workforce skill analytics.",
+        keywords: "english assessment companies, corporate english proficiency, hr english test, workforce english",
+      },
+      "/accessibility-statement": {
+        title: "Accessibility Statement — b4skills",
+        description: "b4skills WCAG 2.1 AA accessibility commitment, known limitations, accommodation requests, and contact information.",
+        keywords: "accessibility, wcag, b4skills accessibility, screen reader, disability accommodation",
+      },
+      "/research": {
+        title: "Validity Research — b4skills",
+        description: "Psychometric validity evidence: concurrent validity with IELTS, TOEFL, Cambridge. IRT, CAT, DIF, and AI scoring methodology.",
+        keywords: "english test validity, cefr concurrent validity, irt psychometrics, cat adaptive testing research, ielts correlation",
+      },
+    };
+
+    const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    const injectSeoMeta = (html: string, meta: RouteMeta, reqPath: string): string => {
+      const ldJson = Array.isArray(meta.jsonLd) ? meta.jsonLd : meta.jsonLd ? [meta.jsonLd] : [
+        { "@context": "https://schema.org", "@type": "WebPage", name: meta.title, description: meta.description, url: `${APP_BASE_URL}${reqPath}` },
+      ];
+      const extraTags = [
+        ["/privacy", "/kvkk", "/terms", "/checkout", "/payment/success", "/payment/cancel"].includes(reqPath) ? `<meta name="robots" content="noindex, follow" />` : "",
+        meta.keywords ? `<meta name="keywords" content="${escHtml(meta.keywords)}" />` : "",
+        `<link rel="canonical" href="${escHtml(APP_BASE_URL + reqPath)}" />`,
+        `<meta property="og:url" content="${escHtml(APP_BASE_URL + reqPath)}" />`,
+        `<meta property="og:type" content="website" />`,
+        `<meta property="og:image" content="${APP_BASE_URL}/icons/pwa-192.png" />`,
+        `<meta name="twitter:card" content="summary_large_image" />`,
+        `<meta name="twitter:title" content="${escHtml(meta.title)}" />`,
+        `<meta name="twitter:description" content="${escHtml(meta.description)}" />`,
+        ...ldJson.map((ld) => `<script type="application/ld+json">${serializeJsonLd(ld)}</script>`),
+      ].filter(Boolean).join("\n    ");
+
+      return html
+        .replace(/<title>[^<]*<\/title>/, `<title>${escHtml(meta.title)}</title>`)
+        .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${escHtml(meta.description)}" />`)
+        .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escHtml(meta.title)}" />`)
+        .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escHtml(meta.description)}" />`)
+        .replace("</head>", `  ${extraTags}\n  </head>`);
+    };
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
@@ -8279,7 +8384,7 @@ ${entries}
 
       try {
         let indexHtml = fs.readFileSync(path.join(process.cwd(), "index.html"), "utf-8");
-        indexHtml = await vite.transformIndexHtml(req.url, indexHtml);
+        indexHtml = await vite.transformIndexHtml("/", indexHtml);
 
         if (SSR_PATHS.has(req.path)) {
           try {
@@ -8294,7 +8399,9 @@ ${entries}
           }
         }
 
-        res.set("Content-Type", "text/html").send(indexHtml);
+        const seoPath = Object.keys(ROUTE_META).find(knownPath => knownPath === req.path);
+        const meta = seoPath ? ROUTE_META[seoPath] : null;
+        res.set("Content-Type", "text/html").send(meta ? injectSeoMeta(indexHtml, meta, seoPath!) : indexHtml);
       } catch (e) {
         next(e);
       }
@@ -8302,6 +8409,7 @@ ${entries}
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath, {
+      index: false, // Route / must pass through SSR and page metadata injection.
       setHeaders: (res, filePath) => {
         res.setHeader("Cache-Control", staticCacheControl(filePath));
       },
@@ -8320,135 +8428,6 @@ ${entries}
     }
 
     // ── Per-route meta injection for marketing/SEO pages ──────────────────
-    interface RouteMeta {
-      title: string;
-      description: string;
-      keywords?: string;
-      jsonLd?: object;
-    }
-
-    const WEBSITE_LD = {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      name: "B4Skills",
-      url: APP_BASE_URL,
-      potentialAction: {
-        "@type": "SearchAction",
-        target: `${APP_BASE_URL}/english-level-test`,
-        "query-input": "required name=search_term_string",
-      },
-    };
-
-    const ROUTE_META: Record<string, RouteMeta> = {
-      "/": {
-        title: "B4Skills — Adaptive English Assessment Platform",
-        description: "AI-powered adaptive CEFR English assessment for individuals, schools, universities, and corporates. Get your certified English level in 15–60 minutes.",
-        keywords: "english assessment, cefr test, adaptive english test, english proficiency, b4skills",
-        // Organization JSON-LD is present in index.html for both development
-        // and production; inject only the route-specific WebSite entity here.
-        jsonLd: WEBSITE_LD,
-      },
-      "/pricing": {
-        title: "Pricing — B4Skills English Assessment",
-        description: "Transparent pricing for adaptive CEFR English testing. Free Quick Check, €19 Full Assessment, and volume plans for institutions from €6/learner.",
-        keywords: "english test price, cefr test cost, english assessment pricing, b4skills pricing",
-        jsonLd: { "@context": "https://schema.org", "@type": "WebPage", name: "B4Skills Pricing", description: "Pricing plans for adaptive CEFR English assessment.", url: `${APP_BASE_URL}/pricing` },
-      },
-      "/methodology": {
-        title: "Assessment Methodology — B4Skills",
-        description: "How B4Skills works: adaptive CAT engine, IRT 3PL, CEFR alignment, AI multi-model scoring, DIF fairness monitoring, and certificate validation.",
-        keywords: "cefr methodology, adaptive testing methodology, irt 3pl, cat engine, english assessment methodology",
-        jsonLd: {
-          "@context": "https://schema.org",
-          "@type": "FAQPage",
-          mainEntity: [
-            { "@type": "Question", name: "Why does my result differ from IELTS?", acceptedAnswer: { "@type": "Answer", text: "Different assessments measure proficiency through different tasks and stakes conditions." } },
-            { "@type": "Question", name: "What is theta (θ)?", acceptedAnswer: { "@type": "Answer", text: "Theta is the latent ability estimate from IRT with a known measurement error, making it more informative than a percentage score." } },
-          ],
-        },
-      },
-      "/schools": {
-        title: "English Assessment for Schools — B4Skills",
-        description: "Adaptive CEFR English testing for primary and secondary schools. Class management, teacher dashboards, and cohort analytics.",
-        keywords: "english assessment schools, school english test, cefr schools, teacher english dashboard",
-      },
-      "/corporate": {
-        title: "Corporate English Assessment — B4Skills",
-        description: "Screen, place, and develop English skills across your workforce. CEFR-aligned assessment with ATS/HRIS integration and volume pricing.",
-        keywords: "corporate english test, workforce english assessment, hr english screening, cefr corporate",
-      },
-      "/academia": {
-        title: "English Assessment for Academia — B4Skills",
-        description: "EAP placement and proficiency testing for universities and research institutions. CEFR-aligned with LMS integration.",
-        keywords: "academia english test, university english assessment, eap placement, cefr academia",
-      },
-      "/language-schools": {
-        title: "English Assessment for Language Schools — B4Skills",
-        description: "Adaptive CEFR placement and progress testing for language schools. Group analysis and institutional dashboard.",
-        keywords: "language school english test, language center placement, cefr language school",
-      },
-      "/english-level-test": {
-        title: "Free English Level Test — CEFR A1 to C2 | B4Skills",
-        description: "Take a free adaptive English level test and get your official CEFR level in under 15 minutes. Instant results, no account required.",
-        keywords: "english level test, free english test, cefr test online, english proficiency test",
-      },
-      "/ingilizce-seviye-testi": {
-        title: "İngilizce Seviye Testi — CEFR A1-C2 | B4Skills",
-        description: "Ücretsiz adaptif İngilizce seviye testiyle CEFR seviyenizi 15 dakikada öğrenin. Anında sonuç, kayıt gerektirmez.",
-        keywords: "ingilizce seviye testi, ingilizce sınav, cefr testi türkçe, ingilizce test",
-      },
-      "/cefr-english-test": {
-        title: "CEFR English Test — Adaptive Assessment | B4Skills",
-        description: "Certified CEFR-aligned adaptive English test with QR-verifiable certificate. Accepted by universities and employers worldwide.",
-        keywords: "cefr english test, cefr assessment online, cefr certificate, cefr level test",
-      },
-      "/english-assessment-for-universities": {
-        title: "English Assessment for Universities — B4Skills",
-        description: "Adaptive CEFR placement for universities: bulk import, LMS integration, cohort analytics. 14-day free pilot.",
-        keywords: "english assessment universities, english placement test university, cefr university test",
-      },
-      "/english-assessment-for-companies": {
-        title: "English Assessment for Companies — B4Skills",
-        description: "Fast, reliable English proficiency testing for HR teams. CEFR-aligned, bulk testing, workforce skill analytics.",
-        keywords: "english assessment companies, corporate english proficiency, hr english test, workforce english",
-      },
-      "/accessibility-statement": {
-        title: "Accessibility Statement — B4Skills",
-        description: "B4Skills WCAG 2.1 AA accessibility commitment, known limitations, accommodation requests, and contact information.",
-        keywords: "accessibility, wcag, b4skills accessibility, screen reader, disability accommodation",
-      },
-      "/research": {
-        title: "Validity Research — B4Skills",
-        description: "Psychometric validity evidence: concurrent validity with IELTS, TOEFL, Cambridge. IRT, CAT, DIF, and AI scoring methodology.",
-        keywords: "english test validity, cefr concurrent validity, irt psychometrics, cat adaptive testing research, ielts correlation",
-      },
-    };
-
-    const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-    const injectSeoMeta = (html: string, meta: RouteMeta, reqPath: string): string => {
-      const ldJson = Array.isArray(meta.jsonLd) ? meta.jsonLd : meta.jsonLd ? [meta.jsonLd] : [
-        { "@context": "https://schema.org", "@type": "WebPage", name: meta.title, description: meta.description, url: `${APP_BASE_URL}${reqPath}` },
-      ];
-      const extraTags = [
-        meta.keywords ? `<meta name="keywords" content="${escHtml(meta.keywords)}" />` : "",
-        `<meta property="og:url" content="${APP_BASE_URL}${reqPath}" />`,
-        `<meta property="og:type" content="website" />`,
-        `<meta property="og:image" content="${APP_BASE_URL}/icons/pwa-192.png" />`,
-        `<meta name="twitter:card" content="summary_large_image" />`,
-        `<meta name="twitter:title" content="${escHtml(meta.title)}" />`,
-        `<meta name="twitter:description" content="${escHtml(meta.description)}" />`,
-        ...ldJson.map((ld) => `<script type="application/ld+json">${JSON.stringify(ld)}</script>`),
-      ].filter(Boolean).join("\n    ");
-
-      return html
-        .replace(/<title>[^<]*<\/title>/, `<title>${escHtml(meta.title)}</title>`)
-        .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${escHtml(meta.description)}" />`)
-        .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escHtml(meta.title)}" />`)
-        .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escHtml(meta.description)}" />`)
-        .replace("</head>", `  ${extraTags}\n  </head>`);
-    };
-
     let _cachedIndexHtml: string | null = null;
     const getIndexHtml = () => {
       if (!_cachedIndexHtml) _cachedIndexHtml = fs.readFileSync(path.join(distPath, "index.html"), "utf-8");
@@ -8460,7 +8439,8 @@ ${entries}
       if (ext && ext !== ".html") return res.status(404).end();
       res.setHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
 
-      const meta = ROUTE_META[req.path] ?? null;
+      const seoPath = Object.keys(ROUTE_META).find(knownPath => knownPath === req.path);
+      const meta = seoPath ? ROUTE_META[seoPath] : null;
       let baseHtml = getIndexHtml();
 
       // Attempt SSR for marketing paths
@@ -8476,7 +8456,7 @@ ${entries}
       }
 
       if (meta) {
-        const injected = injectSeoMeta(baseHtml, meta, req.path);
+        const injected = injectSeoMeta(baseHtml, meta, seoPath!);
         return res.set("Content-Type", "text/html; charset=utf-8").send(injected);
       }
       res.set("Content-Type", "text/html; charset=utf-8").send(baseHtml);
