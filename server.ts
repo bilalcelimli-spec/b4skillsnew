@@ -1,3 +1,4 @@
+import { serializeJsonLd } from "./src/lib/site/seo-serialization.js";
 import { storeNativeEvent } from "./src/lib/proctoring/native-events.js";
 import { cookieRequestProtection } from './src/lib/security/cookie-request-protection.js';
 import { examPolicy, admitExam } from "./src/lib/proctoring/exam-policy.js";
@@ -8355,7 +8356,7 @@ ${entries}
         `<meta name="twitter:card" content="summary_large_image" />`,
         `<meta name="twitter:title" content="${escHtml(meta.title)}" />`,
         `<meta name="twitter:description" content="${escHtml(meta.description)}" />`,
-        ...ldJson.map((ld) => `<script type="application/ld+json">${JSON.stringify(ld)}</script>`),
+        ...ldJson.map((ld) => `<script type="application/ld+json">${serializeJsonLd(ld)}</script>`),
       ].filter(Boolean).join("\n    ");
 
       return html
@@ -8383,7 +8384,7 @@ ${entries}
 
       try {
         let indexHtml = fs.readFileSync(path.join(process.cwd(), "index.html"), "utf-8");
-        indexHtml = await vite.transformIndexHtml(req.url, indexHtml);
+        indexHtml = await vite.transformIndexHtml("/", indexHtml);
 
         if (SSR_PATHS.has(req.path)) {
           try {
@@ -8398,8 +8399,9 @@ ${entries}
           }
         }
 
-        const meta = ROUTE_META[req.path];
-        res.set("Content-Type", "text/html").send(meta ? injectSeoMeta(indexHtml, meta, req.path) : indexHtml);
+        const seoPath = Object.keys(ROUTE_META).find(knownPath => knownPath === req.path);
+        const meta = seoPath ? ROUTE_META[seoPath] : null;
+        res.set("Content-Type", "text/html").send(meta ? injectSeoMeta(indexHtml, meta, seoPath!) : indexHtml);
       } catch (e) {
         next(e);
       }
@@ -8437,7 +8439,8 @@ ${entries}
       if (ext && ext !== ".html") return res.status(404).end();
       res.setHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
 
-      const meta = ROUTE_META[req.path] ?? null;
+      const seoPath = Object.keys(ROUTE_META).find(knownPath => knownPath === req.path);
+      const meta = seoPath ? ROUTE_META[seoPath] : null;
       let baseHtml = getIndexHtml();
 
       // Attempt SSR for marketing paths
@@ -8453,7 +8456,7 @@ ${entries}
       }
 
       if (meta) {
-        const injected = injectSeoMeta(baseHtml, meta, req.path);
+        const injected = injectSeoMeta(baseHtml, meta, seoPath!);
         return res.set("Content-Type", "text/html; charset=utf-8").send(injected);
       }
       res.set("Content-Type", "text/html; charset=utf-8").send(baseHtml);
