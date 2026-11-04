@@ -12,6 +12,7 @@ for(const width of [320,1280])for(const failure of ['expired','transient']){
    else await route.fulfill({json:{complete:false,nextItem:item('next'),itemsAdministered:1}});
   });
   const begin=async()=>{
+   await page.getByRole('checkbox',{name:/18 yaşında/}).check();
    await page.getByRole('button',{name:/Start as Guest/}).click();
    await page.getByRole('button',{name:/I'm Ready/}).click();
    await expect(page.getByRole('textbox')).toBeVisible();

@@ -11,7 +11,7 @@ import './index.css';
 
 // Initialize Sentry for frontend error tracking.
 // Set VITE_SENTRY_DSN in .env to enable; no-op when unset.
-if (import.meta.env.VITE_SENTRY_DSN) {
+if (import.meta.env.VITE_SENTRY_DSN && !window.location.pathname.startsWith('/guardian-')) {
   Sentry.init({
     dsn: import.meta.env.VITE_SENTRY_DSN as string,
     environment: import.meta.env.MODE,

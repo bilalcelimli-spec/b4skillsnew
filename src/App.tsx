@@ -1,3 +1,4 @@
+import { GuardianDecisionPage, GuardianVerificationPage } from './components/GuardianConsent';
 import { AssessmentResumeCard } from './components/AssessmentContinuation';
 import { OZGUN_PRODUCT, assessmentDisplayName } from "./lib/fixed-forms/ozgun-kids";
 import { hasFinalResult, historyStatus, historySkills } from "./lib/reporting/candidate-history";
@@ -316,6 +317,8 @@ export default function App() {
     } catch {/* The report remains available if certificate issuance needs a retry. */}
   };
 
+  if (location.pathname === '/guardian-verification') return <GuardianVerificationPage />;
+  if (location.pathname === '/guardian-consent') return <GuardianDecisionPage />;
   const legalRoutes: Record<string, LegalPageKind> = { '/privacy': 'privacy', '/kvkk': 'kvkk', '/terms': 'terms', '/support': 'support', '/refund-policy': 'refund', '/sales-terms': 'sales' };
   if (legalRoutes[location.pathname]) return <LegalPage kind={legalRoutes[location.pathname]} />;
 
@@ -477,6 +480,7 @@ export default function App() {
       </Suspense>
     );
   }
+
 
   if (!user) {
     return <AuthPage onBack={() => setShowLanding(true)} />;

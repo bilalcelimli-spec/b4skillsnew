@@ -1,16 +1,10 @@
 {
-  "generatedAt": "2026-10-07T18:49:08.590Z",
+  "generatedAt": "2026-11-04T15:40:02.047Z",
   "scope": "Literal/template fetch calls and Express method/path coverage. Computed URLs, runtime responses, authorization, and payload schemas require separate verification.",
-  "routeCount": 296,
-  "callCount": 227,
+  "routeCount": 319,
+  "callCount": 234,
   "reachableMissing": [],
   "dormantMissing": [
-    {
-      "file": "src/components/OfflineAssessment.tsx",
-      "line": 141,
-      "method": "POST",
-      "url": "/api/sessions/:dynamic/responses"
-    },
     {
       "file": "src/components/OfflineAssessment.tsx",
       "line": 213,
@@ -237,7 +231,6 @@
   "duplicate": [],
   "unmountedRouters": [
     "src/routes/items.ts",
-    "src/routes/billing.ts",
     "src/routes/proctoring.ts"
   ],
   "dormantComponents": [

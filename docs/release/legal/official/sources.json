@@ -1,0 +1,16 @@
+[
+  {
+    "file": "KVKK_SS2.pdf",
+    "source": "https://www.kvkk.gov.tr/SharedFolderServer/CMSFiles/b531d656-9cea-4cdb-84ce-1ab92198c9b1.pdf",
+    "retrieved": "2026-11-04",
+    "sha256": "08ee14127fec6f0f008070e931cc3b6969adb609d49b5e0f3e053c027482d59c",
+    "modified": false
+  },
+  {
+    "file": "KVKK_SS3.pdf",
+    "source": "https://www.kvkk.gov.tr/SharedFolderServer/CMSFiles/f2840ffa-4fcb-404f-ae01-573afb37ae85.pdf",
+    "retrieved": "2026-11-04",
+    "sha256": "71a96a004ab2129ff131167628a28d01c3d5afbc8947171e99ecd9b76f397896",
+    "modified": false
+  }
+]

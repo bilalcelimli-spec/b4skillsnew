@@ -19,6 +19,9 @@ function open(path:string,role='CANDIDATE'){
     ? {user:{uid:'candidate',email:'user@example.test',role,organizationId:'org'}}:[]})));
   render(<MemoryRouter initialEntries={[path]}><App/><LocationProbe/></MemoryRouter>);
 }
+// This suite covers briefing/routing; guardian admission has its own fail-closed integration tests.
+vi.mock('../GuardianConsent', async original => ({ ...await original<any>(), CandidateConsentGate: ({children}: any) => <>{children}</> }));
+
 afterEach(()=>{cleanup();vi.unstubAllGlobals();window.history.replaceState({},'','/');});
 it('opens a report deep link after authentication instead of showing history',async()=>{
   open('/report/existing-session');

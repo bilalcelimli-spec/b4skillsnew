@@ -1,3 +1,4 @@
+import { lockActiveCandidate } from '../compliance/active-candidate.js';
 import { pauseInfo } from '../assessment-engine/session-pause';
 import { OZGUN_QUESTIONS, OZGUN_PASSAGES } from './ozgun-kids-content.server';
 import { createHash } from 'node:crypto';
@@ -90,6 +91,7 @@ export function createOzgunKidsService(prisma: PrismaClient) {
       if(role==='CANDIDATE' && (typeof email!=='string'||!email.trim()))
         throw new FixedFormError('Adayın doğrulanmış e-posta bilgisi gerekir.',403);
       return prisma.$transaction(async db=>{
+      await lockActiveCandidate(db, candidateId);
         let codeId:string|null=null;
         if(role==='CANDIDATE') {
           const code=await db.examCode.findFirst({where:{organizationId,usedByEmail:email,isUsed:true,productLine:OZGUN_PRODUCT},orderBy:{usedAt:'desc'}});

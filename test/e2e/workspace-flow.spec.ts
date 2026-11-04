@@ -5,6 +5,7 @@ async function setup(page:Page,state='IN_PROGRESS'){
   const path=new URL(route.request().url()).pathname;
   let data:any={};
   if(path==='/api/auth/session')data={user:{uid:'candidate',email:'candidate@example.test',role:'CANDIDATE',organizationId:'org',allowedProductLine:'15-Min Diagnostic'}};
+  else if(path==='/api/guardian-consent/status')data={allowed:true,ageBand:'ADULT',guardianRequired:false,status:'READY'};
   else if(path.endsWith('/history'))data=[{id:'flow-exam',organizationId:'org',status:current,metadata:{productLine:'15-Min Diagnostic',examPause:current==='PAUSED'?{pausedAt:new Date().toISOString(),resumeUntil:new Date(Date.now()+48*3600000).toISOString()}:undefined}}];
   else if(path.endsWith('/status'))data={status:current,progress:0,sectionOrder:['GRAMMAR'],maxDurationMs:3600000,pause:{used:false}};
   else if(path.endsWith('/pause')){current='PAUSED';data={status:current};}

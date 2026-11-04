@@ -1,3 +1,4 @@
+import { requireCandidateConsent, ConsentError } from '../compliance/guardian-consent.js';
 import { rubricReviewReasons, resolveTaskRubric, RUBRIC_VALIDATION_VERSION } from "./rubric-validation.js";
 /**
  * Async AI Scoring Queue
@@ -73,11 +74,12 @@ export function isScoringJobPending(responseId: string): boolean { return pendin
 
 /** Preserve task evidence and atomically keep finalized human grades authoritative. */
 async function persistScoringResult(responseId: string, data: Record<string, any>): Promise<boolean> {
-  const current = await prisma.response.findUnique({where:{id:responseId},select:{metadata:true,humanScore:true}});
+  const current = await prisma.response.findUnique({where:{id:responseId},select:{metadata:true,humanScore:true,contentErasedAt:true}});
   if (!current) throw new Error("Scoring response no longer exists");
+  if (current.contentErasedAt) throw new ConsentError(410, 'CONTENT_ERASED', 'Assessment content erased');
   if (current.humanScore != null) return false;
   const result = await prisma.response.updateMany({
-    where:{id:responseId,humanScore:null},
+    where:{id:responseId,humanScore:null,contentErasedAt:null,session:{privacyErasedAt:null}},
     data:{...data,metadata:{...((current.metadata as Record<string,unknown>) ?? {}),...data.metadata,scoringPolicyVersion:SCORING_POLICY_VERSION,reportRefreshPending:true,reportRefreshVersion:randomUUID()}},
   });
   return result.count === 1;
@@ -93,6 +95,14 @@ async function resolveHumanGrade(job: ScoringJobWithResolve): Promise<void> {
 async function processJob(job: ScoringJobWithResolve): Promise<void> {
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
+    const evidence = await prisma.response.findUnique({ where: { id: job.responseId }, select: { contentErasedAt: true } });
+    if (!evidence || evidence.contentErasedAt) throw new ConsentError(410, 'CONTENT_ERASED', 'Assessment content erased');
+    const session = await prisma.session.findUnique({ where: { id: job.sessionId }, select: { candidateId: true, candidate: { select: { role: true } } } });
+    if (!session) throw new ConsentError(404, 'SESSION_MISSING', 'Assessment session unavailable');
+    if (session.candidate.role === 'CANDIDATE') {
+      try { await requireCandidateConsent(prisma, session.candidateId); }
+      catch (e) { if (e instanceof ConsentError) throw e; throw new ConsentError(503, 'CONSENT_UNAVAILABLE', 'Consent cannot be verified'); }
+    }
     const rubricIssues = rubricReviewReasons(job.rubric);
     if (rubricIssues.length) {
       const persisted = await persistScoringResult(job.responseId, {
@@ -204,6 +214,12 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
     job.resolve({ score, aiResult: aiResult as any, requiresHumanReview, scoreSource: scoringDecision?.scoreSource });
     logger.debug({ sessionId: job.sessionId, responseId: job.responseId, skill: job.skill, score }, "async-scoring: job complete");
   } catch (err) {
+    if (err instanceof ConsentError) {
+      try { await persistScoringResult(job.responseId, { score: null, adjustedScore: null, isCorrect: null, aiScore: null,
+        metadata: { pendingAsyncScore: false, scoreFailed: true, requiresHumanReview: false, consentBlocked: true, failureCode: err.code } }); }
+      catch { logger.error({ responseId: job.responseId }, 'Consent-blocked scoring could not be marked'); }
+      job.reject(err); return;
+    }
     logger.error({ err, sessionId: job.sessionId, responseId: job.responseId }, "async-scoring: job failed");
 
     // Persist failure marker and send to human review

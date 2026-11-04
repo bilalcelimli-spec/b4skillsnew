@@ -166,6 +166,7 @@ model User {
   sessions         Session[]
   raterTasks       RatingTask[] @relation("RaterTasks")
   candidateProfile CandidateProfile?
+  assessmentConsent AssessmentConsent?
   auditLogs        AuditLog[]
   transactions     PaymentTransaction[]
   taughtClasses    Class[]      @relation("ClassTeacher")
@@ -661,6 +662,7 @@ model Asset {
 // --- SESSION & RESPONSES ---
 
 model Session {
+  privacyErasedAt DateTime?
   id              String    @id @default(cuid())
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id])
@@ -716,6 +718,7 @@ enum SessionStatus {
 }
 
 model Response {
+  contentErasedAt DateTime?
   id              String    @id @default(cuid())
   sessionId       String
   session         Session   @relation(fields: [sessionId], references: [id])
@@ -1166,4 +1169,66 @@ model LtiSession {
 
   @@index([state])
   @@index([assessmentSessionId])
+}
+
+// Separate from editable candidate demographics: candidates cannot grant guardian approval.
+model AssessmentConsent {
+  userId String @id
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ageBand String
+  guardianRequired Boolean @default(false)
+  guardianEmail String?
+  requestHash String? @unique
+  requestExpiresAt DateTime?
+  requestedAt DateTime?
+  guardianName String?
+  relationship String?
+  approvedAt DateTime?
+  verifiedAt DateTime?
+  verifiedBy String?
+  verificationReference String?
+  revokedAt DateTime?
+  manageHash String? @unique
+  manageExpiresAt DateTime?
+  policyVersion String
+  updatedAt DateTime @updatedAt
+}
+
+// Durable deletion intent. Pending references are private operational data, never API output.
+model ErasureObject {
+  id String @id
+  generation String @default(cuid())
+  reference Json?
+  createdAt DateTime @default(now())
+  deletedAt DateTime?
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  @@index([deletedAt, nextAttemptAt])
+}
+// Minimal, access-controlled erasure receipts, including restore replay identifiers.
+model ErasureLedger {
+  id String @id @default(cuid())
+  targetType String
+  targetId String
+  reason String
+  createdAt DateTime @default(now())
+  @@unique([targetType, targetId])
+  @@index([createdAt])
+}
+model RetentionRun {
+  id String @id @default(cuid())
+  createdAt DateTime @default(now())
+  summary Json
+  @@index([createdAt])
+}
+
+model PrivacyDeletionRequest {
+  requestId String @id @default(cuid())
+  userId String
+  actorAdminId String
+  requestedAt DateTime @default(now())
+  scheduledFor DateTime @default(now())
+  status String @default("pending")
+  reason String?
+  @@index([userId, status])
 }

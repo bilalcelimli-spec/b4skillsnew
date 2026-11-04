@@ -20,6 +20,7 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       DATABASE_URL: ${{ secrets.E2E_DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/b4skills_e2e' }}
+      MINOR_PROCESSING_READY: "true"
       JWT_SECRET: "e2e-test-secret-not-for-production"
       REFRESH_SECRET: "e2e-refresh-secret-not-for-production"
       E2E_EMAIL: "e2e-student@b4skills.test"
@@ -77,6 +78,9 @@ jobs:
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
 
+      - name: Seed synthetic guardian approval in disposable database
+        run: npx tsx scripts/seed-e2e-consent.ts
+
       - name: Build server
         run: npm run build:server
 
@@ -89,6 +93,7 @@ jobs:
         env:
           PORT: 3001
           DATABASE_URL: ${{ env.DATABASE_URL }}
+          MINOR_PROCESSING_READY: "true"
           JWT_SECRET: ${{ env.JWT_SECRET }}
           REFRESH_SECRET: ${{ env.REFRESH_SECRET }}
 

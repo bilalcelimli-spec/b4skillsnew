@@ -272,6 +272,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
   // Registration
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [adultConfirmed, setAdultConfirmed] = useState(false);
   const [consent, setConsent] = useState(false);
   const [regError, setRegError] = useState<string | null>(null);
 
@@ -409,6 +410,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
 
   const handleRegister = useCallback(async (asGuest = false) => {
     setRegError(null);
+    if (!adultConfirmed) { setRegError("Bu deneme yalnızca 18 yaş ve üzeri içindir. Çocuklar kurum koduyla giriş yapıp veli onayını tamamlamalıdır."); return; }
     // With registration: validate fields. As guest: skip validation entirely.
     if (!asGuest) {
       if (!name.trim()) { setRegError("Please enter your name."); return; }
@@ -427,6 +429,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
           name: asGuest ? undefined : name.trim(),
           email: asGuest ? undefined : email.trim().toLowerCase(),
           consentToResearch: !asGuest,
+          adultConfirmed,
         }),
       });
       const data = await res.json();
@@ -445,7 +448,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
     } finally {
       setLoading(false);
     }
-  }, [name, email, consent]);
+  }, [name, email, consent, adultConfirmed]);
 
   const handleStartTest = useCallback(() => {
     setTestStartTime(Date.now());
@@ -614,6 +617,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
               </div>
             </div>
 
+            <label className="flex items-start gap-3 text-sm text-slate-700"><input type="checkbox" checked={adultConfirmed} onChange={e => setAdultConfirmed(e.target.checked)} />18 yaşında veya daha büyüğüm. Çocuklar kurum koduyla giriş yapıp veli onayını tamamlamalıdır.</label>
             <label className="flex items-start gap-3 cursor-pointer">
               <button
                 type="button"

@@ -82,7 +82,10 @@ export interface DeletionRequest {
 
 const consentStore = new Map<string, PrivacySettings>();
 const consentHistory: ConsentRecord[] = [];
-const deletionRequests = new Map<string, DeletionRequest>();
+export function clearPrivacyCache(userId: string) {
+  consentStore.delete(userId);
+  for (let index=consentHistory.length-1;index>=0;index--) if(consentHistory[index].userId===userId) consentHistory.splice(index,1);
+}
 
 // ---------------------------------------------------------------------------
 // Privacy Manager
@@ -254,103 +257,37 @@ export class PrivacyManager {
     actorAdminId: string,
     reason?: string
   ): Promise<DeletionRequest> {
-    const requestId = `del-${userId}-${Date.now()}`;
-    const scheduledFor = new Date();
-    scheduledFor.setDate(scheduledFor.getDate() + 30); // 30-day grace period
-
-    const req: DeletionRequest = {
-      requestId,
-      userId,
-      requestedAt: new Date(),
-      scheduledFor,
-      status: "pending",
-      actorAdminId,
-      reason,
-    };
-    deletionRequests.set(requestId, req);
-
-    await this.logComplianceEvent(userId, "DELETION_REQUESTED", {
-      requestId,
-      requestedBy: actorAdminId,
-      scheduledFor: scheduledFor.toISOString(),
-      reason,
-    });
-
-    return req;
+    await this.requireDeletionAdmin(actorAdminId);
+    const row = await prisma.privacyDeletionRequest.create({data:{userId,actorAdminId,
+      reason:typeof reason==='string'?reason.slice(0,500):null}});
+    return {...row,status:row.status as DeletionRequest['status'],reason:row.reason??undefined};
   }
 
+  private async requireDeletionAdmin(actorAdminId: string) {
+    const actor = await prisma.user.findUnique({where:{id:actorAdminId},select:{role:true}});
+    if (!actor || !['SUPER_ADMIN','ASSESSMENT_DIRECTOR'].includes(actor.role)) throw new Error('Authorized privacy administrator required');
+  }
+
+  /** Compatibility entry point: performs erasure, not a misleading email-only anonymisation. */
   async anonymizeCandidate(userId: string, actorAdminId: string): Promise<void> {
-    const anonEmail = `anonymised-${userId}@gdpr.erased`;
-    const anonName = "ANONYMISED";
-
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        email: anonEmail,
-        name: anonName,
-        password: null,
-      },
-    });
-
-    await this.logComplianceEvent(userId, "CANDIDATE_ANONYMISED", { anonymisedBy: actorAdminId });
+    await this.requireDeletionAdmin(actorAdminId);
+    const {eraseCandidateData}=await import('./account-deletion.js');
+    const {deletePrivateObject,storageReference}=await import('../storage/private-storage.js');
+    await eraseCandidateData(prisma,userId,{verifyPassword:async()=>false,deleteObject:deletePrivateObject,reference:storageReference});
   }
 
   async completeDelete(requestId: string, actorAdminId: string): Promise<void> {
-    const request = deletionRequests.get(requestId);
-    if (!request) throw new Error(`Deletion request ${requestId} not found`);
-    if (request.status !== "pending") throw new Error(`Request is already ${request.status}`);
-
-    const { userId } = request;
-
-    // Delete in FK-safe order
-    await prisma.response.deleteMany({ where: { session: { candidateId: userId } } });
-    await prisma.session.deleteMany({ where: { candidateId: userId } });
-
-    // Anonymise user record instead of hard-delete to preserve audit trail
-    await this.anonymizeCandidate(userId, actorAdminId);
-
-    // Clear consent records
-    consentStore.delete(userId);
-
-    request.status = "completed";
-    deletionRequests.set(requestId, request);
-
-    await this.logComplianceEvent(userId, "DELETION_COMPLETED", {
-      requestId,
-      completedBy: actorAdminId,
-    });
+    await this.requireDeletionAdmin(actorAdminId);
+    const request=await prisma.privacyDeletionRequest.findUniqueOrThrow({where:{requestId}});
+    if(!['pending','approved'].includes(request.status))throw new Error('Deletion request already closed');
+    await this.anonymizeCandidate(request.userId,actorAdminId);
+    await prisma.privacyDeletionRequest.update({where:{requestId},data:{status:'completed',reason:null}});
   }
 
-  // -------------------------------------------------------------------------
-  // Retention policy enforcement
-  // -------------------------------------------------------------------------
-
-  async deleteExpiredData(): Promise<{ deletedSessions: number; deletedResponses: number }> {
-    const results = { deletedSessions: 0, deletedResponses: 0 };
-
-    // Default: delete sessions older than 2 years
-    const cutoff = new Date();
-    cutoff.setFullYear(cutoff.getFullYear() - 2);
-
-    const expiredSessions = await prisma.session.findMany({
-      where: { createdAt: { lt: cutoff } },
-      select: { id: true },
-    });
-
-    if (expiredSessions.length > 0) {
-      const sessionIds = expiredSessions.map((s) => s.id);
-      const { count: responseCount } = await prisma.response.deleteMany({
-        where: { sessionId: { in: sessionIds } },
-      });
-      const { count: sessionCount } = await prisma.session.deleteMany({
-        where: { id: { in: sessionIds } },
-      });
-      results.deletedSessions = sessionCount;
-      results.deletedResponses = responseCount;
-    }
-
-    console.log(`♻️  Retention sweep: ${results.deletedSessions} sessions, ${results.deletedResponses} responses removed`);
-    return results;
+  /** Legacy callers use the same release-gated policy as the scheduled worker. */
+  async deleteExpiredData() {
+    const {runRetentionSweep}=await import('./retention-sweep.js');
+    return runRetentionSweep(prisma,{apply:process.env.RETENTION_APPLY_ENABLED==='true'});
   }
 
   // -------------------------------------------------------------------------
@@ -362,8 +299,8 @@ export class PrivacyManager {
   }
 
   async getDeletionRequests(userId?: string): Promise<DeletionRequest[]> {
-    const all = [...deletionRequests.values()];
-    return userId ? all.filter((r) => r.userId === userId) : all;
+    const rows=await prisma.privacyDeletionRequest.findMany({where:userId?{userId}:undefined,orderBy:{requestedAt:'desc'},take:200});
+    return rows.map(row=>({...row,status:row.status as DeletionRequest['status'],reason:row.reason??undefined}));
   }
 
   private async logComplianceEvent(userId: string, action: string, details: Record<string, unknown>): Promise<void> {

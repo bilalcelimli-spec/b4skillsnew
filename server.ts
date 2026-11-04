@@ -1,3 +1,5 @@
+import { guardianConsentRouter, requiresConsentGate } from './src/routes/guardian-consent.js';
+import { requireCandidateConsent, ConsentError } from './src/lib/compliance/guardian-consent.js';
 import { serializeJsonLd } from "./src/lib/site/seo-serialization.js";
 import { storeNativeEvent } from "./src/lib/proctoring/native-events.js";
 import { cookieRequestProtection } from './src/lib/security/cookie-request-protection.js';
@@ -366,7 +368,8 @@ async function startServer() {
     const superRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"];
     if (role && superRoles.includes(role)) return true;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return false; }
-    const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { candidateId: true, organizationId: true } });
+    const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { candidateId: true, organizationId: true, privacyErasedAt: true } });
+    if (session?.privacyErasedAt) { res.status(410).json({ error: "Assessment data erased" }); return false; }
     if (!session) { res.status(404).json({ error: "Session not found" }); return false; }
     // Org-scoped admin roles: verify the session belongs to their org
     const orgScopedRoles = ["INST_ADMIN", "PROCTOR", "TEACHER"];
@@ -1398,6 +1401,32 @@ async function startServer() {
 
   // API Routes
   // Public: native apps check this before sign-in and refuse exams on an unsupported build.
+  const guardianLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+  app.use('/api/guardian-consent', guardianLimiter, guardianConsentRouter(prisma, authMiddleware, checkRole, async (email, token) => {
+    // Fail closed: development logging is never accepted as successful delivery.
+    if (!resendClient) throw new Error('Guardian email delivery unavailable');
+    const base = new URL(APP_BASE_URL);
+    if (process.env.NODE_ENV === 'production' && base.protocol !== 'https:') throw new Error('Secure public URL required');
+    const url = new URL('/guardian-consent', base); url.hash = token;
+    const { error } = await resendClient.emails.send({ from: FROM_ADDRESS, to: email,
+      subject: 'B4Skills — veli onayı talebi',
+      html: `<p>Bir aday B4Skills sınavı için bu adrese veli onayı talebi gönderdi.</p><p>Sınav yanıtları, ses kayıtları, otomatik kamera fotoğrafları ve AI sağlayıcılarına aktarım hakkında bilgi edinip karar verebilirsiniz.</p><p><a href="${url.toString()}">Bilgilendirmeyi okuyun ve karar verin</a></p><p>Bağlantı 48 saat geçerlidir. Onay vermek zorunda değilsiniz. Talebi tanımıyorsanız dikkate almayın. Onaydan sonra kurum ayrıca veli yetkisini doğrular.</p>` });
+    if (error) throw new Error('Guardian email delivery failed');
+  }));
+  app.use((req: any, res, next) => {
+    if (!requiresConsentGate(req.path)) return next();
+    return authMiddleware(req, res, async () => {
+      if (req.user?.role !== 'CANDIDATE') return next();
+      try {
+        await requireCandidateConsent(prisma, req.user.id, req.path.startsWith('/api/fixed-forms/') ? 'Kids' : req.body?.productLine);
+        next();
+      } catch (e) {
+        if (e instanceof ConsentError) return res.status(e.status).json({ error: e.message, code: e.code });
+        return res.status(503).json({ error: 'Veli onayı kontrol edilemedi. Lütfen tekrar deneyin.' });
+      }
+    });
+  });
+
   app.get("/api/native/app-config", (_req, res) => {
     res.setHeader("Cache-Control", "public, max-age=300");
     res.json(nativeAppConfig());
@@ -1580,6 +1609,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (dbAvailable && !resolvedOrganizationId) {
         return res.status(400).json({ error: "organizationId is required" });
       }
+      if (req.user?.role === 'CANDIDATE') await requireCandidateConsent(prisma, candidateId, productLine);
       if (productLine === OZGUN_PRODUCT) {
         if (body.launchRequestId) return res.status(400).json({error:'This fixed-form product must be launched from the web application'});
         if (!dbAvailable) return res.status(503).json({error:'Database unavailable'});
@@ -1638,6 +1668,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       }
       res.json(session);
     } catch (error: any) {
+      if (error instanceof ConsentError) return res.status(error.status).json({ error: error.message, code: error.code });
       if(error instanceof AppError)return res.status(error.statusCode).json({error:error.message,code:error.code});
       console.error("LAUNCH ERROR", error);
       // Surface configuration errors (item bank, billing) clearly — they are
@@ -1708,19 +1739,30 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         return res.status(400).json({ error: "Invalid or oversized identity snapshot" });
       }
 
+      if (id.startsWith("demo-session-")) return res.json({success:true,stored:false,skipped:true});
       const evidenceKey = `identity/${id}/${Date.now()}-${crypto.randomBytes(8).toString("hex")}.jpg`;
+      const reservedReference = storageReference('identity', evidenceKey);
+      const reservation = await prisma.proctoringEvent.create({data:{sessionId:id,type:'EVIDENCE_PENDING',severity:1,
+        metadata:{reference:{...reservedReference},reason:'identity-upload'}}});
       const evidence = await uploadPrivateObject("identity", evidenceKey, buffer, "image/jpeg");
 
       if (!id.startsWith("demo-session-")) {
         const identityPatch = JSON.stringify({identitySnapshotKey: evidenceKey,
           identitySnapshotProvider: evidence.provider, identitySnapshotBucket: evidence.bucket,
           identitySnapshotUrl: null, identitySnapshotAt: new Date().toISOString()});
-        await prisma.$executeRaw`
+        const stored = await prisma.$executeRaw`
           UPDATE "Session" SET metadata = COALESCE(metadata, '{}') || ${identityPatch}::jsonb
-          WHERE id = ${id}
+          WHERE id = ${id} AND "privacyErasedAt" IS NULL
         `;
+        if (!stored) {
+          const { queueObjectErasure } = await import('./src/lib/compliance/erasure-storage.js');
+          await queueObjectErasure(prisma, evidence);
+          return res.status(410).json({error:'Assessment data erased'});
+        }
       }
 
+      // Keep the durable reference even when a later identity capture replaces session metadata.
+      await prisma.proctoringEvent.updateMany({where:{id:reservation.id},data:{type:'SCREENSHOT'}});
       return res.json({ success: true, stored: true });
     } catch (error) {
       console.error("[identity-snapshot] failed:", error);
@@ -4090,8 +4132,18 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         return res.status(400).json({ error: "Invalid or oversized screenshot" });
       }
       const evidenceKey = `proctoring/${sessionId}/${Date.now()}-${crypto.randomBytes(8).toString("hex")}.jpg`;
+      const reservedReference = storageReference('proctoring', evidenceKey);
+      const reservation = await prisma.proctoringEvent.create({data:{sessionId,type:'EVIDENCE_PENDING',severity:1,
+        metadata:{reference:{...reservedReference},reason:'web-upload'}}});
       const evidence = await uploadPrivateObject("proctoring", evidenceKey, buffer, "image/jpeg");
-      const event = await (prisma as any).proctoringEvent.create({
+      const event = await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+        const current = await tx.session.findUnique({where:{id:sessionId}});
+        if (!current || current.privacyErasedAt) {
+          const { queueObjectErasure } = await import('./src/lib/compliance/erasure-storage.js');
+          await queueObjectErasure(tx, evidence); return null;
+        }
+        return tx.proctoringEvent.update({ where:{id:reservation.id},
         data: {
           sessionId,
           type: "SCREENSHOT",
@@ -4099,6 +4151,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           metadata: { reason: reason ?? "periodic", evidenceKey, evidenceProvider: evidence.provider, evidenceBucket: evidence.bucket, capturedAt: new Date().toISOString() },
         },
       });
+      });
+      if (!event) return res.status(410).json({error:"Assessment data erased"});
       res.json({ stored: true, eventId: event.id });
     } catch (err) {
       if (err instanceof StorageConfigurationError) return res.status(503).json({ error: err.message });
@@ -4304,8 +4358,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const body = validate(SpeakingMultimodalBody, req.body, res);
     if (!body) return;
     try {
-      const { GeminiScoringService } = await import("./src/lib/scoring/gemini-scoring-service.js");
-      const result = await GeminiScoringService.scoreSpeaking(body.audioBase64, body.mimeType, body.prompt || "Please respond to the task.");
+      const { OpenAIScoringService } = await import("./src/lib/scoring/openai-scoring-service.js");
+      const result = await OpenAIScoringService.scoreSpeaking(body.audioBase64, body.mimeType, body.prompt || "Please respond to the task.");
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: "Failed to perform multimodal scoring" });
@@ -5809,6 +5863,7 @@ ${codeSection}
   };
 
   app.post("/api/assessment/placement/start", placementLimiter, express.json({ limit: "4kb" }), async (req, res) => {
+    if (req.body?.adultConfirmed !== true) return res.status(428).json({ error: 'Bu herkese açık deneme yalnızca 18 yaş ve üzeri içindir. Çocuklar kurum koduyla giriş yapıp veli onayını tamamlamalıdır.' });
     try {
       const { name, email, consentToResearch } = req.body;
       // name/email are optional for guest sessions; collect at result if desired
@@ -6119,11 +6174,14 @@ ${codeSection}
   {
     const { createOperationsRouter } = await import("./src/routes/operations.js");
     const { generateSloReport, sloReportToMarkdown } = await import("./src/lib/observability/slo-monitor.js");
+    const { runRetentionSweep } = await import('./src/lib/compliance/retention-sweep.js');
     const { previewDataRetention } = await import("./src/lib/compliance/retention-preview.js");
     app.use("/api/admin", createOperationsRouter({
       checkRole, internalSecret: () => process.env.INTERNAL_API_SECRET,
       databaseAvailable: () => dbAvailable, generateReport: generateSloReport,
       markdown: sloReportToMarkdown, retentionPreview: () => previewDataRetention(prisma),
+      retentionSweep: (apply, cursors) => runRetentionSweep(prisma, { apply, cursors }),
+      retentionEnabled: () => process.env.RETENTION_APPLY_ENABLED === 'true',
     }));
   }
 
@@ -6579,18 +6637,9 @@ ${codeSection}
   });
 
   app.post("/api/speaking/transcribe", whisperRateLimit, authMiddleware, async (req, res) => {
-    try {
-      const { audio, filename = "recording.webm", prompt = "", includeTimestamps = false } = req.body;
-      if (!audio) return res.status(400).json({ error: "audio (base64) required" });
-
-      const { runWhisperPipelineFromBase64 } = await import("./src/lib/scoring/whisper-pipeline.js");
-      const result = await runWhisperPipelineFromBase64(audio, filename, { prompt, includeTimestamps });
-      res.json(result);
-    } catch (err: any) {
-      const msg = err?.message ?? String(err);
-      if (msg.includes("OPENAI_API_KEY")) return res.status(503).json({ error: "Whisper not configured — OPENAI_API_KEY missing" });
-      res.status(500).json({ error: "Transcription failed" });
-    }
+    // Retired transcript-only scorer could invent pronunciation and assign A1 to silence.
+    // Clients must submit recordings through the session scoring flow.
+    res.status(410).json({ error: "This legacy scoring endpoint has been retired. Submit audio through your assessment session.", code: "LEGACY_SCORING_RETIRED" });
   });
 
   // ── Health / SLO endpoints ───────────────────────────────────────────────
