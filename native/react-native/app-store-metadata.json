@@ -1,0 +1,28 @@
+{
+  "appId": "6826695698",
+  "version": "1.0.0",
+  "buildNumber": "13",
+  "primaryCategory": "EDUCATION",
+  "releaseType": "MANUAL",
+  "locale": "tr-TR",
+  "name": "B4Skills",
+  "subtitle": "İngilizce Seviye Değerlendirme",
+  "description": "B4Skills, kurumunuzun atadığı İngilizce değerlendirmelerine iPad ve Mac üzerinden katılmanızı sağlar. Kurum hesabınızla veya size verilen sınav koduyla giriş yapın; atanan sınavın yapısına göre okuma, dinleme, yazma ve konuşma görevlerini tamamlayın. Sonuçlarınızı ve tamamlanan değerlendirmelerinizi uygulamadan takip edin.\n\nYazılı ve sesli yanıtlar, gerekli izin akışından sonra OpenAI ile değerlendirilir. Puanlar hakkında destek üzerinden insan incelemesi talep edebilirsiniz. Kamera kullanımı kurumunuzun açıkladığı sınav ayarına bağlıdır. Hesabınızı uygulama içinden silebilirsiniz.\n\nUygulamada satın alma yoktur. Kullanım için kurumunuz tarafından sağlanan erişim gerekir.",
+  "keywords": "İngilizce,seviye,sınav,değerlendirme,dinleme,konuşma,yazma,okuma,CEFR",
+  "supportUrl": "https://b4skills.com/support",
+  "marketingUrl": "https://b4skills.com",
+  "privacyPolicyUrl": "https://b4skills.com/privacy",
+  "reviewUsername": "appreview@b4skills.com",
+  "reviewNotes": "Use the dedicated review account supplied in the sign-in fields. It belongs to a separate demonstration institution and contains no real customer records. Access is provisioned by institutions; the app has no purchasing flow. The account menu contains account deletion. Camera capture depends on the disclosed institutional assessment settings; microphone access is used for speaking responses. Written and spoken responses are assessed through OpenAI after the permission flow. Minors require guardian consent and institutional verification. Provider readiness must also be enabled; no review-only bypass is implemented. Human review of assessment scores can be requested through support.",
+  "notYetVerified": [
+    "final live legal texts",
+    "review contact fields",
+    "age-rating questionnaire",
+    "published App Privacy",
+    "actual price schedule",
+    "screenshots",
+    "build processing",
+    "live OpenAI scoring",
+    "physical-device acceptance"
+  ]
+}

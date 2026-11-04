@@ -202,3 +202,24 @@ it('preserves explicit backend error codes for preflight recovery', async () => 
   mockFetch([{ status: 409, body: { error: 'Conditions changed', code: 'EXAM_POLICY_CHANGED' } }]);
   await expect(new Backend('https://app.b4skills.com').launch('General English')).rejects.toMatchObject({ status: 409, code: 'EXAM_POLICY_CHANGED' });
 });
+
+describe('account deletion', () => {
+  it('sends the confirmation constant, and the password only when given', async () => {
+    const calls = mockFetch([{ status: 200, body: { deleted: true } }, { status: 200, body: { deleted: true } }]);
+    const backend = new Backend('https://app.b4skills.com');
+    await backend.deleteAccount();
+    await backend.deleteAccount('secret');
+    expect(calls[0].url).toBe('https://app.b4skills.com/api/auth/delete-account');
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({ confirm: 'DELETE_MY_ACCOUNT' });
+    expect(JSON.parse(calls[1].init.body as string)).toEqual({ confirm: 'DELETE_MY_ACCOUNT', password: 'secret' });
+  });
+  it('surfaces password_required without replaying the request', async () => {
+    const calls = mockFetch([{ status: 403, body: { error: 'Enter your password to delete your account.', code: 'password_required' } }]);
+    await expect(new Backend('https://app.b4skills.com').deleteAccount()).rejects.toMatchObject({ status: 403, code: 'password_required' });
+    expect(calls).toHaveLength(1);
+  });
+  it('does not treat a reply without deleted:true as success', async () => {
+    mockFetch([{ status: 200, body: {} }]);
+    await expect(new Backend('https://app.b4skills.com').deleteAccount()).rejects.toThrow(/doğrulanamadı/);
+  });
+});

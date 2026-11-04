@@ -135,6 +135,11 @@ export function normaliseBaseUrl(raw: string): string {
   return `${scheme}://${match[2]}`;
 }
 
+/** Must match ACCOUNT_DELETION_CONFIRMATION in src/lib/compliance/account-deletion.ts. */
+export const ACCOUNT_DELETION_CONFIRMATION = 'DELETE_MY_ACCOUNT';
+
+export type AgeBand = 'UNDER_13' | '13_17' | 'ADULT';
+export type ConsentState = { allowed: boolean; ageBand: AgeBand | null; guardianRequired: boolean; status: string; policyVersion: string };
 export class Backend {
   constructor(readonly baseUrl: string) {}
 
@@ -163,6 +168,18 @@ export class Backend {
     }
   }
 
+  /**
+   * POST /api/auth/delete-account — permanently deletes the signed-in candidate's account
+   * (App Store 5.1.1(v)). Accounts created with an exam code have no password; the server
+   * answers 403 `password_required` when one is needed. The server clears the auth cookies.
+   */
+  async deleteAccount(password?: string): Promise<void> {
+    const data = await this.request<{ deleted?: boolean }>('api/auth/delete-account', {
+      confirm: ACCOUNT_DELETION_CONFIRMATION, ...(password ? { password } : {}),
+    });
+    if (data?.deleted !== true) throw new ApiError('Hesap silme doğrulanamadı. Lütfen tekrar deneyin.');
+  }
+
   /** POST /api/codes/validate — read-only check; does not consume the code. */
   async validateCode(code: string): Promise<{ productLine: string; expiresAt?: string | null }> {
     const data = await this.request<{ valid?: boolean; productLine?: string; expiresAt?: string | null }>('api/codes/validate', { code }, false);
@@ -186,6 +203,17 @@ export class Backend {
     return this.request<{ sessionId: string }>('api/sessions/launch', {
       ...(preflight ? { preflight } : {}), productLine, ...(organizationId ? { organizationId } : {}), ...(launchRequestId ? { launchRequestId } : {}),
     });
+  }
+
+  async consentStatus(): Promise<ConsentState> {
+    const state = await this.request<ConsentState>('api/guardian-consent/status');
+    if (typeof state?.allowed !== 'boolean' || !state.policyVersion || !state.status) throw new ApiError('Onay durumu doğrulanamadı.');
+    return state;
+  }
+  declareAge(ageBand: AgeBand) { return this.request<ConsentState>('api/guardian-consent/age', { ageBand }); }
+  async requestGuardian(email: string) {
+    const result = await this.request<{ sent: boolean }>('api/guardian-consent/request', { email });
+    if (result?.sent !== true) throw new ApiError('Veli e-postası gönderilemedi.');
   }
 
   examPolicy() { return this.request<ExamPolicy>('api/assessment/policy'); }

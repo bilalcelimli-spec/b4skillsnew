@@ -1494,5 +1494,153 @@
   "Yeniden kontrol et": {
     "en": "Check again",
     "ar": "تحقّق مرة أخرى"
+  },
+  "Hesap": {
+    "en": "Account",
+    "ar": "الحساب"
+  },
+  "Hesabımı sil": {
+    "en": "Delete my account",
+    "ar": "حذف حسابي"
+  },
+  "Hesabınız kalıcı olarak silinsin mi?": {
+    "en": "Permanently delete your account?",
+    "ar": "هل تريد حذف حسابك نهائيًا؟"
+  },
+  "Bu işlem geri alınamaz. Adınız, e-posta adresiniz, giriş bilgileriniz, ses kayıtlarınız ve kamera fotoğraflarınız silinir; süren sınavınız kapatılır.": {
+    "en": "This cannot be undone. Your name, email address, sign-in details, voice recordings and camera photos are deleted, and any exam in progress is closed.",
+    "ar": "لا يمكن التراجع عن هذا الإجراء. يُحذف اسمك وبريدك الإلكتروني وبيانات تسجيل الدخول وتسجيلاتك الصوتية وصور الكاميرا، ويُغلق أي اختبار جارٍ."
+  },
+  "Hesabımı kalıcı olarak sil": {
+    "en": "Permanently delete my account",
+    "ar": "حذف حسابي نهائيًا"
+  },
+  "Devam etmek için şifrenizi girin.": {
+    "en": "Enter your password to continue.",
+    "ar": "أدخل كلمة المرور للمتابعة."
+  },
+  "Şifre yanlış. Tekrar deneyin.": {
+    "en": "The password is incorrect. Try again.",
+    "ar": "كلمة المرور غير صحيحة. حاول مرة أخرى."
+  },
+  "Bu hesap kurumunuz tarafından yönetiliyor. Silinmesi için kurum yöneticinize başvurun.": {
+    "en": "This account is managed by your institution. Ask your institution's administrator to delete it.",
+    "ar": "هذا الحساب تديره مؤسستك. اطلب من مسؤول مؤسستك حذفه."
+  },
+  "Dosyalarınız şu anda silinemedi ve hesabınızda hiçbir değişiklik yapılmadı. Daha sonra tekrar deneyin.": {
+    "en": "Your files could not be deleted right now and nothing was changed in your account. Try again later.",
+    "ar": "تعذر حذف ملفاتك الآن ولم يتغير شيء في حسابك. حاول لاحقًا."
+  },
+  "Hesap silinemedi. Bağlantınızı kontrol edip tekrar deneyin. Sorun sürerse hello@b4skills.com adresine yazın.": {
+    "en": "The account could not be deleted. Check your connection and try again. If the problem continues, write to hello@b4skills.com.",
+    "ar": "تعذر حذف الحساب. تحقق من اتصالك وحاول مرة أخرى. إذا استمرت المشكلة، راسل hello@b4skills.com."
+  },
+  "Hesabınız silindi": {
+    "en": "Your account was deleted",
+    "ar": "تم حذف حسابك"
+  },
+  "Tamam": {
+    "en": "OK",
+    "ar": "حسنًا"
+  },
+  "Hesap silme doğrulanamadı. Lütfen tekrar deneyin.": {
+    "en": "Account deletion could not be confirmed. Please try again.",
+    "ar": "تعذر تأكيد حذف الحساب. يرجى المحاولة مرة أخرى."
+  },
+  "Gizlilik politikası": {
+    "en": "Privacy policy",
+    "ar": "سياسة الخصوصية"
+  },
+  "Kullanım koşulları": {
+    "en": "Terms of use",
+    "ar": "شروط الاستخدام"
+  },
+  "Bağlantı açılamadı. Tarayıcınızdan b4skills.com/support adresini ziyaret edin.": {
+    "en": "The link could not open. Visit b4skills.com/support in your browser.",
+    "ar": "تعذر فتح الرابط. انتقل إلى b4skills.com/support في متصفحك."
+  },
+  "Çoktan seçmeli, yazılı ve sesli yanıtlar desteklenir. Kurumunuzun etkinleştirdiği otomatik gözetim, başlangıç fotoğrafı ve teknik olay kaydı kullanabilir. Canlı insan gözetmen hizmeti sunulmaz.": {
+    "en": "Multiple-choice, written and audio responses are supported. Automated monitoring enabled by your institution may use a baseline photo and technical event logs. Live human proctoring is not offered.",
+    "ar": "تُدعم الإجابات متعددة الخيارات والكتابية والصوتية. قد تستخدم المراقبة الآلية التي تفعّلها مؤسستك صورة أولية وسجلات للأحداث التقنية. لا تتوفر مراقبة بشرية مباشرة."
+  },
+  "Sınav koşullarını okudum; yanıtlarımın açıklanan AI sağlayıcılarına puanlama için gönderilmesine izin veriyorum.": {
+    "en": "I have read the assessment conditions and allow my responses to be sent to the disclosed AI providers for scoring.",
+    "ar": "قرأت شروط التقييم وأسمح بإرسال إجاباتي إلى مزودي الذكاء الاصطناعي المذكورين لغرض التقييم."
+  },
+  "Yaş ve veli onayı": {
+    "en": "Age and guardian consent",
+    "ar": "العمر وموافقة ولي الأمر"
+  },
+  "Tam doğum tarihinizi istemiyoruz. 18 yaş altı adaylar için veli e-posta onayı ve kurumun veli yetkisini doğrulaması gerekir. Bu adımlar tamamlanana kadar sınav, mikrofon ve kamera hazırlığı açılmaz.": {
+    "en": "We do not ask for your full date of birth. Candidates under 18 need guardian email consent and school verification of guardian authority. The assessment, microphone and camera checks remain unavailable until both steps are complete.",
+    "ar": "لا نطلب تاريخ ميلادك الكامل. يحتاج المتقدمون دون 18 عامًا إلى موافقة ولي الأمر بالبريد الإلكتروني وتحقق المؤسسة من صفته. لا يُتاح الاختبار أو فحص الميكروفون والكاميرا حتى اكتمال الخطوتين."
+  },
+  "Onay durumu kontrol ediliyor…": {
+    "en": "Checking consent status…",
+    "ar": "جارٍ التحقق من حالة الموافقة…"
+  },
+  "13 yaş altı": {
+    "en": "Under 13",
+    "ar": "أقل من 13 عامًا"
+  },
+  "13–17 yaş": {
+    "en": "Ages 13–17",
+    "ar": "من 13 إلى 17 عامًا"
+  },
+  "18 yaş ve üzeri": {
+    "en": "18 or older",
+    "ar": "18 عامًا أو أكثر"
+  },
+  "Güncel koşullarla devam et": {
+    "en": "Continue with current terms",
+    "ar": "المتابعة بالشروط الحالية"
+  },
+  "Velinin e-posta adresi": {
+    "en": "Guardian's email address",
+    "ar": "البريد الإلكتروني لولي الأمر"
+  },
+  "Veliye onay bağlantısı gönder": {
+    "en": "Send consent link to guardian",
+    "ar": "إرسال رابط الموافقة إلى ولي الأمر"
+  },
+  "Bağlantı gönderildi. Velinizin onayı ve kurumunuzun veli yetkisini doğrulaması bekleniyor.": {
+    "en": "Link sent. Waiting for guardian consent and school verification of guardian authority.",
+    "ar": "أُرسل الرابط. بانتظار موافقة ولي الأمر وتحقق المؤسسة من صفته."
+  },
+  "Veli e-posta onayı alındı. Kurumunuzun veli yetkisini doğrulaması bekleniyor.": {
+    "en": "Guardian email consent received. Waiting for school verification of guardian authority.",
+    "ar": "استُلمت موافقة ولي الأمر بالبريد الإلكتروني. بانتظار تحقق المؤسسة من صفته."
+  },
+  "Veli onayı geri çekildi. Sınav açılamaz.": {
+    "en": "Guardian consent was withdrawn. The assessment is unavailable.",
+    "ar": "سُحبت موافقة ولي الأمر. لا يمكن فتح الاختبار."
+  },
+  "Durumu yenile": {
+    "en": "Refresh status",
+    "ar": "تحديث الحالة"
+  },
+  "Onay durumu doğrulanamadı.": {
+    "en": "Consent status could not be verified.",
+    "ar": "تعذر التحقق من حالة الموافقة."
+  },
+  "Veli e-postası gönderilemedi.": {
+    "en": "The guardian email could not be sent.",
+    "ar": "تعذر إرسال البريد الإلكتروني إلى ولي الأمر."
+  },
+  "Yazılı ve sesli sınav yanıtlarınız, puanlama ve gerektiğinde sesin metne dönüştürülmesi için OpenAI hizmetlerine gönderilebilir. Sonuçlar kurumunuzla paylaşılır. Yanıtlarınıza gereksiz kişisel veya hassas bilgi eklemeyin. Onay vermeden yeni bir sınav başlatılmaz.": {
+    "en": "Your written and spoken assessment responses may be sent to OpenAI for scoring and, when needed, transcription. Results are shared with your institution. Do not include unnecessary personal or sensitive information. A new assessment cannot start without your permission.",
+    "ar": "قد تُرسل إجاباتك الكتابية والصوتية إلى OpenAI للتقييم وتحويل الصوت إلى نص عند الحاجة. تُشارك النتائج مع مؤسستك. لا تُضف معلومات شخصية أو حساسة غير ضرورية. لا يبدأ اختبار جديد دون موافقتك."
+  },
+  "Çocuk sürümünün veri işleme hazırlıkları sürüyor. Henüz sınav açılamaz veya veli onayı istenemez.": {
+    "en": "Data processing preparations for the child version are still in progress. Assessments and guardian consent requests are not available yet.",
+    "ar": "لا تزال ترتيبات معالجة بيانات إصدار الأطفال قيد الإعداد. الاختبارات وطلبات موافقة ولي الأمر غير متاحة بعد."
+  },
+  "Sınav yanıtlarınız, raporlarınız ve insan değerlendirme kayıtlarınız da silinir. Dosya ve yedek temizliği gizlilik politikasındaki süreçle tamamlanır. Yasal olarak gerekli ödeme ve silme işlem kayıtları ayrıca saklanır.": {
+    "en": "Your assessment answers, reports and human review records are also deleted. File and backup cleanup follows the process in the privacy policy. Legally required payment and erasure records are retained separately.",
+    "ar": "تُحذف أيضًا إجابات التقييم وتقاريره وسجلات المراجعة البشرية. تُستكمل إزالة الملفات والنسخ الاحتياطية وفق سياسة الخصوصية. تُحفظ سجلات الدفع والحذف المطلوبة قانونًا بشكل منفصل."
+  },
+  "Hesabınız ve sınav kayıtlarınız kaldırıldı. Bu cihazdaki bekleyen kayıtlar temizlendi. Dosya ve yedek temizliği gizlilik politikasındaki süreçle tamamlanır.": {
+    "en": "Your account and assessment records have been removed. Pending records on this device were cleared. File and backup cleanup follows the process in the privacy policy.",
+    "ar": "أُزيل حسابك وسجلات التقييم، ومُسحت السجلات المعلقة على هذا الجهاز. تُستكمل إزالة الملفات والنسخ الاحتياطية وفق سياسة الخصوصية."
   }
 }

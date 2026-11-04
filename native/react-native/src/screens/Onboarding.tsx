@@ -3,6 +3,7 @@ import { useLanguage } from '../i18n/store';
 import { LanguagePicker } from '../i18n/LanguagePicker';
 import { getLanguage, localeTags } from '../i18n/core';
 import { Text } from "../i18n/Text";
+import { LegalLinks } from '../components/LegalLinks';
 import { t } from "../i18n/core";
 // Signed-out experience. Every launch opens on the logo-only page with "Devam et". The first time,
 // a five-screen introduction follows; afterwards "Devam et" goes straight to its last screen,
@@ -183,6 +184,7 @@ export function Onboarding({
             alignSelf: 'center'
           }} />
             </View> : null}
+          {last ? <LegalLinks dark /> : null}
         </Body>
       </ScrollView>
 
