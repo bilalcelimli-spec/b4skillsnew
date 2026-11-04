@@ -94,7 +94,7 @@ jobs:
           PORT: 3001
           DATABASE_URL: ${{ env.DATABASE_URL }}
           MINOR_PROCESSING_READY: "true"
-      JWT_SECRET: ${{ env.JWT_SECRET }}
+          JWT_SECRET: ${{ env.JWT_SECRET }}
           REFRESH_SECRET: ${{ env.REFRESH_SECRET }}
 
       - name: Run Playwright tests
