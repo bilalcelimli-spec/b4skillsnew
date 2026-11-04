@@ -1511,10 +1511,6 @@
     "en": "This cannot be undone. Your name, email address, sign-in details, voice recordings and camera photos are deleted, and any exam in progress is closed.",
     "ar": "لا يمكن التراجع عن هذا الإجراء. يُحذف اسمك وبريدك الإلكتروني وبيانات تسجيل الدخول وتسجيلاتك الصوتية وصور الكاميرا، ويُغلق أي اختبار جارٍ."
   },
-  "Puanlarınız kimliğinizden ayrılarak kurumunuzun toplu sonuçlarında ve ölçme kalitesi çalışmalarında kalır; adınızla ilişkilendirilemez. Ödeme kayıtları yasal süre boyunca saklanır.": {
-    "en": "Your scores are separated from your identity and remain only in your institution's aggregate results and in measurement-quality studies; they cannot be linked to your name. Payment records are kept for the legally required period.",
-    "ar": "تُفصل درجاتك عن هويتك وتبقى فقط في النتائج الإجمالية لمؤسستك وفي دراسات جودة القياس، ولا يمكن ربطها باسمك. تُحفظ سجلات الدفع للمدة التي يفرضها القانون."
-  },
   "Hesabımı kalıcı olarak sil": {
     "en": "Permanently delete my account",
     "ar": "حذف حسابي نهائيًا"
@@ -1542,10 +1538,6 @@
   "Hesabınız silindi": {
     "en": "Your account was deleted",
     "ar": "تم حذف حسابك"
-  },
-  "Hesabınız ve kişisel verileriniz silindi. Bu cihazdaki bekleyen kayıtlar da kaldırıldı.": {
-    "en": "Your account and personal data were deleted. Pending records on this device were removed too.",
-    "ar": "تم حذف حسابك وبياناتك الشخصية. وأُزيلت أيضًا السجلات المعلقة على هذا الجهاز."
   },
   "Tamam": {
     "en": "OK",
@@ -1642,5 +1634,13 @@
   "Çocuk sürümünün veri işleme hazırlıkları sürüyor. Henüz sınav açılamaz veya veli onayı istenemez.": {
     "en": "Data processing preparations for the child version are still in progress. Assessments and guardian consent requests are not available yet.",
     "ar": "لا تزال ترتيبات معالجة بيانات إصدار الأطفال قيد الإعداد. الاختبارات وطلبات موافقة ولي الأمر غير متاحة بعد."
+  },
+  "Sınav yanıtlarınız, raporlarınız ve insan değerlendirme kayıtlarınız da silinir. Dosya ve yedek temizliği gizlilik politikasındaki süreçle tamamlanır. Yasal olarak gerekli ödeme ve silme işlem kayıtları ayrıca saklanır.": {
+    "en": "Your assessment answers, reports and human review records are also deleted. File and backup cleanup follows the process in the privacy policy. Legally required payment and erasure records are retained separately.",
+    "ar": "تُحذف أيضًا إجابات التقييم وتقاريره وسجلات المراجعة البشرية. تُستكمل إزالة الملفات والنسخ الاحتياطية وفق سياسة الخصوصية. تُحفظ سجلات الدفع والحذف المطلوبة قانونًا بشكل منفصل."
+  },
+  "Hesabınız ve sınav kayıtlarınız kaldırıldı. Bu cihazdaki bekleyen kayıtlar temizlendi. Dosya ve yedek temizliği gizlilik politikasındaki süreçle tamamlanır.": {
+    "en": "Your account and assessment records have been removed. Pending records on this device were cleared. File and backup cleanup follows the process in the privacy policy.",
+    "ar": "أُزيل حسابك وسجلات التقييم، ومُسحت السجلات المعلقة على هذا الجهاز. تُستكمل إزالة الملفات والنسخ الاحتياطية وفق سياسة الخصوصية."
   }
 }
