@@ -7,8 +7,10 @@ Bu kayıt önceki “kullanıcı ZDR etkin dedi” bilgisini günceller. Bir yay
 - OpenAI Platform oturumu açıldı. Görünen organizasyon Personal; veri saklama ekranında API call logging seçenekleri var, ZDR seçimi/onayı doğrulanamadı. Kullanıcı ZDR'nin nereden onaylandığını sordu. ZDR **doğrulanmadı** kabul edilir; eski kullanıcı teyidi devreye alma kanıtı değildir.
 - BAA/HIPAA sözleşmesi kabul edilmedi. Bu, eğitim uygulamasının ZDR uygunluk başvurusunun yerine geçmez.
 - Kullanıcı OpenAI, Render ve Supabase için imzalı aktarım sözleşmeleri/kabul yazılarının henüz olmadığını teyit etti. Mevcut belgeler taslak; imza ve KVKK bildirimi yapılmadı.
-- Render B4Skills hizmeti main 691660b sürümünü çalıştırıyor. Web Shell kontrolünde OPENAI_API_KEY ve OPENAI_PROJECT_ID yok; MINOR_PROCESSING_READY ve RETENTION_APPLY_ENABLED etkin değil. Anahtarların alternatif AWS yükleme yolu bu oturumda doğrulanamadı. Gizli değerler okunmadı veya kopyalanmadı.
+- Render B4Skills hizmeti main 691660b sürümünü çalıştırıyor. Kullanıcının anahtarı eklemesinden sonra dep-dblop4uk1f9s73enfqog yayını başarıyla tamamlandı. Web Shell kontrolünde OPENAI_API_KEY ve ffmpeg mevcut; OPENAI_PROJECT_ID tanımlı değil; MINOR_PROCESSING_READY ve RETENTION_APPLY_ENABLED etkin değil. Sentetik yazma ve kamusal, yazılmış TTS ses örneğiyle sağlayıcı testi başlatıldı; Mac kilitlendiği için sonuç okunamadı, başarı iddia edilmez. Gizli değerler okunmadı veya kopyalanmadı.
 - Altı test dosyasında 55/55 test geçti, atlanan test yok: veli akışı 18 birim + 9 PostgreSQL; hesap silme 9; saklama/silme 9 PostgreSQL; OpenAI yazma 5 + konuşma 5 birim testi. Ayrı yerel PostgreSQL kullanıldı. OpenAI testlerinde sağlayıcı taklidi kullanılır; bu sonuç canlı API bağlantısı veya ZDR kanıtı değildir.
+
+- PR #87, 6122bf0 sürümünde 16/16 GitHub kontrolünü geçti. Bu CI sonucu eksik üretim sırrını veya gerçek silme uygulamasını doğrulamaz.
 
 ## Üretim saklama önizlemesi
 
@@ -26,7 +28,7 @@ Apple yaş anketi 9+ kaydedildi. Tütün referanslı dört soru RETIRED; kullan�
 
 1. OpenAI ZDR başvurusu ve üretim organizasyon/proje/uç kapsamının yazılı onayı.
 2. Sağlayıcı DPA/aktarım dosyaları, gerçek roller, yetkili imzalar ve gerekiyorsa bildirim alındısı; kurum sözleşmelerindeki karşı taraf bilgileri.
-3. Doğru Render hizmetinde anahtar ve gerekli ses dönüştürücü; sentetik metin/ses canlı testi.
+3. Anahtar ve ses dönüştürücü doğrulandı; başlatılan sentetik metin/ses canlı testinin sonucu henüz doğrulanmadı.
 4. Eski 33 medya referansı, yedekler ve zamanlanmış silme kurulumu/gerçek uygulama kanıtı.
 5. Mağaza boyutlarında iPad/Mac ekranları ve cihaz kabul testleri.
 
