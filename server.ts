@@ -4,7 +4,6 @@ import { serializeJsonLd } from "./src/lib/site/seo-serialization.js";
 import { storeNativeEvent } from "./src/lib/proctoring/native-events.js";
 import { cookieRequestProtection } from './src/lib/security/cookie-request-protection.js';
 import { examPolicy, admitExam } from "./src/lib/proctoring/exam-policy.js";
-import { isGeminiScoringConfigured } from "./src/lib/scoring/gemini-scoring-service.js";
 import { createSessionPauseRouter } from './src/routes/session-pause';
 import "dotenv/config";
 import {AppError} from "./src/lib/errors/app-error.js";
@@ -1469,8 +1468,8 @@ async function startServer() {
     }
 
     // 3. AI scoring — lightweight env check (actual probe would be expensive)
-    const aiKey = isGeminiScoringConfigured();
-    checks.aiScoring = { status: aiKey ? "up" : "degraded", detail: aiKey ? "Gemini API key configured (not a provider health probe)" : "Gemini API key missing — AI scoring unavailable" };
+    const aiKey = Boolean(SecretsManager.get("OPENAI_API_KEY")?.trim());
+    checks.aiScoring = { status: aiKey ? "up" : "degraded", detail: aiKey ? "OpenAI API key configured (not a provider health or privacy-readiness probe)" : "OpenAI API key missing — AI scoring unavailable" };
 
     // 4. Memory / process uptime
     const mem = process.memoryUsage();
