@@ -4,6 +4,7 @@ import { SecretsManager } from '../secrets/secrets-manager.js';
 import { buildCefrRubricPrompt, type CefrLevel } from '../cefr/cefr-framework.js';
 import { validateAIScore } from './validate-ai-score.js';
 import { SCORING_REQUEST_TIMEOUT_MS } from './ai-scoring-policy.js';
+import { parseSpeakingScore } from './parse-speaking-score.js';
 
 /** Decode locally through pipes: no public files, remote URLs, or shell interpolation. */
 export async function normalizeScoringAudio(base64: string, mimeType: string): Promise<string> {
@@ -32,7 +33,7 @@ export async function scoreSpeakingWithOpenAI(audio: string, mimeType: string, t
       { role: 'user', content: [{ type: 'text', text: JSON.stringify({ task, rubric: targetCefr ? buildCefrRubricPrompt(targetCefr, 'speaking') : '' }) }, { type: 'input_audio', input_audio: { data: wav, format: 'wav' } }] }] });
   const choice = result.choices[0];
   if (choice?.finish_reason !== 'stop' || choice.message.refusal || !choice.message.content) throw new Error('Incomplete or refused AI speaking score');
-  const score = validateAIScore(JSON.parse(choice.message.content));
+  const score = validateAIScore(parseSpeakingScore(choice.message.content));
   if (!score.transcript?.trim() || !score.speakingFeatures) throw new Error('Missing AI speaking evidence');
   for (const [key, value] of Object.entries(score.speakingFeatures)) {
     const max = key === 'speechRate' ? 500 : key === 'pauseDuration' ? 300 : 10;
