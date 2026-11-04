@@ -46,7 +46,7 @@ Hizmet sağlayıcı kendisine ulaşan hak talebini gereksiz veri toplamadan Kuru
 
 ## 9. Saklama, sona erme ve silme
 
-Saklama eki uygulanır: ses 30 gün; açık değerlendirme için en çok 60 gün; kamera varsayılan 7 gün, Kurumun belirlediği 1–30 gün; sınav yanıt ve sonuçları tamamlanmadan itibaren iki yıl. Tamamlanmamış oturumlar için iki yıllık üst sınır oluşturulma tarihinden hesaplanır. Daha kısa, haklı silme talebi ayrıca yerine getirilir. Süreler kanuni zorunluluk diye sunulmaz; hizmet için belirlenen azami sürelerdir.
+Saklama eki uygulanır: ses 30 gün; açık değerlendirme için en çok 60 gün; kamera varsayılan 7 gün, Kurumun belirlediği 1–30 gün; sınav yanıt ve sonuçları tamamlanma tarihinden itibaren iki yıl. Tamamlanmamış oturumlar için iki yıllık üst sınır oluşturulma tarihinden hesaplanır. Daha kısa, haklı silme talebi ayrıca yerine getirilir. Süreler kanuni zorunluluk diye sunulmaz; hizmet için belirlenen azami sürelerdir.
 
 Hesap silmede oturumlar, yanıtlar, insan değerlendirmeleri, raporlar, geri bildirim ve gözetim kayıtları temizlenir. Depolama silmesi kalıcı kuyruğa kaydedilir; hizmet sağlayıcının silme teyidi alınana kadar istek tamamlanmış dosya yok etme olarak raporlanmaz. Fatura ve kanunen korunması gereken kayıtların ayrı amacı ve süresi envanterde gösterilir; sınav yanıtları bu istisna altında topluca tutulmaz.
 

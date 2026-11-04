@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | Ses ve açıkça envantere alınmış eski yanıt dosyaları | Yanıttan itibaren 30 gün; açık puanlama/insan incelemesi varsa en çok 60 gün | Ses içeren yanıtın içeriği/metaverisi ve inceleme kopyası silinir; dosya kalıcı silme kuyruğuna alınır. Gerekirse alıntı içerebilen rapor ayrıntısı kaldırılır. |
 | Kamera/gözetim fotoğrafı | Çekim/kayıt tarihinden itibaren varsayılan 7 gün; geçerli kurum ayarı 1–30 gün | Özel dosya silme kuyruğu; olay yalnız süre sonu işaretini tutar |
-| Sınav yanıtları ve sonuçları | Tamamlanma tarihinden iki yıl; tamamlanmamış oturum için oluşturulmadan iki yıl | Oturum, yanıt, rapor, insan puanlama, gözetim ve geri bildirim kayıtları silinir. Bağlı sertifika ve paylaşım erişimi sona erer. |
+| Sınav yanıtları ve sonuçları | Tamamlanma tarihinden iki yıl; tamamlanmamış oturum için oluşturulma tarihinden itibaren iki yıl | Oturum, yanıt, rapor, insan puanlama, gözetim ve geri bildirim kayıtları silinir. Bağlı sertifika ve paylaşım erişimi sona erer. |
 | Hesap silme talebi | Kimlik/parola ve açık talep doğrulandıktan sonra | Hesap bilgileri, veli verileri ve bağlı değerlendirmeler temizlenir; dosya silme teyidi ayrı izlenir. |
 | İmha kayıtları | En az 3 yıl; daha uzun zorunluluk varsa ayrıca kayıt | Yanıt/ses içeriği tutulmaz; işlem kimliği, kapsam, zaman, sonuç ve geri yükleme eşleştirme kimliği sınırlı yetkiyle korunur |
 | Yedek, dış sağlayıcı günlükleri ve hukuken gerekli ödeme kayıtları | Sağlayıcı/işlem bazında doğrulanacak ayrı süre | İşletim dışı erişim sınırı, belgelenmiş süre sonu silme ve gerekiyorsa alıcıya silme talebi |
