@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Linking, Pressable, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '../i18n/Text';
 import { t } from '../i18n/core';
 import { color, type } from '../theme';
@@ -17,13 +17,20 @@ export function LegalLinks({ dark = false }: { dark?: boolean }) {
     setFailed(false);
     try { await Linking.openURL(url); } catch { setFailed(true); }
   };
-  return <View style={{ gap: 8 }}>
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+  return <View style={styles.root}>
+    <View style={styles.links}>
       {pages.map(([label, url]) => <Pressable key={url} accessibilityRole="link"
-        accessibilityLabel={t(label)} onPress={() => void open(url)} style={{ paddingVertical: 10 }}>
-        <Text style={[type.caption, { color: dark ? color.onDarkMuted : color.plum, textDecorationLine: 'underline' }]}>{t(label)}</Text>
+        accessibilityLabel={t(label)} onPress={() => open(url)} style={styles.link}>
+        <Text style={[type.caption, styles.label, { color: dark ? color.onDarkMuted : color.plum }]}>{t(label)}</Text>
       </Pressable>)}
     </View>
     {failed ? <Text accessibilityRole="alert" style={[type.caption, { color: dark ? color.onDarkMuted : color.muted }]}>{t('Bağlantı açılamadı. Tarayıcınızdan b4skills.com/support adresini ziyaret edin.')}</Text> : null}
   </View>;
 }
+
+const styles = StyleSheet.create({
+  root: { gap: 8 },
+  links: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  link: { paddingVertical: 10 },
+  label: { textDecorationLine: 'underline' },
+});
