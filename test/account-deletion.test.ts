@@ -90,7 +90,7 @@ describe('deleteOwnAccount', () => {
       ],
       responses: [
         { id: 'r1', sessionId: 's1', value: JSON.stringify({ audio: 'AAAA', mimeType: 'audio/mp4' }), artifactUrl: null, score: 0.7 },
-        { id: 'r2', sessionId: 's1', value: 'B', artifactUrl: null, score: 1 },
+        { id: 'r2', sessionId: 's1', value: 'My name is Ada, phone 5551234', metadata: { transcript: 'My name is Ada', aiFeedback: 'Ada said...' }, artifactUrl: null, score: 1 },
         { id: 'r3', sessionId: 's2', value: null, artifactUrl: 's3://old/audio.m4a', score: null },
       ],
       reports: [
@@ -117,9 +117,12 @@ describe('deleteOwnAccount', () => {
     expect(t.sessions[2]).toMatchObject({ status: 'IN_PROGRESS', metadata: { ipAddress: '9.9.9.9' } });
     expect(t.events.map(e => e.type)).toEqual(['EVIDENCE_ERASED', 'EVIDENCE_ERASED', 'TAB_SWITCH']);
     expect(JSON.stringify(t.events[0].metadata)).not.toContain('native/s1');
-    expect(JSON.parse(t.responses[0].value)).toEqual({ mimeType: 'audio/mp4', audioErased: true });
+    expect(t.responses[0].value).toBeNull();
     expect(t.responses[0].score).toBe(0.7);
-    expect(t.responses[1].value).toBe('B');
+    expect(t.responses[1].value).toBeNull();
+    expect(t.responses[1].metadata).toMatchObject({ contentErased: true });
+    expect(JSON.stringify(t.responses)).not.toContain('Ada');
+    expect(JSON.stringify(t.responses)).not.toContain('5551234');
     expect(t.responses[2].artifactUrl).toBeNull();
     expect(t.codes).toEqual([{ id: 'c1', usedByEmail: 'deleted-u1@deleted.invalid' }, { id: 'c2', usedByEmail: 'someone@example.com' }]);
     expect(t.reports[0]).toMatchObject({ certificateUrl: null, isVerified: false,
@@ -147,13 +150,13 @@ describe('deleteOwnAccount', () => {
     expect(t.events[0].type).toBe('SCREENSHOT');
   });
 
-  it('runs in one transaction with a timeout long enough for many sessions, reading only rows that can hold audio', async () => {
+  it('runs in one transaction with a timeout long enough for many sessions, erasing answer content including free text and copied AI metadata', async () => {
     const { db } = fakeDb({ users: [candidate()], sessions: [{ id: 's1', candidateId: 'u1', status: 'COMPLETED', metadata: {} }] });
     const findMany = vi.spyOn(db.response, 'findMany');
     await deleteOwnAccount(db, 'u1', { confirm: ACCOUNT_DELETION_CONFIRMATION }, deps());
     expect(db.$transaction).toHaveBeenCalledTimes(1);
     expect(db.$transaction.mock.calls[0][1]).toMatchObject({ timeout: 60_000 });
-    expect((findMany.mock.calls[0][0] as any).where.OR).toEqual([{ value: { contains: '"audio"' } }, { artifactUrl: { not: null } }]);
+    expect((findMany.mock.calls[0][0] as any).where).toEqual({ sessionId: { in: ['s1'] } });
   });
 });
 

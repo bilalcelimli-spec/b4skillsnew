@@ -2,7 +2,7 @@
  * Self-service account deletion (App Store Guideline 5.1.1(v), GDPR Art. 17, KVKK md. 7).
  *
  * A candidate deletes their own account from the app or the web. The account can no longer
- * sign in and everything that identifies the person is erased:
+ * sign in. The deletion scope includes:
  *   - User identity, credentials, tokens, social login and 2FA fields
  *   - CandidateProfile (demographics, school/class) and class memberships
  *   - The e-mail recorded on redeemed exam codes
@@ -11,8 +11,8 @@
  *   - IP addresses on the user's own audit-log entries
  *   - Signed certificates (they show the name and are publicly verifiable): withdrawn
  *
- * Scored responses, ability estimates and payment records stay, linked only to the
- * anonymised account: institutions keep their aggregate results, calibration keeps its data,
+ * Numeric scores, ability estimates and payment records stay, linked to the
+ * pseudonymised account: institutions keep their aggregate results, calibration keeps its data,
  * and payment records are kept for tax law. Unfinished sessions are closed (EXPIRED).
  *
  * Storage objects are deleted first (both providers delete idempotently). If storage fails,
@@ -159,17 +159,16 @@ export async function deleteOwnAccount(
 
     let erasedAudio = 0;
     if (sessionIds.length) {
-      // Only rows that can hold audio; the rest of the candidate's answers stay untouched and unread.
+      // Free text and AI metadata may contain identifiers, even after account identity is removed.
       const responses = await tx.response.findMany({
-        where: { sessionId: { in: sessionIds }, OR: [{ value: { contains: '"audio"' } }, { artifactUrl: { not: null } }] },
+        where: { sessionId: { in: sessionIds } },
         select: { id: true, value: true, artifactUrl: true },
       });
       for (const response of responses) {
         const scrubbed = scrubAudio(response.value);
-        if (scrubbed === null && !response.artifactUrl) continue;
-        erasedAudio++;
+        if (scrubbed !== null || response.artifactUrl) erasedAudio++;
         await tx.response.update({ where: { id: response.id }, data: {
-          ...(scrubbed !== null ? { value: scrubbed } : {}), artifactUrl: null,
+          value: null, artifactUrl: null, metadata: { contentErased: true, reason: 'account-deleted', erasedAt },
         } });
       }
     }

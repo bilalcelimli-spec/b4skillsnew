@@ -41,8 +41,56 @@ Durum: yayın için hazır değil. Bu belge hukuki uygunluk belgesi veya tamamla
 
 - OpenAI API hesabında ZDR etkin olduğu kullanıcı tarafından teyit edildi. Bu, tarafımızdan hesap ayarı incelenerek doğrulandı anlamına gelmez; üretim projesi ve kullanılacak metin/ses uçlarının kapsamı ayrıca eşleştirilecek.
 - Soru, görsel ve dinleme içeriklerinin kullanım ve dağıtım hakları kullanıcı tarafından teyit edildi.
-- OpenAI yazma adaptörü eklendi; henüz ana akışa alınmadı. Konuşma adaptörü, kalibrasyon ve proje kapsamı doğrulaması bekliyor.
+- OpenAI yazma ve gerçek ses puanlama adaptörleri ana akışa bağlandı. Canlı model erişimi, kalibrasyon ve proje kapsamı doğrulaması bekliyor.
 
 ## OpenAI geçişi — uygulama durumu
 
 Ana puanlama ve doğrudan konuşma puanlama ucu OpenAI adaptörüne bağlandı. Çok sağlayıcılı alternatif giriş noktası aynı OpenAI akışına yönlendiriliyor. Yazma Responses API, konuşma gerçek sesle Chat Completions kullanır; her iki istek `store:false` gönderir. Bu ayar ZDR onayı yerine geçmez. Ses dosyaları ffmpeg ile yerel bellek borularında WAV'a dönüştürülür; Docker çalışma imajına ffmpeg eklendi. Render'ın yerel Node ortamında ffmpeg kullanılabilirliği ayrıca doğrulanmalı. API anahtarı olmadığı için canlı sağlayıcı doğrulaması ve uzman puanlarıyla kalibrasyon yapılmadı. Üretim dağıtımı yapılmadı.
+
+## Başvuru dosyası — son kontrol
+
+Bu bölüm yükleme için hazırlanmış çalışma kaydıdır; üretime dağıtıldığı veya Apple’a gönderildiği anlamına gelmez.
+
+| Alan | Hazır bilgi / yapılacak işlem |
+| --- | --- |
+| Uygulama | B4Skills, com.b4skills.assessment, Apple uygulama kimliği 6826695698 |
+| Kategori / bölge | Eğitim; ilk dağıtım Türkiye |
+| İnceleme hesabı | appreview@b4skills.com; ayrı demo kurumu, gerçek aday verisi yok. Parola özel yerel dosyada, depoda değil. |
+| Destek / gizlilik | https://b4skills.com/support / https://b4skills.com/privacy; gizlilik metninin canlı sürümü ayrıca kontrol edilecek |
+| İnceleme paketi | Yeni veli ve OpenAI akışını içeren güncel iPad/macOS arşivleri gerekli. Önceki build 12 bu değişiklikleri içermez. |
+| Ekran görüntüleri | Güncel uygulamanın gerçek iPad ve Mac ekranları; test düzenekleri ve üretilmiş görseller kullanılmaz. |
+| Yayın biçimi | İnceleme sonrası elle yayın; başarısız kontroller varken gönderim yapılmaz. |
+
+### Apple inceleme notu — dağıtımdan sonra kullanılacak metin
+
+B4Skills provides English language assessments for institutional candidates. It reports estimated CEFR-aligned levels and does not claim official CEFR accreditation. The app is free to download; assessment access is provided by the institution. There is no in-app purchase flow.
+
+Use the dedicated review account supplied in the sign-in fields. It belongs to a demonstration institution and contains no real candidate records. Candidates can delete their own account in the app. Microphone access is used for speaking answers; camera access depends on the institution's disclosed proctoring configuration. Written answers and speech recordings are sent to OpenAI for assessment after the applicable permission flow. Minors require guardian approval and institutional verification of guardian authority before assessment access. Provider readiness must also be enabled; an email approval alone does not unlock an assessment. Scores may be challenged through support for human review.
+
+Bu not ancak demo giriş, sınav tamamlama, hesap silme, mikrofon/kamera izinleri ve veli akışı yüklenen paket üzerinde tekrar doğrulandıktan sonra kaydedilir. İnceleme hesabı için geçici ayrıcalık veya güvenlik kontrollerini atlama eklenmez.
+
+## Hukuki kapanış kaydı
+
+| Konu | Kanıt / gerekli işlem | Durum |
+| --- | --- | --- |
+| İçerik hakları | Kullanıcının 4 Kasım 2026 teyidi; lisans/üretim belgelerini kurum arşivinde saklama | Kullanıcı teyit etti |
+| OpenAI ZDR | Kullanıcı etkin olduğunu teyit etti; üretim proje kimliği ile metin/ses uçlarının kapsamını eşleştirme | Hesap üzerinden eşleştirme bekliyor |
+| Veri işleme sözleşmeleri | OpenAI, barındırma, veritabanı/depolama, e-posta ve hata izleme için geçerli sözleşme sürümü, taraf, tarih ve alt işleyen listesi | Belgeler sağlanmadı |
+| KVKK yurt dışı aktarımı | Her alıcı için veri sorumlusu/işleyen rolü ve uygun md. 9 mekanizması; standart sözleşme seçilirse doğru modül, imza ve bildirim kaydı | Tamamlanmadı |
+| Veli onayı | Açıklama, ayrı veli iletişimi, kurum yetki kontrolü, geri çekme; onay aktarım mekanizmasının yerine geçmez | Kod hazır, canlı uçtan uca test bekliyor |
+| Saklama ve silme | Veritabanı, özel medya, yedekler, AI/hata izleme ve insan değerlendirme kopyalarını kapsayan süre ve silme kanıtı | Üretim uygulaması doğrulanmadı |
+| Hesap silme | Yanıt içeriği ve yanıtın AI metaverileri silinir; insan incelemesi, rapor ve yedek kopyalarının kapsamı ayrıca kapatılacak; kimlikten ayırma anonimleştirme olarak sunulamaz | Kısmen giderildi |
+| Hak talepleri | hello@b4skills.com; gerekli ölçüde kimlik doğrulama, başvuru kaydı, 30 gün içinde sonuçlandırma; otomatik puana itiraz ve insan incelemesi | Metin hazır; operasyon kaydı gerekli |
+| App Privacy | Toplanan gerçek kategoriler ve alıcılar güncel paketle eşleştirilecek; nihai beyan yayımlanacak | Henüz yayımlanmadı |
+
+ZDR, veri işleme sözleşmesi ve KVKK aktarım dayanağı birbirinin yerine geçmez. Standart sözleşme kullanılıyorsa imzaların tamamlanmasından itibaren beş iş günü içinde Kuruma bildirim gerekliliği ayrıca takip edilir. Resmî bildirim açıklaması: https://standartsozlesme.kvkk.gov.tr/sharedFolder/aydinlatma-metni.pdf
+
+Apple üçüncü taraf AI’a kişisel veri paylaşımının açıklanmasını ve paylaşım öncesi açık izin alınmasını ister: https://developer.apple.com/app-store/review/guidelines/ (5.1.2).
+
+## Bu doğrulama turundaki düzeltmeler
+
+- Eski, metinden telaffuz puanlayan `/api/speaking/transcribe` yolu 410 ile kapatıldı. Etkin puanlama gerçek ses kullanan değerlendirme akışında kalır.
+- Gizlilik metni OpenAI veri akışı ve veli kontrolüyle güncellendi. Çözülmemiş aktarım/saklama bağımlılıkları nedeniyle taslak işareti korunur.
+- Rota denetimi, ara erişim kontrolünden sonra bağlanan veli yönlendiricisini de denetler.
+- Sınav testlerine yeni yaş/veli önkoşulları eklendi. Sentetik onay verisi yalnızca adı doğrulanmış, yerel ve geçici test veritabanına yazılabilir.
+- Kullanıcı OpenAI ve Xcode erişimlerini hazırlayacağını bildirdi; hazır olduğu henüz doğrulanmadı.

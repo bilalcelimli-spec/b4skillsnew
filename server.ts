@@ -6610,18 +6610,9 @@ ${codeSection}
   });
 
   app.post("/api/speaking/transcribe", whisperRateLimit, authMiddleware, async (req, res) => {
-    try {
-      const { audio, filename = "recording.webm", prompt = "", includeTimestamps = false } = req.body;
-      if (!audio) return res.status(400).json({ error: "audio (base64) required" });
-
-      const { runWhisperPipelineFromBase64 } = await import("./src/lib/scoring/whisper-pipeline.js");
-      const result = await runWhisperPipelineFromBase64(audio, filename, { prompt, includeTimestamps });
-      res.json(result);
-    } catch (err: any) {
-      const msg = err?.message ?? String(err);
-      if (msg.includes("OPENAI_API_KEY")) return res.status(503).json({ error: "Whisper not configured — OPENAI_API_KEY missing" });
-      res.status(500).json({ error: "Transcription failed" });
-    }
+    // Retired transcript-only scorer could invent pronunciation and assign A1 to silence.
+    // Clients must submit recordings through the session scoring flow.
+    res.status(410).json({ error: "This legacy scoring endpoint has been retired. Submit audio through your assessment session.", code: "LEGACY_SCORING_RETIRED" });
   });
 
   // ── Health / SLO endpoints ───────────────────────────────────────────────
