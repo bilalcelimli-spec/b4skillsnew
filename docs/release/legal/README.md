@@ -17,7 +17,7 @@ Güncel hesap ve test durumu için [son doğrulama kaydı](RELEASE_EVIDENCE_2026
 
 - Kurumsal hizmet için kurumun unvanı, adresi, veri koruma irtibatı, yetkili imzacısı ve sözleşme süresini doldurun. Kurum talimatıyla işlenen veriler ile B4Skills'in kendi hesap, güvenlik ve yasal kayıt işlemlerini ayırın.
 - Her sağlayıcının hesap/fatura üzerindeki sözleşme tarafını, hizmet bölgesini, uygulanabilir DPA sürümünü ve alt işleyen listesini özel kurum arşivine alın. Erişim anahtarları, parolalar, aday kayıtları veya imza örnekleri bu depoya konulmaz.
-- OpenAI ZDR'nin etkin olduğuna ilişkin kullanıcı teyidi mevcut. Üretim proje kimliği ve metin/ses uçlarının bu kapsamda olduğu ayrıca hesap üzerinden eşleştirilir. `store:false` bu teyidin yerine geçmez.
+- Önceki kullanıcı ZDR teyidi hesap ekranında doğrulanamadı; ZDR onayı halen bekliyor. Üretim proje kimliği ve metin/ses uçlarının onay kapsamıyla eşleştirilmesi gerekir. `store:false` bu onayın yerine geçmez.
 - Aktarımın gerçek rollerine uygun resmî standart sözleşme modülünü seçin; ek çalışma belgesindeki bilgileri yalnız izin verilen alanlara aktarın. Ana standart hükümleri yeniden yazmayın. İmza yetkileri ve varsa gerekli tercüme/onay belgelerini tamamlayın.
 - Son imza tarihinden başlayan beş iş günlük bildirim süresini kaydedin; bildirimi ve alındısını ayrı muhafaza edin. Bu dosya herhangi bir bildirim yapmaz.
 - Saklama işi, geçiş ve kuru çalışma sonuçları doğrulandıktan sonra işletime alınır. Yedek ömrü, dış alıcıların silme süreleri ve erişim yetkileri doğrulanmadan "tüm kopyalar silindi" beyanı verilmez.
@@ -27,7 +27,7 @@ Güncel hesap ve test durumu için [son doğrulama kaydı](RELEASE_EVIDENCE_2026
 | Konu | Durum |
 | --- | --- |
 | İçeriklerin kullanım/dağıtım hakları | Kullanıcı tarafından teyit edildi; lisans belgeleri özel arşivde tutulmalı |
-| OpenAI ZDR | Kullanıcı teyidi var; üretim proje/uç eşleştirmesi bekliyor |
+| OpenAI ZDR | Doğrulanmadı; sağlayıcı onayı ve üretim proje/uç eşleştirmesi bekliyor |
 | OpenAI DPA | Resmî 1 Ocak 2026 yürürlük tarihli metin incelendi; hesap sözleşmesi eşleştirmesi bekliyor |
 | Supabase DPA | Resmî 1 Ağustos 2026 sürümünün hizmet sözleşmesine dahil olduğu açıklanıyor; hesap eşleştirmesi bekliyor |
 | Render DPA | Resmî DPA sayfası bulundu; bu araştırmada sözleşme gövdesi alınamadı, uygulanabilir nüsha istenmeli |

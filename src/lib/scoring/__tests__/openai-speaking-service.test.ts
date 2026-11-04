@@ -26,6 +26,12 @@ describe.skipIf(!available)('local pipe conversion and audio scoring',()=>{
   mocks.create.mockResolvedValue({choices:[{finish_reason:'length',message:{content:JSON.stringify(score)}}]});
   await expect(scoreSpeakingWithOpenAI(wav(),'audio/wav','task')).rejects.toThrow('Incomplete');
  });
+ it('validates fenced audio-model JSON without discarding evidence checks',async()=>{
+  mocks.create.mockResolvedValue({model:'audio-snapshot',choices:[{finish_reason:'stop',message:{content:'```json\n'+JSON.stringify(score)+'\n```'}}]});
+  expect((await scoreSpeakingWithOpenAI(wav(),'audio/wav','task')).providerModel).toBe('audio-snapshot');
+  mocks.create.mockResolvedValue({choices:[{finish_reason:'stop',message:{content:'```json\n'+JSON.stringify({...score,score:2})+'\n```'}}]});
+  await expect(scoreSpeakingWithOpenAI(wav(),'audio/wav','task')).rejects.toThrow('Invalid AI score');
+ });
  it('rejects an acoustic score without supporting audio features',async()=>{
   mocks.create.mockResolvedValue({choices:[{finish_reason:'stop',message:{content:JSON.stringify({...score,speakingFeatures:{speechRate:90}})}}]});
   await expect(scoreSpeakingWithOpenAI(wav(),'audio/wav','task')).rejects.toThrow('Missing AI speaking feature');
