@@ -1,3 +1,4 @@
+import { GuardianConsentGate } from './src/components/GuardianConsent';
 import { ScrollView } from './src/i18n/ScrollView';
 import { hydrateLanguage, useLanguage } from './src/i18n/store';
 import { LanguagePicker } from './src/i18n/LanguagePicker';
@@ -216,7 +217,7 @@ function Shell() {
             gap: 8
           }}><Message tone="error" text={store.auditWarning} /><Button label={t("Olay teslimini yeniden dene")} variant="secondary" onPress={store.retryAudit} /></View> : null}
             {store.notice ? <Message text={store.notice} onDismiss={() => store.setNotice(null)} /> : null}
-            {body}
+            {store.candidate && store.cameraBackend ? <GuardianConsentGate key={store.candidate.uid} backend={store.cameraBackend}>{body}</GuardianConsentGate> : body}
             <Footer store={store} />
           </View>
         </ScrollView>

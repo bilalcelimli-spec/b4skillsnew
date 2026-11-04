@@ -138,6 +138,8 @@ export function normaliseBaseUrl(raw: string): string {
 /** Must match ACCOUNT_DELETION_CONFIRMATION in src/lib/compliance/account-deletion.ts. */
 export const ACCOUNT_DELETION_CONFIRMATION = 'DELETE_MY_ACCOUNT';
 
+export type AgeBand = 'UNDER_13' | '13_17' | 'ADULT';
+export type ConsentState = { allowed: boolean; ageBand: AgeBand | null; guardianRequired: boolean; status: string; policyVersion: string };
 export class Backend {
   constructor(readonly baseUrl: string) {}
 
@@ -201,6 +203,17 @@ export class Backend {
     return this.request<{ sessionId: string }>('api/sessions/launch', {
       ...(preflight ? { preflight } : {}), productLine, ...(organizationId ? { organizationId } : {}), ...(launchRequestId ? { launchRequestId } : {}),
     });
+  }
+
+  async consentStatus(): Promise<ConsentState> {
+    const state = await this.request<ConsentState>('api/guardian-consent/status');
+    if (typeof state?.allowed !== 'boolean' || !state.policyVersion || !state.status) throw new ApiError('Onay durumu doğrulanamadı.');
+    return state;
+  }
+  declareAge(ageBand: AgeBand) { return this.request<ConsentState>('api/guardian-consent/age', { ageBand }); }
+  async requestGuardian(email: string) {
+    const result = await this.request<{ sent: boolean }>('api/guardian-consent/request', { email });
+    if (result?.sent !== true) throw new ApiError('Veli e-postası gönderilemedi.');
   }
 
   examPolicy() { return this.request<ExamPolicy>('api/assessment/policy'); }
