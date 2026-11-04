@@ -20,7 +20,7 @@ Durum: yayın için hazır değil. Bu belge hukuki uygunluk belgesi veya tamamla
 3. Sağlayıcı sözleşmelerini, gerçek saklama ayarlarını ve KVKK yurt dışı aktarım mekanizmasını tamamla. Kullanıcı mevcut belge bulunmadığını bildirdi. Hiçbir sözleşme imzalanmış veya bildirim yapılmış sayılmadı.
 4. Gizlilik/veli metinlerini nihai OpenAI veri akışına göre güncelle; mevcut Google/Anthropic açıklaması geçişten sonra kullanılmamalı. Veli onay sürümünü artır.
 5. Saklama işlerini canlıya almadan önce kapsam ve silme sonuçlarını doğrula. Yazılı yanıtlar kişisel bilgi içerebilir; hesap kimliğini kaldırmak tek başına anonimleştirme değildir.
-6. İçeriklerin dağıtım haklarını doğrula. Hak beyanı henüz alınmadı.
+6. İçeriklerin dağıtım haklarını doğrula. Kullanıcı 4 Kasım 2026 tarihinde tüm hakların kendilerine ait veya lisanslı olduğunu bildirdi; dayanak lisans kayıtları yayın dosyasında muhafaza edilmeli.
 7. OpenAI puanlarını uzman referanslarıyla karşılaştır; maliyet, gecikme, aksan ve yaş grubu etkilerini ölç. Gerçek çocuk verisini sağlayıcı hazırlığı tamamlanmadan test için gönderme.
 8. Veritabanı geçişini ve web/native sürümlerini birlikte yayınla; veli e-postasının gerçek teslimini uçtan uca doğrula.
 9. Xcode hesap erişimini düzelt; güncel paketleri, gerçek ekran görüntülerini ve inceleme hesabını App Store Connect'e ekle. Gizlilik yayını, yaş derecelendirmesi ve içerik hakları alanlarını tamamla.
@@ -36,3 +36,9 @@ Durum: yayın için hazır değil. Bu belge hukuki uygunluk belgesi veya tamamla
 - https://ai.google.dev/gemini-api/terms
 - https://www.kvkk.gov.tr/Icerik/2053/Yurtdisina-Aktarim
 - https://developer.apple.com/app-store/review/guidelines/
+
+## Kullanıcı teyitleri — 4 Kasım 2026
+
+- OpenAI API hesabında ZDR etkin olduğu kullanıcı tarafından teyit edildi. Bu, tarafımızdan hesap ayarı incelenerek doğrulandı anlamına gelmez; üretim projesi ve kullanılacak metin/ses uçlarının kapsamı ayrıca eşleştirilecek.
+- Soru, görsel ve dinleme içeriklerinin kullanım ve dağıtım hakları kullanıcı tarafından teyit edildi.
+- OpenAI yazma adaptörü eklendi; henüz ana akışa alınmadı. Konuşma adaptörü, kalibrasyon ve proje kapsamı doğrulaması bekliyor.
