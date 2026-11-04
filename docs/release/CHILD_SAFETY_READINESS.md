@@ -115,3 +115,9 @@ Apple üçüncü taraf AI’a kişisel veri paylaşımının açıklanmasını v
 - Mobil: 25 pakette 143 test ve TypeScript kontrolü geçti. Sunucu TypeScript kontrolü ve paketleme geçti.
 - Güncellenen sunucu ve migration 015/016 ile gerçek HTTP sınav akışları yeniden çalıştırıldı: 40 senaryo başarılı.
 - Canlı OpenAI, Apple yüklemesi, sağlayıcı yedek ömrü, gerçek geri yükleme tatbikatı, sözleşme kabul/imza/bildirim işlemleri bu sonuçlarla tamamlanmış sayılmaz. Üretimde saklama işi etkinleştirilmedi.
+
+## GitHub ve canlı ön kontrol kapanışı
+
+4 Kasım 2026: backend `775a6a8` için 16 GitHub kontrolü, native `d27ebfa` için 21 kontrol başarılı. Buna güvenlik taramaları, gerçek PostgreSQL HTTP akışları, tarayıcı testleri ve iPad/macOS release derlemeleri dahildir. Daha sonraki commitler ayrıca izlenir. İnceleme hesabıyla canlı giriş başarılı; gizlilik ve koşullar sayfaları taslak olduğu için App Store preflight iki engel bildiriyor. Kullanıcı Render OpenAI anahtarı ve Xcode girişinin hazır olduğunu teyit etti; Render bağlantısı bu oturumda henüz bağlı değil.
+
+Canlı sağlayıcı denetimi için `scripts/audits/openai-provider-smoke.mjs` yalnız sentetik metin/ses ile iki gerçek API isteği yapar, veritabanına bağlanmaz, anahtar veya yanıt içeriği yazdırmaz. Servis ortamında `ALLOW_REAL_AI_SCORING_SMOKE=1 B4SKILLS_AI_SMOKE_AUDIO_PATH=/private/synthetic.wav node --import tsx scripts/audits/openai-provider-smoke.mjs` çalıştırılır. Gerçek İngilizce konuşma içeren, kişisel veri taşımayan WAV gerekir. Bağlantı testi ZDR sözleşme kapsamını veya psikometrik kalibrasyonu kanıtlamaz. Yerel tam kuyruk testi ayrıca `ai-scoring-smoke.mjs` ile yapılır; yeni onay kapısına uygun sentetik yetişkin izin kaydı eklenmiştir.
