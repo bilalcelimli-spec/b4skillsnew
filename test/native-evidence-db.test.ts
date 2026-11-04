@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { reserveEvidence, commitEvidence } from '../src/lib/proctoring/native-evidence';
 import { photoReservation, sampleJPEG } from './helpers/native-evidence';
 const url = process.env.B4_NATIVE_TEST_DB_URL;
-if (url && !/^postgresql:\/\/[^@]+@127\.0\.0\.1:55432\/b4skills_apple_e2e(?:\?.*)?$/.test(url)) throw Error('Isolated localhost database required.');
+if (url) { const parsed = new URL(url); if (!['localhost', '127.0.0.1'].includes(parsed.hostname) || !['b4skills_apple_e2e', 'all_exams_privacy'].includes(parsed.pathname.slice(1))) throw Error('Isolated localhost database required.'); }
 describe.runIf(!!url)('native private evidence, isolated PostgreSQL', () => {
   let db: PrismaClient;
   const org = randomUUID(), uid = randomUUID(), sessionId = randomUUID();
@@ -32,8 +32,12 @@ describe.runIf(!!url)('native private evidence, isolated PostgreSQL', () => {
     const commit = { version: 1 as const, evidenceId: body.evidenceId, sessionId, base64: sampleJPEG().toString('base64') };
     const objects = new Map<string, Buffer>();
     const upload = vi.fn(async (reference, bytes) => { if (objects.has(reference.key)) expect(objects.get(reference.key)).toEqual(bytes); else objects.set(reference.key, bytes); });
-    const fail = vi.spyOn(db.proctoringEvent, 'updateMany').mockRejectedValueOnce(new Error('database unavailable'));
-    await expect(commitEvidence(db, commit, upload)).rejects.toThrow('database unavailable'); fail.mockRestore();
+    let failOnce = true;
+    const failingDb = db.$extends({ query: { proctoringEvent: { async updateMany({ args, query }) {
+      if (failOnce) { failOnce = false; throw new Error('database unavailable'); }
+      return query(args);
+    } } } });
+    await expect(commitEvidence(failingDb as unknown as PrismaClient, commit, upload)).rejects.toThrow('database unavailable');
     expect((await db.proctoringEvent.findUniqueOrThrow({ where: { id: `evidence_${body.evidenceId}` } })).type).toBe('EVIDENCE_PENDING');
     const ack = await commitEvidence(db, commit, upload);
     expect(await commitEvidence(db, commit, upload)).toEqual(ack);

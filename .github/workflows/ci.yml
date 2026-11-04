@@ -58,6 +58,14 @@ jobs:
           npm run db:seed:ci
       - name: Verify guardian consent with PostgreSQL
         run: RUN_GUARDIAN_DB_TESTS=1 npx vitest run test/guardian-consent-db.test.ts
+      - name: Verify erasure and retention with isolated PostgreSQL
+        env:
+          PGPASSWORD: postgres
+          B4_RETENTION_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:5432/all_exams_privacy
+        run: |
+          createdb -h 127.0.0.1 -U postgres all_exams_privacy
+          DATABASE_URL="$B4_RETENTION_TEST_DB_URL" npm run db:migrate
+          B4_NATIVE_TEST_DB_URL="$B4_RETENTION_TEST_DB_URL" npx vitest run test/retention-db.test.ts test/native-evidence-db.test.ts
       - name: Run psychometric test suite
         run: npm test
       - name: Coverage report

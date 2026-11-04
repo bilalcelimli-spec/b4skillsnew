@@ -368,7 +368,8 @@ async function startServer() {
     const superRoles = ["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "RATER"];
     if (role && superRoles.includes(role)) return true;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return false; }
-    const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { candidateId: true, organizationId: true } });
+    const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { candidateId: true, organizationId: true, privacyErasedAt: true } });
+    if (session?.privacyErasedAt) { res.status(410).json({ error: "Assessment data erased" }); return false; }
     if (!session) { res.status(404).json({ error: "Session not found" }); return false; }
     // Org-scoped admin roles: verify the session belongs to their org
     const orgScopedRoles = ["INST_ADMIN", "PROCTOR", "TEACHER"];
@@ -1738,19 +1739,30 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         return res.status(400).json({ error: "Invalid or oversized identity snapshot" });
       }
 
+      if (id.startsWith("demo-session-")) return res.json({success:true,stored:false,skipped:true});
       const evidenceKey = `identity/${id}/${Date.now()}-${crypto.randomBytes(8).toString("hex")}.jpg`;
+      const reservedReference = storageReference('identity', evidenceKey);
+      const reservation = await prisma.proctoringEvent.create({data:{sessionId:id,type:'EVIDENCE_PENDING',severity:1,
+        metadata:{reference:{...reservedReference},reason:'identity-upload'}}});
       const evidence = await uploadPrivateObject("identity", evidenceKey, buffer, "image/jpeg");
 
       if (!id.startsWith("demo-session-")) {
         const identityPatch = JSON.stringify({identitySnapshotKey: evidenceKey,
           identitySnapshotProvider: evidence.provider, identitySnapshotBucket: evidence.bucket,
           identitySnapshotUrl: null, identitySnapshotAt: new Date().toISOString()});
-        await prisma.$executeRaw`
+        const stored = await prisma.$executeRaw`
           UPDATE "Session" SET metadata = COALESCE(metadata, '{}') || ${identityPatch}::jsonb
-          WHERE id = ${id}
+          WHERE id = ${id} AND "privacyErasedAt" IS NULL
         `;
+        if (!stored) {
+          const { queueObjectErasure } = await import('./src/lib/compliance/erasure-storage.js');
+          await queueObjectErasure(prisma, evidence);
+          return res.status(410).json({error:'Assessment data erased'});
+        }
       }
 
+      // Keep the durable reference even when a later identity capture replaces session metadata.
+      await prisma.proctoringEvent.updateMany({where:{id:reservation.id},data:{type:'SCREENSHOT'}});
       return res.json({ success: true, stored: true });
     } catch (error) {
       console.error("[identity-snapshot] failed:", error);
@@ -4120,8 +4132,18 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         return res.status(400).json({ error: "Invalid or oversized screenshot" });
       }
       const evidenceKey = `proctoring/${sessionId}/${Date.now()}-${crypto.randomBytes(8).toString("hex")}.jpg`;
+      const reservedReference = storageReference('proctoring', evidenceKey);
+      const reservation = await prisma.proctoringEvent.create({data:{sessionId,type:'EVIDENCE_PENDING',severity:1,
+        metadata:{reference:{...reservedReference},reason:'web-upload'}}});
       const evidence = await uploadPrivateObject("proctoring", evidenceKey, buffer, "image/jpeg");
-      const event = await (prisma as any).proctoringEvent.create({
+      const event = await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+        const current = await tx.session.findUnique({where:{id:sessionId}});
+        if (!current || current.privacyErasedAt) {
+          const { queueObjectErasure } = await import('./src/lib/compliance/erasure-storage.js');
+          await queueObjectErasure(tx, evidence); return null;
+        }
+        return tx.proctoringEvent.update({ where:{id:reservation.id},
         data: {
           sessionId,
           type: "SCREENSHOT",
@@ -4129,6 +4151,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           metadata: { reason: reason ?? "periodic", evidenceKey, evidenceProvider: evidence.provider, evidenceBucket: evidence.bucket, capturedAt: new Date().toISOString() },
         },
       });
+      });
+      if (!event) return res.status(410).json({error:"Assessment data erased"});
       res.json({ stored: true, eventId: event.id });
     } catch (err) {
       if (err instanceof StorageConfigurationError) return res.status(503).json({ error: err.message });
@@ -6150,11 +6174,14 @@ ${codeSection}
   {
     const { createOperationsRouter } = await import("./src/routes/operations.js");
     const { generateSloReport, sloReportToMarkdown } = await import("./src/lib/observability/slo-monitor.js");
+    const { runRetentionSweep } = await import('./src/lib/compliance/retention-sweep.js');
     const { previewDataRetention } = await import("./src/lib/compliance/retention-preview.js");
     app.use("/api/admin", createOperationsRouter({
       checkRole, internalSecret: () => process.env.INTERNAL_API_SECRET,
       databaseAvailable: () => dbAvailable, generateReport: generateSloReport,
       markdown: sloReportToMarkdown, retentionPreview: () => previewDataRetention(prisma),
+      retentionSweep: (apply, cursors) => runRetentionSweep(prisma, { apply, cursors }),
+      retentionEnabled: () => process.env.RETENTION_APPLY_ENABLED === 'true',
     }));
   }
 

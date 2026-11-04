@@ -9,6 +9,8 @@ type Dependencies = {
   generateReport: (days: number) => Promise<SloReport>;
   markdown: (report: SloReport) => string;
   retentionPreview: () => Promise<unknown>;
+  retentionSweep?: (apply: boolean, cursors?: any) => Promise<any>;
+  retentionEnabled?: () => boolean;
 };
 
 export function createOperationsRouter(deps: Dependencies) {
@@ -46,11 +48,19 @@ export function createOperationsRouter(deps: Dependencies) {
         (dry !== undefined && dryRun !== undefined && (dry === '1') !== dryRun)) {
       res.status(400).json({ error: 'dryRun must be boolean and match dry=0 or dry=1' }); return;
     }
-    if (dry === '0' || dryRun === false) {
-      res.status(409).json({ error: 'Retention application is not implemented; only dry-run inventory is available', enforced: false }); return;
+    const apply = dry === '0' || dryRun === false;
+    if (apply && (!deps.retentionSweep || !deps.retentionEnabled?.() || req.body?.policyVersion !== '2026-11-04-retention-v1')) {
+      res.status(409).json({ error: 'Retention application requires the enabled release setting and current policy version', enforced: false }); return;
     }
-    try { res.json(await deps.retentionPreview()); }
-    catch { res.status(503).json({ error: 'Retention inventory unavailable', enforced: false }); }
+    const cursors = req.body?.cursors;
+    if (cursors !== undefined && (!cursors || typeof cursors !== 'object' || Array.isArray(cursors) ||
+      Object.entries(cursors).some(([key, value]) => !['camera','identity','audio','sessions'].includes(key) || typeof value !== 'string' || value.length > 200))) {
+      res.status(400).json({ error: 'Invalid retention cursor' }); return;
+    }
+    try {
+      const report = deps.retentionSweep ? await deps.retentionSweep(apply, cursors) : await deps.retentionPreview();
+      res.status(report.errors || report.storage?.failed ? 503 : 200).json(report);
+    } catch { res.status(503).json({ error: 'Retention run unavailable', enforced: false }); }
   });
   return router;
 }

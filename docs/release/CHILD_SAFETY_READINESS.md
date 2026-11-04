@@ -75,11 +75,11 @@ Bu not ancak demo giriş, sınav tamamlama, hesap silme, mikrofon/kamera izinler
 | --- | --- | --- |
 | İçerik hakları | Kullanıcının 4 Kasım 2026 teyidi; lisans/üretim belgelerini kurum arşivinde saklama | Kullanıcı teyit etti |
 | OpenAI ZDR | Kullanıcı etkin olduğunu teyit etti; üretim proje kimliği ile metin/ses uçlarının kapsamını eşleştirme | Hesap üzerinden eşleştirme bekliyor |
-| Veri işleme sözleşmeleri | OpenAI, barındırma, veritabanı/depolama, e-posta ve hata izleme için geçerli sözleşme sürümü, taraf, tarih ve alt işleyen listesi | Belgeler sağlanmadı |
+| Veri işleme sözleşmeleri | OpenAI, barındırma, veritabanı/depolama, e-posta ve hata izleme için geçerli sözleşme sürümü, taraf, tarih ve alt işleyen listesi | Taslak sözleşme ve aktarım paketi hazır; hesap nüshaları/imzalar bekliyor |
 | KVKK yurt dışı aktarımı | Her alıcı için veri sorumlusu/işleyen rolü ve uygun md. 9 mekanizması; standart sözleşme seçilirse doğru modül, imza ve bildirim kaydı | Tamamlanmadı |
 | Veli onayı | Açıklama, ayrı veli iletişimi, kurum yetki kontrolü, geri çekme; onay aktarım mekanizmasının yerine geçmez | Kod hazır, canlı uçtan uca test bekliyor |
 | Saklama ve silme | Veritabanı, özel medya, yedekler, AI/hata izleme ve insan değerlendirme kopyalarını kapsayan süre ve silme kanıtı | Üretim uygulaması doğrulanmadı |
-| Hesap silme | Yanıt içeriği ve yanıtın AI metaverileri silinir; insan incelemesi, rapor ve yedek kopyalarının kapsamı ayrıca kapatılacak; kimlikten ayırma anonimleştirme olarak sunulamaz | Kısmen giderildi |
+| Hesap silme | Yanıt, rapor, insan incelemesi, geri bildirim ve ilgili günlük kopyaları silinir; özel dosyalar kalıcı kuyrukta yeniden denenir; yedek geri yüklemede silme defteri uygulanır | Kod ve yerel test hazır; üretim/yedek sağlayıcısı doğrulaması bekliyor |
 | Hak talepleri | hello@b4skills.com; gerekli ölçüde kimlik doğrulama, başvuru kaydı, 30 gün içinde sonuçlandırma; otomatik puana itiraz ve insan incelemesi | Metin hazır; operasyon kaydı gerekli |
 | App Privacy | Toplanan gerçek kategoriler ve alıcılar güncel paketle eşleştirilecek; nihai beyan yayımlanacak | Henüz yayımlanmadı |
 
@@ -102,3 +102,16 @@ Apple üçüncü taraf AI’a kişisel veri paylaşımının açıklanmasını v
 - Tarayıcı: 83 senaryo ilk turda başarılı; kalan 320px tam sınav senaryosu ayrı tekrarında başarılı (17,7 saniye). İlk turdaki ekran sıfırlanmasının nedeni kesinleştirilmedi; temiz CI çalışması ayrıca kontrol edilecek.
 - Geçici localhost PostgreSQL üzerinde 40 gerçek HTTP senaryosu başarılı, başarısız senaryo yok. Yeni hesapların yaş/veli adımını atlayamaması ve geri çekilen onayın sınavı kapatması da doğrulandı.
 - Bu sonuçlar gerçek OpenAI çağrısı, üretim e-posta teslimi, fiziksel Apple cihazı veya hukuki sözleşme doğrulaması değildir.
+
+## Saklama ve silme kapanış turu — 4 Kasım 2026
+
+[Sözleşme ve aktarım dosyası](legal/README.md), kurum veri işleme sözleşmesini, KVKK aktarım eklerini, değiştirilmemiş resmî SS-2/SS-3 formlarını ve saklama/silme işletim belgesini içerir. Bunlar imzalı sözleşme veya yapılmış bildirim değildir.
+
+- Migration 015 kalıcı dosya silme kuyruğu, imha defteri ve saklama iş kayıtlarını; 016 kalıcı silme taleplerini ekler. Yalnız geçici yerel veritabanlarına uygulandı.
+- Süreler: ses 30 gün (açık inceleme en fazla 60); kamera varsayılan 7, kurum ayarına göre en fazla 30; sınav kayıtları iki yıl. Hukuki muhafaza kayıtları otomatik silmeyi durdurur.
+- Başarısız dosya silme tekrar denenir; S3 sürümleri de kapsanır. Eşzamanlı yükleme, puanlama ve sınav açılışı silinen içeriği geri getiremez. Önizleme varsayılandır; uygulama için sunucu ayarı ve politika sürümü gerekir.
+- Yerel genel paket: 2.614 test geçti, 96 koşullu test atlandı, 2 yapılacak test kaydı var. Ayrıca yeni iki puanlama ve iki operasyon senaryosu geçti. Veritabanına bağlı sınav teslimi: 27 test geçti.
+- Gerçek geçici PostgreSQL: 9 saklama/silme/geri yükleme/sayfalama testi ve 3 kamera yükleme hata-kurtarma testi geçti. S3 sürüm silme testleri genel pakete dahildir; gerçek S3 hesabı kullanılmadı.
+- Mobil: 25 pakette 143 test ve TypeScript kontrolü geçti. Sunucu TypeScript kontrolü ve paketleme geçti.
+- Güncellenen sunucu ve migration 015/016 ile gerçek HTTP sınav akışları yeniden çalıştırıldı: 40 senaryo başarılı.
+- Canlı OpenAI, Apple yüklemesi, sağlayıcı yedek ömrü, gerçek geri yükleme tatbikatı, sözleşme kabul/imza/bildirim işlemleri bu sonuçlarla tamamlanmış sayılmaz. Üretimde saklama işi etkinleştirilmedi.

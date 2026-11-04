@@ -1,3 +1,4 @@
+import { lockActiveCandidate } from '../compliance/active-candidate.js';
 import { AppError } from '../errors/app-error';
 /**
  * Diagnostic Test Engine
@@ -183,7 +184,9 @@ export class DiagnosticService {
     }
 
     // Create Session row
-    const session = await prisma.session.create({
+    const session = await prisma.$transaction(async tx => {
+      await lockActiveCandidate(tx, candidateId);
+      return tx.session.create({
       data: {
         candidateId,
         organizationId: orgId,
@@ -193,6 +196,8 @@ export class DiagnosticService {
         sem:     1.0,
         metadata: { sessionType: "DIAGNOSTIC" },
       },
+    });
+
     });
 
     const now       = new Date();

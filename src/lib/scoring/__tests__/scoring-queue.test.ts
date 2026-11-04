@@ -73,9 +73,9 @@ describe('background scoring persistence', () => {
   });
   it('atomically protects a human grade finalized between read and AI write', async () => {
     mocks.update.mockResolvedValue({count:0});
-    mocks.find.mockResolvedValueOnce({metadata:{},humanScore:null}).mockResolvedValueOnce({humanScore:.95});
+    mocks.find.mockResolvedValueOnce({contentErasedAt:null}).mockResolvedValueOnce({metadata:{},humanScore:null}).mockResolvedValueOnce({humanScore:.95});
     expect(await enqueueScoringJob(job)).toMatchObject({score:.95,scoreSource:'human'});
-    expect(mocks.update.mock.calls[0][0].where).toEqual({id:'response',humanScore:null});
+    expect(mocks.update.mock.calls[0][0].where).toMatchObject({id:'response',humanScore:null,contentErasedAt:null,session:{privacyErasedAt:null}});
     expect(mocks.enqueue).not.toHaveBeenCalled();
   });
   it('does not clear human evidence when the AI provider fails', async () => {
@@ -265,4 +265,17 @@ it('cancels a queued response after withdrawal without calling AI or forwarding 
   await expect(enqueueScoringJob(job)).rejects.toMatchObject({code:'REVOKED'});
   expect(mocks.writing).not.toHaveBeenCalled(); expect(mocks.speaking).not.toHaveBeenCalled(); expect(mocks.enqueue).not.toHaveBeenCalled();
   expect(mocks.update.mock.calls[0][0].data.metadata).toMatchObject({consentBlocked:true,pendingAsyncScore:false});
+});
+
+it('does not send already erased content to an AI provider or human reviewer', async () => {
+  mocks.find.mockResolvedValue({contentErasedAt:new Date(),metadata:{},humanScore:null});
+  await expect(enqueueScoringJob(job)).rejects.toMatchObject({code:'CONTENT_ERASED'});
+  expect(mocks.writing).not.toHaveBeenCalled(); expect(mocks.speaking).not.toHaveBeenCalled();
+  expect(mocks.update).not.toHaveBeenCalled(); expect(mocks.enqueue).not.toHaveBeenCalled();
+});
+it('discards an AI result when erasure happened while the provider was running', async () => {
+  mocks.find.mockResolvedValueOnce({contentErasedAt:null}).mockResolvedValue({contentErasedAt:new Date(),metadata:{},humanScore:null});
+  await expect(enqueueScoringJob(job)).rejects.toMatchObject({code:'CONTENT_ERASED'});
+  expect(mocks.writing).toHaveBeenCalledOnce(); expect(mocks.update).not.toHaveBeenCalled();
+  expect(mocks.enqueue).not.toHaveBeenCalled(); expect(mocks.refresh).not.toHaveBeenCalled();
 });

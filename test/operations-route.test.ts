@@ -3,21 +3,22 @@ import type { Server } from 'node:http';
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { createOperationsRouter } from '../src/routes/operations';
 import { previewDataRetention } from '../src/lib/compliance/retention-preview';
-const generateReport = vi.fn(), retentionPreview = vi.fn();
+const generateReport = vi.fn(), retentionPreview = vi.fn(), retentionSweep = vi.fn();
+let retentionEnabled = false;
 let secret: string | undefined, available = true, server: Server, origin: string;
 const report = { summary: { nonCompliantSlos: 0, unknownSlos: 7, overallHealthy: false } };
 beforeAll(async () => {
   const app = express(); app.use(express.json());
   app.use('/api/admin', createOperationsRouter({ internalSecret: () => secret, databaseAvailable: () => available,
     checkRole: roles => (req, res, next) => { if (roles.includes(String(req.headers['x-test-role']))) next(); else res.status(401).json({ error: 'Unauthorized' }); },
-    generateReport, markdown: () => '## SLO Report\n\nUnknown metrics', retentionPreview,
+    generateReport, markdown: () => '## SLO Report\n\nUnknown metrics', retentionPreview, retentionSweep, retentionEnabled: () => retentionEnabled,
   }));
   app.get('/api/admin/unrelated', (_req, res) => res.json({ unrelated: true }));
   server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
   origin = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/admin`;
 });
 afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve())); });
-beforeEach(() => { vi.clearAllMocks(); secret = 'internal-test-secret'; available = true; generateReport.mockResolvedValue(report); retentionPreview.mockResolvedValue({ dryRun: true, enforced: false }); });
+beforeEach(() => { vi.clearAllMocks(); retentionEnabled = false; retentionSweep.mockImplementation(() => retentionPreview()); secret = 'internal-test-secret'; available = true; generateReport.mockResolvedValue(report); retentionPreview.mockResolvedValue({ dryRun: true, enforced: false }); });
 const headers = { Authorization: 'Bearer internal-test-secret', 'Content-Type': 'application/json' };
 it('requires internal auth or super admin before reading platform-wide data', async () => {
   expect((await fetch(origin + '/slo/report')).status).toBe(401);
@@ -66,6 +67,24 @@ it('returns aggregate retention inventory without fetching answers or modifying 
   const sessionCount = vi.fn().mockResolvedValue(2), responseCount = vi.fn().mockResolvedValue(3), reviewCount = vi.fn().mockResolvedValue(1);
   const result = await previewDataRetention({ session: { count: sessionCount }, response: { count: responseCount }, ratingTask: { count: reviewCount } } as any, new Date('2026-10-07T12:00:00Z'));
   expect(result).toMatchObject({ dryRun: true, enforced: false, inventory: { expiredSessions: 2, expiredAudioReferences: 3, openReviews: 1 },
-    cutoffs: { sessions: '2021-10-07T12:00:00.000Z', audio: '2026-07-09T12:00:00.000Z' } });
+    cutoffs: { sessions: '2024-10-07T12:00:00.000Z', audio: '2026-09-07T12:00:00.000Z' } });
   expect(sessionCount.mock.calls[0][0].where.status.in).toEqual(['COMPLETED', 'EXPIRED']);
+});
+
+it('requires release enablement and exact policy version before destructive execution', async () => {
+  const send = (body: any) => fetch(origin + '/data-retention/run', {method:'POST',headers,body:JSON.stringify(body)});
+  const body = {dryRun:false,policyVersion:'2026-11-04-retention-v1'};
+  expect((await send(body)).status).toBe(409);
+  retentionEnabled = true;
+  expect((await send({...body,policyVersion:'old'})).status).toBe(409);
+  expect(retentionSweep).not.toHaveBeenCalled();
+  retentionSweep.mockResolvedValue({enforced:true,errors:0,storage:{failed:0,pending:0}});
+  expect((await send({...body,cursors:{audio:'last-id'}})).status).toBe(200);
+  expect(retentionSweep).toHaveBeenCalledWith(true,{audio:'last-id'});
+});
+it('rejects invalid pagination and exposes partial deletion failure as unavailable', async () => {
+  expect((await fetch(origin+'/data-retention/run',{method:'POST',headers,body:JSON.stringify({cursors:{unknown:'id'}})})).status).toBe(400);
+  expect(retentionSweep).not.toHaveBeenCalled();
+  retentionSweep.mockResolvedValue({errors:0,storage:{failed:1,pending:1}});
+  expect((await fetch(origin+'/data-retention/run',{method:'POST',headers})).status).toBe(503);
 });
