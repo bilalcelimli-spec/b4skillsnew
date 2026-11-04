@@ -6,7 +6,7 @@
 
 B4Skills, kurumunuzun sağladığı hesap veya sınav koduyla İngilizce değerlendirmesine katılmanızı sağlar. Sınav programına göre okuma, dinleme, yazma, konuşma, kelime bilgisi ve dil bilgisi görevleri sunulur. Soru seçimi ve sonuç durumu sunucu tarafından yönetilir.
 
-Kurumun etkinleştirdiği kamera pilotunda aday kamerayı kendisi açar. Yüz sayımı cihazda yapılır; fotoğraf yalnız adayın gönderim onayından sonra iletilir. Teknik gözlemler tek başına ihlal veya geçersiz sınav kararı oluşturmaz. İnsan gözetmenle canlı görüşme yoktur.
+Kurumun etkinleştirdiği kamera pilotunda aday kamerayı kendisi açar. Yüz sayımı cihazda yapılır; Gözetim etkinse tek yüz algılandığında başlangıç fotoğrafı otomatik çekilir ve gönderilir; bu kullanım sınav başlamadan önce açıklanır. Teknik gözlemler tek başına ihlal veya geçersiz sınav kararı oluşturmaz. İnsan gözetmenle canlı görüşme yoktur.
 
 ## Bu build'de test edilecekler
 
@@ -15,7 +15,7 @@ Build 5 dil güncellemesi: Türkçe, İngilizce ve Arapça arayüz seçimi; terc
 - iPad/macOS açılış, giriş ve sınav kodu akışı.
 - Çoktan seçmeli ve boşluk doldurma yanıtları; yazma, dinleme ve konuşma kontrolleri.
 - Soru geçişi, bağlantı kesilmesinden dönme, uygulamayı yeniden açıp aynı oturuma devam.
-- Etkin kamera pilotunda izin, cihazda yüz sayımı, çekim/önizleme/yeniden çekim ve açık gönderim onayı.
+- Etkin kamera pilotunda izin, cihazda yüz sayımı, otomatik başlangıç fotoğrafı ve isteğe bağlı ek fotoğraf için çekim/önizleme/yeniden çekim ve gönderim onayı.
 - Onaylı fotoğraf kuyruğunun bağlantı kesintisi/yeniden açılış sonrası tek teslimi; süre/kota hatalarının görünür olması.
 
 Yalnız verilen QA hesabı ve test kurumunu kullanın. Test verileri sonuç doğrulama veya gerçek bir aday hakkında karar verme amacı taşımaz. Sonuçların inceleme durumu uygulamada gösterilir.
@@ -41,7 +41,7 @@ Kamera pilotunun test edilmesi için review kurumunda ilgili ayar ayrıca açık
 
 ## English review notes (draft)
 
-B4Skills provides institution-provisioned English assessment access. Reviewers need the supplied QA account or a valid institution-issued assessment code. No purchase flow is included in this beta. The optional camera pilot performs face counting on-device; a photo is uploaded only after the candidate explicitly approves it. Technical observations do not automatically invalidate an assessment. Live human proctoring is not offered. Review credentials and available QA assessment credits must be supplied securely before submission.
+B4Skills provides institution-provisioned English assessment access. Reviewers need the supplied QA account or a valid institution-issued assessment code. No purchase flow is included in this beta. The optional camera pilot performs face counting on-device; when monitoring is enabled and one face is detected, a baseline photo is captured and uploaded automatically. This behavior is disclosed before the assessment starts. Optional additional photos use a separate preview and confirmation flow. Technical observations do not automatically invalidate an assessment. Live human proctoring is not offered. Review credentials and available QA assessment credits must be supplied securely before submission.
 
 
 ## Build 5 iç test dağıtımı

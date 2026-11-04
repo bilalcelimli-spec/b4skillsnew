@@ -1494,5 +1494,89 @@
   "Yeniden kontrol et": {
     "en": "Check again",
     "ar": "تحقّق مرة أخرى"
+  },
+  "Hesap": {
+    "en": "Account",
+    "ar": "الحساب"
+  },
+  "Hesabımı sil": {
+    "en": "Delete my account",
+    "ar": "حذف حسابي"
+  },
+  "Hesabınız kalıcı olarak silinsin mi?": {
+    "en": "Permanently delete your account?",
+    "ar": "هل تريد حذف حسابك نهائيًا؟"
+  },
+  "Bu işlem geri alınamaz. Adınız, e-posta adresiniz, giriş bilgileriniz, ses kayıtlarınız ve kamera fotoğraflarınız silinir; süren sınavınız kapatılır.": {
+    "en": "This cannot be undone. Your name, email address, sign-in details, voice recordings and camera photos are deleted, and any exam in progress is closed.",
+    "ar": "لا يمكن التراجع عن هذا الإجراء. يُحذف اسمك وبريدك الإلكتروني وبيانات تسجيل الدخول وتسجيلاتك الصوتية وصور الكاميرا، ويُغلق أي اختبار جارٍ."
+  },
+  "Puanlarınız kimliğinizden ayrılarak kurumunuzun toplu sonuçlarında ve ölçme kalitesi çalışmalarında kalır; adınızla ilişkilendirilemez. Ödeme kayıtları yasal süre boyunca saklanır.": {
+    "en": "Your scores are separated from your identity and remain only in your institution's aggregate results and in measurement-quality studies; they cannot be linked to your name. Payment records are kept for the legally required period.",
+    "ar": "تُفصل درجاتك عن هويتك وتبقى فقط في النتائج الإجمالية لمؤسستك وفي دراسات جودة القياس، ولا يمكن ربطها باسمك. تُحفظ سجلات الدفع للمدة التي يفرضها القانون."
+  },
+  "Hesabımı kalıcı olarak sil": {
+    "en": "Permanently delete my account",
+    "ar": "حذف حسابي نهائيًا"
+  },
+  "Devam etmek için şifrenizi girin.": {
+    "en": "Enter your password to continue.",
+    "ar": "أدخل كلمة المرور للمتابعة."
+  },
+  "Şifre yanlış. Tekrar deneyin.": {
+    "en": "The password is incorrect. Try again.",
+    "ar": "كلمة المرور غير صحيحة. حاول مرة أخرى."
+  },
+  "Bu hesap kurumunuz tarafından yönetiliyor. Silinmesi için kurum yöneticinize başvurun.": {
+    "en": "This account is managed by your institution. Ask your institution's administrator to delete it.",
+    "ar": "هذا الحساب تديره مؤسستك. اطلب من مسؤول مؤسستك حذفه."
+  },
+  "Dosyalarınız şu anda silinemedi ve hesabınızda hiçbir değişiklik yapılmadı. Daha sonra tekrar deneyin.": {
+    "en": "Your files could not be deleted right now and nothing was changed in your account. Try again later.",
+    "ar": "تعذر حذف ملفاتك الآن ولم يتغير شيء في حسابك. حاول لاحقًا."
+  },
+  "Hesap silinemedi. Bağlantınızı kontrol edip tekrar deneyin. Sorun sürerse hello@b4skills.com adresine yazın.": {
+    "en": "The account could not be deleted. Check your connection and try again. If the problem continues, write to hello@b4skills.com.",
+    "ar": "تعذر حذف الحساب. تحقق من اتصالك وحاول مرة أخرى. إذا استمرت المشكلة، راسل hello@b4skills.com."
+  },
+  "Hesabınız silindi": {
+    "en": "Your account was deleted",
+    "ar": "تم حذف حسابك"
+  },
+  "Hesabınız ve kişisel verileriniz silindi. Bu cihazdaki bekleyen kayıtlar da kaldırıldı.": {
+    "en": "Your account and personal data were deleted. Pending records on this device were removed too.",
+    "ar": "تم حذف حسابك وبياناتك الشخصية. وأُزيلت أيضًا السجلات المعلقة على هذا الجهاز."
+  },
+  "Tamam": {
+    "en": "OK",
+    "ar": "حسنًا"
+  },
+  "Hesap silme doğrulanamadı. Lütfen tekrar deneyin.": {
+    "en": "Account deletion could not be confirmed. Please try again.",
+    "ar": "تعذر تأكيد حذف الحساب. يرجى المحاولة مرة أخرى."
+  },
+  "Gizlilik politikası": {
+    "en": "Privacy policy",
+    "ar": "سياسة الخصوصية"
+  },
+  "Kullanım koşulları": {
+    "en": "Terms of use",
+    "ar": "شروط الاستخدام"
+  },
+  "Bağlantı açılamadı. Tarayıcınızdan b4skills.com/support adresini ziyaret edin.": {
+    "en": "The link could not open. Visit b4skills.com/support in your browser.",
+    "ar": "تعذر فتح الرابط. انتقل إلى b4skills.com/support في متصفحك."
+  },
+  "Çoktan seçmeli, yazılı ve sesli yanıtlar desteklenir. Kurumunuzun etkinleştirdiği otomatik gözetim, başlangıç fotoğrafı ve teknik olay kaydı kullanabilir. Canlı insan gözetmen hizmeti sunulmaz.": {
+    "en": "Multiple-choice, written and audio responses are supported. Automated monitoring enabled by your institution may use a baseline photo and technical event logs. Live human proctoring is not offered.",
+    "ar": "تُدعم الإجابات متعددة الخيارات والكتابية والصوتية. قد تستخدم المراقبة الآلية التي تفعّلها مؤسستك صورة أولية وسجلات للأحداث التقنية. لا تتوفر مراقبة بشرية مباشرة."
+  },
+  "Yazılı ve sesli sınav yanıtlarınız, puanlama ve gerektiğinde sesin metne dönüştürülmesi için Google (Gemini), OpenAI veya Anthropic hizmetlerine gönderilebilir. Sonuçlar kurumunuzla paylaşılır. Yanıtlarınıza gereksiz kişisel veya hassas bilgi eklemeyin. Onay vermeden yeni bir sınav başlatılmaz.": {
+    "en": "Your written and audio assessment responses may be sent to Google (Gemini), OpenAI or Anthropic for scoring and, when needed, audio transcription. Results are shared with your institution. Do not include unnecessary personal or sensitive information in your responses. A new assessment cannot start without your permission.",
+    "ar": "قد تُرسل إجاباتك الكتابية والصوتية إلى Google (Gemini) أو OpenAI أو Anthropic لتقييمها وتحويل الصوت إلى نص عند الحاجة. تُشارك النتائج مع مؤسستك. لا تضف معلومات شخصية أو حساسة غير ضرورية إلى إجاباتك. لن يبدأ تقييم جديد دون موافقتك."
+  },
+  "Sınav koşullarını okudum; yanıtlarımın açıklanan AI sağlayıcılarına puanlama için gönderilmesine izin veriyorum.": {
+    "en": "I have read the assessment conditions and allow my responses to be sent to the disclosed AI providers for scoring.",
+    "ar": "قرأت شروط التقييم وأسمح بإرسال إجاباتي إلى مزودي الذكاء الاصطناعي المذكورين لغرض التقييم."
   }
 }

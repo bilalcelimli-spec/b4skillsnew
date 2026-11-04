@@ -8,6 +8,7 @@ import { color, font, skillMeta, type } from '../theme';
 import { AssessmentState } from '../useAssessment';
 import { formatSeconds, RecorderState } from '../useRecorder';
 import { CodeCard } from './SignInCards';
+import { LegalLinks } from '../components/LegalLinks';
 export function SkillGrid() {
   // Four across when there is room, otherwise a balanced 2×2 — never a 3+1 orphan.
   const [width, setWidth] = useState(0);
@@ -110,14 +111,16 @@ export function Ready({
             }]}>{t("Mikrofon: ")}{store.deviceChecks.microphone ? t("hazır") : t("izin gerekli")}{t(" · Teknik olay kaydı: ")}{store.deviceChecks.durableEvents ? t("hazır") : t("kullanılamıyor")}
               </Text> : null}
               {store.capabilityProblems.length ? <Message tone="error" text={t("Eksik yetenekler: {0}. Bu profil için sınav başlatılamaz.", [store.capabilityProblems.map(problem => t(problem)).join(', ')])} /> : null}
-              <Pressable accessibilityRole="checkbox" accessibilityState={{
+              <Text style={[type.small, { color: color.body }]}>{t('Yazılı ve sesli sınav yanıtlarınız, puanlama ve gerektiğinde sesin metne dönüştürülmesi için Google (Gemini), OpenAI veya Anthropic hizmetlerine gönderilebilir. Sonuçlar kurumunuzla paylaşılır. Yanıtlarınıza gereksiz kişisel veya hassas bilgi eklemeyin. Onay vermeden yeni bir sınav başlatılmaz.')}</Text>
+              <LegalLinks />
+              <Pressable accessibilityRole="checkbox" accessibilityLabel={t('Sınav koşullarını okudum; yanıtlarımın açıklanan AI sağlayıcılarına puanlama için gönderilmesine izin veriyorum.')} accessibilityState={{
               checked: store.policyAccepted
             }} onPress={() => store.setPolicyAccepted(!store.policyAccepted)} style={{
               paddingVertical: 12
             }}>
                 <Text style={[type.small, {
                 color: color.plum
-              }]}>{store.policyAccepted ? '☑' : '☐'}{t(" Sınav koşullarını ve veri kullanım açıklamasını okudum.")}</Text>
+                }]}>{store.policyAccepted ? '☑ ' : '☐ '}{t('Sınav koşullarını okudum; yanıtlarımın açıklanan AI sağlayıcılarına puanlama için gönderilmesine izin veriyorum.')}</Text>
               </Pressable>
             </View> : null}
             <Button label={t("Değerlendirmeye başla")} trailingIcon="arrowRight" block loading={store.busy} disabled={recorder.recording || recorder.preparing || !store.canLaunch} onPress={() => {
