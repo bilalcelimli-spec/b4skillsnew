@@ -1,3 +1,4 @@
+import { CandidateConsentGate } from './GuardianConsent';
 import React, { useEffect, useState } from "react";
 import { Clock, Mic, Camera, BookOpen, Headphones, PenLine, MessageSquare, ShieldCheck, XCircle, Wifi } from "lucide-react";
 import { RubricPreview } from "./RubricPanel.js";
@@ -56,7 +57,7 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
   const needsCamera = true;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-start sm:items-center justify-center p-0 sm:p-4">
+    <CandidateConsentGate onCancel={onCancel}><div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-start sm:items-center justify-center p-0 sm:p-4">
       <div
         className="bg-white shadow-2xl w-full sm:max-w-xl min-h-[100dvh] sm:min-h-0 sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl overflow-hidden flex flex-col"
         role="dialog"
@@ -200,7 +201,7 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
           </button>
         </div>
       </div>
-    </div>
+    </div></CandidateConsentGate>
   );
 };
 

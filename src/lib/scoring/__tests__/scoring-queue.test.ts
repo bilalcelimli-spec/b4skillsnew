@@ -1,8 +1,10 @@
+import { ConsentError } from '../../compliance/guardian-consent';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
-  writing: vi.fn(), speaking: vi.fn(), speakingText: vi.fn(), update: vi.fn(), find: vi.fn(), many: vi.fn(), enqueue: vi.fn(), refresh: vi.fn(),
+  consent: vi.fn(), session: vi.fn(), writing: vi.fn(), speaking: vi.fn(), speakingText: vi.fn(), update: vi.fn(), find: vi.fn(), many: vi.fn(), enqueue: vi.fn(), refresh: vi.fn(),
 }));
-vi.mock('../../prisma', () => ({prisma:{response:{updateMany:mocks.update,findUnique:mocks.find,findMany:mocks.many}}}));
+vi.mock('../../compliance/guardian-consent', async importOriginal => ({ ...await importOriginal<any>(), requireCandidateConsent: mocks.consent }));
+vi.mock('../../prisma', () => ({prisma:{session:{findUnique:mocks.session},response:{updateMany:mocks.update,findUnique:mocks.find,findMany:mocks.many}}}));
 vi.mock('../scoring-orchestrator', () => ({ScoringOrchestrator:{scoreWriting:mocks.writing,scoreSpeaking:mocks.speaking,scoreSpeakingFromText:mocks.speakingText}}));
 vi.mock('../rating-queue', () => ({RatingQueueService:{enqueue:mocks.enqueue}}));
 vi.mock('../score-report-refresh', () => ({refreshScoredSession:mocks.refresh}));
@@ -13,6 +15,7 @@ const job = {sessionId:'session',responseId:'response',itemId:'item',skill:'WRIT
 const tick = () => new Promise(resolve => setImmediate(resolve));
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.consent.mockResolvedValue(undefined); mocks.session.mockResolvedValue({candidateId:"candidate",candidate:{role:"CANDIDATE"}});
   mocks.update.mockResolvedValue({count:1}); mocks.find.mockResolvedValue({metadata:{originalEvidence:true},humanScore:null}); mocks.enqueue.mockResolvedValue('task'); mocks.refresh.mockResolvedValue(undefined);
   mocks.writing.mockResolvedValue(decision); mocks.speaking.mockResolvedValue(decision);
 });
@@ -255,4 +258,11 @@ it('preserves human scores even when the original task rubric is invalid', async
  const result=await enqueueScoringJob({...job,rubric:undefined});
  expect(result).toMatchObject({score:.9,scoreSource:'human'});
  expect(mocks.update).not.toHaveBeenCalled();expect(mocks.enqueue).not.toHaveBeenCalled();
+});
+
+it('cancels a queued response after withdrawal without calling AI or forwarding it to human review', async () => {
+  mocks.consent.mockRejectedValueOnce(new ConsentError(428, 'REVOKED', 'withdrawn'));
+  await expect(enqueueScoringJob(job)).rejects.toMatchObject({code:'REVOKED'});
+  expect(mocks.writing).not.toHaveBeenCalled(); expect(mocks.speaking).not.toHaveBeenCalled(); expect(mocks.enqueue).not.toHaveBeenCalled();
+  expect(mocks.update.mock.calls[0][0].data.metadata).toMatchObject({consentBlocked:true,pendingAsyncScore:false});
 });

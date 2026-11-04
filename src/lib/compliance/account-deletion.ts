@@ -137,6 +137,7 @@ export async function deleteOwnAccount(
   const anonEmail = `deleted-${userId}${DELETED_ACCOUNT_DOMAIN}`;
 
   return db.$transaction(async tx => {
+    await tx.assessmentConsent.deleteMany({ where: { userId } });
     for (const event of mediaEvents) {
       await tx.proctoringEvent.update({ where: { id: event.id }, data: {
         type: 'EVIDENCE_ERASED', metadata: { reason: 'account-deleted', erasedAt },

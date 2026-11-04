@@ -166,6 +166,7 @@ model User {
   sessions         Session[]
   raterTasks       RatingTask[] @relation("RaterTasks")
   candidateProfile CandidateProfile?
+  assessmentConsent AssessmentConsent?
   auditLogs        AuditLog[]
   transactions     PaymentTransaction[]
   taughtClasses    Class[]      @relation("ClassTeacher")
@@ -1166,4 +1167,27 @@ model LtiSession {
 
   @@index([state])
   @@index([assessmentSessionId])
+}
+
+// Separate from editable candidate demographics: candidates cannot grant guardian approval.
+model AssessmentConsent {
+  userId String @id
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ageBand String
+  guardianRequired Boolean @default(false)
+  guardianEmail String?
+  requestHash String? @unique
+  requestExpiresAt DateTime?
+  requestedAt DateTime?
+  guardianName String?
+  relationship String?
+  approvedAt DateTime?
+  verifiedAt DateTime?
+  verifiedBy String?
+  verificationReference String?
+  revokedAt DateTime?
+  manageHash String? @unique
+  manageExpiresAt DateTime?
+  policyVersion String
+  updatedAt DateTime @updatedAt
 }

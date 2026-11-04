@@ -56,6 +56,8 @@ jobs:
         run: |
           npm run db:migrate
           npm run db:seed:ci
+      - name: Verify guardian consent with PostgreSQL
+        run: RUN_GUARDIAN_DB_TESTS=1 npx vitest run test/guardian-consent-db.test.ts
       - name: Run psychometric test suite
         run: npm test
       - name: Coverage report

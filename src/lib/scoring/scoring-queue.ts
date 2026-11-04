@@ -1,3 +1,4 @@
+import { requireCandidateConsent, ConsentError } from '../compliance/guardian-consent.js';
 import { rubricReviewReasons, resolveTaskRubric, RUBRIC_VALIDATION_VERSION } from "./rubric-validation.js";
 /**
  * Async AI Scoring Queue
@@ -93,6 +94,12 @@ async function resolveHumanGrade(job: ScoringJobWithResolve): Promise<void> {
 async function processJob(job: ScoringJobWithResolve): Promise<void> {
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
+    const session = await prisma.session.findUnique({ where: { id: job.sessionId }, select: { candidateId: true, candidate: { select: { role: true } } } });
+    if (!session) throw new ConsentError(404, 'SESSION_MISSING', 'Assessment session unavailable');
+    if (session.candidate.role === 'CANDIDATE') {
+      try { await requireCandidateConsent(prisma, session.candidateId); }
+      catch (e) { if (e instanceof ConsentError) throw e; throw new ConsentError(503, 'CONSENT_UNAVAILABLE', 'Consent cannot be verified'); }
+    }
     const rubricIssues = rubricReviewReasons(job.rubric);
     if (rubricIssues.length) {
       const persisted = await persistScoringResult(job.responseId, {
@@ -204,6 +211,12 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
     job.resolve({ score, aiResult: aiResult as any, requiresHumanReview, scoreSource: scoringDecision?.scoreSource });
     logger.debug({ sessionId: job.sessionId, responseId: job.responseId, skill: job.skill, score }, "async-scoring: job complete");
   } catch (err) {
+    if (err instanceof ConsentError) {
+      try { await persistScoringResult(job.responseId, { score: null, adjustedScore: null, isCorrect: null, aiScore: null,
+        metadata: { pendingAsyncScore: false, scoreFailed: true, requiresHumanReview: false, consentBlocked: true, failureCode: err.code } }); }
+      catch { logger.error({ responseId: job.responseId }, 'Consent-blocked scoring could not be marked'); }
+      job.reject(err); return;
+    }
     logger.error({ err, sessionId: job.sessionId, responseId: job.responseId }, "async-scoring: job failed");
 
     // Persist failure marker and send to human review

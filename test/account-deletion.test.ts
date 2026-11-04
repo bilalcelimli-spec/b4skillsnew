@@ -19,6 +19,7 @@ function fakeDb(seed: { users: Row[]; reports?: Row[]; sessions?: Row[]; events?
     proctoringEvent: { findMany: async ({ where }: any) => t.events.filter(inIds(where, 'sessionId')), update: update(t.events) },
     scoreReport: { findMany: async ({ where }: any) => t.reports.filter(inIds(where, 'sessionId')), update: update(t.reports) },
     response: { findMany: async ({ where }: any) => t.responses.filter(inIds(where, 'sessionId')), update: update(t.responses) },
+    assessmentConsent: { deleteMany: vi.fn(async () => ({ count: 1 })) },
     candidateProfile: { deleteMany: async ({ where }: any) => { t.profiles = t.profiles.filter(p => p.userId !== where.userId); } },
     classMember: { deleteMany: async ({ where }: any) => { t.members = t.members.filter(p => p.userId !== where.userId); } },
     examCode: { updateMany: async ({ where, data }: any) => { t.codes.filter(c => c.usedByEmail === where.usedByEmail).forEach(c => Object.assign(c, data)); } },
