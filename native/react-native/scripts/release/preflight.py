@@ -118,7 +118,7 @@ if not args.source_only:
         check(bool(matches), platform + ': unexpired App Store provisioning profile for ' + config['bundleId'])
 
 if args.online:
-    for path, expected in [('/api/health', 200), ('/api/assessment/policy', 401), ('/api/sessions/testflight-preflight/camera-policy', 401)]:
+    for path, expected in [('/api/health', 200), ('/api/guardian-consent/status', 401), ('/api/assessment/policy', 401), ('/api/sessions/testflight-preflight/camera-policy', 401)]:
         # Use macOS curl's system certificate store, not a Python installation's
         # potentially unconfigured CA bundle. TLS verification remains enabled.
         response = subprocess.run(['curl', '--silent', '--show-error', '--proto', '=https', '--connect-timeout', '10', '--max-time', '20', '--user-agent', 'B4Skills-ReleasePreflight/1.0', '--header', 'Accept: application/json', '--write-out', '\n%{http_code}', config['apiOrigin'] + path], capture_output=True)
