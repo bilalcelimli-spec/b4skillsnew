@@ -1,6 +1,8 @@
+import type { CefrLevel } from '../cefr/cefr-framework.js';
 import { requiresArgumentStructure } from "./writing-task-policy.js";
 import { SCORING_MODEL, scoringFailureCode } from "./ai-scoring-policy.js";
-import { AIScore, GeminiScoringService } from "./gemini-scoring-service.js";
+import type { AIScore } from "./gemini-scoring-service.js";
+import { OpenAIScoringService } from "./openai-scoring-service.js";
 import {
   assessWritingIntegrity,
   assessSpeakingIntegrity,
@@ -98,8 +100,8 @@ function buildFinalScore(primary: AIScore, verifier: AIScore): OrchestratedScore
     reviewReasons,
     agreementDelta,
     scoreSource: requiresHumanReview ? "ai_flagged" : "ai_auto",
-    model: MODEL_NAME,
-    modelVersion: MODEL_NAME,
+    model: primary.providerModel ?? MODEL_NAME,
+    modelVersion: primary.providerModel ?? MODEL_NAME,
     scoringPasses: [
       {
         role: "primary",
@@ -223,8 +225,8 @@ export const ScoringOrchestrator = {
 
     try {
       const [primary, verifier] = await Promise.all([
-        GeminiScoringService.scoreWriting(text, prompt, targetCefr),
-        GeminiScoringService.verifyWriting(text, prompt, targetCefr),
+        OpenAIScoringService.scoreWriting(text, prompt, targetCefr),
+        OpenAIScoringService.verifyWriting(text, prompt, targetCefr),
       ]);
       const orchestrated = applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
 
@@ -287,8 +289,8 @@ export const ScoringOrchestrator = {
     let primary: AIScore, verifier: AIScore;
     try {
       [primary, verifier] = await Promise.all([
-        GeminiScoringService.scoreSpeaking(audioBase64, mimeType, prompt, targetCefr),
-        GeminiScoringService.verifySpeaking(audioBase64, mimeType, prompt, targetCefr),
+        OpenAIScoringService.scoreSpeaking(audioBase64, mimeType, prompt, targetCefr),
+        OpenAIScoringService.verifySpeaking(audioBase64, mimeType, prompt, targetCefr),
       ]);
     } catch (err) {
       return buildUnavailableScore(err, audioOnly);
@@ -344,8 +346,8 @@ export const ScoringOrchestrator = {
 
     try {
       const [primary, verifier] = await Promise.all([
-        GeminiScoringService.scoreWriting(text, prompt),
-        GeminiScoringService.verifyWriting(text, prompt),
+        OpenAIScoringService.scoreWriting(text, prompt),
+        OpenAIScoringService.verifyWriting(text, prompt),
       ]);
       return applyIntegrityToResult(buildFinalScore(primary, verifier), integrity);
     } catch (err) {
@@ -353,233 +355,5 @@ export const ScoringOrchestrator = {
     }
   },
 };
-// ─── Multi-Rater Ensemble Integration ─────────────────────────────────────────
-
-const USE_ENSEMBLE_SCORING = process.env.USE_ENSEMBLE_SCORING === "true";
-
-import { scoreWithEnsemble, scoreWritingWithEnsemble, scoreSpeakingWithEnsemble } from "./multi-rater-ensemble.js";
-import { convertEnsembleToOrchestrated } from "./ensemble-adapter.js";
-import type { CefrLevel } from "../cefr/cefr-framework.js";
-
-/**
- * Extended orchestrator that can use either primary-verifier or multi-rater ensemble
- * mode based on USE_ENSEMBLE_SCORING environment variable.
- */
-export const ScoringOrchestratorEnsemble = {
-  async scoreWriting(text: string, prompt: string, targetCefrLevel?: CefrLevel): Promise<OrchestratedScore> {
-    if (!USE_ENSEMBLE_SCORING || !targetCefrLevel) {
-      return ScoringOrchestrator.scoreWriting(text, prompt, targetCefrLevel);
-    }
-
-    const integrity = assessWritingIntegrity({ text, prompt });
-    if (integrity.recommendation === "reject") {
-      return buildRejectedScore(integrity);
-    }
-
-    try {
-      // Call multi-rater ensemble instead
-      const ensembleResult = await scoreWritingWithEnsemble(text, prompt, targetCefrLevel);
-
-      // Convert ensemble result to orchestrated format
-      const orchestrated = convertEnsembleToOrchestrated(ensembleResult, "WRITING", integrity);
-
-      // Enrich with discourse analysis (same as primary-verifier flow)
-      const aqProfile = ArgumentQualityAnalyzer.analyse(text, prompt);
-      (orchestrated.aiResult as any).argumentQualityProfile = aqProfile;
-
-      const rawCoherence = orchestrated.aiResult.rubricScores.coherence ?? (orchestrated.aiResult.score * 10);
-      const normalizedCoherence = rawCoherence / 10;
-      const aqAgreement = ArgumentQualityAnalyzer.raterAgreementKappa(normalizedCoherence, aqProfile.discourseQualityScore);
-      (orchestrated.aiResult as any).argumentQualityAgreement = aqAgreement;
-
-      if (requiresArgumentStructure(prompt) && aqAgreement.agreement === "POOR") {
-        orchestrated.requiresHumanReview = true;
-        orchestrated.reviewReasons.push("DISCOURSE_AI_DISAGREEMENT");
-        if (orchestrated.scoreSource === "ai_auto") {
-          orchestrated.scoreSource = "ai_flagged";
-        }
-      }
-
-      if (requiresArgumentStructure(prompt) && (aqProfile.flags.includes("UNSUPPORTED_CLAIMS") || aqProfile.flags.includes("NO_CLAIM_DETECTED"))) {
-        orchestrated.reviewReasons.push("WEAK_ARGUMENT_STRUCTURE");
-      }
-
-      return orchestrated;
-    } catch (err) {
-      return buildUnavailableScore(err, integrity);
-    }
-  },
-
-  async scoreSpeaking(
-    audioBase64: string,
-    mimeType: string,
-    prompt: string,
-    audioMetadata?: { audioDurationSec?: number; silentDurationSec?: number },
-    targetCefrLevel?: CefrLevel
-  ): Promise<OrchestratedScore> {
-    if (!USE_ENSEMBLE_SCORING || !targetCefrLevel) {
-      return ScoringOrchestrator.scoreSpeaking(audioBase64, mimeType, prompt, audioMetadata, targetCefrLevel);
-    }
-
-    // Audio-only integrity checks first
-    const audioOnly = assessSpeakingIntegrity({
-      transcript: "",
-      prompt,
-      audioDurationSec: audioMetadata?.audioDurationSec,
-      silentDurationSec: audioMetadata?.silentDurationSec,
-      minWordCount: 0,
-    });
-    if (audioOnly.issues.some(i =>
-      i.flag === "AUDIO_TOO_SHORT" || i.flag === "AUDIO_MOSTLY_SILENT"
-    )) {
-      return buildRejectedScore(audioOnly);
-    }
-
-    try {
-      // Call multi-rater ensemble
-      const ensembleResult = await scoreSpeakingWithEnsemble(
-        audioBase64,
-        prompt,
-        targetCefrLevel
-      );
-
-      // Extract transcript from first rater (all raters should provide same transcript)
-      const transcript = ensembleResult.raterScores[0]?.feedback?.split("\n")[0] || "";
-
-      // Full integrity check with transcript
-      const integrity = assessSpeakingIntegrity({
-        transcript,
-        prompt,
-        audioDurationSec: audioMetadata?.audioDurationSec,
-        silentDurationSec: audioMetadata?.silentDurationSec,
-      });
-
-      if (integrity.recommendation === "reject") {
-        return buildRejectedScore(integrity);
-      }
-
-      // Convert ensemble result
-      const orchestrated = convertEnsembleToOrchestrated(ensembleResult, "SPEAKING", integrity);
-
-      // ─── Q2.1: Extract acoustic features for fluency scoring ──────────────────
-      let audioFeatures: AudioFeatures | undefined;
-      let audioQualityMetrics: AudioQualityMetrics | undefined;
-      try {
-        audioFeatures = await AcousticAnalyzer.analyzeAudio(audioBase64, transcript);
-
-        // Check audio quality and flag if poor
-        const audioQualityCheck = flagAudioQuality(audioFeatures);
-        if (!audioQualityCheck.acceptable) {
-          orchestrated.requiresHumanReview = true;
-          orchestrated.reviewReasons.push(`AUDIO_QUALITY_FLAG: ${audioQualityCheck.reason}`);
-          if (orchestrated.scoreSource === "ai_auto") {
-            orchestrated.scoreSource = "ai_flagged";
-          }
-        }
-
-        // ─── Q2.2: Advanced audio quality analysis ──────────────────────────────
-        try {
-          audioQualityMetrics = await AudioQualityAnalyzer.analyzeAudioQuality(
-            audioBase64,
-            audioFeatures
-          );
-
-          // Generate quality recommendation
-          const qualityRec = generateQualityRecommendation(audioQualityMetrics, audioFeatures);
-
-          // REJECT if critical quality issues
-          if (qualityRec.recommendation === "REJECT") {
-            orchestrated.requiresHumanReview = true;
-            orchestrated.reviewReasons.push(`AUDIO_QUALITY_REJECT: ${qualityRec.reason}`);
-            if (orchestrated.scoreSource === "ai_auto") {
-              orchestrated.scoreSource = "ai_flagged";
-            }
-          }
-
-          // WARN if quality concerns
-          if (qualityRec.recommendation === "WARN") {
-            orchestrated.requiresHumanReview = true;
-            orchestrated.reviewReasons.push(`AUDIO_QUALITY_WARN: ${qualityRec.reason}`);
-            if (orchestrated.scoreSource === "ai_auto") {
-              orchestrated.scoreSource = "ai_flagged";
-            }
-          }
-
-          // Attach quality metrics to metadata
-          (orchestrated.aiResult as any).audioQualityMetrics = audioQualityMetrics;
-          (orchestrated.aiResult as any).qualityRecommendation = qualityRec;
-        } catch (qualityError) {
-          console.warn("[ScoringOrchestrator] Audio quality analysis failed, continuing:", qualityError);
-          // Gracefully degrade: continue without quality analysis
-        }
-
-        // Blend acoustic fluency with LLM fluency (50% LLM + 30% acoustic + 20% speech rate)
-        const acousticFluencyContribution = computeAcousticFluencyScore(
-          audioFeatures,
-          ensembleResult.finalCefrLevel
-        );
-        const llmFluency = orchestrated.aiResult.rubricScores.fluency ?? orchestrated.aiResult.score;
-        const normalizedLLMFluency = llmFluency > 1 ? llmFluency / 10 : llmFluency;
-
-        // Weighted blend: 50% LLM fluency + 50% acoustic contribution
-        const blendedFluency = (normalizedLLMFluency * 0.5 + acousticFluencyContribution * 0.5);
-        orchestrated.aiResult.rubricScores.fluency = blendedFluency * 10; // Convert back to 0-10 scale
-
-        // Attach acoustic features metadata
-        (orchestrated.aiResult as any).audioFeatures = audioFeatures;
-        (orchestrated.aiResult as any).acousticFluencyContribution = acousticFluencyContribution;
-      } catch (acousticError) {
-        console.warn("[ScoringOrchestrator] Acoustic analysis failed, continuing without acoustic features:", acousticError);
-        // Gracefully degrade: continue without acoustic features
-      }
-
-      // Enrich with prosodic analysis
-      const geminiFeatures = orchestrated.aiResult.speakingFeatures;
-      if (geminiFeatures) {
-        const prosodicProfile = ProsodicAnalyzer.analyse(
-          geminiFeatures,
-          transcript || undefined,
-          audioMetadata?.audioDurationSec
-        );
-        const kappa = ProsodicAnalyzer.raterAgreementKappa(
-          orchestrated.aiResult.rubricScores.fluency ?? orchestrated.aiResult.score * 10,
-          prosodicProfile.fluencyScore
-        );
-        if (kappa.agreement === "POOR") {
-          orchestrated.requiresHumanReview = true;
-          orchestrated.reviewReasons.push("PROSODIC_AI_DISAGREEMENT");
-          if (orchestrated.scoreSource === "ai_auto") {
-            orchestrated.scoreSource = "ai_flagged";
-          }
-        }
-        (orchestrated.aiResult as any).prosodicProfile = prosodicProfile;
-        (orchestrated.aiResult as any).prosodicKappa = kappa;
-      }
-
-      return orchestrated;
-    } catch (err) {
-      return buildUnavailableScore(err, audioOnly);
-    }
-  },
-
-  async scoreSpeakingFromText(text: string, prompt: string): Promise<OrchestratedScore> {
-    if (!USE_ENSEMBLE_SCORING) {
-      return ScoringOrchestrator.scoreSpeakingFromText(text, prompt);
-    }
-
-    const integrity = assessSpeakingIntegrity({ transcript: text, prompt });
-    if (integrity.recommendation === "reject") {
-      return buildRejectedScore(integrity);
-    }
-
-    try {
-      const ensembleResult = await scoreSpeakingWithEnsemble(text, prompt, "B1");
-      return applyIntegrityToResult(
-        convertEnsembleToOrchestrated(ensembleResult, "SPEAKING", integrity),
-        integrity
-      );
-    } catch (err) {
-      return buildUnavailableScore(err, integrity);
-    }
-  },
-};
+// Retain the public entry point while routing every assessment to the same OpenAI policy.
+export const ScoringOrchestratorEnsemble = ScoringOrchestrator;

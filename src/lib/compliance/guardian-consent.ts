@@ -3,7 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 
 // Release only after provider eligibility, ZDR and transfer documentation are verified.
 export const minorProcessingReady = () => process.env.MINOR_PROCESSING_READY === 'true';
-export const CONSENT_VERSION = '2026-11-04-v1';
+export const CONSENT_VERSION = '2026-11-04-openai-v2';
 export const AGE_BANDS = ['UNDER_13', '13_17', 'ADULT'] as const;
 export type AgeBand = typeof AGE_BANDS[number];
 export class ConsentError extends Error {

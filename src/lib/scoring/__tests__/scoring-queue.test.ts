@@ -32,7 +32,7 @@ describe('background scoring persistence', () => {
     const first=mocks.update.mock.calls[0][0].data.metadata;
     const second=mocks.update.mock.calls[1][0].data.metadata;
     expect(first.reportRefreshPending).toBe(true);
-    expect(first.scoringPolicyVersion).toBe('2026-10-14.5');
+    expect(first.scoringPolicyVersion).toBe('2026-11-04-openai-1');
     expect(first.reportRefreshVersion).toEqual(expect.any(String));
     expect(second.reportRefreshVersion).not.toBe(first.reportRefreshVersion);
   });

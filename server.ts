@@ -4334,8 +4334,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const body = validate(SpeakingMultimodalBody, req.body, res);
     if (!body) return;
     try {
-      const { GeminiScoringService } = await import("./src/lib/scoring/gemini-scoring-service.js");
-      const result = await GeminiScoringService.scoreSpeaking(body.audioBase64, body.mimeType, body.prompt || "Please respond to the task.");
+      const { OpenAIScoringService } = await import("./src/lib/scoring/openai-scoring-service.js");
+      const result = await OpenAIScoringService.scoreSpeaking(body.audioBase64, body.mimeType, body.prompt || "Please respond to the task.");
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: "Failed to perform multimodal scoring" });

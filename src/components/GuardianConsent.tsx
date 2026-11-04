@@ -47,7 +47,7 @@ export function GuardianDecisionPage() {
   return <main className="min-h-screen bg-slate-50 py-10 px-4"><section className={shell}>
     <h1 className="text-2xl font-bold">B4Skills veli onayı</h1>
     <p>Bir aday hesabı sizin e-posta adresinizi veli olarak bildirdi. Talebi tanımıyorsanız onaylamayın. Veli onayı sınava katılma zorunluluğu oluşturmaz.</p>
-    <p>Sınav sırasında yazılı yanıtlar ve ses kayıtları puanlama ve transkripsiyon amacıyla Google (Gemini), OpenAI ve Anthropic hizmetlerine aktarılabilir. Sınav güvenliği için kamera fotoğrafları otomatik çekilip kuruma gönderilebilir. Sonuçları yetkili kurum görevlileri görebilir.</p>
+    <p>Sınav sırasında yazılı yanıtlar ve ses kayıtları puanlama ve transkripsiyon amacıyla OpenAI hizmetlerine aktarılabilir. Sınav güvenliği için kamera fotoğrafları otomatik çekilip kuruma gönderilebilir. Sonuçları yetkili kurum görevlileri görebilir.</p>
     <p>Onay vermeden önce <a className="underline" href="/privacy" target="_blank" rel="noreferrer">gizlilik bilgilerini</a> ve <a className="underline" href="/terms" target="_blank" rel="noreferrer">kullanım koşullarını</a> okuyun. Veli yetkiniz kurum tarafından ayrıca doğrulanmadan sınav açılmaz. Tam kimlik belgesini bu forma yüklemeyin.</p>
     <p>Onayı geri çektiğinizde yeni sınav, yanıt ve kayıt gönderimi durur. Önceden işlenen verilerin silinmesi için <a className="underline" href="mailto:hello@b4skills.com">hello@b4skills.com</a> adresine başvurabilir veya aday hesabındaki “Hesabımı sil” seçeneğini kullanabilirsiniz.</p>
     {!result && !manage && <form className="space-y-4" onSubmit={e => { e.preventDefault(); void decide(true); }}>

@@ -1,5 +1,5 @@
 import { SecretsManager } from "../secrets/secrets-manager.js";
-import { SCORING_MODEL, SCORING_REQUEST_TIMEOUT_MS } from "./ai-scoring-policy.js";
+import { SCORING_REQUEST_TIMEOUT_MS } from "./ai-scoring-policy.js";
 import { validateAIScore } from "./validate-ai-score.js";
 import { GoogleGenAI, Type } from "@google/genai";
 import { buildCefrRubricPrompt, type CefrLevel } from "../cefr/cefr-framework.js";
@@ -27,6 +27,7 @@ function scoringClient(): GoogleGenAI {
 }
 
 export interface AIScore {
+  providerModel?: string;
   score: number;           // Normalized 0.0 to 1.0
   cefrLevel: string;       // A1, A2, B1, B2, C1, C2
   feedback: string;        // Qualitative feedback for the candidate
@@ -55,6 +56,7 @@ export interface AIScore {
   }>;
 }
 
+const SCORING_MODEL = 'gemini-2.5-flash';
 type ScoreMode = "primary" | "verifier";
 
 const SYSTEM_INSTRUCTION = `

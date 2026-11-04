@@ -42,3 +42,7 @@ Durum: yayın için hazır değil. Bu belge hukuki uygunluk belgesi veya tamamla
 - OpenAI API hesabında ZDR etkin olduğu kullanıcı tarafından teyit edildi. Bu, tarafımızdan hesap ayarı incelenerek doğrulandı anlamına gelmez; üretim projesi ve kullanılacak metin/ses uçlarının kapsamı ayrıca eşleştirilecek.
 - Soru, görsel ve dinleme içeriklerinin kullanım ve dağıtım hakları kullanıcı tarafından teyit edildi.
 - OpenAI yazma adaptörü eklendi; henüz ana akışa alınmadı. Konuşma adaptörü, kalibrasyon ve proje kapsamı doğrulaması bekliyor.
+
+## OpenAI geçişi — uygulama durumu
+
+Ana puanlama ve doğrudan konuşma puanlama ucu OpenAI adaptörüne bağlandı. Çok sağlayıcılı alternatif giriş noktası aynı OpenAI akışına yönlendiriliyor. Yazma Responses API, konuşma gerçek sesle Chat Completions kullanır; her iki istek `store:false` gönderir. Bu ayar ZDR onayı yerine geçmez. Ses dosyaları ffmpeg ile yerel bellek borularında WAV'a dönüştürülür; Docker çalışma imajına ffmpeg eklendi. Render'ın yerel Node ortamında ffmpeg kullanılabilirliği ayrıca doğrulanmalı. API anahtarı olmadığı için canlı sağlayıcı doğrulaması ve uzman puanlarıyla kalibrasyon yapılmadı. Üretim dağıtımı yapılmadı.

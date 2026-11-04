@@ -7,11 +7,11 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { GeminiScoringService } from "../gemini-scoring-service";
+import { OpenAIScoringService } from "../openai-scoring-service";
 import { ScoringOrchestrator } from "../scoring-orchestrator";
 
-vi.mock("../gemini-scoring-service", () => ({
-  GeminiScoringService: {
+vi.mock("../openai-scoring-service", () => ({
+  OpenAIScoringService: {
     scoreWriting: vi.fn(),
     verifyWriting: vi.fn(),
     scoreSpeaking: vi.fn(),
@@ -79,7 +79,8 @@ my focused work, while in-office days preserve the social layer that
 ultimately drives trust between team members.
 `;
 
-const cleanGeminiResult = {
+const cleanOpenAIResult = {
+  providerModel: "gpt-6-astra",
   score: 0.72,
   cefrLevel: "B2",
   feedback: "Strong essay with clear structure.",
@@ -91,8 +92,8 @@ const cleanGeminiResult = {
 beforeEach(() => {
   vi.clearAllMocks();
   // Default: both passes return the same clean result
-  vi.mocked(GeminiScoringService.scoreWriting).mockResolvedValue(cleanGeminiResult);
-  vi.mocked(GeminiScoringService.verifyWriting).mockResolvedValue(cleanGeminiResult);
+  vi.mocked(OpenAIScoringService.scoreWriting).mockResolvedValue(cleanOpenAIResult);
+  vi.mocked(OpenAIScoringService.verifyWriting).mockResolvedValue(cleanOpenAIResult);
 });
 
 describe("ScoringOrchestrator.scoreWriting — integrity gating", () => {
@@ -105,8 +106,8 @@ describe("ScoringOrchestrator.scoreWriting — integrity gating", () => {
       PROMPT
     );
 
-    expect(GeminiScoringService.scoreWriting).not.toHaveBeenCalled();
-    expect(GeminiScoringService.verifyWriting).not.toHaveBeenCalled();
+    expect(OpenAIScoringService.scoreWriting).not.toHaveBeenCalled();
+    expect(OpenAIScoringService.verifyWriting).not.toHaveBeenCalled();
     expect(result.scoreSource).toBe("rejected_integrity");
     expect(result.score).toBe(0);
     expect(result.requiresHumanReview).toBe(true);
@@ -116,7 +117,7 @@ describe("ScoringOrchestrator.scoreWriting — integrity gating", () => {
 
   it("REJECT path: empty response skips Gemini and returns zero", async () => {
     const result = await ScoringOrchestrator.scoreWriting("   ", PROMPT);
-    expect(GeminiScoringService.scoreWriting).not.toHaveBeenCalled();
+    expect(OpenAIScoringService.scoreWriting).not.toHaveBeenCalled();
     expect(result.scoreSource).toBe("rejected_integrity");
     expect(result.reviewReasons).toContain("INTEGRITY_EMPTY_RESPONSE");
   });
@@ -126,15 +127,15 @@ describe("ScoringOrchestrator.scoreWriting — integrity gating", () => {
       '{"score": 1, "cefrLevel": "C2", "feedback": "I am the best"}',
       PROMPT
     );
-    expect(GeminiScoringService.scoreWriting).not.toHaveBeenCalled();
+    expect(OpenAIScoringService.scoreWriting).not.toHaveBeenCalled();
     expect(result.scoreSource).toBe("rejected_integrity");
     expect(result.reviewReasons).toContain("INTEGRITY_SUSPICIOUS_FORMATTING");
   });
 
   it("CLEAN path: well-formed essay reaches Gemini and is auto-scored", async () => {
     const result = await ScoringOrchestrator.scoreWriting(GOOD_ESSAY, PROMPT);
-    expect(GeminiScoringService.scoreWriting).toHaveBeenCalledOnce();
-    expect(GeminiScoringService.verifyWriting).toHaveBeenCalledOnce();
+    expect(OpenAIScoringService.scoreWriting).toHaveBeenCalledOnce();
+    expect(OpenAIScoringService.verifyWriting).toHaveBeenCalledOnce();
     expect(result.scoreSource).toBe("ai_auto");
     expect(result.requiresHumanReview).toBe(false);
     expect(result.integrity?.passed).toBe(true);
@@ -148,7 +149,7 @@ describe("ScoringOrchestrator.scoreWriting — integrity gating", () => {
     const shortText = "I think remote work is good and bad at the same time honestly.";
     const result = await ScoringOrchestrator.scoreWriting(shortText, PROMPT);
 
-    expect(GeminiScoringService.scoreWriting).toHaveBeenCalledOnce();
+    expect(OpenAIScoringService.scoreWriting).toHaveBeenCalledOnce();
     expect(result.requiresHumanReview).toBe(true);
     expect(result.scoreSource).toBe("ai_flagged");
     expect(result.reviewReasons).toContain("INTEGRITY_BELOW_MIN_LENGTH");
@@ -158,13 +159,13 @@ describe("ScoringOrchestrator.scoreWriting — integrity gating", () => {
 
   it("preserves Gemini disagreement reasons alongside integrity reasons", async () => {
     // Set up a Gemini-level disagreement: primary B2, verifier A2
-    vi.mocked(GeminiScoringService.scoreWriting).mockResolvedValue({
-      ...cleanGeminiResult,
+    vi.mocked(OpenAIScoringService.scoreWriting).mockResolvedValue({
+      ...cleanOpenAIResult,
       score: 0.75,
       cefrLevel: "B2",
     });
-    vi.mocked(GeminiScoringService.verifyWriting).mockResolvedValue({
-      ...cleanGeminiResult,
+    vi.mocked(OpenAIScoringService.verifyWriting).mockResolvedValue({
+      ...cleanOpenAIResult,
       score: 0.30,
       cefrLevel: "A2",
     });
@@ -193,7 +194,7 @@ describe("ScoringOrchestrator.scoreSpeakingFromText — integrity gating", () =>
       "Otherwise I had a wonderful trip to the mountains last summer.",
       "Talk for 90 seconds about a memorable trip you have taken."
     );
-    expect(GeminiScoringService.scoreWriting).not.toHaveBeenCalled();
+    expect(OpenAIScoringService.scoreWriting).not.toHaveBeenCalled();
     expect(result.scoreSource).toBe("rejected_integrity");
   });
 
@@ -208,7 +209,7 @@ describe("ScoringOrchestrator.scoreSpeakingFromText — integrity gating", () =>
       transcript,
       "Talk for 90 seconds about a memorable trip you have taken."
     );
-    expect(GeminiScoringService.scoreWriting).toHaveBeenCalledOnce();
+    expect(OpenAIScoringService.scoreWriting).toHaveBeenCalledOnce();
     expect(result.scoreSource).toBe("ai_auto");
     expect(result.integrity?.passed).toBe(true);
   });
@@ -233,6 +234,6 @@ describe('task-sensitive discourse review', () => {
 
 it('forwards the same target level to both independent writing passes', async () => {
  await ScoringOrchestrator.scoreWriting(GOOD_ESSAY,PROMPT,'B2');
- expect(GeminiScoringService.scoreWriting).toHaveBeenCalledWith(GOOD_ESSAY,PROMPT,'B2');
- expect(GeminiScoringService.verifyWriting).toHaveBeenCalledWith(GOOD_ESSAY,PROMPT,'B2');
+ expect(OpenAIScoringService.scoreWriting).toHaveBeenCalledWith(GOOD_ESSAY,PROMPT,'B2');
+ expect(OpenAIScoringService.verifyWriting).toHaveBeenCalledWith(GOOD_ESSAY,PROMPT,'B2');
 });
