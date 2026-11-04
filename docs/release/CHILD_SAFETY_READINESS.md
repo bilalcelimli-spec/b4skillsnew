@@ -94,3 +94,11 @@ Apple üçüncü taraf AI’a kişisel veri paylaşımının açıklanmasını v
 - Rota denetimi, ara erişim kontrolünden sonra bağlanan veli yönlendiricisini de denetler.
 - Sınav testlerine yeni yaş/veli önkoşulları eklendi. Sentetik onay verisi yalnızca adı doğrulanmış, yerel ve geçici test veritabanına yazılabilir.
 - Kullanıcı OpenAI ve Xcode erişimlerini hazırlayacağını bildirdi; hazır olduğu henüz doğrulanmadı.
+
+## Son yerel doğrulama sonucu
+
+- TypeScript kontrolü başarılı.
+- Veli kontrolü ve hesap silme: 27 test başarılı.
+- Tarayıcı: 83 senaryo ilk turda başarılı; kalan 320px tam sınav senaryosu ayrı tekrarında başarılı (17,7 saniye). İlk turdaki ekran sıfırlanmasının nedeni kesinleştirilmedi; temiz CI çalışması ayrıca kontrol edilecek.
+- Geçici localhost PostgreSQL üzerinde 40 gerçek HTTP senaryosu başarılı, başarısız senaryo yok. Yeni hesapların yaş/veli adımını atlayamaması ve geri çekilen onayın sınavı kapatması da doğrulandı.
+- Bu sonuçlar gerçek OpenAI çağrısı, üretim e-posta teslimi, fiziksel Apple cihazı veya hukuki sözleşme doğrulaması değildir.
