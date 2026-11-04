@@ -16,6 +16,7 @@ concurrency:
 jobs:
   retention:
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -27,4 +28,9 @@ jobs:
           APP_URL: ${{ secrets.APP_URL }}
           INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.dry_run) || format('{0}', vars.RETENTION_APPLY_ENABLED != 'true') }}
-        run: node scripts/jobs/retention-http.mjs
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$INTERNAL_API_SECRET" ]; then
+            echo "::error::Configure APP_URL and INTERNAL_API_SECRET in the GitHub production environment. No retention requests were sent."
+            exit 1
+          fi
+          node scripts/jobs/retention-http.mjs

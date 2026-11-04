@@ -4,6 +4,8 @@
 
 Bu dosya B4Skills'in kurumlara sunduğu İngilizce değerlendirme hizmetinin veri işleme, saklama, silme ve yurt dışı aktarım hazırlığını bir araya getirir. Kodun hazırlanması ile üretimde devreye alınması ayrı durumlardır. Sağlayıcıların kullanıcı hesabına uygulanan sözleşme ve bölge ayarları görülmeden tamamlandığı yazılmaz.
 
+Güncel hesap ve test durumu için [son doğrulama kaydı](RELEASE_EVIDENCE_2026_11_04.md) esas alınır. ZDR şu an doğrulanmadı; kullanıcı imzalı aktarım belgelerinin henüz olmadığını teyit etti. [OpenAI talep metni](OPENAI_ZDR_REQUEST_EN.txt) hazırdır, gönderilmemiştir.
+
 ## Belgeler
 
 1. [Kurum ile veri işleme sözleşmesi](INSTITUTION_DPA_TR.md): Bilal Çelimli bilgileri doldurulmuş, kurum tarafı ve imza alanları açık olan sözleşme taslağı.
