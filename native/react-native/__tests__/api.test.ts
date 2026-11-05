@@ -223,3 +223,43 @@ describe('account deletion', () => {
     await expect(new Backend('https://app.b4skills.com').deleteAccount()).rejects.toThrow(/doğrulanamadı/);
   });
 });
+
+
+describe('concurrent cookie refresh', () => {
+  const response = (status: number, body = {}) => ({ ok: status === 200, status, text: async () => JSON.stringify(body) });
+  it('shares one refresh across Backend instances and retries both requests', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let refreshed = false;
+    let refreshes = 0;
+    (globalThis as any).fetch = jest.fn(async (url: string) => {
+      if (url.endsWith('/refresh')) { refreshes++; await gate; refreshed = true; return response(200); }
+      return response(refreshed ? 200 : 401, { user: { uid: 'demo' } });
+    });
+    const a = new Backend('https://concurrent.example.test').me();
+    const b = new Backend('https://concurrent.example.test').me();
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    expect(refreshes).toBe(1); release();
+    await expect(Promise.all([a, b])).resolves.toHaveLength(2);
+    expect(refreshes).toBe(1);
+  });
+  it('retries a delayed old 401 without rotating the newly refreshed cookie again', async () => {
+    let late!: () => void;
+    const gate = new Promise<void>(resolve => { late = resolve; });
+    let calls = 0, refreshes = 0;
+    (globalThis as any).fetch = jest.fn(async (url: string) => {
+      if (url.endsWith('/refresh')) { refreshes++; return response(200); }
+      const call = ++calls;
+      if (call === 1) { await gate; return response(401); }
+      return response(call === 2 ? 401 : 200, { user: { uid: 'demo' } });
+    });
+    const backend = new Backend('https://delayed.example.test');
+    const a = backend.me(); await backend.me(); late(); await a;
+    expect(refreshes).toBe(1);
+  });
+  it('does not replay protected requests after a rejected refresh', async () => {
+    const calls = mockFetch([{ status: 401 }, { status: 401, body: { error: 'expired' } }]);
+    await expect(new Backend('https://expired.example.test').me()).rejects.toThrow(/401/);
+    expect(calls).toHaveLength(2);
+  });
+});
