@@ -105,7 +105,7 @@ export function Ready({
                 standard: t("Standart"),
                 monitored: t("Otomatik gözetimli"),
                 secure: t("Güvenli değerlendirme")
-              }[store.policy.mode]}{t(" · Uygulama geçiş kaydı: ")}{store.policy.required.lifecycleEvents ? t("açık") : t("kapalı")}.</Text>
+              }[store.policy.mode]}{t(" · Zorunlu geçiş denetimi: ")}{store.policy.required.lifecycleEvents ? t("açık") : t("kapalı")}.</Text>
               {store.deviceChecks ? <Text style={[type.caption, {
               color: color.muted
             }]}>{t("Mikrofon: ")}{store.deviceChecks.microphone ? t("hazır") : t("izin gerekli")}{t(" · Teknik olay kaydı: ")}{store.deviceChecks.durableEvents ? t("hazır") : t("kullanılamıyor")}
