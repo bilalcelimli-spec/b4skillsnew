@@ -1642,5 +1642,17 @@
   "Hesabınız ve sınav kayıtlarınız kaldırıldı. Bu cihazdaki bekleyen kayıtlar temizlendi. Dosya ve yedek temizliği gizlilik politikasındaki süreçle tamamlanır.": {
     "en": "Your account and assessment records have been removed. Pending records on this device were cleared. File and backup cleanup follows the process in the privacy policy.",
     "ar": "أُزيل حسابك وسجلات التقييم، ومُسحت السجلات المعلقة على هذا الجهاز. تُستكمل إزالة الملفات والنسخ الاحتياطية وفق سياسة الخصوصية."
+  },
+  "Konuşma yanıtları ses olarak gönderilir. Her sınavda uygulamanın ön/arka plana geçiş zamanları teknik olay olarak kaydedilir. Cihazın ilettiği ekran yakalama bildirimleri de kaydedilir. Teknik olay tek başına ihlal kararı değildir. Canlı insan gözetimi yapılmaz.": {
+    "en": "Speaking answers are sent as audio. In every exam, app foreground/background transition times are recorded as technical events. Screen capture notifications reported by the device are also recorded. A technical event alone does not determine a violation. There is no live human proctoring.",
+    "ar": "تُرسل إجابات التحدث كتسجيلات صوتية. في كل اختبار، تُسجّل أوقات انتقال التطبيق بين الواجهة والخلفية كأحداث تقنية. وتُسجّل أيضًا إشعارات التقاط الشاشة التي يرسلها الجهاز. الحدث التقني وحده لا يحدد وجود مخالفة. لا توجد مراقبة بشرية مباشرة."
+  },
+  "Sınav boyunca kamera açık kalır; yüzler cihazda sayılır ve video gönderilmez. Tek yüz göründüğünde bir başlangıç fotoğrafı otomatik olarak çekilip kuruma gönderilir. Konuşma yanıtları ses olarak gönderilir. Her sınavda uygulamanın ön/arka plana geçiş zamanları teknik olay olarak kaydedilir. Cihazın ilettiği ekran yakalama bildirimleri de kaydedilir. Teknik olay tek başına ihlal kararı değildir. Canlı insan gözetimi yapılmaz.": {
+    "en": "The camera stays on throughout the exam; faces are counted on the device and no video is sent. When a single face is visible, one baseline photo is taken automatically and sent to your institution. Speaking answers are sent as audio. In every exam, app foreground/background transition times are recorded as technical events. Screen capture notifications reported by the device are also recorded. A technical event alone does not determine a violation. There is no live human proctoring.",
+    "ar": "تبقى الكاميرا مفعّلة طوال الاختبار؛ تُعدّ الوجوه على الجهاز ولا يُرسل أي فيديو. عند ظهور وجه واحد تُلتقط صورة مرجعية واحدة تلقائيًا وتُرسل إلى مؤسستك. تُرسل إجابات التحدث كتسجيلات صوتية. في كل اختبار، تُسجّل أوقات انتقال التطبيق بين الواجهة والخلفية كأحداث تقنية. وتُسجّل أيضًا إشعارات التقاط الشاشة التي يرسلها الجهاز. الحدث التقني وحده لا يحدد وجود مخالفة. لا توجد مراقبة بشرية مباشرة."
+  },
+  "· Zorunlu geçiş denetimi:": {
+    "en": "· Required transition checks:",
+    "ar": "· التحقق الإلزامي من انتقال التطبيق:"
   }
 }

@@ -13,7 +13,7 @@ const Configuration = z.object({
   lifecycleEvents: z.boolean().default(false),
 }).strict();
 
-const BASE_DISCLOSURE = 'Konuşma yanıtları ses olarak gönderilir. Etkinleştirilmişse uygulamanın ön/arka plana geçiş zamanları teknik olay olarak kaydedilir. Teknik olay tek başına ihlal kararı değildir. Canlı insan gözetimi yapılmaz.';
+const BASE_DISCLOSURE = 'Konuşma yanıtları ses olarak gönderilir. Her sınavda uygulamanın ön/arka plana geçiş zamanları teknik olay olarak kaydedilir. Cihazın ilettiği ekran yakalama bildirimleri de kaydedilir. Teknik olay tek başına ihlal kararı değildir. Canlı insan gözetimi yapılmaz.';
 export const CAMERA_DISCLOSURE = 'Sınav boyunca kamera açık kalır; yüzler cihazda sayılır ve video gönderilmez. Tek yüz göründüğünde bir başlangıç fotoğrafı otomatik olarak çekilip kuruma gönderilir.';
 
 /** Tenant-controlled rollout; malformed configuration never downgrades to standard. */

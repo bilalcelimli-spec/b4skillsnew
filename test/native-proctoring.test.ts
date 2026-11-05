@@ -39,6 +39,15 @@ export const nativeEvent = {
   version: 2, eventId: '716e724c-f93e-4684-a1a2-b611bc67d823', sequence: 0, sessionId: 's1', platform: 'ipad',
   eventType: 'TAB_BLUR', severity: 'INFO', timestamp: '2026-10-24T09:00:00.000Z', metadata: { reason: 'native-lifecycle-background' },
 };
+describe('technical event disclosure', () => {
+  it('discloses collection even when the profile does not require transition checks', () => {
+    const policy = examPolicy({ nativeCameraPilot: { enabled: false, retentionDays: 7 } });
+    expect(policy.required.lifecycleEvents).toBe(false);
+    expect(policy.disclosure).toContain('Her sınavda');
+    expect(policy.disclosure).toContain('ekran yakalama bildirimleri');
+    expect(policy.disclosure).not.toContain('Etkinleştirilmişse');
+  });
+});
 describe('camera disclosure', () => {
   it('tells the candidate the camera is on unless the tenant turned it off', () => {
     expect(examPolicy({}).disclosure.startsWith(CAMERA_DISCLOSURE)).toBe(true);
