@@ -44,6 +44,20 @@ b4_archive="build/distribution/$b4_platform/$b4_version-$B4_BUILD_NUMBER$b4_suff
 if [[ -e "$b4_archive" ]]; then printf '%s\n' "Archive already exists; preserve it or choose a new build number: $b4_archive"; exit 1; fi
 mkdir -p "$(dirname "$b4_archive")"
 export NODE_BINARY="$(command -v node)"
+# Xcode can spell macOS Unicode paths in decomposed form while Node's file map
+# uses the canonical filesystem spelling. Keep Metro's root, CLI and config
+# command on the same real path (also supports spaces in the checkout path).
+b4_root="$("$NODE_BINARY" -p 'require("fs").realpathSync(process.cwd())')"
+if [[ "$b4_platform" == macos ]]; then b4_package=react-native-macos; else b4_package=react-native; fi
+b4_cli="$b4_root/node_modules/$b4_package"
+b4_config_cmd="$(python3 - "$NODE_BINARY" "$b4_cli/cli.js" <<'PY'
+import shlex, sys
+print(shlex.join([sys.argv[1], sys.argv[2], 'config']))
+PY
+)"
+export PROJECT_ROOT="$b4_root"
+export CLI_PATH="$b4_cli/scripts/bundle.js"
+export CONFIG_CMD="$b4_config_cmd"
 b4_jobs="${B4_BUILD_JOBS:-1}"
 if [[ "$b4_jobs" != 1 && "$b4_jobs" != 2 ]]; then printf '%s\n' 'B4_BUILD_JOBS must be 1 or 2'; exit 2; fi
 xcodebuild -jobs "$b4_jobs" -workspace "$b4_workspace" -scheme "$b4_scheme" \

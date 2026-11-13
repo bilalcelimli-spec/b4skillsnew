@@ -2,7 +2,7 @@
 
 29 Ekim 2026
 
-Bu belge mevcut planların yerine geçmez. Sınav arayüzü [EXAM_UI_EXCELLENCE_PLAN.md](EXAM_UI_EXCELLENCE_PLAN.md) içinde, gözetim ve web özellikleri [WEB_FEATURE_PARITY_ROADMAP.md](WEB_FEATURE_PARITY_ROADMAP.md) içinde, genel sınav deneyimi [EXAM_EXPERIENCE_ROADMAP.md](EXAM_EXPERIENCE_ROADMAP.md) içinde kalır. Bu belge, o planların ele almadığı üç alanı ekler: mühendislik temeli (native CI, çökme takibi), Apple platformuna uyum (karanlık mod, klavye, menüler, Assessment Mode) ve kurumsal dağıtım (MDM, Universal Links). Ayrıca tüm işleri tek bir sıraya koyar.
+Bu belge mevcut planların yerine geçmez. Sınav arayüzü [EXAM_UI_EXCELLENCE_PLAN.md](EXAM_UI_EXCELLENCE_PLAN.md) içinde, gözetim ve web özellikleri [WEB_FEATURE_PARITY_ROADMAP.md](WEB_FEATURE_PARITY_ROADMAP.md) içinde, genel sınav deneyimi [EXAM_EXPERIENCE_ROADMAP.md](EXAM_EXPERIENCE_ROADMAP.md) içinde kalır. Bu belge, o planların ele almadığı üç alanı ekler: mühendislik temeli (native CI, çökme takibi), Apple platformuna uyum (karanlık mod, klavye, menüler, Assessment Mode) ve kurumsal dağıtım (MDM, Universal Links). Ayrıca tüm işleri tek bir sıraya koyar. App Store'a herkese açık yayın sırası ve yayın engelleri: [APP_STORE_RELEASE_ROADMAP.md](APP_STORE_RELEASE_ROADMAP.md).
 
 Süreler tek geliştirici varsayımıyla kaba tahmindir. Aşağıdaki hedefler ölçülmüş sonuç değildir; pilotta ölçülür.
 

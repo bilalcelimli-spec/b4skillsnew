@@ -9,10 +9,13 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--source-only', action='store_true', help='Skip local App Store profile inventory')
 parser.add_argument('--xcode-settings', action='store_true', help='Resolve actual Release build settings without compiling or provisioning')
 parser.add_argument('--online', action='store_true', help='Check public live API without signing in')
+parser.add_argument('--app-store', action='store_true', help='Also check public legal/support pages for App Store submission (implies --online)')
 parser.add_argument('--platform', choices=['ipad', 'macos', 'all'], default='all')
 parser.add_argument('--archive', type=Path)
 parser.add_argument('--unsigned', action='store_true', help='Validation artifact only; cannot indicate upload readiness')
 args = parser.parse_args()
+if args.app_store:
+    args.online = True
 config = json.loads((ROOT / 'release.json').read_text())
 errors = []
 results = []
@@ -129,6 +132,28 @@ if args.online:
         if path == '/api/health' and status == 200:
             check(payload.get('status') == 'ok' and payload.get('database') == 'up', 'Live backend and database healthy')
 
+if args.app_store:
+    from html import unescape
+    # No credentials or confirmation token: this request cannot delete an account.
+    deletion = subprocess.run(['curl', '--silent', '--show-error', '--proto', '=https', '--connect-timeout', '10', '--max-time', '20', '--user-agent', 'B4Skills-ReleasePreflight/1.0', '--request', 'POST', '--header', 'Content-Type: application/json', '--data', '{}', '--write-out', '\n%{http_code}', config['apiOrigin'] + '/api/auth/delete-account'], capture_output=True)
+    deletion_body, _, deletion_status = deletion.stdout.rpartition(b'\n')
+    try: deletion_payload = json.loads(deletion_body)
+    except Exception: deletion_payload = None
+    check(deletion.returncode == 0 and deletion_status == b'401' and isinstance(deletion_payload, dict), 'Live account-deletion route exists and requires authentication (no account mutation)')
+    # A SPA fallback or a published draft must not pass as a finished policy.
+    for path, title in [('/privacy', 'Gizlilik Politikası'), ('/terms', 'Kullanım Koşulları'), ('/support', 'İletişim ve Destek')]:
+        response = subprocess.run(['curl', '--silent', '--show-error', '--proto', '=https', '--connect-timeout', '10', '--max-time', '20', '--user-agent', 'B4Skills-ReleasePreflight/1.0', '--write-out', '\n%{http_code}', config['apiOrigin'] + path], capture_output=True)
+        if response.returncode:
+            check(False, path + ': network/TLS failure'); continue
+        body, _, status = response.stdout.rpartition(b'\n')
+        html = body.decode(errors='replace')
+        main = re.search(r'<main\b[^>]*>(.*?)</main>', html, re.S | re.I)
+        content = unescape(re.sub(r'<[^>]+>', ' ', main.group(1) if main else ''))
+        content = re.sub(r'\s+', ' ', content).strip()
+        check(status == b'200' and title in content and len(content) > 200, path + ': substantive server-rendered public page, not an empty SPA fallback')
+        check(bool(content) and not any(marker in content.casefold() for marker in ['inceleme taslağı', '[[doldur]]', '[[karar]]', 'henüz doğrulanmamıştır', 'nihai hukuki metin olarak yayımlanmamalıdır']), path + ': no unfinished legal draft or unresolved placeholder')
+    print('NOTE App Store checks do not verify review credentials, age/content-rights declarations, screenshots, device acceptance or App Store Connect submission status.')
+
 if args.archive:
     apps = list((args.archive / 'Products/Applications').glob('*.app'))
     check(len(apps) == 1, 'Archive contains exactly one top-level application')
@@ -161,7 +186,7 @@ if args.archive:
             check('TeamIdentifier=' + config['teamId'] in identity and 'Signature=adhoc' not in identity, 'Archive uses configured Apple team, not ad-hoc signing')
         else: print('NOTE Unsigned validation archive only; NOT export/upload ready')
 
-report = {'checkedAt': datetime.now(timezone.utc).isoformat(), 'platform': args.platform, 'sourceOnly': args.source_only, 'online': args.online, 'archiveProvided': bool(args.archive), 'unsignedValidation': args.unsigned, 'checksPassed': not errors, 'blockers': errors, 'checks': results, 'note': 'Technical checks only; App Store Connect metadata and signed archive/export require separate validation.'}
+report = {'checkedAt': datetime.now(timezone.utc).isoformat(), 'platform': args.platform, 'sourceOnly': args.source_only, 'online': args.online, 'appStore': args.app_store, 'archiveProvided': bool(args.archive), 'unsignedValidation': args.unsigned, 'checksPassed': not errors, 'blockers': errors, 'checks': results, 'note': 'Technical checks only; App Store Connect metadata and signed archive/export require separate validation.'}
 report_file = ROOT / 'build/distribution' / ('preflight-source.json' if args.source_only else 'preflight-readiness.json')
 report_file.parent.mkdir(parents=True, exist_ok=True)
 report_file.write_text(json.dumps(report, indent=2))
