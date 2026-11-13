@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Clock, Mic, Camera, BookOpen, Headphones, PenLine, MessageSquare, ShieldCheck, XCircle, Wifi } from "lucide-react";
 import { RubricPreview } from "./RubricPanel.js";
 import { OZGUN_SECTIONS } from "../lib/fixed-forms/ozgun-kids";
@@ -6,7 +6,8 @@ import { assessmentPresentation } from "../lib/product-lines/assessment-presenta
 
 interface PreTestBriefingProps {
   productLine?: string;
-  onStart: () => void;
+  checkPurchaseTerms?: boolean;
+  onStart: (consentId?: string) => void;
   onCancel: () => void;
   onSignOut?: () => void;
   signingOut?: boolean;
@@ -22,7 +23,33 @@ const SKILL_ICONS: Record<string, React.ReactNode> = {
   Vocabulary: <BookOpen size={14} />,
 };
 
-export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, onStart, onCancel, onSignOut, signingOut, logoutError }) => {
+export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, onStart, onCancel, onSignOut, signingOut, logoutError, checkPurchaseTerms = false }) => {
+  const [conditions, setConditions] = useState<any>(null);
+  const [checkingPurchase, setCheckingPurchase] = useState(checkPurchaseTerms);
+  const [purchaseError, setPurchaseError] = useState('');
+  const [requestEarlyStart, setRequestEarlyStart] = useState(false);
+  const [acknowledge, setAcknowledge] = useState(false);
+  const [submittingConsent, setSubmittingConsent] = useState(false);
+  const [checkRevision, setCheckRevision] = useState(0);
+  useEffect(() => {
+    if (!checkPurchaseTerms) return;
+    const abort = new AbortController(); setCheckingPurchase(true); setPurchaseError('');
+    fetch('/api/payments/start-conditions', { credentials: 'include', signal: abort.signal })
+      .then(async res => { const data = await res.json(); if (!res.ok) throw new Error(data.error ?? 'Satın alma koşulları alınamadı.'); setConditions(data.conditions); })
+      .catch(e => { if (!abort.signal.aborted) setPurchaseError(e.message); })
+      .finally(() => { if (!abort.signal.aborted) setCheckingPurchase(false); });
+    return () => abort.abort();
+  }, [checkPurchaseTerms, checkRevision]);
+  async function start() {
+    if (!conditions?.requiresConsent) { onStart(); return; }
+    setSubmittingConsent(true); setPurchaseError('');
+    try {
+      const res = await fetch('/api/payments/early-start', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: conditions.transactionId, policyVersion: conditions.policyVersion, requestEarlyStart, acknowledgeWithdrawalEffect: acknowledge }) });
+      const data = await res.json(); if (!res.ok) throw new Error(data.error ?? 'Başlatma onayı kaydedilemedi.');
+      onStart(data.consentId);
+    } catch (e) { setPurchaseError((e as Error).message); } finally { setSubmittingConsent(false); }
+  }
   const {fixed, title, duration: minutes, skills, resumeHours} = assessmentPresentation(productLine);
   const duration = `${minutes} min`;
   const needsMic = skills.includes("Speaking");
@@ -136,6 +163,15 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
             </div>
           )}
 
+          {checkingPurchase && <p role="status" className="text-sm">Satın alma koşulları kontrol ediliyor…</p>}
+          {conditions?.requiresConsent && <section lang="tr" className="border border-indigo-200 bg-indigo-50 rounded-xl p-4 space-y-4">
+            <h2 className="font-bold">14 gün dolmadan sınava başlama</h2>
+            <p className="text-sm">Cayma süreniz {new Date(conditions.withdrawalEndsAt).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })} tarihinde sona erer. Şimdi başlamak için aşağıdaki iki ayrı onayı vermelisiniz. Onay vermek zorunda değilsiniz; süre dolana kadar bekleyebilirsiniz. Bu onaylar yalnız bu sınavın başlatılması içindir.</p>
+            <label className="flex gap-3 items-start text-sm"><input className="mt-1 h-5 w-5 shrink-0" type="checkbox" checked={requestEarlyStart} onChange={e => setRequestEarlyStart(e.target.checked)} /><span>{conditions.requestText}</span></label>
+            <label className="flex gap-3 items-start text-sm"><input className="mt-1 h-5 w-5 shrink-0" type="checkbox" checked={acknowledge} onChange={e => setAcknowledge(e.target.checked)} /><span>{conditions.acknowledgementText}</span></label>
+            <a href="/refund-policy" target="_blank" rel="noopener noreferrer" className="underline text-sm">İade ve cayma politikası</a>
+          </section>}
+          {purchaseError && <div role="alert" className="text-sm text-red-700"><p>{purchaseError}</p><button onClick={() => setCheckRevision(r => r + 1)} className="underline mt-2">Koşulları yeniden kontrol et</button></div>}
           {/* Policies */}
           <div className="flex items-start gap-2 text-xs text-slate-500">
             <ShieldCheck size={14} className="text-emerald-500 flex-shrink-0 mt-0.5" />
@@ -156,8 +192,8 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
           </button>
           {onSignOut && <button onClick={onSignOut} disabled={signingOut} className="text-sm font-semibold text-slate-600 px-2 disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out'}</button>}
           <button
-            disabled={signingOut}
-            onClick={onStart}
+            disabled={signingOut || checkingPurchase || submittingConsent || !!purchaseError || (conditions?.requiresConsent && (!requestEarlyStart || !acknowledge))}
+            onClick={start}
             className="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm py-2.5 rounded-xl transition-colors shadow-sm"
           >
             I'm Ready — Start Test

@@ -14,135 +14,94 @@ const SECTIONS = [
     id: "cat",
     icon: <BrainCircuit size={22} className="text-[#9b276c]" />,
     title: "Computerised Adaptive Testing (CAT)",
-    body: `B4Skills uses a psychometrically rigorous CAT engine built on Item Response Theory (IRT). Rather than giving every candidate the same fixed test, the engine selects the next question based on the candidate's estimated ability (θ) after each response.
+    body: `The adaptive engine selects questions using the current ability estimate (θ), item information, skill coverage and exposure constraints. Objective items use IRT parameters for discrimination, difficulty and guessing. EAP estimation updates ability as scored evidence becomes available.
 
-The engine uses a three-parameter logistic model (3PL) to characterise each item by its difficulty (b), discrimination (a), and guessing probability (c). Ability is estimated using Expected A Posteriori (EAP) integration over a Gaussian prior, updated after every response. Item selection maximises Fisher Information at the current θ estimate, choosing the most informative item from the active bank.
-
-Testing stops when the Standard Error of Measurement (SEM) falls below the threshold defined for each product line, or when the maximum item count is reached. This means high-ability candidates converge faster than low-ability ones — the test is as short as it needs to be, no longer.`,
+Testing stops according to each product’s precision targets, section coverage and item limits. A test can reach its item limit without achieving its target SEM. Reported precision must be read alongside the result.`,
   },
   {
     id: "cefr",
     title: "CEFR Alignment",
     icon: <BarChart3 size={22} className="text-[#9b276c]" />,
-    body: `All items are calibrated against the Common European Framework of Reference for Languages (CEFR) and the Council of Europe Companion Volume. Items are piloted as unscored pretests embedded in live sessions; those with ≥ 200 responses and an Item Quality Score (IQS) ≥ 65 are promoted to the active bank.
+    body: `b4skills reports levels aligned to the CEFR using configured θ thresholds and CEFR-based task descriptors. Alignment is an intended interpretation of the assessment, not certification or endorsement by the Council of Europe.
 
-CEFR θ thresholds are derived from standard-setting exercises and anchored against externally validated items: PRE_A1 < −4.0 θ, A1 < −2.5, A2 < −1.0, B1 < 0.5, B2 < 2.0, C1 < 3.5, C2 ≥ 3.5. These thresholds flow through every score report and certificate.
-
-A Multistage Test (MST) routing layer is applied to Writing and Speaking sections, where adaptive routing is based on the incoming θ estimate from the preceding MC sections.`,
+Active item status does not by itself establish empirical calibration. Parameters and level thresholds may be provisional. Independent standard-setting and external validity evidence must be demonstrated separately; current evidence is shown on the Research page.`,
   },
   {
     id: "ai-scoring",
     title: "AI Scoring & Human Review",
     icon: <ShieldCheck size={22} className="text-[#9b276c]" />,
-    body: `Writing and Speaking responses are scored by a multi-model ensemble: Gemini, Claude, and GPT-4 each produce independent scores against CEFR-anchored rubrics across dimensions including task achievement, grammatical range and accuracy, lexical resource, coherence, and (for speaking) pronunciation and fluency.
+    body: `Full assessments support AI-assisted scoring of writing and speaking against CEFR-based rubrics. The providers used depend on the configured scoring path and availability, including Google, OpenAI and Anthropic. Speaking audio may be transcribed before evaluation.
 
-Scores are aggregated using a weighted blend calibrated to inter-rater reliability data. Any response where the ensemble disagrees by more than one CEFR sub-band, or where confidence falls below the threshold for the current product line, is queued for human review by a certified examiner.
-
-Speaking audio is first transcribed by OpenAI Whisper; acoustic features (speech rate, pause frequency, filler-word density, intonation diversity) are extracted from the transcript and blended with LLM fluency scores using Samejima's Graded Response Model (GRM) for polytomous scoring.`,
+Responses requiring review are held for human assessment rather than treated as final scored evidence. We do not claim a published human–AI agreement coefficient. The free Quick Check does not evaluate open writing or speaking responses; its level is a provisional estimate from objectively scored responses.`,
   },
   {
     id: "fairness",
     title: "Fairness & Bias Monitoring",
     icon: <Users size={22} className="text-[#9b276c]" />,
-    body: `B4Skills applies the Mantel-Haenszel procedure to screen for Differential Item Functioning (DIF) across gender, L1 background, and age groups. Items flagged for DIF at the C level are immediately removed from the active bank pending review.
+    body: `The platform includes tools for item analysis, exposure control, person-fit checks and Mantel-Haenszel DIF screening. These tools can support item review when sufficient response and demographic data are available.
 
-Exposure control uses a Sympson-Hetter probabilistic procedure to prevent over-exposure of high-information items, which could compromise security and inflate measurement error for subsequent cohorts.
-
-Person-fit is assessed using the Lz statistic after each session. Aberrant response patterns (e.g., systematic misfit suggesting inattention or collusion) are flagged for examiner review and may trigger a hold on certificate issuance.`,
+Their presence does not establish that a study has been completed or that an assessment is free of bias. Monitoring signals require contextual review and should not be treated as proof of misconduct.`,
   },
   {
     id: "item-types",
     title: "Question Types & Constructs",
     icon: <BookOpen size={22} className="text-[#9b276c]" />,
-    body: `Each question type in b4skills is designed to measure a specific linguistic construct, anchored to CEFR Companion Volume descriptors.
+    body: `Reading and listening tasks use selected-response or structured formats to assess comprehension. Grammar and vocabulary tasks assess language use. Writing and speaking tasks collect constructed responses where supported by the assessment configuration.
 
-Reading: Multiple-choice comprehension (global & local), sentence completion, and heading matching tasks assess reading for gist, reading for detail, and inferencing. Items are drawn from academic, professional, and everyday texts calibrated across A1–C2.
-
-Listening: Multiple-choice following spoken input (monologue, dialogue, interview), note-completion, and MCQ after longer spoken texts assess listening for specific information, attitude, and main idea. All audio is produced at native CEFR-appropriate speed.
-
-Grammar & Vocabulary: Discrete-point multiple-choice and cloze items measure grammatical accuracy and lexical breadth. Items are mapped to English Grammar Profile (EGP) constructs and the English Vocabulary Profile (EVP).
-
-Writing (open response): Short-paragraph tasks (B1+) and essay-length tasks (B2+) are scored by the AI ensemble across task achievement, grammatical range, lexical resource, and coherence. Graded Response Model (GRM) maps raw dimension scores to a polytomous IRT θ contribution.
-
-Speaking (open response): Prompted monologue (1–2 minutes) and read-aloud tasks. Whisper ASR transcribes audio; acoustic features (speech rate, pause frequency, filler density, self-correction rate) are extracted and blended with LLM rubric scores via the multi-rater ensemble.`,
+Question counts, task formats and scored skill coverage vary by product. The free Quick Check includes six skill areas, but open writing and speaking responses are not evaluated or included in its provisional level.`,
   },
   {
     id: "rubrics",
     title: "AI Scoring Rubric Dimensions",
     icon: <Sliders size={22} className="text-[#9b276c]" />,
-    body: `Writing and Speaking responses are independently scored by three LLM raters (Gemini, Claude, GPT-4) on seven dimensions, each on a 1–10 scale anchored to CEFR band descriptors.
+    body: `AI-assisted writing and speaking scoring uses CEFR-based rubric dimensions such as task achievement, grammatical range and accuracy, lexical resource, coherence, and speaking fluency where supported.
 
-1. Task Achievement — Does the response address the prompt, fulfil the communicative purpose, and meet length/format requirements?
-
-2. Grammatical Range — Does the candidate use a variety of grammatical structures appropriate to the target level, including complex sentences, subordination, and accurate verb forms?
-
-3. Grammatical Accuracy — Are grammatical structures used accurately? Errors are classified as minor (inflection, article) or major (clause structure, tense).
-
-4. Lexical Resource — Does the candidate draw on a wide vocabulary, use collocations naturally, and avoid undue repetition? Uncommon or idiomatic vocabulary is credited.
-
-5. Lexical Accuracy — Are words and phrases used with appropriate meaning and register? Spelling errors (writing) and word-form errors are noted here.
-
-6. Coherence & Cohesion — Is the response logically organised? Does it use discourse markers, referencing, and paragraph structure appropriately?
-
-7. Fluency & Pronunciation (Speaking only) — Is the spoken output delivered with appropriate speed (120–150 wpm for B1+), minimal disfluency, and clear pronunciation? Acoustic features (speech rate, pause frequency, self-correction rate, pitch variation) feed into this dimension alongside the LLM fluency rating.
-
-Ensemble aggregation: scores are weighted by rater reliability (ICC-calibrated per dimension), and the weighted mean maps to a GRM θ contribution. Responses where the ensemble disagrees by more than one CEFR sub-band, or where any single rater's confidence score falls below threshold, are queued for human examiner review.`,
+Dimensions, weights, providers and review thresholds depend on the scoring configuration. Model agreement is not a substitute for independent validation against human ratings; no numerical agreement claim is made here.`,
   },
   {
     id: "concordance",
     title: "External Score Concordance",
     icon: <BarChart3 size={22} className="text-[#9b276c]" />,
-    body: `B4Skills scores are linked to external frameworks through concordance studies using Common-Item Non-Equivalent Groups (CINEG) equating, validated against anchor items shared between assessment systems.
+    body: `No independently validated conversion between b4skills scores and IELTS, TOEFL, Cambridge or Pearson scores is claimed. Sharing a CEFR label does not make scores interchangeable or establish equivalent admission requirements.
 
-CEFR → Approximate External Equivalents:
-
-A1: IELTS 0.0–2.5 · TOEFL iBT 0–30 · TOEIC 10–254 · Cambridge Starter
-A2: IELTS 2.5–3.5 · TOEFL iBT 30–42 · TOEIC 255–399 · KET (A2 Key)
-B1: IELTS 3.5–4.5 · TOEFL iBT 42–71 · TOEIC 400–599 · PET (B1 Preliminary)
-B2: IELTS 5.0–6.0 · TOEFL iBT 72–94 · TOEIC 600–779 · FCE (B2 First)
-C1: IELTS 6.5–7.5 · TOEFL iBT 95–113 · TOEIC 780–899 · CAE (C1 Advanced)
-C2: IELTS 8.0–9.0 · TOEFL iBT 114–120 · TOEIC 900–990 · CPE (C2 Proficiency)
-
-Pearson GSE alignment: B4Skills CEFR thresholds were cross-validated against Pearson's Global Scale of English (GSE), which provides a more granular 10–90 scale within the CEFR bands. GSE ranges are embedded in the CEFR level metadata and flow through the θ-to-CEFR mapping.
-
-These equivalents are estimated from concordance tables and should be interpreted with appropriate uncertainty (confidence: HIGH for B1–C1; MEDIUM for A1–A2 and C2, which have smaller norming samples). They are not a direct substitute for taking those examinations.`,
+Any external score references are contextual only. The receiving institution decides which assessments and evidence it accepts. Current paired external-test observations, including an insufficient or empty sample, are disclosed on the Research page.`,
   },
   {
     id: "validity",
     title: "Score Validity & Certificates",
     icon: <CheckCircle2 size={22} className="text-[#9b276c]" />,
-    body: `B4Skills certificates include the candidate's overall CEFR level, sub-band θ scores for each of the four skills, and a QR code linking to the verifiable record at b4skills.com/verify. Certificates are valid for two years from the date of issue.
+    body: `b4skills issues its own assessment reports and certificates. Certificate status can be checked using the verification page; verification establishes the status of a b4skills record, not accreditation or acceptance by another institution.
 
-Classification consistency and accuracy (Pc and Pa) are computed using the Lee, Brennan & Ferdous method for each product line and reported in the annual technical manual.
+Reliability and validity are separate questions. The Research page distinguishes descriptive IRT marginal reliability from Cronbach alpha and does not infer reliability from item discrimination.
 
-B4Skills is not an official CEFR qualification (such as IELTS or Cambridge). It is an adaptive computer-based assessment aligned to the CEFR framework, designed for placement, screening, and diagnostic purposes. For high-stakes contexts, B4Skills recommends pairing results with an institution-level standard-setting process.`,
+Independent validation remains in progress. Decisions with substantial consequences require additional evidence, appropriate human review and an institution’s own standard-setting process.`,
   },
 ];
 
 const FAQ_ITEMS = [
   {
     q: "Why does my result differ from my previous IELTS or Cambridge score?",
-    a: "Different assessments measure proficiency through different tasks, rubrics, and stakes conditions. B4Skills is adaptive and computer-delivered, which can surface different strengths than timed paper-based exams. CEFR levels across tests are broadly comparable but not identical.",
+    a: "Different assessments measure proficiency through different tasks, rubrics, and stakes conditions. b4skills is adaptive and computer-delivered, which can surface different strengths than timed paper-based exams. CEFR levels across tests are broadly comparable but not identical.",
   },
   {
     q: "How are items created and reviewed?",
-    a: "Items are authored by trained item writers and AI-assisted generation (with human review). All items pass an editorial review before piloting, and the IQS psychometric quality screen before activation.",
+    a: "Items are authored by trained item writers and AI-assisted generation (with human review). Review and calibration evidence must be checked for the relevant items; active status alone does not establish empirical calibration.",
   },
   {
     q: "What is θ (theta) and why does my report show it?",
-    a: "θ is the latent ability estimate from IRT. Unlike a percentage score, θ is on an interval scale with a known measurement error (SEM), making it more informative for placement and longitudinal tracking. Your CEFR level is derived from your θ using the standard-setting thresholds described above.",
+    a: "θ is the latent ability estimate from IRT. Unlike a percentage score, θ is on an interval scale with a known measurement error (SEM), making it more informative for placement and longitudinal tracking. Your CEFR level is derived from your θ using the configured thresholds described above.",
   },
   {
     q: "Who can access my results?",
-    a: "Only you and, if you were assessed under an institutional licence, the authorised administrators of your organisation. B4Skills never sells personal data. See our Privacy Policy for full details.",
+    a: "Only you and, if you were assessed under an institutional licence, the authorised administrators of your organisation. b4skills never sells personal data. See our Privacy Policy for full details.",
   },
   {
     q: "How does the AI scoring compare to human raters?",
-    a: "Inter-rater reliability between the AI ensemble and certified human examiners has been validated at ICC ≥ 0.85 across all seven rubric dimensions for Writing, and ICC ≥ 0.82 for Speaking. Any response where the ensemble disagrees internally by more than one CEFR sub-band is escalated to a human examiner before the score is finalised.",
+    a: "No independently validated human–AI agreement coefficient is published here. AI-assisted results should be interpreted with the applicable review status and the evidence on the Research page.",
   },
   {
-    q: "Are B4Skills IELTS / TOEFL equivalents official?",
-    a: "No. Equivalents are estimated from concordance tables based on CINEG equating with anchor items shared between assessment systems. They are indicative only. IELTS, TOEFL iBT, and Cambridge exams are independently administered and their scores cannot be guaranteed to be interchangeable with B4Skills results.",
+    q: "Are b4skills IELTS / TOEFL equivalents official?",
+    a: "No. No validated b4skills concordance study is claimed. External score references are contextual only. IELTS, TOEFL iBT, and Cambridge exams are independently administered and their scores cannot be guaranteed to be interchangeable with b4skills results.",
   },
 ];
 
@@ -150,10 +109,10 @@ export const MethodologyPage: React.FC<Props> = ({ onBack, onStart }) => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   useEffect(() => {
-    document.title = "Assessment Methodology — B4Skills";
+    document.title = "Assessment Methodology — b4skills";
     let desc = document.querySelector<HTMLMetaElement>('meta[name="description"]');
     if (!desc) { desc = document.createElement("meta"); desc.name = "description"; document.head.appendChild(desc); }
-    desc.content = "How B4Skills works: adaptive CAT engine, IRT 3PL, CEFR alignment, AI multi-model scoring, DIF fairness monitoring, and certificate validation.";
+    desc.content = "How b4skills works: adaptive CAT engine, IRT 3PL, CEFR alignment, AI multi-model scoring, DIF fairness monitoring, and certificate validation.";
   }, []);
 
   return (
@@ -166,7 +125,7 @@ export const MethodologyPage: React.FC<Props> = ({ onBack, onStart }) => {
           <p className="text-xs font-black tracking-[0.25em] uppercase text-indigo-300 mb-4">Transparency</p>
           <h1 className="text-4xl md:text-5xl font-black leading-tight mb-6">Assessment Methodology</h1>
           <p className="text-lg text-white/70 max-w-2xl mx-auto">
-            How B4Skills measures English proficiency — the psychometrics, AI, and fairness safeguards behind every score.
+            How b4skills measures English proficiency — the psychometrics, AI, and fairness safeguards behind every score.
           </p>
         </div>
       </section>

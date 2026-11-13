@@ -7,6 +7,7 @@ const FlatValue = z.union([z.string().max(500), z.number(), z.boolean(), z.null(
 
 export const SessionLaunchBody = z.object({
   preflight: ExamPreflight.optional(),
+  earlyStartConsentId: z.string().min(1).max(200).optional(),
   launchRequestId: z.string().uuid().optional(),
   candidateId: CuidLike.optional(),
   /** Organization the session belongs to. Required at runtime — validated in the handler. */

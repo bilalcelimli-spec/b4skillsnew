@@ -567,13 +567,13 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
               General English Test
             </h1>
             <p className="text-slate-500 mt-3 text-base leading-relaxed max-w-sm mx-auto">
-              Free · ~20–30 minutes · CEFR A1–C2 result · Grammar, Vocabulary, Reading, Listening, Writing &amp; Speaking
+              Free · 20–30 minutes · CEFR A1–C2 result · Grammar, Vocabulary, Reading, Listening, Writing &amp; Speaking
             </p>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             {[
-              { icon: <Clock size={20} />, val: "~25 min", label: "Duration" },
+              { icon: <Clock size={20} />, val: "20–30 min", label: "Duration" },
               { icon: <Zap size={20} />, val: "Adaptive", label: "Algorithm" },
               { icon: <Award size={20} />, val: "A1–C2", label: "CEFR Scale" },
             ].map((s, i) => (

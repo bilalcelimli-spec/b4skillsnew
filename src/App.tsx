@@ -10,6 +10,10 @@ import { CefrLevelCard } from "./components/CefrLevelCard";
 
 import { AuthPage } from "./components/AuthPage";
 import { CodeEntryPage } from "./components/CodeEntryPage";
+import { CheckoutPage } from "./components/CheckoutPage";
+import { PaymentResultPage } from "./components/PaymentResultPage";
+import { PURCHASE_PLANS, type PurchasePlanId } from "./lib/payments/purchase-policy";
+import { LegalPage, type LegalPageKind } from "./components/LegalPage";
 import { VerificationPage } from "./components/VerificationPage";
 import { SharedReportPage } from "./components/SharedReportPage";
 import type { SeoVariant } from "./components/SeoLandingPage";
@@ -105,12 +109,14 @@ export default function App() {
   const location = useLocation();
   const verifyMatch = location.pathname.match(/^\/verify(?:\/([^/]+))?\/?$/);
   const isCertificateVerification = verifyMatch !== null;
+  const isCommercePath = ["/checkout", "/pricing", "/payment/success", "/payment/cancel", "/refund-policy", "/sales-terms", "/privacy", "/kvkk", "/terms", "/support"].includes(location.pathname);
   const isPublicShare = /^\/share\/[a-f0-9]{32}\/?$/.test(location.pathname);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showLanding, setShowLanding] = useState(true);
   const [showCodeEntry, setShowCodeEntry] = useState(false);
   const [activeSession, setActiveSession] = useState<{ orgId: string; sessionId: string; productLine?: string; startingSkill?: string } | null>(null);
+  const [earlyStartConsentId, setEarlyStartConsentId] = useState<string | undefined>();
   const [preTestReady, setPreTestReady] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
@@ -166,7 +172,7 @@ export default function App() {
   // Sync state → URL
   useEffect(() => {
     // Public verification must stay accessible even after authentication resolves.
-    if (isCertificateVerification || isPublicShare) return;
+    if (isCertificateVerification || isPublicShare || isCommercePath) return;
     if (activeSession?.sessionId) {
       navigate(`/exam/${activeSession.sessionId}`, { replace: true });
     } else if (testCompleted?.sessionId) {
@@ -181,14 +187,14 @@ export default function App() {
       };
       navigate(tabPath[activeTab] ?? "/dashboard", { replace: true });
     }
-  }, [activeTab, activeSession, testCompleted, selectedHistorySessionId, user, isCertificateVerification, isPublicShare]);
+  }, [activeTab, activeSession, testCompleted, selectedHistorySessionId, user, isCertificateVerification, isPublicShare, isCommercePath]);
 
   useEffect(() => {
     const fetchUser = async (retryRefresh = true) => {
       setLoading(true);
       try {
-        let res = await fetch("/api/auth/me", { credentials: "include" });
-        if (!res.ok && retryRefresh) {
+        let res = await fetch("/api/auth/session", { credentials: "include" });
+        if (res.status === 401 && retryRefresh) {
           const refreshRes = await fetch("/api/auth/refresh", { method: "POST", credentials: "include" });
           if (refreshRes.ok) {
             res = await fetch("/api/auth/me", { credentials: "include" });
@@ -261,6 +267,7 @@ export default function App() {
     setTestCompleted(null);
     setCertificate(null);
     setPreTestReady(false);
+    setEarlyStartConsentId(undefined);
     setActiveSession({ orgId: userProfile.organizationId ?? "", sessionId: "new", productLine });
     navigate('/exam/new',{replace:true});
   };
@@ -309,6 +316,9 @@ export default function App() {
     } catch {/* The report remains available if certificate issuance needs a retry. */}
   };
 
+  const legalRoutes: Record<string, LegalPageKind> = { '/privacy': 'privacy', '/kvkk': 'kvkk', '/terms': 'terms', '/support': 'support', '/refund-policy': 'refund', '/sales-terms': 'sales' };
+  if (legalRoutes[location.pathname]) return <LegalPage kind={legalRoutes[location.pathname]} />;
+
   // Public certificate verification page — accessible without authentication
   if (verifyMatch) {
     return <VerificationPage certId={verifyMatch[1]} />;
@@ -326,6 +336,15 @@ export default function App() {
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
       </div>
     );
+  }
+
+  if (["/checkout", "/payment/success", "/payment/cancel"].includes(location.pathname)) {
+    if (location.pathname === '/payment/success') {
+      if (!user) return <AuthPage initialMode="signin" onBack={() => navigate('/pricing')} />;
+      return <PaymentResultPage orderId={new URLSearchParams(location.search).get('order')} />;
+    }
+    const selected = new URLSearchParams(location.search).get('plan');
+    return <CheckoutPage initialPlan={selected && Object.hasOwn(PURCHASE_PLANS, selected) ? selected as PurchasePlanId : 'full-assessment'} />;
   }
 
   if (showCodeEntry) {
@@ -378,7 +397,7 @@ export default function App() {
     );
   }
 
-  if (!user && location.pathname === "/pricing") {
+  if (location.pathname === "/pricing") {
     return (
       <Suspense fallback={<PageLoader />}>
         <PricingPage
@@ -469,7 +488,8 @@ export default function App() {
         <Suspense fallback={<PageLoader />}>
           <PreTestBriefing
             productLine={activeSession.productLine}
-            onStart={() => setPreTestReady(true)}
+            checkPurchaseTerms={activeSession.sessionId === "new"}
+            onStart={(consentId) => { setEarlyStartConsentId(consentId); setPreTestReady(true); }}
             onCancel={returnToDashboard}
             onSignOut={() => void signOut()}
             signingOut={signingOut}
@@ -484,6 +504,7 @@ export default function App() {
           organizationId={activeSession.orgId}
           candidateId={user.uid}
           productLine={activeSession.productLine}
+          earlyStartConsentId={earlyStartConsentId}
           startingSkill={activeSession.startingSkill}
           initialSessionId={activeSession.sessionId === "new" ? undefined : activeSession.sessionId}
           onSessionStarted={(sessionId) => setActiveSession(prev => prev ? { ...prev, sessionId } : prev)}
@@ -820,6 +841,7 @@ export default function App() {
                     >
                       Enter Exam Code
                     </button>
+                    <a href="/checkout?plan=full-assessment" className="text-indigo-700 font-semibold underline">Individual purchase information</a>
                   </div>
                 ) : (
                   <Suspense fallback={<div className="h-32 bg-slate-100 rounded-3xl animate-pulse" />}>

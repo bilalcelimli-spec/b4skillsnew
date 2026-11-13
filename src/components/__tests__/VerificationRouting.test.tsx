@@ -16,7 +16,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   fetchMock.mockImplementation(async (url: string) => ({
     ok: true,
-    json: async () => url === '/api/auth/me' ? { user: null } : { valid: false, error: 'Certificate not found' },
+    json: async () => url === '/api/auth/session' ? { user: null } : { valid: false, error: 'Certificate not found' },
   }));
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); fetchMock.mockReset(); window.history.replaceState({}, '', '/'); });
@@ -38,10 +38,17 @@ it.each(['/verify/test-certificate', '/verify?id=test-certificate'])('automatica
 });
 
 it('keeps the public portal open when an authenticated admin session resolves', async () => {
-  fetchMock.mockImplementation(async (url: string) => ({ ok: true, json: async () => url === '/api/auth/me'
+  fetchMock.mockImplementation(async (url: string) => ({ ok: true, json: async () => url === '/api/auth/session'
     ? { user: { uid: 'admin', role: 'SUPER_ADMIN', email: 'admin@example.test' } } : [] }));
   open('/verify');
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/candidates/admin/history', { credentials: 'include' }));
   expect(screen.getByTestId('path').textContent).toBe('/verify');
   expect(screen.getByRole('heading', { name: 'Certificate Verification' })).toBeTruthy();
+});
+
+it('treats an anonymous session as normal without refreshing or requesting a protected profile', async () => {
+  open('/verify');
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/auth/session', { credentials: 'include' }));
+  expect(fetchMock.mock.calls.map(call => call[0])).not.toContain('/api/auth/refresh');
+  expect(fetchMock.mock.calls.map(call => call[0])).not.toContain('/api/auth/me');
 });
