@@ -125,7 +125,9 @@ export function evaluateSprtStop(
   if (logR >= logA) {
     return { stop: true, reason: "SPRT_FAVOR_HIGH_THETA" };
   }
-  if (logR <= -logB) {
+  // logB = ln(β / (1 − α)) is already negative; accept H0 when logR falls to it.
+  // (Before 2026-11-14 this read `logR <= -logB`, which stopped every section at minItems.)
+  if (logR <= logB) {
     return { stop: true, reason: "SPRT_FAVOR_LOW_THETA" };
   }
   return { stop: false, reason: null };

@@ -99,4 +99,28 @@ describe("sequential-sprt", () => {
       ).stop
     ).toBe(false);
   });
+
+  describe("Wald boundaries (regression: 2026-11-14, every section stopped FAVOR_LOW at minItems)", () => {
+    const cfg = { enabled: true, alpha: 0.05, beta: 0.05, halfWidth: 0.18, minItems: 5 };
+    const cuts = [-1.75, -0.5, 0.5, 1.5, 2.5];
+    const run = (scores: number[], theta = 0.5) => {
+      const responses = scores.map((score, i) => ({ itemId: `w${i}`, score, isPretest: false }));
+      const items = Object.fromEntries(responses.map((r) => [r.itemId, sampleItem(r.itemId, 1.2, 0.5, 0)]));
+      return evaluateSprtStop({ theta, sem: 0.5, responses }, cfg, cuts, items);
+    };
+
+    it("does not stop while the evidence near the cut is mixed", () => {
+      expect(run([1, 0, 1, 0, 1, 0])).toEqual({ stop: false, reason: null });
+    });
+
+    it("stops for the low hypothesis only once the log ratio reaches ln(β/(1−α))", () => {
+      expect(run([0, 0, 0, 0, 0]).stop).toBe(false); // logR = −1.08 > −2.94
+      expect(run(Array(14).fill(0))).toEqual({ stop: true, reason: "SPRT_FAVOR_LOW_THETA" });
+    });
+
+    it("stops for the high hypothesis symmetrically", () => {
+      expect(run([1, 1, 1, 1, 1]).stop).toBe(false);
+      expect(run(Array(14).fill(1))).toEqual({ stop: true, reason: "SPRT_FAVOR_HIGH_THETA" });
+    });
+  });
 });

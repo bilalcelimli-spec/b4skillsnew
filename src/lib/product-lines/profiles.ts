@@ -322,6 +322,9 @@ const JUNIOR_SUITE: ProductLineProfile = {
  *                 verilmiş kodları kırar. Hızlı placement gereken müşteriler için
  *                 alternatif: Express (30-Min) zaten daha hafif vocab/grammar taşır.
  *
+ * 2026-11-14 UPDATE: vocab/grammar max 12 → 9. SPRT düzeltmesinden sonra 35'lik
+ *                 genel tavanda 12+12 dinlemeye 3 madde bırakıyordu (ayrıntı: stopRules notu).
+ *
  * Psychometric basis:
  *   Receptive: SEM target 0.48 → I ≥ 4.3 → ≥ 7 MC items per skill (CAT-adjusted).
  *   Productive (1 task each): GRM SEM ≈ 0.30 — a coarse but honest band estimate
@@ -348,17 +351,18 @@ const DIAGNOSTIC_15: ProductLineProfile = {
     SkillType.SPEAKING,
   ],
   sectionConfig: {
-    // Vocab/grammar 7/12'ye yükseltildi (doğruluk önceliği): SEM 0.46 → 0.38
-    VOCABULARY: { minItems: 7, maxItems: 12, semThreshold: 0.38 },
-    GRAMMAR:    { minItems: 7, maxItems: 12, semThreshold: 0.38 },
+    // Vocab/grammar max 12 → 9 (2026-11-14): with the global cap of 35, 12+12 left
+    // LISTENING 3 items. 9/9/7/6 lowers overall RMSE in simulation (see stopRules note).
+    VOCABULARY: { minItems: 7, maxItems: 9,  semThreshold: 0.38 },
+    GRAMMAR:    { minItems: 7, maxItems: 9,  semThreshold: 0.38 },
     READING:    { minItems: 4, maxItems: 7,  semThreshold: 0.48 },
     LISTENING:  { minItems: 3, maxItems: 6,  semThreshold: 0.50 },
     WRITING:    { minItems: 1, maxItems: 1,  semThreshold: 0.50 },
     SPEAKING:   { minItems: 1, maxItems: 2,  semThreshold: 0.50 },
   },
   blueprint: [
-    { skill: SkillType.VOCABULARY, minCount: 7, maxCount: 12 },
-    { skill: SkillType.GRAMMAR,    minCount: 7, maxCount: 12 },
+    { skill: SkillType.VOCABULARY, minCount: 7, maxCount: 9  },
+    { skill: SkillType.GRAMMAR,    minCount: 7, maxCount: 9  },
     { skill: SkillType.READING,    minCount: 4, maxCount: 7  },
     { skill: SkillType.LISTENING,  minCount: 3, maxCount: 6  },
     { skill: SkillType.WRITING,    minCount: 1, maxCount: 1  },
@@ -411,6 +415,15 @@ const DIAGNOSTIC_15: ProductLineProfile = {
   // section floor). Simulation (n=200): 35 → 27 items, RMSE 0.42 → 0.38, CEFR
   // exact 0.71 → 0.75, boundary-band accuracy unchanged. On General English the
   // same rule cut 19 items but raised SEM 0.22 → 0.26, so it stays off elsewhere.
+  //
+  // 2026-11-14: the figures above came from a boundary bug in sequential-sprt.ts
+  // (`logR <= -logB`) that stopped every receptive section at its floor. With the
+  // fix SPRT fires in <1% of sections at these lengths (n=400, synthetic and DB
+  // snapshot), so the profile now runs to its budget: 35 items, and the global cap
+  // leaves LISTENING 3 items (SEM ≈ 0.7–0.8). Simulation of VOCAB/GRAMMAR max 9
+  // (READING 7, LISTENING 6): RMSE 0.409 → 0.359 synthetic, 0.457 → 0.419 DB, CEFR
+  // exact +0.03–0.04, LISTENING 6 items. Adopted 2026-11-14 (approved by the
+  // product owner) — see docs/quality/bank-capacity-baseline-2026-11.md §3.
   stopRules: ["SEM_THRESHOLD", "CLASSIFICATION_CONFIDENCE", "SPRT"],
   sprt: { enabled: true, alpha: 0.05, beta: 0.05, halfWidth: 0.18, minItems: 5 },
 };
