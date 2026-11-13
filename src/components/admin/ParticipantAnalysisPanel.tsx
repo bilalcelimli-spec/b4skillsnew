@@ -44,6 +44,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
 import { SubScoreRadar } from "../SubScoreRadar";
+import { optionText, matchesOption, type DisplayOption } from '../../lib/assessment-engine/option-presentation';
 
 import { embeddedSpeakingAudio, finalResponseScore, isObjectiveEvidence, isProductiveResponse, responseScoringStatus,
   scoringReasonLabel, scoringStatusLabels, type PresentedResponse, type ResponseScoringStatus } from '../../lib/scoring/response-presentation';
@@ -127,7 +128,7 @@ interface AnalysisData {
       content: {
         prompt?: string;
         question?: string;
-        options?: string[];
+        options?: DisplayOption[];
         correctAnswer?: string | number;
         imageUrl?: string;
       };
@@ -224,7 +225,7 @@ const StatCard: React.FC<{
 
 // ─── Question Drawer ──────────────────────────────────────────────────────────
 
-const QuestionDrawer: React.FC<{
+export const QuestionDrawer: React.FC<{
   response: AnalysisData["responses"][0] | null;
   onClose: () => void;
 }> = ({ response, onClose }) => {
@@ -305,10 +306,10 @@ const QuestionDrawer: React.FC<{
               <div className="space-y-2">
                 {options.map((opt, i) => {
                   const letter = String.fromCharCode(65 + i);
-                  const isSelected = selected === opt || selected === letter || Number(selected) === i;
-                  const isCorrectOpt =
-                    correct === opt || correct === letter ||
-                    Number(correct) === i || String(correct) === String(i);
+                  const isSelected = matchesOption(selected, opt, i);
+                  const isCorrectOpt = correct != null
+                    ? matchesOption(correct, opt, i)
+                    : typeof opt !== 'string' && opt.isCorrect === true;
                   return (
                     <div
                       key={i}
@@ -328,7 +329,7 @@ const QuestionDrawer: React.FC<{
                       )}>
                         {letter}
                       </span>
-                      <span className="font-medium leading-snug">{opt}</span>
+                      <span className="font-medium leading-snug">{optionText(opt)}</span>
                       {isCorrectOpt && (
                         <CheckCircle2 size={14} className="ml-auto text-emerald-500 flex-shrink-0 mt-0.5" />
                       )}

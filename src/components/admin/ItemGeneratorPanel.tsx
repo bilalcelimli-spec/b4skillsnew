@@ -24,6 +24,7 @@ import {
   Clock, Layers, ShieldCheck, Info, ArrowDown,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { optionText, matchesOption, type DisplayOption } from '../../lib/assessment-engine/option-presentation';
 import { motion, AnimatePresence } from "framer-motion";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,7 +108,7 @@ interface GeneratedItem {
   cefrLevel: string;
   stimulus?: string;
   question?: string;
-  options?: string[];
+  options?: DisplayOption[];
   correctAnswer?: string;
   acceptableAnswers?: string[];
   distractorRationale?: Record<string, string>;
@@ -282,15 +283,15 @@ const ItemCard: React.FC<{
                           {item.options.map((opt, i) => (
                             <div key={i} className={cn(
                               "flex items-start gap-2.5 p-2.5 rounded-lg text-sm border",
-                              opt === item.correctAnswer
+                              (item.correctAnswer != null ? matchesOption(item.correctAnswer, opt, i) : typeof opt !== 'string' && opt.isCorrect === true)
                                 ? "bg-emerald-50 border-emerald-200 text-emerald-800 font-semibold"
                                 : "bg-white border-slate-200 text-slate-700"
                             )}>
                               <span className="w-5 h-5 rounded-full bg-white border border-current flex items-center justify-center text-[10px] font-black shrink-0">
                                 {String.fromCharCode(65 + i)}
                               </span>
-                              <span>{opt}</span>
-                              {opt === item.correctAnswer && <CheckCircle2 size={14} className="ml-auto shrink-0 text-emerald-600" />}
+                              <span>{optionText(opt)}</span>
+                              {(item.correctAnswer != null ? matchesOption(item.correctAnswer, opt, i) : typeof opt !== 'string' && opt.isCorrect === true) && <CheckCircle2 size={14} className="ml-auto shrink-0 text-emerald-600" />}
                             </div>
                           ))}
                         </div>
