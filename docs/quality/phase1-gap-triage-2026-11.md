@@ -157,3 +157,17 @@ Sınırlar:
 - Bu maddelerin puana katkısı CEFR'den türetilmiş öncül parametrelere dayanır. O hücrelerde ölçüm hatası, simülasyonun gösterdiğinden büyük olabilir. Sertifika ve raporlarda "provisional" dili zaten var.
 - Yazma ve konuşma maddeleri PRETEST olarak sunulmadığı için hücre açığını aşan kısmı PRETEST'te bekler. Açık bir hücrede yeniden ortaya çıkarsa sonraki koşuda etkinleşebilir. Şu an PRETEST'teki maddeler için ayrı bir yol yok, çünkü gapCells yalnızca APPROVED_FOR_PILOT aşamasındakilere bakar.
 - Canlı veritabanında deneme koşusu (2026-11-14) 0 aday verdi. Henüz APPROVED_FOR_PILOT aşamasında madde yok, yani uzman incelemesi bu yolun ön koşulu olarak duruyor.
+
+## Bağlam alanları uygulandı (2026-11-14)
+
+Faz 0'da önerilen yaş, tür ve konu alanları veritabanına yazıldı (`npx tsx scripts/jobs/backfill-context-fields.ts --apply`). Kapsam ACTIVE, PRETEST, REVIEW ve DRAFT maddeleri; inceleme paketindeki taslaklar da onaya gideceği için dahil edildi.
+
+- **Ne yazıldı:** 2.000 maddede 1.386 yaş, 855 tür ve 518 konu alanı. Yaş değerleri maddenin ürün etiketinden geliyor: academia/corporate/specialized → ADULT, junior → TEEN, primary → YOUNG_LEARNER.
+- **Yalnızca boş alanlar:** Her parça satır kilidiyle yeniden okundu ve sadece hâlâ boş olan alanlar dolduruldu. Okuma ile yazma arasında değişen madde olmadı.
+- **Sürüm değişmedi:** `version` artırılmadı, çünkü içerik aynı. Her maddede `metadata.contextBackfill` neyin, neden yazıldığını tutuyor.
+- **Geri alınabilir:** `scripts/jobs/.out/context-backfill/applied-*.jsonl` her yazımı önceki değeriyle kaydediyor.
+- **Onaylara etkisi yok:** Veritabanında hiç inceleme kaydı yoktu, dolayısıyla içerik hash'i değişse de geçersiz kalan bir onay olmadı. Bundan sonraki onaylar bu alanlarla birlikte hash'leniyor.
+- **Canlı havuzlara etkisi yok:** Yaş alanını yalnızca 16 yaş altı profillerin genel çekirdek erişimi okuyor ve bu erişim hiçbirinde açık değil. Boşluk triyajı yazmadan önce ve sonra hücre hücre aynı: 30 boşluk.
+- İnceleme paketi yenilendi (538 madde).
+
+Bundan sonra Junior için `generalCoreAccess` teknik olarak açılabilir: ADULT işaretli maddeler 11-14 yaş havuzuna girmez. Yine de önce simülasyonla etkisi ölçülmeli.
