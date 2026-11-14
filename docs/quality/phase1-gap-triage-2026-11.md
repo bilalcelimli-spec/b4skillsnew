@@ -171,3 +171,40 @@ Faz 0'da önerilen yaş, tür ve konu alanları veritabanına yazıldı (`npx ts
 - İnceleme paketi yenilendi (538 madde).
 
 Bundan sonra Junior için `generalCoreAccess` teknik olarak açılabilir: ADULT işaretli maddeler 11-14 yaş havuzuna girmez. Yine de önce simülasyonla etkisi ölçülmeli.
+
+## Junior genel çekirdek simülasyonu, yaş alanlarıyla (2026-11-14)
+
+Ön düzeltme: Simülasyon aracı `ageSuitability` alanını taşımıyordu. Bu yüzden 11-14 yaş için ADULT süzgeci simülasyonda hiç çalışmıyordu. Alan artık banka anlık görüntüsüne (`scripts/export-bank-snapshot.ts`) ve simülasyonun havuz kuralına (`eligibleBankItems` / `eligiblePretestItems`) giriyor.
+
+Kurulum: Yeni anlık görüntü (2.919 madde), n = 400, θ profil aralığında düzgün dağılımlı, iki tohum.
+
+| Ölçüt | Kendi havuzu (tohum 1 / 2) | + genel çekirdek (tohum 1 / 2) |
+|---|---|---|
+| RMSE | 0,446 / 0,460 | 0,437 / 0,456 |
+| CEFR tam doğruluk | 0,730 / 0,705 | 0,718 / 0,703 |
+| B2 tam doğruluk | 0,692 / 0,677 | 0,637 / 0,613 |
+| Tavan üstü maruziyet payı | 0,42 / 0,41 | 0,19 / 0,19 |
+| En yüksek maruziyet | 0,95 / 0,96 | 0,64 / 0,68 |
+| Dinleme havuzu (kullanılan/uygun) | 24 / 24 | 74 / 77 |
+| Dilbilgisi havuzu | 62 / 74 | 101 / 257 |
+| Sözcük havuzu | 63 / 77 | 70 / 102 |
+| Okuma havuzu | 34 / 34 | 34 / 34 |
+
+Kesinlik açısından genel çekirdek nötr:
+- RMSE 0,005–0,009 iyileşiyor, CEFR doğruluğu biraz düşüyor.
+- B2 doğruluğu iki tohumda da 0,05–0,06 düşüyor. Bandın n'i yaklaşık 90 olduğu için gürültü payı bu büyüklükte; ancak iki tohumda da aynı yönde çıktı.
+- Asıl kazanç maruziyette: tavan üstü pay yarıdan fazla düşüyor. En büyük kazanç, tek bir öğenin adayların %95'ine gösterildiği dinlemede.
+
+**Yaş süzgeci şu an hiçbir şey ayıklamıyor.** A1–B2'deki 261 genel çekirdek maddenin hepsi UNIVERSAL: 183 dilbilgisi, 25 sözcük, 53 dinleme. Bağlam alanı uygulaması yaşı ürün etiketinden türetti, ama genel çekirdek tanım gereği ürün etiketi taşımıyor. Kaba bir anahtar sözcük taraması (office, loan, employer, degree, meeting…) şunları yakaladı:
+- 53 dinleme maddesinin 24'ü (ör. LST-A2-0013, LST-A2-0038 "loan")
+- 183 dilbilgisi maddesinin 18'i
+- 25 sözcük maddesinin 2'si
+
+Tarama kaba; "post office" gibi zararsız eşleşmeler de var. Yine de dinlemedeki oran yüksek, ve Junior'ın kazancı da en çok dinlemeden geliyor.
+
+Öneri: Junior için `generalCoreAccess` şimdilik kapalı kalsın. Açmanın ön koşulu, 261 çekirdek maddenin yaş açısından insan gözüyle işaretlenmesi (TEEN/UNIVERSAL ya da ADULT); 53 dinleme maddesiyle başlanmalı. ADULT işaretlenenler süzgeçle zaten dışarıda kalır. İşaretlemeden sonra bu simülasyon aynı komutla tekrarlanmalı:
+
+```
+npx tsx scripts/export-bank-snapshot.ts --output scripts/jobs/.out/bank-baseline/bank-snapshot-age.json
+npx tsx scripts/jobs/bank-baseline-simulation.ts --bank scripts/jobs/.out/bank-baseline/bank-snapshot-age.json --profile "Junior Suite (11-14)" --general-core
+```

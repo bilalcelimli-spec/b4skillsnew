@@ -35,7 +35,7 @@ async function main(): Promise<void> {
       where: { status: { in: ["ACTIVE", "PRETEST"] } },
       select: {
         id: true, skill: true, cefrLevel: true, type: true, status: true, isPretest: true, isAnchor: true,
-        discrimination: true, difficulty: true, guessing: true, iqScore: true, tags: true, content: true,
+        discrimination: true, difficulty: true, guessing: true, iqScore: true, tags: true, content: true, ageSuitability: true,
       },
       orderBy: { id: "asc" },
     });
@@ -57,6 +57,7 @@ async function main(): Promise<void> {
         passageKey: passageKey({ metadata: content }),
         productLine: typeof content.productLine === "string" ? content.productLine : null,
         taskFamily: taskFamilyKey({ metadata: content, tags: row.tags }),
+        ageSuitability: row.ageSuitability,
       };
     });
     const snapshot: BankSnapshot = { generatedAt: new Date().toISOString(), source: "database", items };

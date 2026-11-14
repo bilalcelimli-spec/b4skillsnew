@@ -64,6 +64,8 @@ export interface BankSnapshotItem {
   productLine?: string | null;
   /** Task template key (task-family.taskFamilyKey), e.g. "cambridge:MOVERS_L_PART1". No content. */
   taskFamily?: string | null;
+  /** Item.ageSuitability; keeps ADULT items out of general-core pools for under-16 profiles. */
+  ageSuitability?: string | null;
 }
 
 export interface BankSnapshot {
@@ -247,7 +249,7 @@ export function eligibleBankItems(bank: BankSnapshot, profile: ProductLineProfil
     .filter((row) => isAdaptiveEligible({
       skill: row.skill, status: row.status ?? "ACTIVE", isPretest: row.isPretest ?? false,
       cefrLevel: row.cefrLevel, discrimination: row.a, guessing: row.c, tags: row.tags ?? [],
-      content: row.productLine ? { productLine: row.productLine } : {},
+      content: row.productLine ? { productLine: row.productLine } : {}, ageSuitability: row.ageSuitability ?? null,
     }, profile, skill))
     .map(toEngineItem);
 }
@@ -258,7 +260,7 @@ export function eligiblePretestItems(bank: BankSnapshot, profile: ProductLinePro
     .filter((row) => isPretestEligible({
       skill: row.skill, status: row.status ?? "ACTIVE", isPretest: row.isPretest ?? false,
       cefrLevel: row.cefrLevel, discrimination: row.a, guessing: row.c, tags: row.tags ?? [],
-      content: row.productLine ? { productLine: row.productLine } : {},
+      content: row.productLine ? { productLine: row.productLine } : {}, ageSuitability: row.ageSuitability ?? null,
     }, profile, skill))
     .map((row) => ({ ...toEngineItem(row), isPretest: true }));
 }
