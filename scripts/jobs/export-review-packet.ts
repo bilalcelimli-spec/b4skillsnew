@@ -33,6 +33,8 @@ const SOURCES: Array<{ file: string; label: string; statuses?: string[] }> = [
   { file: "phase1/junior-teen-ids.json", label: "Faz 1 — Junior teen drafts (B2 / A1)" },
   { file: "phase2/pilot-ids.json", label: "Faz 2 — pilot: A1/A2 reading, A1/C1 listening, Junior teen re-run (strict text dependency)" },
   { file: "phase2/pilot-v3-ids.json", label: "Faz 2 — pilot v3: text-bound MCQ prompt (TEXTDEP-UNCHECKED = gate did not run)" },
+  { file: "phase2/pilot-v3n10-ids.json", label: "Faz 2 — v3 MCQ, 10 per cell (strict gate, retried once)" },
+  { file: "phase2/pilot-c1match-ids.json", label: "Faz 2 — C1 listening as matching (attitude / inference / viewpoints)" },
   { file: "phase1/queue-ids.json", label: "Faz 1 — queue items that close coverage gaps (PRETEST / REVIEW / DRAFT)", statuses: ["DRAFT", "REVIEW", "PRETEST"] },
 ];
 

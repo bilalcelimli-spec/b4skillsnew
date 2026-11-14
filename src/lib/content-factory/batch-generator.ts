@@ -529,9 +529,12 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
       skippedReasons.push(`Item skipped — content-integrity: ${integrity.issues.map((i) => i.message).join("; ")}`);
       continue;
     }
-    const textDep = draft.type === "DRAG_DROP"
-      ? await runMatchingDependencyGate(draft).catch(() => null)
-      : await runTextDependencyGate(draft).catch(() => null);
+    const runDep = () => (draft.type === "DRAG_DROP"
+      ? runMatchingDependencyGate(draft).catch(() => null)
+      : runTextDependencyGate(draft).catch(() => null));
+    let textDep = await runDep();
+    // Judge calls fail transiently (timeouts, rate limits); one retry before strict mode drops the draft.
+    if (!textDep || textDep.verdict === "ERROR") textDep = await runDep();
     const gateFlags = [
       ...integrity.issues.map((i) => i.code),
       ...(textDep?.issues.map((i) => i.code) ?? []),

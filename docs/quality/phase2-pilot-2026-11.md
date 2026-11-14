@@ -95,3 +95,51 @@ Gemini kredisi yenilendikten sonra:
 1. 7 kontrolsüz taslakta metin bağımlılığı kontrolünü yeniden çalıştır.
 2. v3'ü daha büyük bir örneklemle ölç (hücre başına ≥ 10).
 3. C1 dinleme tutum ve çıkarım için çoktan seçmeli yerine eşleştirmeyi öne al; o hücrede v3 yetmedi.
+
+## Kredi sonrası: yeniden kontrol, büyük örneklem ve C1 eşleştirme (2026-11-14)
+
+### 7 kontrolsüz taslağın yeniden kontrolü
+
+`scripts/jobs/recheck-text-dependency.ts --apply`. Yalnızca `TEXTDEP-UNCHECKED` işaretli DRAFT'lara dokunur; bayrağı kapının gerçek sonucuyla değiştirir, başarısızı silmez. Önceki metadata `.out/textdep-recheck/applied-*.jsonl` günlüğünde.
+
+| Sonuç | Taslaklar |
+|---|---|
+| Geçti (2) | LIS-C1-0092, LIS-C1-0094 |
+| Metinsiz çözülebilir (5) | LIS-A1-0128, LIS-B2-0104, LIS-B2-0105, LIS-C1-0093, LIS-C1-0095 |
+
+İlk denemede 3 hakem çağrısı geçici olarak hata verdi (zaman aşımı); ikinci denemede çalıştı. Bu yüzden üretici artık hata veren metin bağımlılığı kontrolünü bir kez yeniden deniyor. Bu turda kontrolü çalışmayan taslak kalmadı.
+
+### v3, hücre başına 10 taslak (`--mcq-only --per-cell 10 --tag v3n10`)
+
+| Hücre grubu | Metinsiz çözülen | Anahtar doğrulanamadı | Yaş kapısı | Kaydedilen |
+|---|---|---|---|---|
+| A1 dinleme (2 hücre) | 3/20 (%15) | 1 | – | 16/20 |
+| A1–A2 okuma (2 hücre) | 10/20 (%50) | 1 | – | 9/20 |
+| C1 dinleme, tutum + çıkarım | 17/20 (%85) | – | – | 3/20 |
+| Junior B2 (TEEN, 3 hücre) | 21/30 (%70) | 1 | 1 | 7/30 |
+| **Toplam** | **51/90 (%57)** | 3 | 1 | **35/90** |
+
+Okuma:
+- Küçük örneklemdeki %40 tutmadı; 90 taslakta oran %57, yani v2 düzeyine (%58) yakın. İlk karşılaştırmadaki düşüşün büyük kısmı rastlantıydı.
+- Sorun seviye ve alt beceriyle belirleniyor, istemle değil. A1 dinleme rastlantı tabanının (%25) altında. B2–C1 tutum, çıkarım ve ana fikir sorularında ise doğru cevap, metni görmeden sorunun ve seçeneklerin kendisinden çıkarılabiliyor (%70–85).
+- Bu hücrelerde çoktan seçmeli formatla bu üretici verimli değil: 50 taslaktan 10'u kaldı.
+
+### C1 dinleme eşleştirme (`--matching-only --only C1 --per-cell 5 --tag c1match`)
+
+| Hücre | Metinsiz çözülen | Kaydedilen |
+|---|---|---|
+| C1 görüş ayırt etme | 2/5 | 3/5 |
+| C1 tutum | 3/5 | 2/5 |
+| C1 çıkarım | 0/5 | 5/5 |
+| **Toplam** | **5/15 (%33)** | **10/15** |
+
+- Eşleştirmede kör çözücünün eşlemenin tamamını şansla bulma olasılığı %1'in altında. Yani %33 gerçek bir sızıntı, ama aynı C1 hücrelerinde çoktan seçmelinin %85'inden çok daha iyi.
+- Çıkarımda eşleştirme belirgin şekilde işe yarıyor (5/5). Tutumda hâlâ sızıntı var: konuşmacının tutumu, seçenek ifadelerinin konuyla uyumundan tahmin edilebiliyor.
+
+### Sonuç ve öneri
+
+1. A1 dinleme ve A1–A2 okuma çoktan seçmeliyle ölçeklenebilir (hücre başına yaklaşık %80 ve %45 verim).
+2. B2–C1 tutum, çıkarım ve ana fikir soruları için varsayılan format eşleştirme olmalı, Junior B2 dahil. Çoktan seçmeli üretim bu hücrelerde yalnızca sıkı kapıyla ve düşük verim kabul edilerek sürdürülebilir.
+3. Tutum eşleştirmesinde seçenekler aynı konu alanından ve birbirine yakın tutumlardan seçilmeli (ör. "temkinli destek" / "isteksiz kabul"). Bu üretici kuralı henüz yazılmadı.
+
+Bu turda 45 taslak kaydedildi (35 çoktan seçmeli + 10 eşleştirme), hepsi DRAFT/AI_DRAFT. İnceleme paketine eklendi.

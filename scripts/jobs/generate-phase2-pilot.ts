@@ -16,6 +16,8 @@
  *
  *   npx tsx scripts/jobs/generate-phase2-pilot.ts
  *   npx tsx scripts/jobs/generate-phase2-pilot.ts --mcq-only --tag v3   # MCQ cells only, after a prompt change
+ *   npx tsx scripts/jobs/generate-phase2-pilot.ts --mcq-only --per-cell 10 --tag v3n10   # larger sample per cell
+ *   npx tsx scripts/jobs/generate-phase2-pilot.ts --matching-only --only "C1" --per-cell 5 --tag c1match
  *   → scripts/jobs/.out/phase2/pilot-ids.json, pilot-results.json
  */
 
@@ -28,8 +30,12 @@ import { prisma } from "../../src/lib/prisma.js";
 const OUT = "scripts/jobs/.out/phase2";
 /** --mcq-only --tag v3: re-run only the MCQ cells (prompt revision) into pilot-<tag>-*.json. */
 const MCQ_ONLY = process.argv.includes("--mcq-only");
-const t = process.argv.indexOf("--tag");
-const TAG = t >= 0 ? `-${process.argv[t + 1]}` : "";
+const MATCHING_ONLY = process.argv.includes("--matching-only");
+const arg = (name: string) => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
+/** --per-cell N overrides every cell's count; --only <regex> keeps cells whose group or label matches. */
+const PER_CELL = arg("--per-cell") ? Number(arg("--per-cell")) : undefined;
+const ONLY = arg("--only") ? new RegExp(arg("--only")!) : undefined;
+const TAG = arg("--tag") ? `-${arg("--tag")}` : "";
 const GENERAL: Partial<BlueprintCell> = { ageSuitability: "UNIVERSAL", culturalLoad: "LOW", englishVariant: "INTERNATIONAL" };
 const TEEN: Partial<BlueprintCell> = { productLine: "junior", ageSuitability: "TEEN", ageRange: [11, 14], culturalLoad: "LOW", englishVariant: "INTERNATIONAL" };
 const c = (group: string, base: Partial<BlueprintCell>, cell: Partial<BlueprintCell>, count: number) =>
@@ -47,6 +53,9 @@ const CELLS = [
   c("C1 listening", GENERAL, { cefr: "C1", skill: "LISTENING", subskill: "SPEAKER_ATTITUDE", genre: "interview", topic: "media" }, 4),
   c("C1 listening", GENERAL, { cefr: "C1", skill: "LISTENING", subskill: "INFERENCE", genre: "discussion", topic: "science" }, 4),
   c("C1 listening", GENERAL, { cefr: "C1", skill: "LISTENING", subskill: "DISTINGUISHING_VIEWPOINTS", genre: "discussion", topic: "society", itemType: "DRAG_DROP" }, 3),
+  // C1 attitude / inference as matching: v3 MCQ stayed blind-solvable here (3/4)
+  c("C1 listening", GENERAL, { cefr: "C1", skill: "LISTENING", subskill: "SPEAKER_ATTITUDE", genre: "interview", topic: "media", itemType: "DRAG_DROP" }, 3),
+  c("C1 listening", GENERAL, { cefr: "C1", skill: "LISTENING", subskill: "INFERENCE", genre: "discussion", topic: "science", itemType: "DRAG_DROP" }, 3),
   // Junior TEEN re-run of the Faz 1 cells that drifted (university / professor settings)
   c("Junior TEEN re-run", TEEN, { cefr: "B2", skill: "LISTENING", subskill: "GIST", genre: "conversation", topic: "education" }, 3),
   c("Junior TEEN re-run", TEEN, { cefr: "B2", skill: "LISTENING", subskill: "SPEAKER_ATTITUDE", genre: "interview", topic: "media" }, 3),
@@ -73,7 +82,12 @@ function gateOf(reason: string): string {
 async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true });
   const results = [];
-  for (const { group, cell, count } of CELLS.filter((x) => !MCQ_ONLY || x.cell.itemType !== "DRAG_DROP")) {
+  const cells = CELLS
+    .filter((x) => !MCQ_ONLY || x.cell.itemType !== "DRAG_DROP")
+    .filter((x) => !MATCHING_ONLY || x.cell.itemType === "DRAG_DROP")
+    .filter((x) => !ONLY || ONLY.test(x.group) || ONLY.test(label(x.cell)));
+  for (const { group, cell, count: baseCount } of cells) {
+    const count = PER_CELL ?? baseCount;
     const r = await runBatchGeneration({ cell, count, triggeredBy: "claude-code:phase2-pilot", notes: "Faz 2 pilot (2026-11-14)", strictTextDependency: true });
     const gates: Record<string, number> = {};
     for (const reason of r.skippedReasons) gates[gateOf(reason)] = (gates[gateOf(reason)] ?? 0) + 1;
