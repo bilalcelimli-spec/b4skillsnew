@@ -53,3 +53,10 @@ describe("unknown shapes never destroy data", () => {
     expect(unusableSourceFields({ passage: "text" })).toEqual([]);
   });
 });
+
+describe("prompt bullets", () => {
+  it("turns markdown asterisk bullets into the bank's dash bullets", () => {
+    const out = normalizeSourceFields({ prompt: "Write an email. In your email:\n*   Apologise.\n* Suggest a day.\nUse 2 * 3 words." });
+    expect(out.prompt).toBe("Write an email. In your email:\n- Apologise.\n- Suggest a day.\nUse 2 * 3 words.");
+  });
+});

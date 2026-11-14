@@ -54,7 +54,16 @@ export function normalizeSourceFields<T extends Record<string, unknown>>(content
       if (text) out[f] = text;
     }
   }
+  if (typeof out.prompt === "string") out.prompt = plainPromptBullets(out.prompt);
   return out as T;
+}
+
+/**
+ * Prompts are shown as plain text, not markdown. Models write task bullets as
+ * "*   point"; the bank uses "- point" (all live writing prompts, 2026-11-14).
+ */
+export function plainPromptBullets(prompt: string): string {
+  return prompt.replace(/^([ \t]*)\*[ \t]+/gm, "$1- ");
 }
 
 /** Source-text fields that are present but still not usable text. */
