@@ -143,3 +143,28 @@ Okuma:
 3. Tutum eşleştirmesinde seçenekler aynı konu alanından ve birbirine yakın tutumlardan seçilmeli (ör. "temkinli destek" / "isteksiz kabul"). Bu üretici kuralı henüz yazılmadı.
 
 Bu turda 45 taslak kaydedildi (35 çoktan seçmeli + 10 eşleştirme), hepsi DRAFT/AI_DRAFT. İnceleme paketine eklendi.
+
+## Eşleştirme öncelikli varsayılan ve tutum kuralı (2026-11-14)
+
+### Değişiklikler
+
+- `resolveItemType(cell)` (`blueprint.ts`): B2/C1/C2 okuma ve dinlemede çıkarım, tutum ve ana fikir alt becerileri (`MATCHING_FIRST_SUBSKILLS`) artık varsayılan olarak eşleştirme (DRAG_DROP) üretiyor.
+  - Doğrudan ölçülenler: INFERENCE, SPEAKER_ATTITUDE, GIST. IMPLIED_MEANING, IMPLICATION, INFERRED_INTENTION, UNSTATED_CONCLUSION, WRITER_ATTITUDE, TONE, STANCE ve MAIN_IDEA aynı yapıyı ölçtüğü için kapsama alındı.
+  - Hücrede `itemType` açıkça verilirse o geçerli. Eski (legacy) istem eski varsayılanı korur.
+- `attitudeMatchingRules`: tutum eşleştirmesinde tüm şıklar aynı tek soru hakkında ve birbirine yakın tutumlar; zıt ikili yok. Tutum adıyla söylenmiyor, söyleyişten çıkarılıyor. En az iki konuşmacı aynı artı ve eksileri anıyor, yalnızca ağırlıkları farklı.
+- Dinleme eşleştirmesinde kayıt 3–4 adlandırılmış konuşmacı içermeli. İlk denemede ikili sohbet ve röportajlar yalnızca 2 çift verdi; Junior dinlemede 10 taslağın 5'i bu yapı hatasıyla düştü.
+- Testler: `test/matching-first.test.ts`.
+
+### Pilot (`--tag matchfirst`, `matchfirst2`)
+
+| Hücre | Önceki: v3 çoktan seçmeli, metinsiz çözülen | Şimdi: eşleştirme, metinsiz çözülen | Kaydedilen |
+|---|---|---|---|
+| C1 dinleme, tutum (2 hücre) | 8/10 | 1/10 | 9/10 |
+| Junior B2 dinleme, ana fikir + tutum | 13/20 | 1/9 (1 yaş kapısı) | 8/10 |
+| Junior B2 okuma, çıkarım | 8/10 | 1/5 | 4/5 |
+
+- Metinsiz çözülen oran %57–85'ten yaklaşık %14'e (4/29) indi. Örneklem küçük (n = 29), ama fark rastlantıyla açıklanamayacak kadar büyük.
+- Yaş kapısı bir Junior taslağını yetişkin bağlamı nedeniyle reddetti.
+- `matchfirst` turundaki 5 yapı hatası 3–4 konuşmacı kuralından önceydi; `matchfirst2` turunda yapı hatası olmadı.
+
+Bu turda 25 taslak kaydedildi (17 + 8), hepsi DRAFT/AI_DRAFT. İnceleme paketine eklendi.

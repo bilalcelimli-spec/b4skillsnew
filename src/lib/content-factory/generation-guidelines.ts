@@ -127,9 +127,9 @@ export function isDemandAllowed(cefr: string, demand: string | undefined): boole
 }
 
 /** Rules for matching items (match speakers / paragraphs to statements). */
-export function matchingRules(skill: string): string {
+export function matchingRules(skill: string, subskill?: string): string {
   const zoneHint = skill === "LISTENING"
-    ? `Rows are the speakers, named exactly as they appear in the recording (e.g. "Maria").`
+    ? `Rows are the speakers, named exactly as they appear in the recording (e.g. "Maria"). The recording must have 3–4 named speakers, each with a turn of their own: a group discussion, a panel, or 3–4 short extracts. A two-person conversation or interview cannot give enough rows, so add speakers (e.g. a host and three guests, or four friends).`
     : `Rows are labelled parts of the passage (e.g. "Paragraph 2") or named people in it.`;
   return [
     `MATCHING RULES:`,
@@ -141,6 +141,27 @@ export function matchingRules(skill: string): string {
     `- Extras should be distortions of what is actually said (wrong speaker, reversed, or a point mentioned but not endorsed) — never absurd.`,
     `- Do not use absolutes (only, always, never, entirely, exclusively) in any answer.`,
     `- The task must be impossible to complete well without the ${skill === "LISTENING" ? "recording" : "passage"}.`,
+    ...(subskill && ATTITUDE_SUBSKILLS.has(subskill) ? ["", attitudeMatchingRules(skill)] : []),
+  ].join("\n");
+}
+
+const ATTITUDE_SUBSKILLS: ReadonlySet<string> = new Set(["SPEAKER_ATTITUDE", "WRITER_ATTITUDE", "TONE", "STANCE"]);
+
+/**
+ * Attitude matching leaked in the Faz 2 pilot (3/5 C1 drafts solved blind):
+ * each answer named a different stance on a different aspect, so a row could
+ * be matched from the speaker's topic alone. These rules make the answers
+ * near-neighbour stances on one question, shown only through how it is said.
+ */
+export function attitudeMatchingRules(skill: string): string {
+  const who = skill === "LISTENING" ? "speaker" : "writer";
+  return [
+    `ATTITUDE MATCHING RULES:`,
+    `- Every answer (including extras) is a stance on the SAME single question, e.g. "the new timetable". No answer may mention an aspect that only one ${who} talks about.`,
+    `- Answers are near-neighbour stances, not opposites: e.g. "cautious support", "reluctant acceptance", "qualified scepticism", "conditional enthusiasm", "polite indifference". Never pair "for" against "against".`,
+    `- Each ${who} shows their stance through HOW they say it (hedges, concessions, "yes, but…", what they stress or play down), never by naming it. No ${who} may use an attitude word that appears in, or is a synonym of, any answer.`,
+    `- At least two ${who}s mention the same positives and negatives; they differ only in the weight they give them.`,
+    `- Each extra is a stance that one ${who} reports someone else holding, or considers and rejects.`,
   ].join("\n");
 }
 

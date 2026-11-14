@@ -147,6 +147,32 @@ export const DEFAULT_ITEM_TYPE: Record<string, string> = {
   SPEAKING:   "SPEAKING_PROMPT",
 };
 
+/**
+ * Reading/listening subskills whose B2+ multiple-choice drafts were mostly
+ * blind-solvable in the Faz 2 pilot (90 drafts, 2026-11-14): the stance or
+ * inference could be read off the question and options (70-85% vs ~25%
+ * chance). Matching cut that to 33% on C1 listening. Measured: INFERENCE,
+ * SPEAKER_ATTITUDE, GIST; the rest share the same construct.
+ */
+export const MATCHING_FIRST_SUBSKILLS: ReadonlySet<string> = new Set([
+  "INFERENCE", "IMPLIED_MEANING", "IMPLICATION", "INFERRED_INTENTION", "UNSTATED_CONCLUSION",
+  "SPEAKER_ATTITUDE", "WRITER_ATTITUDE", "TONE", "STANCE",
+  "GIST", "MAIN_IDEA",
+]);
+const MATCHING_FIRST_LEVELS: ReadonlySet<string> = new Set(["B2", "C1", "C2"]);
+
+/**
+ * Item type for a cell. An explicit cell.itemType always wins (so MCQ can
+ * still be requested); otherwise B2+ reading/listening cells in the
+ * MATCHING_FIRST_SUBSKILLS default to matching (DRAG_DROP).
+ */
+export function resolveItemType(cell: Pick<BlueprintCell, "skill" | "cefr" | "subskill" | "itemType">): string {
+  if (cell.itemType) return cell.itemType;
+  if ((cell.skill === "READING" || cell.skill === "LISTENING")
+    && MATCHING_FIRST_LEVELS.has(cell.cefr) && MATCHING_FIRST_SUBSKILLS.has(cell.subskill)) return "DRAG_DROP";
+  return DEFAULT_ITEM_TYPE[cell.skill] ?? "MULTIPLE_CHOICE";
+}
+
 // ── IRT difficulty seed per CEFR ─────────────────────────────────────────────
 
 export const CEFR_THETA_SEED: Record<string, number> = {

@@ -18,13 +18,14 @@
  *   npx tsx scripts/jobs/generate-phase2-pilot.ts --mcq-only --tag v3   # MCQ cells only, after a prompt change
  *   npx tsx scripts/jobs/generate-phase2-pilot.ts --mcq-only --per-cell 10 --tag v3n10   # larger sample per cell
  *   npx tsx scripts/jobs/generate-phase2-pilot.ts --matching-only --only "C1" --per-cell 5 --tag c1match
+ * Cells without an explicit itemType follow resolveItemType (B2+ inference / attitude / gist → matching).
  *   → scripts/jobs/.out/phase2/pilot-ids.json, pilot-results.json
  */
 
 import "dotenv/config"; // first: batch-generator reads GEMINI_API_KEY at import time
 import { mkdirSync, writeFileSync } from "node:fs";
 import { runBatchGeneration } from "../../src/lib/content-factory/batch-generator.js";
-import type { BlueprintCell } from "../../src/lib/content-factory/blueprint.js";
+import { resolveItemType, type BlueprintCell } from "../../src/lib/content-factory/blueprint.js";
 import { prisma } from "../../src/lib/prisma.js";
 
 const OUT = "scripts/jobs/.out/phase2";
@@ -62,7 +63,7 @@ const CELLS = [
   c("Junior TEEN re-run", TEEN, { cefr: "B2", skill: "READING", subskill: "INFERENCE", genre: "blog", topic: "technology" }, 3),
 ];
 
-const label = (x: BlueprintCell) => `${x.cefr}/${x.skill}/${x.subskill}/${x.genre}${x.itemType === "DRAG_DROP" ? "/matching" : ""}${x.ageSuitability === "TEEN" ? "/teen" : ""}`;
+const label = (x: BlueprintCell) => `${x.cefr}/${x.skill}/${x.subskill}/${x.genre}${resolveItemType(x) === "DRAG_DROP" ? "/matching" : ""}${x.ageSuitability === "TEEN" ? "/teen" : ""}`;
 
 /** Skip reasons grouped by gate so the report can show where drafts are lost. */
 function gateOf(reason: string): string {
@@ -83,8 +84,8 @@ async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true });
   const results = [];
   const cells = CELLS
-    .filter((x) => !MCQ_ONLY || x.cell.itemType !== "DRAG_DROP")
-    .filter((x) => !MATCHING_ONLY || x.cell.itemType === "DRAG_DROP")
+    .filter((x) => !MCQ_ONLY || resolveItemType(x.cell) !== "DRAG_DROP")
+    .filter((x) => !MATCHING_ONLY || resolveItemType(x.cell) === "DRAG_DROP")
     .filter((x) => !ONLY || ONLY.test(x.group) || ONLY.test(label(x.cell)));
   for (const { group, cell, count: baseCount } of cells) {
     const count = PER_CELL ?? baseCount;

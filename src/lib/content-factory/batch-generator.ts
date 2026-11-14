@@ -22,6 +22,7 @@ import {
   type BlueprintCell,
   CEFR_THETA_SEED,
   DEFAULT_ITEM_TYPE,
+  resolveItemType,
   WORD_COUNT_GUIDANCE,
 } from "./blueprint.js";
 import { screenItemForDuplicates, DUP_THRESHOLD, NEAR_THRESHOLD } from "./duplicate-detector.js";
@@ -122,7 +123,8 @@ export function buildSystemPrompt(
   const names = rotatePick(DIVERSE_NAMES, 6, `names|${rotationKey}`, batchIndex);
   const settings = rotatePick(settingsFor(cell.ageSuitability), 3, `settings|${rotationKey}`, batchIndex);
 
-  const itemType = cell.itemType ?? DEFAULT_ITEM_TYPE[cell.skill] ?? "MULTIPLE_CHOICE";
+  // The legacy prompt predates matching-first defaults and keeps the per-skill type.
+  const itemType = legacy ? cell.itemType ?? DEFAULT_ITEM_TYPE[cell.skill] ?? "MULTIPLE_CHOICE" : resolveItemType(cell);
   const isMCQ = itemType === "MULTIPLE_CHOICE" || itemType === "FILL_IN_BLANKS" || itemType === "DRAG_DROP";
   const isReceptive = ["READING", "LISTENING", "GRAMMAR", "VOCABULARY"].includes(cell.skill);
   const isProductive = ["WRITING", "SPEAKING"].includes(cell.skill);
@@ -304,7 +306,7 @@ QUALITY GATES (must pass before output):
 - §32 Keyword matching — item must not be answerable by spotting a repeated word from the passage
 - §91 Copyright — content must be 100% original, not adapted from Cambridge/IELTS/TOEFL/Pearson
 ${distractorSpec}
-${legacy ? "" : `\n${itemType === "DRAG_DROP" && isReceptive ? (cell.format === "SELECTION" ? selectionRules(cell.skill) : matchingRules(cell.skill) + (cell.format === "HEADINGS" ? "\n\n" + headingRules() : "")) + "\n\n" + buildQualityBlock(cell.skill, cell.cefr, "NONE") : buildQualityBlock(cell.skill, cell.cefr, itemType)}\n`}
+${legacy ? "" : `\n${itemType === "DRAG_DROP" && isReceptive ? (cell.format === "SELECTION" ? selectionRules(cell.skill) : matchingRules(cell.skill, cell.subskill) + (cell.format === "HEADINGS" ? "\n\n" + headingRules() : "")) + "\n\n" + buildQualityBlock(cell.skill, cell.cefr, "NONE") : buildQualityBlock(cell.skill, cell.cefr, itemType)}\n`}
 ${outputSpec}
 
 Output ONLY valid JSON array. No markdown, no commentary, no \`\`\`json fences.`;
@@ -459,7 +461,7 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
 
   // Cap at 20 per API call (§190 controlled batches)
   const safeCount = Math.min(count, 20);
-  const itemType = cell.itemType ?? DEFAULT_ITEM_TYPE[cell.skill] ?? "MULTIPLE_CHOICE";
+  const itemType = resolveItemType(cell);
   const theta = CEFR_THETA_SEED[cell.cefr] ?? 0.0;
 
   const storedIds: string[] = [];
