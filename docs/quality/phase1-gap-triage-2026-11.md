@@ -141,3 +141,19 @@ Sonuç: Bu üretim Junior'ın boşluğunu sayıca kapatabilir, ancak kabul oran�
 - Boşluk hücrelerini kapatacak kuyruk maddeleri (hücre başına açığın iki katı, kendi ürün maddeleri önce)
 
 Paket toplam 536 madde içeriyor. `phase1-gap-triage.ts` kuyruk seçimini `scripts/jobs/.out/phase1/queue-ids.json` olarak yazıyor. Yeni taslaklarla birlikte triyaj: 30 boşluk; 21'i kuyrukla, 6'sı politika ile, 3'ü ikisiyle kapanır; yalnızca yeni içerik gerektiren hücre kalmadı.
+
+## Karar (b): boş hücrelerde kalibrasyonsuz etkinleştirme (2026-11-14)
+
+Karar: Uzman incelemesinden geçen bir madde, minimumun altındaki bir ürün × beceri × CEFR hücresini dolduruyorsa kalibrasyonu beklemeden ACTIVE olabilir.
+
+Nasıl uygulandı (`src/lib/content-factory/pilot-promotion.ts`):
+- **Seçenek:** `POST /api/content/pilot/promote?gapCells=true`. Önce `&dryRun=true` ile hangi maddenin ACTIVE, hangisinin PRETEST olacağı görülür. Seçenek verilmezse davranış eskisi gibidir: her madde PRETEST olur.
+- **Önceki kapı değişmedi:** Madde yine 4 inceleme türünden onay almış, 2 bağımsız onaycıdan geçmiş olmalı; içerik hash'i güncel olmalı ve BLOCKER kanıt bulgusu olmamalı (`pilotAdmissionReasons`).
+- **Hücrenin açığı kadar:** `planGapCellActivation` canlı havuz kuralını (`isAdaptiveEligible`) kullanır ve her hücreye yalnızca `minItems` açığı kadar madde ekler. Sıralama IQS'e göre, ardından id'ye göredir. Bir madde birden fazla hücreyi doldurabilir. Fazla madde PRETEST'e gider ve normal kalibrasyon yolunu izler.
+- **İşaretleme:** Etkinleşen madde `status ACTIVE`, `pipelineStage LIVE` olur. `metadata.provisionalActivation` alanına şunlar yazılır: politika sürümü, `paramsSource: CEFR_PRIOR`, `calibrationPending: true`, doldurduğu hücreler, kimin ve ne zaman etkinleştirdiği.
+- **Kalibrasyon kuralları gevşetilmedi:** `CALIBRATION_POLICY` aynı kaldı. Madde ACTIVE olduğu için yanıt toplamaya devam eder. Kalibrasyon taraması n ≥ 200'de gerçek parametreyi taslak sürüm olarak yazar, yayın kapıları da aynıdır.
+
+Sınırlar:
+- Bu maddelerin puana katkısı CEFR'den türetilmiş öncül parametrelere dayanır. O hücrelerde ölçüm hatası, simülasyonun gösterdiğinden büyük olabilir. Sertifika ve raporlarda "provisional" dili zaten var.
+- Yazma ve konuşma maddeleri PRETEST olarak sunulmadığı için hücre açığını aşan kısmı PRETEST'te bekler. Açık bir hücrede yeniden ortaya çıkarsa sonraki koşuda etkinleşebilir. Şu an PRETEST'teki maddeler için ayrı bir yol yok, çünkü gapCells yalnızca APPROVED_FOR_PILOT aşamasındakilere bakar.
+- Canlı veritabanında deneme koşusu (2026-11-14) 0 aday verdi. Henüz APPROVED_FOR_PILOT aşamasında madde yok, yani uzman incelemesi bu yolun ön koşulu olarak duruyor.

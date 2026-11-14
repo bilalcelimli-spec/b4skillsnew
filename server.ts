@@ -3043,14 +3043,17 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   // POST /api/content/pilot/promote — APPROVED_FOR_PILOT → isPretest=true + status=PRETEST
   // ?dryRun=true  returns candidate list without committing.
+  // ?gapCells=true  below-minimum cells are filled with ACTIVE items instead (calibration pending).
   app.post("/api/content/pilot/promote",
     checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
     async (req: any, res) => {
       try {
         if (!dbAvailable) return res.status(503).json({ error: "Database required" });
         const dryRun = String(req.query.dryRun ?? req.body?.dryRun) === "true";
+        // ?gapCells=true: items filling a below-minimum cell go ACTIVE on priors (GAP_CELL_ACTIVATION_POLICY).
+        const gapCells = String(req.query.gapCells ?? req.body?.gapCells) === "true";
 
-        res.json(await promotePilotItems(prisma, req.user.id, dryRun));
+        res.json(await promotePilotItems(prisma, req.user.id, dryRun, { gapCells }));
       } catch (err) {
         console.error("[content/pilot/promote]", err);
         res.status(500).json({ error: "Pilot promotion failed" });

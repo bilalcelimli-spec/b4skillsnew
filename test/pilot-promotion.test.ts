@@ -1,6 +1,7 @@
-import { beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { itemReviewHash } from '../src/lib/content-factory/item-review-snapshot';
-import { pilotAdmissionReasons, promotePilotItems } from '../src/lib/content-factory/pilot-promotion';
+import { GAP_CELL_ACTIVATION_POLICY, pilotAdmissionReasons, planGapCellActivation, promotePilotItems } from '../src/lib/content-factory/pilot-promotion';
+import { PRODUCT_LINE_PROFILES } from '../src/lib/product-lines/profiles';
 let item: any;
 function approvals(snapshot: any) {
   return ['LANGUAGE_REVIEW', 'CEFR_REVIEW', 'FAIRNESS_REVIEW', 'MODERATION'].map((reviewType, i) => ({
@@ -88,4 +89,46 @@ it('rechecks the locked snapshot rather than using an earlier preview', async ()
   item.content.prompt = 'Changed after preview';
   expect(await promotePilotItems(db, 'admin', false)).toMatchObject({ promoted: 0 });
   expect(db.update).not.toHaveBeenCalled();
+});
+
+describe('gap-cell activation (decision b)', () => {
+  const corporate = PRODUCT_LINE_PROFILES['Corporate'];
+  const need = corporate.sectionConfig.WRITING!.minItems;
+  const writing = (id: string, iq = 70) => ({ id, skill: 'WRITING', status: 'DRAFT', isPretest: false, cefrLevel: 'A2',
+    discrimination: 1, guessing: 0, tags: ['corporate'], content: {}, iqScore: iq });
+  const live = (n: number) => Array.from({ length: n }, (_, i) => ({ ...writing(`live-${i}`), status: 'ACTIVE' }));
+
+  it('activates only as many items as the cell is short, best IQS first', () => {
+    const candidates = [writing('low', 60), writing('high', 90), ...Array.from({ length: need }, (_, i) => writing(`c${i}`))];
+    const plan = planGapCellActivation(candidates, live(need - 1), [corporate]);
+    expect([...plan.keys()]).toEqual(['high']);
+    expect(plan.get('high')).toContain('Corporate WRITING/A2');
+  });
+  it('activates nothing where the cell already meets its minimum', () => {
+    expect(planGapCellActivation([writing('x')], live(need), [corporate]).size).toBe(0);
+  });
+  it('writes ACTIVE + provisional marker for gap fillers and PRETEST for the rest', async () => {
+    const reviewed = (id: string, iqScore: number) => {
+      const it: any = { ...structuredClone(item), id, skill: 'WRITING', type: 'OPEN_RESPONSE', cefrLevel: 'A2', tags: ['corporate'],
+        discrimination: 1, guessing: 0, iqScore, content: { prompt: 'Write an email to your manager about a delayed delivery.' } };
+      it.itemReviews = approvals(it);
+      return it;
+    };
+    const items = [reviewed('fill', 90), reviewed('spare', 60)];
+    const db = database(items);
+    db.find.mockImplementationOnce(async () => structuredClone(items)).mockImplementationOnce(async () => live(need - 1));
+    const result: any = await promotePilotItems(db, 'admin', false, { gapCells: true });
+    if (result.blocked.length) throw new Error(JSON.stringify(result.blocked));
+    expect(result).toMatchObject({ promoted: 2, activated: 1 });
+    expect(items[0]).toMatchObject({ status: 'ACTIVE', isPretest: false, pipelineStage: 'LIVE',
+      metadata: { provisionalActivation: { ...GAP_CELL_ACTIVATION_POLICY, activatedBy: 'admin' } } });
+    expect(items[0].metadata.provisionalActivation.cells).toContain('Corporate WRITING/A2');
+    expect(items[1]).toMatchObject({ status: 'PRETEST', isPretest: true, pipelineStage: 'PILOT' });
+  });
+  it('without the option every admitted item still goes to PRETEST', async () => {
+    const db = database([item]);
+    expect(await promotePilotItems(db, 'admin', false)).toMatchObject({ promoted: 1, activated: 0 });
+    expect(item.status).toBe('PRETEST');
+    expect(db.find).toHaveBeenCalledTimes(1);
+  });
 });
