@@ -54,6 +54,7 @@ async function main(): Promise<void> {
     const queue = rows.filter((r) => !(r.status === "ACTIVE" && !r.isPretest));
 
     const cells = [];
+    const queueIds = new Map<string, { id: string; cell: string }>();
     for (const profile of Object.values(PRODUCT_LINE_PROFILES)) {
       for (const skill of profile.sectionOrder.map(String)) {
         const need = profile.sectionConfig[skill]?.minItems ?? 1;
@@ -70,6 +71,13 @@ async function main(): Promise<void> {
             : now.length + q.length >= need ? "QUEUE"
             : withPolicy.length + qCore.length >= need ? "POLICY+QUEUE"
             : "CONTENT";
+          // Queue items worth reviewing first: they close (part of) a gap without any policy change.
+          // Own-source items first, then general core; twice the shortfall so rejections leave enough.
+          const shortfall = need - (route === "QUEUE" ? now.length : withPolicy.length);
+          const ownIds = new Set(q.map((r) => r.id));
+          const queueFor = route === "POLICY" ? [] : [...q, ...qCore.filter((r) => !ownIds.has(r.id))]
+            .slice(0, Math.max(0, 2 * shortfall));
+          for (const r of queueFor) queueIds.set(r.id, { id: r.id, cell: `${profile.name} ${skill}/${cefr}` });
           cells.push({
             profile: profile.name, skill, cefr, need, active: now.length, activeWithCore: withPolicy.length,
             queue: q.length, queueByStatus: byStatus(q), queueWithCore: qCore.length, route,
@@ -81,6 +89,7 @@ async function main(): Promise<void> {
     }
     const routes = cells.reduce<Record<string, number>>((m, c) => ({ ...m, [c.route]: (m[c.route] ?? 0) + 1 }), {});
     mkdirSync(OUT, { recursive: true });
+    writeFileSync(`${OUT}/queue-ids.json`, JSON.stringify([...queueIds.values()], null, 1));
     writeFileSync(`${OUT}/gap-triage.json`, JSON.stringify({ generatedAt: new Date().toISOString(), gaps: cells.length, routes, cells }, null, 2));
     console.log(`gaps ${cells.length}  routes ${JSON.stringify(routes)}`);
     console.log(`${"profile".padEnd(32)} ${"cell".padEnd(18)} need active +core queue(P/R/D) +core  route`);

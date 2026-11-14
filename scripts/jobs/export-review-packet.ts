@@ -9,6 +9,7 @@
  * Output: scripts/jobs/.out/review-packet.html
  */
 
+import "dotenv/config";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { prisma } from "../../src/lib/prisma.js";
 import { positionalHeadings } from "../../src/lib/content-factory/matching-items.js";
@@ -17,7 +18,7 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&
 const out = "scripts/jobs/.out";
 const readIds = (f: string): string[] => (existsSync(`${out}/${f}`) ? JSON.parse(readFileSync(`${out}/${f}`, "utf8")).map((x: any) => x.id) : []);
 
-const SOURCES: Array<{ file: string; label: string }> = [
+const SOURCES: Array<{ file: string; label: string; statuses?: string[] }> = [
   { file: "matching-listening-ids.json", label: "Listening — matching" },
   { file: "reading-headings-ids.json", label: "Reading — paragraph headings" },
   { file: "reading-headings-v2-ids.json", label: "Reading — paragraph headings (v2, position-neutral rules)" },
@@ -28,6 +29,9 @@ const SOURCES: Array<{ file: string; label: string }> = [
   { file: "ket-rebuild-ids.json", label: "Junior — KET Reading Part 1 rebuilt (matching + MCQ)" },
   { file: "a1-listening-adult-ids.json", label: "General — adult A1 listening (coverage gap)" },
   { file: "split-worksheet-ids.json", label: "Primary — listening worksheets split into single-blank items" },
+  { file: "phase1/content-gaps-ids.json", label: "Faz 1 — Junior B2 / Corporate A2 writing (content-only gaps)" },
+  { file: "phase1/junior-teen-ids.json", label: "Faz 1 — Junior teen drafts (B2 / A1)" },
+  { file: "phase1/queue-ids.json", label: "Faz 1 — queue items that close coverage gaps (PRETEST / REVIEW / DRAFT)", statuses: ["DRAFT", "REVIEW", "PRETEST"] },
 ];
 
 const CHECKLIST = [
@@ -73,7 +77,7 @@ async function main() {
     const ids = readIds(src.file);
     if (!ids.length) continue;
     const items = await prisma.item.findMany({
-      where: { id: { in: ids }, status: "DRAFT" as any },
+      where: { id: { in: ids }, status: { in: (src.statuses ?? ["DRAFT"]) as any } },
       select: { id: true, itemCode: true, cefrLevel: true, subskill: true, content: true, metadata: true },
       orderBy: { itemCode: "asc" },
     });

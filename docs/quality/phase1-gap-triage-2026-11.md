@@ -104,3 +104,40 @@ Yeniden üretmek: `npx tsx scripts/jobs/bank-baseline-simulation.ts --n 400 [--g
 - `verify:coverage` boşlukları 37 → 30 oldu. Language Schools 10 → 6, Corporate 8 → 5; triyajda öngörülen 7 POLICY hücresi kapandı.
 - `verify:capacity`: asgari altı hücre 154 → 142.
 - `audit-adaptive-delivery`: Prisma filtresi ile bellek içi kopya arasında fark yok.
+
+## Junior Suite: gençlere uygun taslaklar (2026-11-14)
+
+Junior'ın B2 ve A1 boşlukları şu an yalnızca yetişkin genel çekirdekle kapanabiliyor. Bu yüzden `scripts/jobs/generate-phase1-junior-teen.ts` ile TEEN etiketli, `junior` ürünlü taslaklar üretildi. 42 madde istendi, 36'sı DRAFT olarak kaydedildi (kodlar: `scripts/jobs/.out/phase1/junior-teen-ids.json`).
+
+| Hücre | Kaydedilen |
+|---|---|
+| B2 okuma: başlık eşleştirme | 0/3. Üç taslak da "Position-revealing headings" kapısında reddedildi (başlık metnin sırasını ele veriyordu) |
+| B2 okuma: çıkarım (blog) | 1/4 (JSON ayrıştırma hatası) |
+| B2 okuma: yazarın tutumu | 4/4 |
+| B2 dinleme: ana fikir, konuşmacı tutumu, ayrıntı | 9/9 |
+| B2 konuşma | 6/6 |
+| B2 kelime: eşdizimlilik, sözcük türetme | 8/8 |
+| A1 dinleme | 8/8 |
+
+Dinleme taslaklarında ses yok; `ttsScript` var, ses ayrı bir adımda üretilir.
+
+### İlk okuma (uzman incelemesi yerine geçmez)
+
+- **Yaş bağlamı kayıyor:** 11 taslakta üniversite, yüksek lisans öğrencisi veya profesör geçiyor. Örnekler: LIS-B2-0084, LIS-B2-0097, LIS-B2-0100, REA-B2-0216, SPE-B2-0081, LIS-A1-0115. `ageRange: [11, 14]` ve TEEN etiketi üretici istemine giriyor ama model yine yetişkin bağlama kayıyor. Bunlar Junior için reddedilmeli ya da yeniden yazılmalı.
+- **Metinsiz çözülebilirlik:** 36 taslağın 19'u `TEXTDEP-SOLVABLE-BLIND` bayrağı taşıyor; LLM çözücü metni görmeden anahtarı buluyor. B2 okuma/dinleme çoktan seçmelide anahtar yine en uzun ve en nüanslı şık ("despite …", "both … and …"). Faz 0'daki banka bulgusunun aynısı. Eşleştirme formatı bu yüzden tercih edildi, ama o hücre kapıdan geçemedi.
+- **İki savunulabilir anahtar:** LIS-A1-0117 ("end of the school week" ile "needs to begin soon" ikisi de doğru) ve LIS-A1-0121'de ilk buluşma tarihi ile her hafta buluşma karışık.
+- **Bağlam tekdüzeliği:** 15 taslak "community centre"da geçiyor ve isimler hep aynı dört kişi (Amara, Kenji, Sofia, Ravi). Bir adayın aynı oturumda bunları üst üste görmesi muhtemel. `DIVERSE_NAMES` listesi var ama hücre başına rotasyon dar.
+- **Uygun görünenler:** B2 sözcük türetme (VOC-B2-0107, 0109, 0110; 0108'de doğal yanıt "connectivity" olurdu), konuşma görevlerinin çoğu (SPE-B2-0083, 0084, 0085), LIS-A1-0118, 0119, 0120.
+
+Sonuç: Bu üretim Junior'ın boşluğunu sayıca kapatabilir, ancak kabul oranı düşük olacak. Gerçekçi beklenti, 36 taslağın yarısının kabul edilmesi. Üreticide iki iyileştirme Junior için kalıcı çözüm olur, ikisi de Faz 2 işi:
+- Yaş bağlamını istem dışında bir kapıyla denetlemek (üniversite/iş yeri sözcükleri TEEN hücrede reddedilsin).
+- Ortam ve isim rotasyonunu genişletmek.
+
+## İnceleme paketi
+
+`scripts/jobs/.out/review-packet.html` artık üç Faz 1 kümesini de içeriyor:
+- İçerik boşluğu yazma görevleri (22)
+- Junior taslakları (36)
+- Boşluk hücrelerini kapatacak kuyruk maddeleri (hücre başına açığın iki katı, kendi ürün maddeleri önce)
+
+Paket toplam 536 madde içeriyor. `phase1-gap-triage.ts` kuyruk seçimini `scripts/jobs/.out/phase1/queue-ids.json` olarak yazıyor. Yeni taslaklarla birlikte triyaj: 30 boşluk; 21'i kuyrukla, 6'sı politika ile, 3'ü ikisiyle kapanır; yalnızca yeni içerik gerektiren hücre kalmadı.
