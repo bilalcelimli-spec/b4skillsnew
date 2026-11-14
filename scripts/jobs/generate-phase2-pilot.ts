@@ -57,6 +57,12 @@ const CELLS = [
   // C1 attitude / inference as matching: v3 MCQ stayed blind-solvable here (3/4)
   c("C1 listening", GENERAL, { cefr: "C1", skill: "LISTENING", subskill: "SPEAKER_ATTITUDE", genre: "interview", topic: "media", itemType: "DRAG_DROP" }, 3),
   c("C1 listening", GENERAL, { cefr: "C1", skill: "LISTENING", subskill: "INFERENCE", genre: "discussion", topic: "science", itemType: "DRAG_DROP" }, 3),
+  // Fill to target: the only General English cells still below target even if the whole queue were approved
+  // (verify:capacity --with-queue, 2026-11-14: reading A1 23/30, listening A2 19/26). Run with --only Fill.
+  c("Fill to target", GENERAL, { cefr: "A1", skill: "READING", subskill: "SPECIFIC_INFORMATION", genre: "message", topic: "shopping" }, 8),
+  c("Fill to target", GENERAL, { cefr: "A1", skill: "READING", subskill: "EXPLICIT_DETAIL", genre: "notice", topic: "travel" }, 8),
+  c("Fill to target", GENERAL, { cefr: "A2", skill: "LISTENING", subskill: "FACTUAL_DETAIL", genre: "conversation", topic: "shopping" }, 6),
+  c("Fill to target", GENERAL, { cefr: "A2", skill: "LISTENING", subskill: "SPECIFIC_INFORMATION", genre: "announcement", topic: "leisure" }, 6),
   // Junior TEEN re-run of the Faz 1 cells that drifted (university / professor settings)
   c("Junior TEEN re-run", TEEN, { cefr: "B2", skill: "LISTENING", subskill: "GIST", genre: "conversation", topic: "education" }, 3),
   c("Junior TEEN re-run", TEEN, { cefr: "B2", skill: "LISTENING", subskill: "SPEAKER_ATTITUDE", genre: "interview", topic: "media" }, 3),

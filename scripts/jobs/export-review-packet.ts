@@ -37,6 +37,7 @@ const SOURCES: Array<{ file: string; label: string; statuses?: string[] }> = [
   { file: "phase2/pilot-c1match-ids.json", label: "Faz 2 — C1 listening as matching (attitude / inference / viewpoints)" },
   { file: "phase2/pilot-matchfirst-ids.json", label: "Faz 2 — matching-first defaults: C1 attitude, Junior B2 (attitude rules)" },
   { file: "phase2/pilot-matchfirst2-ids.json", label: "Faz 2 — Junior B2 listening matching after the 3-4 speaker rule" },
+  { file: "phase2/pilot-fill-ids.json", label: "Faz 2 — fill to target: General A1 reading" },
   { file: "phase1/queue-ids.json", label: "Faz 1 — queue items that close coverage gaps (PRETEST / REVIEW / DRAFT)", statuses: ["DRAFT", "REVIEW", "PRETEST"] },
 ];
 

@@ -168,3 +168,37 @@ Bu turda 45 taslak kaydedildi (35 çoktan seçmeli + 10 eşleştirme), hepsi DRA
 - `matchfirst` turundaki 5 yapı hatası 3–4 konuşmacı kuralından önceydi; `matchfirst2` turunda yapı hatası olmadı.
 
 Bu turda 25 taslak kaydedildi (17 + 8), hepsi DRAFT/AI_DRAFT. İnceleme paketine eklendi.
+
+## Kuyruk kapsamı ve okuma deneme havuzu denetimi (2026-11-14)
+
+### Kuyruk onaylansa kapsam (`verify:capacity --profile "General English" --with-queue`)
+
+| | Canlı (metin/kayıt) | Kuyrukla |
+|---|---|---|
+| Okuma A1 / A2 / B1 / B2 / C1 | 7 / 5 / 16 / 10 / 9 | 23 / 31 / 41 / 56 / 34 |
+| Dinleme A1 / A2 / B1 / B2 / C1 | 5 / 16 / 29 / 17 / 15 | 50 / 19 / 37 / 73 / 70 |
+
+Minimum okumada 20, dinlemede 17. Kuyruk onaylansa yalnızca okuma A1 (23/30) ve dinleme A2 (19/26) hedefin altında kalıyor; darboğaz üretim değil inceleme.
+
+Bu iki hücre için doldurma partisi (`--only Fill --tag fill`): okuma A1'de 10/16 taslak kaydedildi (REA-A1-0125…0134). Dinleme A2'de kredi bittiği için 0/12.
+
+### Okuma PRETEST havuzu: metinsiz çözme denetimi (`scripts/_audit-pretest-text-dependency.ts`, salt okunur)
+
+482 PRETEST okuma sorusunun hiçbiri metin bağımlılığı kontrolünden geçmemişti. Kontrolün çalıştığı 228 soru:
+
+| Seviye | Değerlendirilen | Metinsiz çözülen |
+|---|---|---|
+| PRE_A1 | 11 | 8 (%73) |
+| A1 | 48 | 31 (%65) |
+| A2 | 72 | 62 (%86) |
+| B1 | 97 | 85 (%88) |
+| **Toplam** | **228** | **186 (%82)** |
+
+- Dört şıkta rastlantı tabanı yaklaşık %25. %82, bu soruların büyük çoğunluğunun metin okunmadan çözülebildiğini gösteriyor.
+- B2, C1 ve C2'deki 245 soru ile B1'deki 9 soru değerlendirilemedi: denetim sırasında Gemini kredisi yine bitti (402). Kredi gelince `--resume` ile yalnızca bunlar çalıştırılır.
+- Hakem tek bir model (gemini-2.5-flash). Kısa A1 duyurularında dünya bilgisi doğru cevabı verebiliyor. Bu sonuç bir inceleme işareti, karar değil.
+
+Sonuçlar:
+1. Kuyruk kapsamı iyimser. Okuma PRETEST havuzu kapsama sayılıyor, ama soruların çoğu metin anlamayı ölçmüyor.
+2. Bu sorular puanlanmıyor ama adaylara gösteriliyor ve kalibre ediliyor. Metinsiz çözülebilen bir soru büyük olasılıkla kolay ve düşük ayırt edicilikle kalibre olur. Yayın kapısı (IQS ≥ 65, SE(b) ≤ 0.25) bunların bir kısmını yakalayabilir, ama bu varsayılmamalı.
+3. Veritabanında hiçbir şey değiştirilmedi. Metinsiz çözülebilen PRETEST sorularının ne olacağına (ör. REVIEW'a çekmek, yani hizmetten almak) karar verilmesi gerekiyor.
