@@ -1,3 +1,4 @@
+import path from 'node:path';
 // Synthetic pixels only, existing QA tenant/session. No camera access or exam credit.
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
@@ -10,7 +11,7 @@ import { Backend } from '../../src/api';
 import { downloadPrivateObject } from '../../../../src/lib/storage/private-storage';
 (globalThis as any).__DEV__ = true;
 if (process.env.B4SKILLS_API_VALIDATION_MODE !== 'true') throw Error('Private QA runtime required');
-const root = '/tmp/b4skills-realdb-validation', base = 'http://127.0.0.1:3004';
+const root = path.resolve(process.cwd(), 'build/realdb-validation'), base = 'http://127.0.0.1:3004';
 const accounts = JSON.parse(fs.readFileSync(`${root}/candidates.json`, 'utf8'));
 const own = accounts.find((a: any) => a.platform === 'client');
 const db = new PrismaClient(), originalFetch = globalThis.fetch, jar = new Map<string, string>();
@@ -99,7 +100,8 @@ async function main() {
     const result = { testedAt: new Date().toISOString(), data: 'synthetic 2x2 JPEG, no human image or native camera',
       sessionId: session.id, evidenceId, oneEvent: true, lostAckRecovery: true, encryptedCliDiskReopen: true, nativeStorageAdapter: false, syntheticFaceEvents: true, privateStorageReadVerified: true, changedDigestBlocked: true,
       anonymousBlocked: true, candidateEvidenceReadBlocked: true, otherSessionBlocked: true, noCreditDebit: true, noNewSession: true };
-    fs.writeFileSync(`${root}/sprint2-camera-queue-result.json`, JSON.stringify(result, null, 2)); console.log(JSON.stringify(result));
+    fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(`${root}/sprint2-camera-queue-result.json`, JSON.stringify(result, null, 2), { mode: 0o600 }); console.log(JSON.stringify(result));
   } finally {
     await db.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${org.id} FOR UPDATE`;
