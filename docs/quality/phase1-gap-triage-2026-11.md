@@ -208,3 +208,27 @@ Tarama kaba; "post office" gibi zararsız eşleşmeler de var. Yine de dinlemede
 npx tsx scripts/export-bank-snapshot.ts --output scripts/jobs/.out/bank-baseline/bank-snapshot-age.json
 npx tsx scripts/jobs/bank-baseline-simulation.ts --bank scripts/jobs/.out/bank-baseline/bank-snapshot-age.json --profile "Junior Suite (11-14)" --general-core
 ```
+
+### Genel çekirdek yaş inceleme paketi (2026-11-14)
+
+`npx tsx scripts/jobs/export-core-age-review.ts` komutu `scripts/jobs/.out/core-age-review/packet.html` paketini yazıyor. Yalnızca okuma yapar.
+
+Kapsam: Junior'a genel çekirdek açılırsa 11-14 yaş adaylarının görebileceği, yaş etiketi olmayan 906 madde.
+
+| Bölüm | Madde | Beceriler | Anahtar sözcük eşleşmesi |
+|---|---|---|---|
+| 1 · Operasyonel (puanlanan) | 261 | dinleme 53, dilbilgisi 183, sözcük 25 | 35 |
+| 2 · Ön test (puanlanmaz, ama adaya gösterilir) | 645 | okuma 346, dilbilgisi 161, konuşma 121, dinleme 13, sözcük 4 | 206 |
+
+İkinci bölüm şu nedenle gerekli: `generalCoreAccess` ön test havuzunu da genişletiyor. Okumadaki 346 ön test maddesinin çoğu yetişkin akademik metin.
+
+Kullanım:
+- **İşaretleme:** İnceleyen kişi her maddeyi "Suitable for 11-14" (UNIVERSAL kalır) ya da "Adult only" (ADULT) olarak işaretler.
+- **Sıralama:** Eşleşmeli maddeler her bölümde önce gelir ve açık gösterilir; vurgulanan sözcük yalnızca ipucudur.
+- **Kayıt:** Seçimler tarayıcıda saklanır. "Download decisions" ile `core-age-decisions.json` indirilir; inceleyenin adı zorunludur.
+- **İçe aktarma:** `npx tsx scripts/jobs/apply-core-age-review.ts core-age-decisions.json` önce deneme koşusu yapar, `--apply` ile yazar.
+  - ADULT kararı `ageSuitability` alanını değiştirir; iki karar türü de `metadata.ageReview` alanına kaydedilir.
+  - Yalnızca hâlâ genel çekirdekte ve UNIVERSAL olan maddeler değişir.
+  - Her yazım önceki değeriyle birlikte `applied-*.jsonl` dosyasına kaydedilir.
+
+İnceleme tamamlanınca Junior simülasyonu yukarıdaki komutla tekrarlanır ve ardından `generalCoreAccess` kararı verilir. İnceleme yalnızca 1. bölümle sınırlı kalırsa, Junior açılmadan önce ön test havuzu için ayrı bir karar gerekir (ör. Junior'da genel çekirdek ön testini kapatmak).
