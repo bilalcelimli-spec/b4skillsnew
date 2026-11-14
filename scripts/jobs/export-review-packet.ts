@@ -31,6 +31,7 @@ const SOURCES: Array<{ file: string; label: string; statuses?: string[] }> = [
   { file: "split-worksheet-ids.json", label: "Primary — listening worksheets split into single-blank items" },
   { file: "phase1/content-gaps-ids.json", label: "Faz 1 — Junior B2 / Corporate A2 writing (content-only gaps)" },
   { file: "phase1/junior-teen-ids.json", label: "Faz 1 — Junior teen drafts (B2 / A1)" },
+  { file: "phase2/pilot-ids.json", label: "Faz 2 — pilot: A1/A2 reading, A1/C1 listening, Junior teen re-run (strict text dependency)" },
   { file: "phase1/queue-ids.json", label: "Faz 1 — queue items that close coverage gaps (PRETEST / REVIEW / DRAFT)", statuses: ["DRAFT", "REVIEW", "PRETEST"] },
 ];
 

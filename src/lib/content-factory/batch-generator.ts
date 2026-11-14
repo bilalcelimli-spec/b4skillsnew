@@ -34,6 +34,7 @@ import { runMatchingDependencyGate } from "../ai/validation/gates/matching-depen
 import { runContentIntegrityGate } from "../ai/validation/gates/content-integrity.js";
 import { runTextDependencyGate } from "../ai/validation/gates/text-dependency.js";
 import { hardenDistractors, type HardenResult } from "./distractor-hardening.js";
+import { DIVERSE_NAMES, ageContextViolations, rotatePick, settingsFor, teenRules } from "./age-context.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -44,6 +45,11 @@ export interface BatchSpec {
   count: number;             // items to generate (max 20 per call, §190)
   triggeredBy: string;       // User.id of person who triggered generation
   notes?: string;            // Optional context for the generator
+  /**
+   * Faz 2: drop drafts the blind solver answers without the source, or whose key a
+   * solver with the source cannot reproduce, instead of storing them flagged.
+   */
+  strictTextDependency?: boolean;
 }
 
 export interface BatchResult {
@@ -61,27 +67,6 @@ export interface BatchResult {
 }
 
 // ── Diversity controls (§133) ─────────────────────────────────────────────────
-
-const DIVERSE_NAMES = [
-  // Global, pronounceable, not stereotypically role-assigned
-  "Amara", "Kenji", "Sofia", "Ravi", "Malia", "Dario", "Yuna", "Chidi",
-  "Fatima", "Lena", "Omar", "Priya", "Elias", "Yuki", "Tobias", "Nadia",
-  "Kwame", "Ingrid", "Tariq", "Hana", "Marcus", "Leila", "Soren", "Zara",
-  "Arnav", "Mia", "Emeka", "Elif", "Jonas", "Aiko", "Daniel", "Rosa",
-];
-
-const DIVERSE_SETTINGS = [
-  "a community centre", "an international university", "a research institute",
-  "a local library", "a public park", "a small business", "a community garden",
-  "a tech start-up", "a hospital", "a train station", "a neighbourhood café",
-  "an online platform", "a cultural exchange programme", "a sports facility",
-];
-
-const YOUNG_LEARNER_SETTINGS = [
-  "a classroom", "the school playground", "a zoo", "a farm", "a birthday party",
-  "the beach", "a family kitchen", "a toy shop", "a school trip", "a garden",
-  "the school library", "a swimming pool", "a picnic in the park", "a child's bedroom",
-];
 
 /** Extra writing rules for children's items (ages 7-10, PRE_A1–A2). */
 function youngLearnerRules(cell: BlueprintCell): string {
@@ -117,24 +102,13 @@ function youngLearnerRules(cell: BlueprintCell): string {
   return lines.join("\n");
 }
 
-function pickDistinct<T>(arr: T[], n: number, used: Set<number>): T[] {
-  const result: T[] = [];
-  const indices = arr.map((_, i) => i).filter((i) => !used.has(i));
-  for (let i = 0; i < n && i < indices.length; i++) {
-    const idx = indices[i % indices.length];
-    result.push(arr[idx]);
-    used.add(idx);
-  }
-  return result;
-}
-
 // ── System prompt builder (§132 Blueprint-aware generation) ───────────────────
 
 export function buildSystemPrompt(
   cell: BlueprintCell,
   batchSize: number,
   batchIndex: number,
-  opts: { legacy?: boolean } = {}
+  opts: { legacy?: boolean; seed?: string | number } = {}
 ): string {
   const legacy = !!opts.legacy;
   const isYoung = cell.ageSuitability === "YOUNG_LEARNER";
@@ -142,10 +116,11 @@ export function buildSystemPrompt(
   const wc = cell.wordCountMin != null && cell.wordCountMax != null
     ? { min: cell.wordCountMin, max: cell.wordCountMax, label: `${cell.wordCountMin}-${cell.wordCountMax} words` }
     : baseWc;
-  const usedNames = new Set<number>();
-  const usedSettings = new Set<number>();
-  const names = pickDistinct(DIVERSE_NAMES, 4, usedNames);
-  const settings = pickDistinct(isYoung ? YOUNG_LEARNER_SETTINGS : DIVERSE_SETTINGS, 2, usedSettings);
+  // Rotation (Faz 2): each cell, chunk and run starts somewhere else in the lists, and the
+  // settings follow the candidate age (TEEN cells used to get the adult list).
+  const rotationKey = [cell.skill, cell.cefr, cell.subskill, cell.topic ?? "", cell.genre ?? "", cell.ageSuitability ?? "", opts.seed ?? ""].join("|");
+  const names = rotatePick(DIVERSE_NAMES, 6, `names|${rotationKey}`, batchIndex);
+  const settings = rotatePick(settingsFor(cell.ageSuitability), 3, `settings|${rotationKey}`, batchIndex);
 
   const itemType = cell.itemType ?? DEFAULT_ITEM_TYPE[cell.skill] ?? "MULTIPLE_CHOICE";
   const isMCQ = itemType === "MULTIPLE_CHOICE" || itemType === "FILL_IN_BLANKS" || itemType === "DRAG_DROP";
@@ -167,13 +142,13 @@ export function buildSystemPrompt(
   const ageNote = cell.ageSuitability === "YOUNG_LEARNER"
     ? `Age: young learner (${cell.ageRange ? cell.ageRange.join("-") : "8-12"}). Use age-appropriate, school-safe topics. No adult work/complex politics.\n\n${youngLearnerRules(cell)}`
     : cell.ageSuitability === "TEEN"
-    ? "Age: teen (13-17). School and social contexts appropriate."
+    ? `Age: teen (${(cell.ageRange ?? [11, 14]).join("-")}).\n\n${teenRules(cell.ageRange as [number, number] | undefined)}`
     : "Age: adult / universal (avoid child-inappropriate material but assume adult candidates).";
 
   const diversityNote = `
 DIVERSITY CONTROLS (§133):
 - Use these names from this batch only: ${names.join(", ")}
-- Settings may include: ${settings.join(", ")}
+- Settings may include: ${settings.join(", ")} (one setting per item; do not reuse a setting within the batch)
 - Vary syntactic patterns across items — no two items should open with the same clause type
 - Vary topic facets across items — batch ${batchIndex + 1}
 - Correct-answer positions must not cluster (do not put all keys in option A or B)`;
@@ -427,8 +402,10 @@ const DEFAULT_CHUNK = 8;
 export async function generateDrafts(
   cell: BlueprintCell,
   count: number,
-  opts: { legacy?: boolean } = {}
+  opts: { legacy?: boolean; seed?: string | number } = {}
 ): Promise<{ items: RawDraft[]; skippedReasons: string[] }> {
+  // One seed per run so repeated runs for the same cell do not reuse the same names/settings.
+  const promptOpts = { ...opts, seed: opts.seed ?? Date.now() };
   const skippedReasons: string[] = [];
   const valid: RawDraft[] = [];
   const total = Math.min(count, 20);
@@ -440,7 +417,7 @@ export async function generateDrafts(
     try {
       const resp = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: buildSystemPrompt(cell, size, idx, opts),
+        contents: buildSystemPrompt(cell, size, idx, promptOpts),
         config: { temperature: 0.85, maxOutputTokens: 24576 },
       } as any);
       rawText = (resp as any).text ?? (resp as any).candidates?.[0]?.content?.parts?.[0]?.text ?? "";
@@ -457,6 +434,9 @@ export async function generateDrafts(
       const errs = validateRawItem(raw, cell);
       const bad = raw && typeof raw.content === "object" && raw.content ? unusableSourceFields(raw.content as Record<string, unknown>) : [];
       if (bad.length) errs.push(`Source text not usable as plain text: ${bad.join(", ")}`);
+      // Age-context gate (Faz 2): deterministic, before the paid model gates.
+      const adult = raw && typeof raw.content === "object" ? ageContextViolations(raw.content as Record<string, unknown>, cell.ageSuitability) : [];
+      if (adult.length) errs.push(`AGE_CONTEXT: adult setting for ${cell.ageSuitability} (${adult.join(", ")})`);
       if (errs.length) skippedReasons.push(`Item skipped — ${errs.join("; ")}`);
       else valid.push(raw);
     }
@@ -546,6 +526,13 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
       ...integrity.issues.map((i) => i.code),
       ...(textDep?.issues.map((i) => i.code) ?? []),
     ];
+    if (spec.strictTextDependency && ["READING", "LISTENING"].includes(cell.skill)) {
+      const blocking = (textDep?.issues ?? []).map((i) => i.code).filter((code) => /SOLVABLE-BLIND|KEY-UNCONFIRMED/.test(code));
+      if (blocking.length || !textDep) {
+        skippedReasons.push(`Item skipped — text dependency (strict): ${blocking.join(", ") || "gate unavailable"}`);
+        continue;
+      }
+    }
 
     // ── Semantic duplicate screening (§195) ───────────────────────────────────
     let embeddingVec: number[] | null = null;
