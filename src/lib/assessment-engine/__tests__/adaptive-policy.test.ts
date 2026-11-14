@@ -154,3 +154,44 @@ describe("crossSkillPrior (collateral information)", () => {
     expect(sectionAbility(state, SkillType.GRAMMAR, 0, 1, { profile: on })).toEqual({ theta: 1.2, sem: 0.4 });
   });
 });
+
+describe("isGeneralCoreItem", () => {
+  it("is true only when no product source appears in tags or content.productLine", async () => {
+    const { isGeneralCoreItem } = await import("../adaptive-policy");
+    expect(isGeneralCoreItem({ tags: ["general", "grammar"], content: {} })).toBe(true);
+    expect(isGeneralCoreItem({ tags: [], content: { productLine: "DIAGNOSTIC" } })).toBe(true);
+    expect(isGeneralCoreItem({ tags: ["academic"], content: {} })).toBe(false);
+    expect(isGeneralCoreItem({ tags: ["general"], content: { productLine: "JUNIOR_SUITE" } })).toBe(false);
+  });
+});
+
+describe("generalCoreAccess", () => {
+  const item = (tags: string[], extra: Record<string, unknown> = {}) => ({
+    skill: "GRAMMAR", status: "ACTIVE", isPretest: false, cefrLevel: "B2", discrimination: 1.2, guessing: 0.25, tags, content: {}, ...extra,
+  });
+  it("is off by default: a source profile ignores general-tagged items", () => {
+    expect(isAdaptiveEligible(item(["general"]), getProfile("Academia"), SkillType.GRAMMAR)).toBe(false);
+  });
+  it("is on for Language Schools and Corporate only (Faz 1 simulation)", () => {
+    const on = Object.values(PRODUCT_LINE_PROFILES).filter((p) => p.generalCoreAccess).map((p) => p.name).sort();
+    expect(on).toEqual(["Corporate", "Language Schools"]);
+  });
+  it("lets a profile take general-core items but never another product's items", () => {
+    const profile = { ...getProfile("Language Schools"), generalCoreAccess: true };
+    expect(isAdaptiveEligible(item(["general"]), profile, SkillType.GRAMMAR)).toBe(true);
+    expect(isAdaptiveEligible(item(["academia"]), profile, SkillType.GRAMMAR)).toBe(false);
+    expect(isAdaptiveEligible(item(["general"], { content: { productLine: "CORPORATE" } }), profile, SkillType.GRAMMAR)).toBe(false);
+  });
+  it("keeps ADULT-marked core items away from profiles with candidates under 16", () => {
+    const junior = { ...getProfile("Junior Suite (11-14)"), generalCoreAccess: true };
+    expect(isAdaptiveEligible(item(["general"], { ageSuitability: "ADULT" }), junior, SkillType.GRAMMAR)).toBe(false);
+    expect(isAdaptiveEligible(item(["general"], { ageSuitability: "UNIVERSAL" }), junior, SkillType.GRAMMAR)).toBe(true);
+    const corporate = { ...getProfile("Corporate"), generalCoreAccess: true };
+    expect(isAdaptiveEligible(item(["general"], { ageSuitability: "ADULT" }), corporate, SkillType.GRAMMAR)).toBe(true);
+  });
+  it("adds the core branch to the Prisma filter only when enabled", () => {
+    const off = adaptiveItemWhere({ ...getProfile("Corporate"), generalCoreAccess: false }, SkillType.GRAMMAR);
+    const on = adaptiveItemWhere({ ...getProfile("Corporate"), generalCoreAccess: true }, SkillType.GRAMMAR);
+    expect((on.OR as unknown[]).length).toBe((off.OR as unknown[]).length + 1);
+  });
+});

@@ -166,6 +166,13 @@ export interface ProductLineProfile {
    * evidence supports it (roadmap Faz 4).
    */
   crossSkillPrior?: { correlation: number };
+  /**
+   * Also draw on the shared general core — items with no product source tag or
+   * productLine (adaptive-policy.isGeneralCoreItem) — besides `examSources`.
+   * Profiles with candidates under 16 skip core items marked ADULT. Off unless
+   * simulation evidence supports it (bank expansion Faz 1).
+   */
+  generalCoreAccess?: boolean;
 }
 
 // ─── Profile Definitions ──────────────────────────────────────────────────────
@@ -678,6 +685,11 @@ const CORPORATE: ProductLineProfile = {
   globalSemThreshold: 0.34,
   maxExposureRate: 0.28,
   examSources: ["corporate", "general"],
+  // Faz 1 (2026-11-14, DB snapshot, n=400 × 2 seeds): shared general-core items cut the share of
+  // items over the exposure ceiling 0.54 → 0.17 with no loss of precision (RMSE +0.006 / −0.013). Academia and
+  // Specialized stay off: listening SEM and CEFR accuracy worsened there. See
+  // docs/quality/phase1-gap-triage-2026-11.md.
+  generalCoreAccess: true,
   reportTemplate: "corporate",
   warmupItems: 2,
   warmupDifficultyOffset: 0.4,
@@ -743,6 +755,11 @@ const LANGUAGE_SCHOOLS: ProductLineProfile = {
   globalSemThreshold: 0.37,
   maxExposureRate: 0.28,
   examSources: ["language-schools", "general"],
+  // Faz 1 (2026-11-14, DB snapshot, n=400 × 2 seeds): shared general-core items cut the share of
+  // items over the exposure ceiling 0.36 → 0.12 with no loss of precision (RMSE −0.010 / −0.024). Academia and
+  // Specialized stay off: listening SEM and CEFR accuracy worsened there. See
+  // docs/quality/phase1-gap-triage-2026-11.md.
+  generalCoreAccess: true,
   reportTemplate: "cefr_band",
   warmupItems: 2,
   warmupDifficultyOffset: 0.4,

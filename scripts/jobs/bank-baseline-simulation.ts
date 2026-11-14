@@ -41,6 +41,8 @@ const output = arg("output", "scripts/jobs/.out/bank-baseline/simulation.json");
 const profileArg = arg("profile", "");
 const synthetic = Number(arg("synthetic", "0"));
 const productive = Number(arg("productive", "12"));
+/** --general-core: every profile except Primary (7-10) runs with generalCoreAccess (bank expansion Faz 1). */
+const generalCore = process.argv.includes("--general-core");
 
 const r3 = (v: number) => Number(v.toFixed(3));
 
@@ -73,9 +75,10 @@ async function main(): Promise<void> {
   const bank = synthetic > 0
     ? buildSyntheticBank({ seed, receptivePerCell: synthetic, productivePerCell: productive })
     : loadBankSnapshot(bankPath);
-  const profiles = profileArg ? [getProfile(profileArg)] : Object.values(PRODUCT_LINE_PROFILES);
+  const profiles = (profileArg ? [getProfile(profileArg)] : Object.values(PRODUCT_LINE_PROFILES))
+    .map((p) => (generalCore && p.name !== "Primary (7-10)" ? { ...p, generalCoreAccess: true } : p));
   const bankLabel = synthetic > 0 ? `synthetic ${synthetic}/${productive} per cell` : bankPath;
-  console.log(`bank ${bankLabel} (${bank.items.length} items)  n=${n}/profile  seed=${seed}  θ ~ uniform over profile range`);
+  console.log(`bank ${bankLabel} (${bank.items.length} items)  n=${n}/profile  seed=${seed}  θ ~ uniform over profile range${generalCore ? "  general core ON" : ""}`);
   const results = [];
   for (const profile of profiles) {
     const { low, high } = profileThetaRange(profile);

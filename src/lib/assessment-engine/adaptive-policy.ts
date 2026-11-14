@@ -49,6 +49,19 @@ const SOURCE_ALIASES: Record<string, string[]> = {
   specialized: ['specialized', 'SPECIALIZED', 'Specialized / Integrated Skills'],
 };
 
+const PRODUCT_SOURCE_TAGS = new Set(Object.values(SOURCE_ALIASES).flat());
+
+/**
+ * True when the item carries no product-specific source (tag or content.productLine):
+ * the shared "general core". A profile with `generalCoreAccess` draws on it in
+ * addition to its own sources (see `sourceAllows` / `sourceWhere`).
+ */
+export function isGeneralCoreItem(item: Pick<AdaptiveEligibilityItem, 'tags' | 'content'>): boolean {
+  if ((item.tags ?? []).some(tag => PRODUCT_SOURCE_TAGS.has(tag))) return false;
+  const productLine = (item.content as { productLine?: unknown } | null | undefined)?.productLine;
+  return !(typeof productLine === 'string' && PRODUCT_SOURCE_TAGS.has(productLine));
+}
+
 /** Minimal item view shared by the Prisma filter and its in-memory mirror. */
 export interface AdaptiveEligibilityItem {
   skill: string;
@@ -59,6 +72,8 @@ export interface AdaptiveEligibilityItem {
   guessing: number;
   tags?: string[] | null;
   content?: unknown;
+  /** Only consulted for general-core access by profiles with candidates under 16. */
+  ageSuitability?: string | null;
 }
 
 function profileSources(profile: ProductLineProfile): string[] {
@@ -111,6 +126,45 @@ function excludedSourcesWhere(profile: ProductLineProfile): { NOT?: Prisma.ItemW
   };
 }
 
+/** Profiles with candidates younger than this never take ADULT-marked general-core items. */
+const ADULT_CORE_MIN_AGE = 16;
+
+function coreAllows(item: AdaptiveEligibilityItem, profile: ProductLineProfile): boolean {
+  if (!profile.generalCoreAccess || !isGeneralCoreItem(item)) return false;
+  return !(profile.ageRange[0] < ADULT_CORE_MIN_AGE && item.ageSuitability === 'ADULT');
+}
+
+/** Source rule shared by the adaptive and pretest pools (in-memory side). */
+function sourceAllows(item: AdaptiveEligibilityItem, profile: ProductLineProfile): boolean {
+  const sources = profileSources(profile);
+  if (sources.length === 0) return true;
+  const tags = item.tags ?? [];
+  if (tags.length === 0 || tags.some(tag => sources.includes(tag))) return true;
+  const productLine = (item.content as { productLine?: unknown } | null | undefined)?.productLine;
+  if (typeof productLine === 'string' && sources.includes(productLine)) return true;
+  return coreAllows(item, profile);
+}
+
+/** Prisma side of `sourceAllows`; null when the profile has no source filter. */
+function sourceWhere(profile: ProductLineProfile): Prisma.ItemWhereInput | null {
+  const sources = profileSources(profile);
+  if (sources.length === 0) return null;
+  const own: Prisma.ItemWhereInput[] = [{ tags: { hasSome: sources } }, { tags: { isEmpty: true } },
+    ...sources.map(source => ({ content: { path: ['productLine'], equals: source } }))];
+  if (!profile.generalCoreAccess) return { OR: own };
+  const productTags = [...PRODUCT_SOURCE_TAGS];
+  const core: Prisma.ItemWhereInput = { AND: [
+    { NOT: { tags: { hasSome: productTags } } },
+    // Same SQL-NULL care as excludedSourcesWhere: no productLine must pass explicitly.
+    { OR: [
+      { content: { path: ['productLine'], equals: Prisma.AnyNull } },
+      { NOT: productTags.map(tag => ({ content: { path: ['productLine'], equals: tag } })) },
+    ] },
+    ...(profile.ageRange[0] < ADULT_CORE_MIN_AGE ? [{ ageSuitability: { not: 'ADULT' as const } }] : []),
+  ] };
+  return { OR: [...own, core] };
+}
+
 /**
  * In-memory mirror of `adaptiveItemWhere` for simulations and audits.
  * Keep the two in lockstep: any new filter in one must appear in the other.
@@ -122,12 +176,7 @@ export function isAdaptiveEligible(item: AdaptiveEligibilityItem, profile: Produ
   if (level < lo || level > hi) return false;
   if (!(item.discrimination > 0) || !(item.guessing >= 0 && item.guessing < 1)) return false;
   if (isExcludedForProfile(item, profile)) return false;
-  const sources = profileSources(profile);
-  if (sources.length === 0) return true;
-  const tags = item.tags ?? [];
-  if (tags.length === 0 || tags.some(tag => sources.includes(tag))) return true;
-  const productLine = (item.content as { productLine?: unknown } | null | undefined)?.productLine;
-  return typeof productLine === 'string' && sources.includes(productLine);
+  return sourceAllows(item, profile);
 }
 
 /**
@@ -138,13 +187,9 @@ export function isAdaptiveEligible(item: AdaptiveEligibilityItem, profile: Produ
 export function pretestItemWhere(profile: ProductLineProfile, skill: SkillType): Prisma.ItemWhereInput {
   const [lo, hi] = profile.cefrRange.map(level => LEVELS.indexOf(level as CefrLevel));
   if (lo < 0 || hi < lo) throw new Error('Invalid adaptive profile CEFR range');
-  const sources = profileSources(profile);
+  const source = sourceWhere(profile);
   const excluded = excludedSourcesWhere(profile);
-  const and: Prisma.ItemWhereInput[] = [
-    ...(excluded.AND ?? []),
-    ...(sources.length ? [{ OR: [{ tags: { hasSome: sources } }, { tags: { isEmpty: true } },
-      ...sources.map(source => ({ content: { path: ['productLine'], equals: source } }))] }] : []),
-  ];
+  const and: Prisma.ItemWhereInput[] = [...(excluded.AND ?? []), ...(source ? [source] : [])];
   return {
     skill,
     OR: [{ status: 'PRETEST' }, { status: 'ACTIVE', isPretest: true }],
@@ -164,26 +209,20 @@ export function isPretestEligible(item: AdaptiveEligibilityItem, profile: Produc
   if (level < lo || level > hi) return false;
   if (!(item.discrimination > 0) || !(item.guessing >= 0 && item.guessing < 1)) return false;
   if (isExcludedForProfile(item, profile)) return false;
-  const sources = profileSources(profile);
-  if (sources.length === 0) return true;
-  const tags = item.tags ?? [];
-  if (tags.length === 0 || tags.some(tag => sources.includes(tag))) return true;
-  const productLine = (item.content as { productLine?: unknown } | null | undefined)?.productLine;
-  return typeof productLine === 'string' && sources.includes(productLine);
+  return sourceAllows(item, profile);
 }
 
 /** Launch and delivery must count/select the same operational population. */
 export function adaptiveItemWhere(profile: ProductLineProfile, skill: SkillType): Prisma.ItemWhereInput {
   const [lo, hi] = profile.cefrRange.map(level => LEVELS.indexOf(level as CefrLevel));
   if (lo < 0 || hi < lo) throw new Error('Invalid adaptive profile CEFR range');
-  const sources = profileSources(profile);
+  const source = sourceWhere(profile);
   return {
     skill, status: 'ACTIVE', isPretest: false,
     cefrLevel: { in: LEVELS.slice(lo, hi + 1) },
     discrimination: { gt: 0 }, guessing: { gte: 0, lt: 1 },
     ...excludedSourcesWhere(profile),
-    ...(sources.length ? { OR: [{ tags: { hasSome: sources } }, { tags: { isEmpty: true } },
-      ...sources.map(source => ({ content: { path: ['productLine'], equals: source } }))] } : {}),
+    ...(source?.OR ? { OR: source.OR } : {}),
   };
 }
 
