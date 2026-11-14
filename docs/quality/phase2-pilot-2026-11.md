@@ -202,3 +202,18 @@ Sonuçlar:
 1. Kuyruk kapsamı iyimser. Okuma PRETEST havuzu kapsama sayılıyor, ama soruların çoğu metin anlamayı ölçmüyor.
 2. Bu sorular puanlanmıyor ama adaylara gösteriliyor ve kalibre ediliyor. Metinsiz çözülebilen bir soru büyük olasılıkla kolay ve düşük ayırt edicilikle kalibre olur. Yayın kapısı (IQS ≥ 65, SE(b) ≤ 0.25) bunların bir kısmını yakalayabilir, ama bu varsayılmamalı.
 3. Veritabanında hiçbir şey değiştirilmedi. Metinsiz çözülebilen PRETEST sorularının ne olacağına (ör. REVIEW'a çekmek, yani hizmetten almak) karar verilmesi gerekiyor.
+
+### Denetimin devamı (`--resume`, 2026-11-14)
+
+Kredi kısa süre için geldi ve denetim 114 soru daha işledi, sonra yeniden bitti (402).
+
+| Seviye | Değerlendirilen | Metinsiz çözülen |
+|---|---|---|
+| PRE_A1 | 11 | 8 (%73) |
+| A1 | 48 | 31 (%65) |
+| A2 | 72 | 62 (%86) |
+| B1 | 106 | 91 (%86) |
+| B2 | 105 | 96 (%91) |
+| **Toplam** | **342** | **288 (%84)** |
+
+Değerlendirilemeyen 140 soru: B2'de 15, C1'de 49, C2'de 76. `--resume` bunları sonraki krediyle çalıştırır.
