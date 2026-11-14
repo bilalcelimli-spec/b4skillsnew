@@ -234,7 +234,8 @@ JSON ARRAY OUTPUT — exactly ${batchSize} items, each object:
       {"id": "C", "text": "...", "isCorrect": false, "rationale": "...", "distractorRationale": "..."},
       {"id": "D", "text": "...", "isCorrect": false, "rationale": "...", "distractorRationale": "..."}
     ],
-    "correctAnswer": "B"
+    "correctAnswer": "B"${!legacy && itemType === "MULTIPLE_CHOICE" && ["READING", "LISTENING"].includes(cell.skill) ? `,
+    "commonSenseOption": "C" // id of the distractor a reader without the ${cell.skill === "LISTENING" ? "recording" : "text"} would pick` : ""}
   },
   "estimatedDifficulty": ${CEFR_THETA_SEED[cell.cefr] ?? 0},
   "cefrJustification":  "...", // Why this item targets ${cell.cefr} specifically
@@ -377,6 +378,11 @@ function validateRawItem(item: RawGeneratedItem, cell: BlueprintCell): string[] 
     if (!(c.question || c.stem || c.prompt)) errs.push("Missing question/stem/prompt");
     if (cell.skill === "READING" && !(c.passage || c.text || c.readingText)) errs.push("READING item missing passage");
     if (cell.skill === "LISTENING" && !(c.ttsScript || c.transcript || c.audioUrl)) errs.push("LISTENING item missing ttsScript/transcript");
+    // Text-bound key rule: the option a reader without the source would pick must not be the key.
+    const commonSense = (c as any).commonSenseOption;
+    const key = opts.find((o: any) => o.isCorrect === true);
+    if (commonSense != null && key && String(commonSense).trim().toUpperCase() === String(key.id ?? "").trim().toUpperCase())
+      errs.push("COMMON_SENSE_KEY: the model's own common-sense option is the key");
   }
 
   if (["WRITING", "SPEAKING"].includes(cell.skill)) {
@@ -506,6 +512,10 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
       }));
     }
 
+    // The common-sense option is authoring evidence, not candidate content.
+    const commonSenseOption = typeof content.commonSenseOption === "string" ? content.commonSenseOption : null;
+    delete content.commonSenseOption;
+
     // ── Content gates (integrity heuristics + blind-solve) ────────────────────
     let hardening: Pick<HardenResult, "status" | "rounds"> | null = null;
     if (itemType === "MULTIPLE_CHOICE" && ["READING", "LISTENING"].includes(cell.skill)) {
@@ -528,8 +538,10 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
     ];
     if (spec.strictTextDependency && ["READING", "LISTENING"].includes(cell.skill)) {
       const blocking = (textDep?.issues ?? []).map((i) => i.code).filter((code) => /SOLVABLE-BLIND|KEY-UNCONFIRMED/.test(code));
-      if (blocking.length || !textDep) {
-        skippedReasons.push(`Item skipped — text dependency (strict): ${blocking.join(", ") || "gate unavailable"}`);
+      // A gate that errored or skipped (judge down, credits exhausted) is not a pass.
+      const unchecked = !textDep || textDep.verdict === "ERROR" || textDep.verdict === "SKIPPED";
+      if (blocking.length || unchecked) {
+        skippedReasons.push(`Item skipped — text dependency (strict): ${blocking.join(", ") || `gate unavailable (${textDep?.verdict ?? "no result"})`}`);
         continue;
       }
     }
@@ -599,7 +611,9 @@ export async function runBatchGeneration(spec: BatchSpec): Promise<BatchResult> 
             notes: spec.notes,
             generatedAt: new Date().toISOString(),
             ...(raw.cognitiveDemand ? { cognitiveDemand: raw.cognitiveDemand } : {}),
-            generationGates: { flags: gateFlags, textDependency: textDep?.metrics ?? null, hardening, promptVersion: "v2" },
+            generationGates: { flags: gateFlags, textDependency: textDep?.metrics ?? null, hardening,
+              promptVersion: itemType === "MULTIPLE_CHOICE" && ["READING", "LISTENING"].includes(cell.skill) ? "v3-text-bound" : "v2",
+              ...(commonSenseOption ? { commonSenseOption } : {}) },
             ...(nearMatchNote ? { nearMatchWarning: nearMatchNote } : {}),
           } as any,
         },

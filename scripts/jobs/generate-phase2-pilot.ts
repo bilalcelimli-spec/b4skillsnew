@@ -15,6 +15,7 @@
  * separate step (generate-draft-listening-audio.ts).
  *
  *   npx tsx scripts/jobs/generate-phase2-pilot.ts
+ *   npx tsx scripts/jobs/generate-phase2-pilot.ts --mcq-only --tag v3   # MCQ cells only, after a prompt change
  *   → scripts/jobs/.out/phase2/pilot-ids.json, pilot-results.json
  */
 
@@ -25,6 +26,10 @@ import type { BlueprintCell } from "../../src/lib/content-factory/blueprint.js";
 import { prisma } from "../../src/lib/prisma.js";
 
 const OUT = "scripts/jobs/.out/phase2";
+/** --mcq-only --tag v3: re-run only the MCQ cells (prompt revision) into pilot-<tag>-*.json. */
+const MCQ_ONLY = process.argv.includes("--mcq-only");
+const t = process.argv.indexOf("--tag");
+const TAG = t >= 0 ? `-${process.argv[t + 1]}` : "";
 const GENERAL: Partial<BlueprintCell> = { ageSuitability: "UNIVERSAL", culturalLoad: "LOW", englishVariant: "INTERNATIONAL" };
 const TEEN: Partial<BlueprintCell> = { productLine: "junior", ageSuitability: "TEEN", ageRange: [11, 14], culturalLoad: "LOW", englishVariant: "INTERNATIONAL" };
 const c = (group: string, base: Partial<BlueprintCell>, cell: Partial<BlueprintCell>, count: number) =>
@@ -53,12 +58,14 @@ const label = (x: BlueprintCell) => `${x.cefr}/${x.skill}/${x.subskill}/${x.genr
 /** Skip reasons grouped by gate so the report can show where drafts are lost. */
 function gateOf(reason: string): string {
   if (/AGE_CONTEXT/.test(reason)) return "age-context";
+  if (/gate unavailable/.test(reason)) return "gate-unavailable";
   if (/text dependency \(strict\)/.test(reason)) return /KEY-UNCONFIRMED/.test(reason) ? "key-unconfirmed" : "solvable-blind";
   if (/content-integrity/.test(reason)) return "content-integrity";
   if (/Duplicate blocked/.test(reason)) return "duplicate";
   if (/cognitiveDemand/.test(reason)) return "cognitive-demand";
   if (/Position-revealing/.test(reason)) return "positional-headings";
   if (/JSON parse|AI call failed/.test(reason)) return "model-output";
+  if (/COMMON_SENSE_KEY/.test(reason)) return "common-sense-key";
   if (/Embedding failed/.test(reason)) return "embedding (stored anyway)";
   return "structure";
 }
@@ -66,7 +73,7 @@ function gateOf(reason: string): string {
 async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true });
   const results = [];
-  for (const { group, cell, count } of CELLS) {
+  for (const { group, cell, count } of CELLS.filter((x) => !MCQ_ONLY || x.cell.itemType !== "DRAG_DROP")) {
     const r = await runBatchGeneration({ cell, count, triggeredBy: "claude-code:phase2-pilot", notes: "Faz 2 pilot (2026-11-14)", strictTextDependency: true });
     const gates: Record<string, number> = {};
     for (const reason of r.skippedReasons) gates[gateOf(reason)] = (gates[gateOf(reason)] ?? 0) + 1;
@@ -75,8 +82,8 @@ async function main(): Promise<void> {
   }
   const ids = results.flatMap((r) => r.storedIds);
   const items = await prisma.item.findMany({ where: { id: { in: ids } }, select: { id: true, itemCode: true, skill: true, cefrLevel: true, status: true } });
-  writeFileSync(`${OUT}/pilot-ids.json`, JSON.stringify(items, null, 1));
-  writeFileSync(`${OUT}/pilot-results.json`, JSON.stringify({ generatedAt: new Date().toISOString(), results }, null, 1));
+  writeFileSync(`${OUT}/pilot${TAG}-ids.json`, JSON.stringify(items, null, 1));
+  writeFileSync(`${OUT}/pilot${TAG}-results.json`, JSON.stringify({ generatedAt: new Date().toISOString(), results }, null, 1));
   const requested = results.reduce((s, r) => s + r.requested, 0);
   console.log(`STORED ${items.length}/${requested} (status: ${[...new Set(items.map((x) => x.status))].join(",") || "-"})`);
 }

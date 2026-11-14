@@ -51,3 +51,47 @@ Bulgular:
 1. Çoktan seçmeli üretim istemini metne bağlı ayrıntı ve metinden kurulmuş çeldiricilerle yeniden yaz; aynı pilotla ölç.
 2. Ölçeklemeyi eşleştirme ağırlıklı yap: hücre başına çoktan seçmeli/eşleştirme oranı hedefi belirle.
 3. Kabul edilen dinleme taslakları için ses üret.
+
+## Çoktan seçmeli istemi v3: metne bağlı anahtar (2026-11-14)
+
+Değişiklik (`generation-guidelines.ts` → `textBoundKeyRules`, yalnızca okuma/dinleme çoktan seçmeli):
+- **Önce soru ve seçenekler:** Model önce soruyu ve dört seçeneği planlıyor, metni bunların arasında karar verecek şekilde yazıyor. Dört seçenek de gerçek hayatta eşit derecede inandırıcı olmalı.
+- **Anahtar yalnızca metinde var:** Doğru cevap beklenen cevap olamaz, en olumlu ya da en makul görünen seçenek de olamaz.
+- **Sağduyu çeldiricisi:** Çeldiricilerden biri, metni görmeyen okuyucunun seçeceği cevap olmak zorunda. Metin bu seçeneği açıkça dışarıda bırakmalı. Model bu seçeneğin id'sini `commonSenseOption` olarak bildiriyor. Bildirilen seçenek anahtarsa taslak reddediliyor (`COMMON_SENSE_KEY`). Bu alan aday içeriğinden çıkarılıp `metadata.generationGates.commonSenseOption` alanına taşınıyor.
+- **Seviyeye göre:** B2+ seviyesinde konuşmacıya belirgin olmayan, koşullu bir tutum veriliyor; yaygın görüş çeldirici oluyor. A1–A2'de metinsiz çözmeyi zorlaştıran şey keyfi somut ayrıntılar (hangi gün, hangi oda).
+- **İşaretleme:** `promptVersion: "v3-text-bound"`.
+
+Aynı 8 çoktan seçmeli hücrede 33 taslak yeniden istendi (`--mcq-only --tag v3`). Yalnızca metin bağımlılığı kontrolünün gerçekten çalıştığı hücreler karşılaştırılıyor:
+
+| Hücre | v2: metinsiz çözülen | v3: metinsiz çözülen |
+|---|---|---|
+| A1 dinleme (2 hücre) | 1/7 | 2/8 |
+| A1–A2 okuma (2 hücre) | 6/8 | 3/8 |
+| C1 dinleme, tutum | 4/4 | 3/4 |
+| **Toplam** | **11/19 (%58)** | **8/20 (%40)** |
+
+Okuma:
+- Okumada belirgin bir iyileşme var. Dinlemede fark yok; C1 tutum soruları hâlâ metinsiz çözülüyor.
+- Toplamda düşüş 18 puan, ancak n = 20 ile bu farkın bir kısmı rastlantı olabilir.
+- Alt sınır sıfır değil: dört seçenekte kör çözücü, metne tamamen bağlı bir soruda bile %25 olasılıkla doğruyu bulur. Yani %40, ulaşılabilir alt sınıra (~%25) yaklaşmış durumda. Sıkı mod bu yüzden iyi soruların da yaklaşık dörtte birini atar; ölçekli üretimde bu kayıp hesaba katılmalı. Alternatif: kör çözümü iki farklı karıştırmayla iki kez yapmak ve ikisinde de doğruysa reddetmek.
+- Modelin kendi "sağduyu" seçeneğini anahtar yaptığı taslak hiç çıkmadı (0/33). Kontrol ucuz, ama tek başına ayırt edici değil.
+- Yaş kapısı bir TEEN taslağını "university" nedeniyle reddetti.
+
+### Kredi tükenmesi ve kontrol edilmeden kaydedilen taslaklar
+
+Pilotun ortasında Gemini ön ödemeli kredisi bitti (HTTP 402). Sonuçları:
+- C1 çıkarım hücresi ve Junior hücreleri değerlendirilemedi.
+- Daha önemlisi: metin bağımlılığı kontrolü hata verdiğinde sıkı mod bunu geçmiş sayıyordu (yalnızca `null` sonucu engelleniyordu). Bu yüzden 7 taslak kontrol edilmeden kaydedildi:
+  - v3: LIS-C1-0092…0095, LIS-B2-0104, LIS-B2-0105
+  - İlk pilot: LIS-A1-0128 (model zaman aşımı)
+- Düzeltme: Sıkı modda ERROR ya da SKIPPED sonucu artık engelliyor. 7 taslağa `TEXTDEP-UNCHECKED` bayrağı ve açıklama eklendi; incelemeden önce kontrol yeniden çalıştırılmalı.
+- Aynı nedenle 6 taslak yinelenme (embedding) kontrolü olmadan kaydedildi. Bu durum zaten "Embedding failed" olarak kaydediliyor.
+
+v3 taslakları (18) inceleme paketine eklendi; paket şu an 571 madde.
+
+### Sonraki adım
+
+Gemini kredisi yenilendikten sonra:
+1. 7 kontrolsüz taslakta metin bağımlılığı kontrolünü yeniden çalıştır.
+2. v3'ü daha büyük bir örneklemle ölç (hücre başına ≥ 10).
+3. C1 dinleme tutum ve çıkarım için çoktan seçmeli yerine eşleştirmeyi öne al; o hücrede v3 yetmedi.
