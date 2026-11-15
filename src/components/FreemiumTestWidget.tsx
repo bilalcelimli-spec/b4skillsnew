@@ -1,3 +1,5 @@
+import { useContext } from 'react';
+import { MeasurementPrivacyContext } from './MarketingConsent';
 /**
  * FreemiumTestWidget — Full-screen adaptive English placement test
  *
@@ -267,6 +269,8 @@ const AudioPlayer: React.FC<{ src: string }> = ({ src }) => {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose, onSignup }) => {
+  const setPrivateAssessment = useContext(MeasurementPrivacyContext);
+  useEffect(() => { setPrivateAssessment(true); return () => setPrivateAssessment(false); }, [setPrivateAssessment]);
   const [step, setStep] = useState<Step>("register");
 
   // Registration

@@ -46,13 +46,17 @@ export function buildHelmetMiddleware(): RequestHandler {
   const cspDirectives: Record<string, string[] | null> = {
     defaultSrc: ["'self'"],
     scriptSrc: isProd
-      ? ["'self'"]
-      : ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      ? ["'self'", "https://www.googletagmanager.com"]
+      : ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://www.googletagmanager.com"],
     styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
     fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
     imgSrc: ["'self'", "data:", "blob:", "https:"],
     mediaSrc: ["'self'", "data:", "blob:", "https:"],
     connectSrc: [
+      "https://www.googletagmanager.com",
+      "https://www.google-analytics.com",
+      "https://region1.google-analytics.com",
+      "https://analytics.google.com",
       "'self'",
       ...(isProd ? [] : ["ws:", "wss:", "http://localhost:*"]),
       "https://*.sentry.io",
