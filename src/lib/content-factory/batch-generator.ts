@@ -150,6 +150,7 @@ export function buildSystemPrompt(
   const diversityNote = `
 DIVERSITY CONTROLS (§133):
 - Use these names from this batch only: ${names.join(", ")}
+- Any name used in the question or options must appear in the text or recording. In a monologue or talk the speaker says their name at the start ("Hi, I'm Hiro…"), or the question calls them "the speaker".
 - Settings may include: ${settings.join(", ")} (one setting per item; do not reuse a setting within the batch)
 - Vary syntactic patterns across items — no two items should open with the same clause type
 - Vary topic facets across items — batch ${batchIndex + 1}

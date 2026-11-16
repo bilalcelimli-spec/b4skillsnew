@@ -169,3 +169,9 @@ Kapasite, kuyruk dahil (`verify:capacity --with-queue`):
 Primary'de dinleme, kelime (Pre-A1/A1), yazma ve konuşma kuyrukla minimumu geçti. Kalan Primary açıkları: okuma Pre-A1 (18/20), kelime A2 (28/40), dilbilgisi A2. Junior hemen her hücrede minimumun altında; resimli görevler Junior'un dilbilgisi/kelime/okuma açığını kapatmaz.
 
 Sonraki parti (B): Junior için metin tabanlı üretim (çoktan seçmeli boşluk doldurma, diyalog tamamlama, tabela/mesaj, eşleştirme; `runBatchGeneration`, sıkı kapılar), Primary okuma Pre-A1 ve kelime/dilbilgisi A2. Taslaklar inceleme kapasitesine göre partilere bölünmeli: inceleme paketi şimdi yaklaşık 840 soru.
+
+## 11. Dalga 1, parti B — metin görevleri (2026-11-16)
+
+`generate-young-learner-text.ts --tag wave1b` (+ iki hücre yeniden): 149 + 14 istendi, **126 kaydedildi** (116 + 10), 6 dinleme seslendirildi. Kayıplar: metinsiz çözülen 14, eşleştirmede metinsiz/anahtar 4, yinelenen 4, bir bozuk JSON yanıtı (hücre yeniden çalıştırıldı), Junior B1 kısa konuşmada konuşmacının adı metinde yoktu (6/6). Bu sonuncusu için üreticiye kural eklendi: tek kişilik konuşmada konuşmacı adını söyler ya da soru "the speaker" der; yeniden çalıştırmada 1/6'ya indi.
+
+Kuyruk dahil kapasite: Primary'de yalnızca dilbilgisi A2 (39/40) minimumun altında kaldı. Junior'da dilbilgisi/kelime arttı ama minimum 50'nin altında (31-40); çoktan seçmeli dışı oran %0'dan %20-47'ye çıktı. Junior okuma, dinleme A1-B1, yazma ve konuşma hâlâ açık: sonraki parti (C) bunlara ayrılmalı.
