@@ -16,6 +16,28 @@ const ANSWER_KEY_FIELDS = new Set([
   "rubric",
   "scoringguide",
   "solution",
+  // Authoring evidence that points at the key (audit 2026-11-16: 1,943 of 2,495
+  // live items sent per-option rationales such as "This word does not exist").
+  "rationale",
+  "keyrationale",
+  "distractorrationale",
+  "distractortype",
+  "distractorlogic",
+  "commonsenseoption",
+  "explanation",
+  "sampleanswer",
+  "qualitynotes",
+  "reviewfeedback",
+  // Listening source text: the candidate hears it, never reads it (ItemRenderer drops it too).
+  "ttsscript",
+  "transcript",
+  "audioscript",
+  "ttsnotes",
+  // Review / editorial history can quote previous options and their rationales.
+  "editorialrevision",
+  "editorialcorrections",
+  "cefrqualityreview",
+  "contentaudit",
 ]);
 
 /** Remove answer and scoring secrets recursively from JSON sent to candidates. */
