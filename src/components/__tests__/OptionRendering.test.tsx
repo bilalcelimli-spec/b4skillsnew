@@ -70,3 +70,17 @@ it('renders structured options fetched by the mobile player', async () => {
   fireEvent.click(second);
   expect(second.getAttribute('aria-pressed')).toBe('true');
 });
+
+it('renders picture options as a radio grid named by their alt text', () => {
+  const onSelect = vi.fn();
+  render(<MultipleChoiceOptions selected={null} onSelect={onSelect} options={[
+    { text: '', imageUrl: 'https://example.test/cat.png', imageAlt: 'a cat on a chair' },
+    { text: '', imageUrl: 'https://example.test/dog.png', imageAlt: 'a dog under a chair' },
+    { text: '', imageUrl: 'https://example.test/bird.png', imageAlt: 'a bird on a table' },
+  ]} />);
+  const radios = screen.getAllByRole('radio');
+  expect(radios).toHaveLength(3);
+  expect(document.querySelectorAll('img')).toHaveLength(3);
+  fireEvent.click(screen.getByRole('radio', { name: 'Option B: a dog under a chair' }));
+  expect(onSelect).toHaveBeenCalledWith(1);
+});

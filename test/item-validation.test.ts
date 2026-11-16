@@ -327,3 +327,17 @@ describe("Item Validation Schema", () => {
     });
   });
 });
+
+describe("young-learner picture tasks", () => {
+  const opts3 = [{ id: "A", text: "apple", isCorrect: true }, { id: "B", text: "banana", isCorrect: false }, { id: "C", text: "pear", isCorrect: false }];
+  it("accept three options and a picture instead of a passage", async () => {
+    const { validateItemStructure } = await import("../src/lib/validation/item-schema");
+    expect(validateItemStructure("VOCABULARY", { productLine: "primary", imageUrl: "https://x/apple.jpg", prompt: "Look at the picture. What is it?", options: opts3 })).toEqual([]);
+    expect(validateItemStructure("READING", { productLine: "primary", imageUrl: "https://x/scene.jpg", prompt: "Look at the picture. Which sentence is true?", options: opts3 })).toEqual([]);
+  });
+  it("still need four options without a picture or outside young learners", async () => {
+    const { validateItemStructure } = await import("../src/lib/validation/item-schema");
+    expect(validateItemStructure("VOCABULARY", { productLine: "primary", prompt: "Which word is a fruit?", options: opts3 }).join()).toMatch(/need 4\+/);
+    expect(validateItemStructure("VOCABULARY", { imageUrl: "https://x/apple.jpg", prompt: "What is it?", options: opts3 }).join()).toMatch(/need 4\+/);
+  });
+});

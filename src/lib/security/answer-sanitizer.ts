@@ -24,6 +24,7 @@ const ANSWER_KEY_FIELDS = new Set([
   "distractortype",
   "distractorlogic",
   "commonsenseoption",
+  "targetword",
   "explanation",
   "sampleanswer",
   "qualitynotes",

@@ -90,7 +90,7 @@ const SKILL_ICON: Record<string, React.ReactNode> = {
 
 export function ItemPreview({ item, device }: { item: ReviewItem; device: DeviceSize }) {
   const c = item.content;
-  const opts = Array.isArray(c.options) ? c.options as Array<{ id: string; text: string; isCorrect: boolean; rationale?: string; distractorRationale?: string }> : [];
+  const opts = Array.isArray(c.options) ? c.options as Array<{ id: string; text: string; isCorrect: boolean; rationale?: string; distractorRationale?: string; imageUrl?: string; imageAlt?: string }> : [];
   const isMCQ = ["MULTIPLE_CHOICE", "FILL_IN_BLANKS", "DRAG_DROP"].includes(item.type);
   const structured = describeStructuredKey(c);
   const signals = generationSignals(item.metadata);
@@ -106,6 +106,14 @@ export function ItemPreview({ item, device }: { item: ReviewItem; device: Device
 
   return (
     <div className={`${containerCls} space-y-3`}>
+      {/* Picture and audio exactly as the candidate gets them */}
+      {typeof c.imageUrl === "string" && c.imageUrl && (
+        <div className="rounded-lg border border-[var(--border)] bg-slate-50 dark:bg-slate-900/30 p-2 flex justify-center">
+          <img src={c.imageUrl} alt="Item picture" className="max-h-64 max-w-full rounded" />
+        </div>
+      )}
+      {typeof c.audioUrl === "string" && c.audioUrl && <audio controls preload="none" src={c.audioUrl} className="w-full" />}
+
       {/* Passage — READING */}
       {item.skill === "READING" && passage && (
         <div className="rounded-lg border border-[var(--border)] bg-slate-50 dark:bg-slate-900/30 p-3 max-h-48 overflow-y-auto">
@@ -188,6 +196,8 @@ export function ItemPreview({ item, device }: { item: ReviewItem; device: Device
                 {o.id}
               </span>
               <div className="flex-1 min-w-0">
+                {o.imageUrl && <img src={o.imageUrl} alt={o.imageAlt ?? ""} className="w-28 h-28 object-contain rounded border border-[var(--border)] bg-white mb-1" />}
+                {o.imageUrl && o.imageAlt && <p className="text-[10px] text-[var(--muted)]">{o.imageAlt}</p>}
                 <p className={`${o.isCorrect ? "text-emerald-700 dark:text-emerald-400 font-medium" : "text-[var(--foreground)]"}`}>
                   {o.text}
                 </p>

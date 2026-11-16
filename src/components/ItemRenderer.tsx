@@ -406,7 +406,8 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
       const isReadingWithPassage = itemSkill === "READING" && !!displayPassage;
 
       const optionButtons = <MultipleChoiceOptions
-        options={content.options?.map((option: any) => typeof option === 'string' ? option : option.text) ?? []}
+        options={content.options?.map((option: any) => typeof option === 'string' ? option
+          : { text: option.text ?? "", imageUrl: option.imageUrl, imageAlt: option.imageAlt }) ?? []}
         selected={selectedOption} onSelect={setSelectedOption} disabled={disabled}
       />;
 
@@ -641,6 +642,11 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
               <h3 id="listening-prompt" className="text-xl font-bold text-slate-900">{content.prompt}</h3>
               {hasOptions ? (
                 <>
+                  {content.options.some((option: any) => option && typeof option === "object" && option.imageUrl) ? (
+                    <MultipleChoiceOptions labelledBy="listening-prompt" selected={selectedOption} onSelect={setSelectedOption} disabled={disabled}
+                      options={content.options.map((option: any) => typeof option === "string" ? option
+                        : { text: option.text ?? "", imageUrl: option.imageUrl, imageAlt: option.imageAlt })} />
+                  ) : (
                   <div className="grid grid-cols-1 gap-3" role="radiogroup" aria-labelledby="listening-prompt">
                     {content.options.map((option: any, index: number) => {
                       const optionText = typeof option === "string" ? option : option.text;
@@ -675,6 +681,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
                       );
                     })}
                   </div>
+                  )}
                   <div className="pt-2">
                     <button
                       disabled={selectedOption === null || disabled}

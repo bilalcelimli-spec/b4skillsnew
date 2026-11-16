@@ -32,6 +32,7 @@ describe("stripAnswerKeys", () => {
       transcript: "Anna: I like cats.",
       distractorRationale: { A: "Not in the text", C: "Wrong speaker" },
       sampleAnswer: "Model text",
+      targetWord: "cats",
       options: [
         { id: "A", text: "Cats", rationale: "This is what Anna says", distractorType: "correct", imageUrl: "https://x/cat.png" },
         { id: "B", text: "Dogs", rationale: "Anna does not mention dogs", distractorType: "plausible" },

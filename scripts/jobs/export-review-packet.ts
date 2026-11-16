@@ -62,8 +62,12 @@ function renderItem(it: any, label: string): string {
     body = `<table><tr><th>Row</th><th>Key answer</th></tr>${c.dropZones.map((z: string, i: number) => `<tr><td>${esc(z)}</td><td>${esc(items[c.correctMapping[String(i)]])}</td></tr>`).join("")}</table>
       <p class="muted">Unused answers: ${esc(items.filter((_: string, i: number) => !Object.values(c.correctMapping).includes(i)).join(" | "))}</p>`;
   } else if (Array.isArray(c.options)) {
-    body = `<ol type="A">${c.options.map((o: any) => `<li class="${o.isCorrect ? "key" : ""}">${esc(o.text ?? o)}${o.isCorrect ? " <b>(key)</b>" : ""}</li>`).join("")}</ol>`;
+    body = `<ol type="A">${c.options.map((o: any) => `<li class="${o.isCorrect ? "key" : ""}">${o?.imageUrl ? `<img class="opt" src="${esc(o.imageUrl)}" alt="${esc(o.imageAlt ?? "")}"> <span class="muted">${esc(o.imageAlt ?? "")}</span> ` : ""}${esc(o.text ?? (typeof o === "string" ? o : ""))}${o.isCorrect ? " <b>(key)</b>" : ""}</li>`).join("")}</ol>`;
   }
+  // Pictures and audio: the reviewer must see and hear exactly what the candidate gets.
+  const media = `${c.imageUrl ? `<p><img class="stem" src="${esc(c.imageUrl)}" alt=""></p>` : ""}${c.audioUrl ? `<p><audio controls preload="none" src="${esc(c.audioUrl)}"></audio></p>` : ""}`;
+  const imageChecks = Array.isArray(it.metadata?.images) && it.metadata.images.length
+    ? `<p class="muted">Picture check (vision model): ${it.metadata.images.map((m: any) => `${esc(m.slot)} ${m.verdict?.ok ? "ok" : "FAILED"}${m.attempts > 1 ? ` after ${m.attempts} tries` : ""}`).join(" · ")}</p>` : "";
   const flags: string[] = [...(g.flags ?? [])];
   const isHeadings = Array.isArray(c.dropZones) && c.dropZones.every((z: string) => /^paragraph\s+\d+$/i.test(String(z).trim()));
   if (isHeadings && positionalHeadings(c.draggableItems ?? []).length) flags.push("POSITIONAL_HEADINGS");
@@ -71,8 +75,9 @@ function renderItem(it: any, label: string): string {
   const guided = typeof td.guidedExact === "boolean" ? td.guidedExact : td.guidedOk;
   return `<details class="item" data-id="${esc(it.id)}" data-code="${esc(it.itemCode ?? "")}"><summary><b>${esc(it.itemCode ?? it.id)}</b> · ${esc(it.cefrLevel)} · ${esc(it.subskill ?? "")} · demand: ${esc(it.metadata?.cognitiveDemand ?? "?")}
       <span class="tag ${blind ? "warn" : "ok"}">${blind ? "solvable without source" : "needs source"}</span>${guided === false ? '<span class="tag bad">key unconfirmed</span>' : ""}${flags.length ? `<span class="tag warn">${esc(flags.join(", "))}</span>` : ""}</summary>
+    ${media}
     <p><b>Prompt:</b> ${esc(c.question ?? c.stem ?? c.prompt)}</p>
-    ${body}
+    ${body}${imageChecks}
     <details><summary>${label.startsWith("Listening") ? "Recording script" : "Passage"}</summary><pre>${esc(source)}</pre></details>
     <p class="muted">Review: ${CHECKLIST.map((q) => `<label><input type="checkbox" data-check> ${esc(q)}</label>`).join(" ")}</p>
     <p><label>Decision: <select data-decision><option>—</option><option>Approve</option><option>Revise</option><option>Reject</option></select></label> <input type="text" data-notes placeholder="Notes (required for Reject)" size="60"></p>
@@ -96,7 +101,7 @@ async function main() {
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Item review packet</title>
 <style>body{font:15px/1.5 system-ui,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#1b1f23;background:#fff}
 h1{margin-bottom:0}h2{margin-top:32px;border-bottom:1px solid #ddd;padding-bottom:4px}.muted{color:#586069;font-size:13px}
-details.item{border:1px solid #ddd;border-radius:6px;padding:8px 12px;margin:8px 0}summary{cursor:pointer}pre{white-space:pre-wrap;background:#f6f8fa;padding:10px;border-radius:4px}
+details.item{border:1px solid #ddd;border-radius:6px;padding:8px 12px;margin:8px 0}summary{cursor:pointer}pre{white-space:pre-wrap;background:#f6f8fa;padding:10px;border-radius:4px}img.stem{max-width:100%;max-height:360px;border:1px solid #ddd;border-radius:6px}img.opt{width:140px;height:140px;object-fit:contain;border:1px solid #ddd;border-radius:6px;vertical-align:middle}
 .tag{font-size:12px;border-radius:10px;padding:1px 8px;margin-left:6px;border:1px solid}.ok{color:#116329;border-color:#116329}.warn{color:#9a6700;border-color:#9a6700}.bad{color:#cf222e;border-color:#cf222e}
 table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:4px 8px;text-align:left}li.key{font-weight:600}label{display:block}.bar{position:sticky;top:0;background:inherit;padding:8px 0;border-bottom:1px solid #ddd;display:flex;gap:12px;align-items:center}button{padding:4px 10px}
 @media(prefers-color-scheme:dark){body{background:#0d1117;color:#e6edf3}pre{background:#161b22}details.item,td,th{border-color:#30363d}.muted{color:#8b949e}}</style></head><body>

@@ -4,7 +4,15 @@ export type DisplayOption = string | {
   text: string;
   isCorrect?: boolean;
   rationale?: string;
+  /** Picture option (young-learner "choose the right picture" tasks). text may be empty. */
+  imageUrl?: string;
+  /** Screen-reader description of the picture. */
+  imageAlt?: string;
 };
+
+export function optionImage(option: DisplayOption): string | undefined {
+  return typeof option === 'string' ? undefined : option.imageUrl || undefined;
+}
 
 export function optionText(option: DisplayOption): string {
   return typeof option === 'string' ? option : option.text;

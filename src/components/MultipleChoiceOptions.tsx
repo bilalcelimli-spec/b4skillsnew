@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from '../lib/utils';
-import { optionText, type DisplayOption } from '../lib/assessment-engine/option-presentation';
+import { optionImage, optionText, type DisplayOption } from '../lib/assessment-engine/option-presentation';
 
 /** Shared choice controls for fixed and adaptive assessments. */
 export function MultipleChoiceOptions({ options, selected, onSelect, disabled, labelledBy = 'item-prompt' }: {
@@ -10,6 +10,32 @@ export function MultipleChoiceOptions({ options, selected, onSelect, disabled, l
   disabled?: boolean;
   labelledBy?: string;
 }) {
+  // Picture options ("choose the right picture"): a grid of image cards, letter badge, optional caption.
+  if (options.some((option) => optionImage(option))) {
+    return <div className={cn('grid gap-3', options.length === 4 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3')}
+      role="radiogroup" aria-labelledby={labelledBy}>
+      {options.map((option, index) => {
+        const src = optionImage(option);
+        const caption = optionText(option);
+        const alt = (typeof option === 'string' ? '' : option.imageAlt) || caption || `Picture ${String.fromCharCode(65 + index)}`;
+        return <button key={index} role="radio" aria-checked={selected === index} disabled={disabled} onClick={() => onSelect(index)}
+          aria-label={`Option ${String.fromCharCode(65 + index)}: ${alt}`}
+          className={cn('relative min-w-0 p-2 sm:p-3 rounded-2xl border-2 bg-white transition-all focus:ring-4 focus:ring-indigo-100 outline-none',
+            selected === index ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200',
+            'disabled:opacity-50 disabled:cursor-not-allowed')}>
+          <span aria-hidden="true" className={cn('absolute top-2 left-2 w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs border',
+            selected === index ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white/90 text-slate-500 border-slate-200')}>
+            {String.fromCharCode(65 + index)}
+          </span>
+          {src
+            ? <img src={src} alt="" className="w-full aspect-square object-contain rounded-xl bg-slate-50" draggable={false} />
+            : <div className="w-full aspect-square rounded-xl bg-slate-100" />}
+          {caption && <span className="mt-2 block break-words font-medium text-slate-700 text-base">{caption}</span>}
+        </button>;
+      })}
+    </div>;
+  }
+
   return <div className="grid grid-cols-1 gap-3" role="radiogroup" aria-labelledby={labelledBy}>
     {options.map((option, index) => <button key={index} role="radio" aria-checked={selected === index}
       disabled={disabled} onClick={() => onSelect(index)} aria-label={`Option ${String.fromCharCode(65 + index)}: ${optionText(option)}`}

@@ -4,8 +4,22 @@
     {
       "name": "b4skills-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3001
+    },
+    {
+      "name": "b4skills-dev-alt",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PORT=3011",
+        "npm",
+        "run",
+        "dev"
+      ],
+      "port": 3011
     }
   ]
 }
