@@ -238,6 +238,13 @@ export function hasNothingToAnswer(content: any): boolean {
   return !sentenceOptions;
 }
 
+/** A young-learner item whose stimulus or options are pictures. */
+export function isPictureTask(content: any): boolean {
+  const young = content?.productLine === "primary" || content?.productLine === "junior";
+  const hasPicture = Boolean(content?.imageUrl) || (Array.isArray(content?.options) && content.options.some((o: any) => o?.imageUrl));
+  return young && hasPicture;
+}
+
 export function validateItemStructure(skill: string, content: any): string[] {
   const errors: string[] = [];
 
@@ -254,8 +261,11 @@ export function validateItemStructure(skill: string, content: any): string[] {
     errors.push(...validateStructuredKey(content));
   } else if (["GRAMMAR", "VOCABULARY", "READING"].includes(skill)) {
     const opts = Array.isArray(content.options) ? content.options : [];
-    if (opts.length < 4) {
-      errors.push(`Only ${opts.length} options (need 4+)`);
+    // Young-learner picture tasks use three options, as in Cambridge YLE, TOEFL Primary
+    // and A2 Key Part 1 (plan: docs/quality/young-learner-expansion-plan-2026-11.md).
+    const minOptions = isPictureTask(content) ? 3 : 4;
+    if (opts.length < minOptions) {
+      errors.push(`Only ${opts.length} options (need ${minOptions}+)`);
     }
     if (!opts.some((o: any) => o.isCorrect === true)) {
       errors.push("No correct option marked (isCorrect: true)");
@@ -267,7 +277,8 @@ export function validateItemStructure(skill: string, content: any): string[] {
 
   if (skill === "READING") {
     const passage = (content.passage ?? content.text ?? content.readingText ?? "").toString();
-    if (passage.trim().length < 30) {
+    // In a picture task the picture is the text being read about.
+    if (passage.trim().length < 30 && !(isPictureTask(content) && content.imageUrl)) {
       errors.push(`Passage too short (${passage.length} chars, need 30+)`);
     }
   }

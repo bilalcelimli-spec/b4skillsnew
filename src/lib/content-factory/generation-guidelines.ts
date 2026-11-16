@@ -64,6 +64,34 @@ export function optionWritingRules(skill: string, cefr: string): string {
   return base.join("\n");
 }
 
+/**
+ * Text-bound keys (Faz 2). In the first Faz 2 pilot 22 of 33 reading/listening
+ * MCQs were answered by a solver that never saw the source, after distractor
+ * hardening. Hardening only rewrites distractors; the usual cause is the key
+ * itself: the answer anyone would expect. These rules make the text, not the
+ * world, decide between four equally believable options, and make the model
+ * name the common-sense option so it can be checked not to be the key.
+ */
+export function textBoundKeyRules(skill: string, cefr: string): string {
+  if (!isReceptive(skill)) return "";
+  const source = skill === "LISTENING" ? "recording" : "text";
+  const lines = [
+    `TEXT-BOUND KEY RULES (an item fails if it can be answered without the ${source}):`,
+    `- Plan the question and all four options first, then write the ${source} so that it decides between them. All four options must be equally believable in real life for this situation; general knowledge, logic or the question wording must not favour any of them.`,
+    `- The key is a fact, choice, reason or opinion that exists only in this ${source}: which of four comparable plans someone chose, the particular reason given among reasons people often give, a speaker's specific stance. Never the expected answer (a train is late "because of bad weather"), never the most positive or sensible-sounding option, never a restatement of the question's premise.`,
+    `- One distractor MUST be the COMMON-SENSE ANSWER: the option a person who never saw the ${source} would choose. The ${source} mentions it and clearly rules it out (it was considered and rejected, or something different happened). Return that option's id as content.commonSenseOption. It is never the key.`,
+    `- The other two distractors are also present in the ${source} (an option that was dropped, a detail about another person, time or place), so spotting a word from the ${source} does not find the key.`,
+    `- The question stem gives no information that narrows the options.`,
+  ];
+  if (isAdvanced(cefr)) lines.push(
+    `- For inference and attitude: give the speaker/writer a specific, non-obvious position (supports X only under condition Y; dislikes X for an unexpected reason; changed their mind and why). The conventional view on the topic is a distractor, usually the common-sense one.`,
+  );
+  else lines.push(
+    `- At ${cefr} keep the language simple: the ${source} decides through concrete, arbitrary details (which day, which room, which of four foods, what changed), not through complex reasoning.`,
+  );
+  return lines.join("\n");
+}
+
 /** Grammar / vocabulary items at B2+ must sit in discourse, not isolated sentences. */
 export function contextRules(skill: string, cefr: string): string {
   if (!["GRAMMAR", "VOCABULARY"].includes(skill) || !isAdvanced(cefr)) return "";
@@ -86,7 +114,8 @@ export function contextRules(skill: string, cefr: string): string {
 
 export function buildQualityBlock(skill: string, cefr: string, itemType: string): string {
   const isMcq = ["MULTIPLE_CHOICE", "FILL_IN_BLANKS", "DRAG_DROP"].includes(itemType);
-  return [isMcq ? optionWritingRules(skill, cefr) : "", demandGuidance(skill, cefr), contextRules(skill, cefr)]
+  const textBound = itemType === "MULTIPLE_CHOICE" ? textBoundKeyRules(skill, cefr) : "";
+  return [isMcq ? optionWritingRules(skill, cefr) : "", textBound, demandGuidance(skill, cefr), contextRules(skill, cefr)]
     .filter(Boolean)
     .join("\n\n");
 }
@@ -98,9 +127,9 @@ export function isDemandAllowed(cefr: string, demand: string | undefined): boole
 }
 
 /** Rules for matching items (match speakers / paragraphs to statements). */
-export function matchingRules(skill: string): string {
+export function matchingRules(skill: string, subskill?: string): string {
   const zoneHint = skill === "LISTENING"
-    ? `Rows are the speakers, named exactly as they appear in the recording (e.g. "Maria").`
+    ? `Rows are the speakers, named exactly as they appear in the recording (e.g. "Maria"). The recording must have 3–4 named speakers, each with a turn of their own: a group discussion, a panel, or 3–4 short extracts. A two-person conversation or interview cannot give enough rows, so add speakers (e.g. a host and three guests, or four friends).`
     : `Rows are labelled parts of the passage (e.g. "Paragraph 2") or named people in it.`;
   return [
     `MATCHING RULES:`,
@@ -112,6 +141,28 @@ export function matchingRules(skill: string): string {
     `- Extras should be distortions of what is actually said (wrong speaker, reversed, or a point mentioned but not endorsed) — never absurd.`,
     `- Do not use absolutes (only, always, never, entirely, exclusively) in any answer.`,
     `- The task must be impossible to complete well without the ${skill === "LISTENING" ? "recording" : "passage"}.`,
+    ...(subskill && ATTITUDE_SUBSKILLS.has(subskill) ? ["", attitudeMatchingRules(skill)] : []),
+  ].join("\n");
+}
+
+const ATTITUDE_SUBSKILLS: ReadonlySet<string> = new Set(["SPEAKER_ATTITUDE", "WRITER_ATTITUDE", "TONE", "STANCE"]);
+
+/**
+ * Attitude matching leaked in the Faz 2 pilot (3/5 C1 drafts solved blind):
+ * each answer named a different stance on a different aspect, so a row could
+ * be matched from the speaker's topic alone. These rules make the answers
+ * near-neighbour stances on one question, shown only through how it is said.
+ */
+export function attitudeMatchingRules(skill: string): string {
+  const who = skill === "LISTENING" ? "speaker" : "writer";
+  return [
+    `ATTITUDE MATCHING RULES:`,
+    `- Every answer (including extras) is a stance on the SAME single question, e.g. "the new timetable". No answer may mention an aspect that only one ${who} talks about.`,
+    `- Answers are near-neighbour stances, not opposites: e.g. "cautious support", "reluctant acceptance", "qualified scepticism", "conditional enthusiasm", "polite indifference". Never pair "for" against "against".`,
+    `- Each ${who} shows their stance through HOW they say it (hedges, concessions, "yes, but…", what they stress or play down), never by naming it. No ${who} may use an attitude word that appears in, or is a synonym of, any answer.`,
+    `- At least two ${who}s mention the same positives and negatives; they differ only in the weight they give them.`,
+    `- Each extra is a stance that one ${who} reports someone else holding, or considers and rejects.`,
+    ...(skill === "READING" ? [`- The rows are 3–4 named writers (e.g. short reviews, letters or forum posts on the same question), not one writer: a single-writer text gave only 2 pairs.`] : []),
   ].join("\n");
 }
 

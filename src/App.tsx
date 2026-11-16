@@ -2,7 +2,7 @@ import { MarketingConsent, MeasurementPrivacyContext } from './components/Market
 import { GuardianDecisionPage, GuardianVerificationPage } from './components/GuardianConsent';
 import { AssessmentResumeCard } from './components/AssessmentContinuation';
 import { OZGUN_PRODUCT, assessmentDisplayName } from "./lib/fixed-forms/ozgun-kids";
-import { hasFinalResult, historyStatus, historySkills } from "./lib/reporting/candidate-history";
+import { hasFinalResult, historyStatus, historySkills, historyResultLabel, isReportableSession } from "./lib/reporting/candidate-history";
 import { useTranslation } from "react-i18next";
 import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -741,13 +741,18 @@ export default function App() {
           />
         ) : activeTab === "profile" || activeTab === "settings" ? (
           <Suspense fallback={<PageLoader />}>
-            <CandidateProfile user={userProfile} onLogout={() => signOut()} />
+            <CandidateProfile
+              user={userProfile}
+              onLogout={() => signOut()}
+              onOpenReport={(id) => { ++navigationGeneration.current; setTestCompleted(null); setCertificate(null); setSelectedHistorySessionId(id); setActiveTab("results"); }}
+              onStartAssessment={() => goToTab("dashboard")}
+            />
           </Suspense>
         ) : (
           <>
             <header className="flex items-center justify-between mb-12">
               <div>
-                <h1 className="text-3xl font-bold text-slate-900 tracking-tighter uppercase">Welcome back, {user.displayName?.split(' ')[0]}!</h1>
+                <h1 className="text-3xl font-bold text-slate-900 tracking-tighter uppercase">Welcome back{user.displayName?.trim() ? `, ${user.displayName.trim().split(' ')[0]}` : ''}!</h1>
                 <p className="text-slate-500 mt-1 font-medium">{branding?.welcomeMessage || "Ready to measure your English proficiency?"}</p>
               </div>
               <div className="flex items-center gap-4">
@@ -761,7 +766,9 @@ export default function App() {
                       </div>
                     )}
                   </div>
-                  <div className="text-[10px] text-indigo-600 font-black uppercase tracking-widest" style={{ color: branding?.primaryColor }}>Enterprise License</div>
+                  {(branding?.name || userProfile?.organizationName) && (
+                    <div className="text-[10px] text-indigo-600 font-black uppercase tracking-widest" style={{ color: branding?.primaryColor }}>{branding?.name || userProfile?.organizationName}</div>
+                  )}
                 </div>
               </div>
             </header>
@@ -874,8 +881,9 @@ export default function App() {
                         key={s.id}
                         title={assessmentDisplayName(s.metadata?.productLine || "Assessment")}
                         date={s.completedAt ? new Date(s.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "In progress"}
-                        score={s.metadata?.fixedForm?.report ? `${s.metadata.fixedForm.report.correct}/96` : hasFinalResult(s) ? s.scoreReport.overallCefr : "—"}
+                        score={historyResultLabel(s) ?? "—"}
                         status={historyStatus(s)}
+                        onClick={isReportableSession(s) ? () => { ++navigationGeneration.current; setTestCompleted(null); setCertificate(null); setSelectedHistorySessionId(s.id); setActiveTab("results"); } : undefined}
                       />
                     ))}
                   </div>
@@ -941,9 +949,10 @@ function SidebarItem({ icon, label, active = false, onClick }: { icon: React.Rea
   );
 }
 
-function ActivityItem({ title, date, score, status }: { title: string; date: string; score: string; status: string }) {
+function ActivityItem({ title, date, score, status, onClick }: { title: string; date: string; score: string; status: string; onClick?: () => void }) {
+  const Tag = onClick ? "button" : "div";
   return (
-    <div className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-200 transition-all cursor-pointer group">
+    <Tag {...(onClick ? { type: "button" as const, onClick } : {})} className={cn("w-full text-left flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl transition-all group", onClick && "hover:border-indigo-200 cursor-pointer")}>
       <div className="flex items-center gap-4">
         <div className="p-2 bg-slate-50 text-slate-400 rounded-lg group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all">
           <FileText size={24} />
@@ -957,12 +966,12 @@ function ActivityItem({ title, date, score, status }: { title: string; date: str
         <div className="text-lg font-bold text-indigo-600">{score}</div>
         <div className={`text-[10px] font-bold uppercase tracking-widest ${status === "Completed" ? "text-green-600" : "text-amber-600"}`}>{status}</div>
       </div>
-    </div>
+    </Tag>
   );
 }
 
 function ResultsHistory({ sessions, onSelectSession }: { sessions: any[]; onSelectSession: (id: string) => void }) {
-  const completed = sessions.filter(s => ["COMPLETED", "SCORING", "FLAGGED"].includes(s.status));
+  const completed = sessions.filter(isReportableSession);
   return (
     <div className="max-w-2xl mx-auto">
       <header className="mb-8">
@@ -977,7 +986,7 @@ function ResultsHistory({ sessions, onSelectSession }: { sessions: any[]; onSele
       ) : (
         <div className="space-y-3">
           {completed.map((s: any) => {
-            const cefr = s.metadata?.fixedForm?.report ? `${s.metadata.fixedForm.report.correct}/96` : hasFinalResult(s) ? s.scoreReport.overallCefr : historyStatus(s);
+            const cefr = historyResultLabel(s) ?? historyStatus(s);
             const beps = hasFinalResult(s) ? s.scoreReport?.bepsScore ?? (s.finalTheta != null ? thetaToBeps(s.finalTheta) : null) : null;
             const date = s.completedAt ? new Date(s.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
             const product = assessmentDisplayName(s.metadata?.productLine ?? "Assessment");

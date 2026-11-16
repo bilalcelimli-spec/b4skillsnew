@@ -557,7 +557,7 @@ async function startServer() {
       const userId = (req as any).user.id;
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, email: true, name: true, role: true, organizationId: true },
+        select: { id: true, email: true, name: true, role: true, organizationId: true, createdAt: true, organization: { select: { name: true } } },
       });
       if (!user) return res.status(404).json({ error: 'User not found' });
       const wl = (req as any).whitelabelOrg ?? null;
@@ -578,6 +578,8 @@ async function startServer() {
         user: {
           uid: user.id, email: user.email, displayName: user.name,
           role: user.role, organizationId: user.organizationId || null,
+          organizationName: user.organization?.name ?? null,
+          createdAt: user.createdAt?.toISOString?.() ?? null,
           ...(allowedProductLine ? { allowedProductLine } : {}),
         },
         whitelabelOrg: wl ? { id: wl.id, name: wl.name, slug: wl.slug } : null,
@@ -3084,14 +3086,17 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   // POST /api/content/pilot/promote — APPROVED_FOR_PILOT → isPretest=true + status=PRETEST
   // ?dryRun=true  returns candidate list without committing.
+  // ?gapCells=true  below-minimum cells are filled with ACTIVE items instead (calibration pending).
   app.post("/api/content/pilot/promote",
     checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]),
     async (req: any, res) => {
       try {
         if (!dbAvailable) return res.status(503).json({ error: "Database required" });
         const dryRun = String(req.query.dryRun ?? req.body?.dryRun) === "true";
+        // ?gapCells=true: items filling a below-minimum cell go ACTIVE on priors (GAP_CELL_ACTIVATION_POLICY).
+        const gapCells = String(req.query.gapCells ?? req.body?.gapCells) === "true";
 
-        res.json(await promotePilotItems(prisma, req.user.id, dryRun));
+        res.json(await promotePilotItems(prisma, req.user.id, dryRun, { gapCells }));
       } catch (err) {
         console.error("[content/pilot/promote]", err);
         res.status(500).json({ error: "Pilot promotion failed" });
@@ -4443,29 +4448,8 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const { thetaToCefr, thetaToBeps, getCanDo } = await import("./src/lib/cefr/cefr-framework.js");
 
       if (!dbAvailable) {
-        // Demo mode stub
-        const theta = 0.8;
-        const sem   = 0.38;
-        const level = thetaToCefr(theta);
-        return res.json({
-          sessionId: id,
-          candidateName: "Demo Candidate",
-          completedAt: new Date().toISOString(),
-          finalTheta: theta,
-          finalSem: sem,
-          beps: thetaToBeps(theta),
-          cefrLevel: level,
-          stopReason: "SEM_TARGET_REACHED",
-          totalItems: 22,
-          skillScores: [
-            { skill: "READING",    theta: 1.0,  cefrLevel: "B2" },
-            { skill: "LISTENING",  theta: 0.6,  cefrLevel: "B2" },
-            { skill: "GRAMMAR",    theta: 0.7,  cefrLevel: "B2" },
-            { skill: "VOCABULARY", theta: 0.9,  cefrLevel: "B2" },
-          ],
-          responses: [],
-          canDo: getCanDo(level),
-        });
+        // Never fabricate a score report: without the database there is no result to show.
+        return res.status(503).json({ error: "Score reports are temporarily unavailable. Please try again shortly." });
       }
 
       const session = await prisma.session.findUnique({
@@ -4500,7 +4484,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
         return {
           itemId:    r.itemId,
           skill:     r.item?.skill    ?? "UNKNOWN",
-          cefrLevel: r.item?.cefrLevel ?? "B1",
+          cefrLevel: r.item?.cefrLevel ?? null,
           isCorrect: r.isCorrect   ?? null,
           score:     r.score       ?? null,
           thetaAfter: typeof responseMeta.thetaAfter === "number" ? responseMeta.thetaAfter : theta,
@@ -4790,22 +4774,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     const { id } = req.params;
     try {
       if (!(await assertSessionOwnership(req, res, id))) return;
-      if (!dbAvailable) {
-        // Demo stub: 7-day / 30-day / 90-day milestones
-        return res.json({
-          sessionId: id,
-          currentCefrLevel: "B1",
-          targetCefrLevel: "B2",
-          estimatedWeeksToTarget: 12,
-          prioritySkills: ["writing", "speaking", "reading"],
-          weeklyGoal: { sessions: 3, minutesPerDay: 20 },
-          milestones: [
-            { id: "m1", title: "Grammar Consolidation", description: "Master B1 conditional and passive structures.", targetCefrLevel: "B1", targetSkill: "grammar", estimatedDays: 14, prerequisiteMilestoneIds: [], completionCriteria: { minScore: 0.75, minSessions: 4 } },
-            { id: "m2", title: "Reading Fluency", description: "Read longer texts and identify main ideas accurately.", targetCefrLevel: "B2", targetSkill: "reading", estimatedDays: 21, prerequisiteMilestoneIds: ["m1"], completionCriteria: { minScore: 0.70, minSessions: 5 } },
-            { id: "m3", title: "Extended Writing", description: "Write structured essays and reports of 200+ words.", targetCefrLevel: "B2", targetSkill: "writing", estimatedDays: 30, prerequisiteMilestoneIds: ["m1"], completionCriteria: { minScore: 0.65, minSessions: 6 } },
-          ],
-        });
-      }
+      if (!dbAvailable) return res.status(503).json({ error: "Learning paths are temporarily unavailable." });
 
       const session = await prisma.session.findUnique({
         where: { id },

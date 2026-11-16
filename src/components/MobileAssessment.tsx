@@ -13,6 +13,7 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useMobileDetect } from "../hooks/useMobileDetect";
+import { optionText, type DisplayOption } from '../lib/assessment-engine/option-presentation';
 import { useToast } from "../hooks/useToast.js";
 import { motion, AnimatePresence } from "motion/react";
 import { Mic, ChevronRight, CheckCircle, WifiOff, Volume2, RotateCcw } from "lucide-react";
@@ -27,7 +28,7 @@ interface AssessmentItem {
   content: {
     prompt: string;
     passage?: string;
-    options?: string[];
+    options?: DisplayOption[];
     correctIndex?: number;
     audioUrl?: string;
   };
@@ -375,7 +376,7 @@ export function MobileAssessment({ sessionId, onComplete, organizationId, enable
                     <span className="mr-3 text-gray-400 font-mono text-sm">
                       {String.fromCharCode(65 + idx)}.
                     </span>
-                    {opt}
+                    {optionText(opt)}
                   </button>
                 ))}
               </div>

@@ -10,6 +10,8 @@ Uygulama çoktan seçmeli, tek/çok boşluk doldurma, yazma ve konuşma sorular�
 
 Web özellikleri, gözetmenlik ve Apple güvenli değerlendirme modu için ayrıntılı kapsam: [Web özelliklerini tamamlama planı](WEB_FEATURE_PARITY_ROADMAP.md).
 
+Platform uyumu, mühendislik temeli ve kurumsal dağıtım dahil genel sıra: [Apple yol haritası](APPLE_ROADMAP.md).
+
 Soru türü düzeyinde etkileşim tasarımı, `TaskSpec` sözleşmesi, kabul ölçütleri ve aşamalı plan: [Sınav arayüzü mükemmellik planı](EXAM_UI_EXCELLENCE_PLAN.md).
 
 Sınav kataloğu dokuz profil içeriyor: Primary (7–10), Junior Suite (11–14), Rapid Diagnostic, Express Assessment, General English, Academia, Corporate, Language Schools ve Specialized / Integrated Skills. `15-Min Diagnostic` ve `Express Assessment (30-Min)` teknik anahtarları ekrandaki süre sözü olarak kullanılmamalı; görünür ad ve süre backend profilinden gelmeli. Özgün Kids sabit formu ayrı bir akış ve endpoint kullanıyor; mevcut native uygulama bu kodu tüketmeden web’e yönlendiriyor.

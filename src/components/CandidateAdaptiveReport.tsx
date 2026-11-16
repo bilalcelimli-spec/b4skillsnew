@@ -16,10 +16,11 @@ import { CEFR_LEVELS } from "../lib/cefr/cefr-framework";
  * reviewing a completed session (linked from SessionReview).
  */
 
-import { useEffect, useState, useRef } from "react";
+import { Fragment, useEffect, useState, useRef } from "react";
+import { hasFinalResult } from "../lib/reporting/candidate-history";
 import { useToast } from "../hooks/useToast.js";
 import { motion } from "motion/react";
-import { RefreshCw, CheckCircle2, XCircle, ChevronRight, TrendingUp, BarChart2, ListChecks, Lightbulb, Printer, Share2, Check } from "lucide-react";
+import { RefreshCw, CheckCircle2, XCircle, Clock, AlertTriangle, ChevronRight, TrendingUp, BarChart2, ListChecks, Lightbulb, Printer, Share2, Check } from "lucide-react";
 import { getCanDo, thetaToBeps, type CanDoDescriptor } from "../lib/cefr/cefr-framework";
 import { NextLevelGap } from "./NextLevelGap";
 import { ErrorIntelligenceMap } from "./ErrorIntelligenceMap";
@@ -52,12 +53,13 @@ interface RubricScores {
 interface ResponseEntry {
   itemId: string;
   skill: string;
-  cefrLevel: string;
+  cefrLevel: string | null;
   isCorrect: boolean | null;
   score: number | null;
   thetaAfter: number;
   semAfter: number;
   latencyMs: number;
+  pendingAsyncScore?: boolean;
   rubricScores?: RubricScores;
   aiFeedback?: string;
 }
@@ -95,6 +97,18 @@ const SKILL_LABELS: Record<string, string> = {
   READING: "Reading", LISTENING: "Listening", WRITING: "Writing",
   SPEAKING: "Speaking", GRAMMAR: "Grammar", VOCABULARY: "Vocabulary",
 };
+
+const STOP_REASON_LABELS: Record<string, string> = {
+  ALL_SECTIONS_COMPLETE: "All sections completed",
+  TIME_LIMIT_EXCEEDED: "Time limit reached",
+  SEM_THRESHOLD_REACHED: "Target precision reached",
+  CLASSIFICATION_CONFIDENCE_REACHED: "Level confidently classified",
+  ITEM_BUDGET_REACHED: "Maximum length reached",
+  DIAGNOSTIC_COMPLETE: "Diagnostic completed",
+  SCORING: "Scoring in progress",
+  FLAGGED: "Under review",
+};
+const cefrLabel = (level: string | null | undefined) => level ? level.replace("_", " ") : "—";
 
 // CEFR theta thresholds for reference lines on trajectory chart
 const CEFR_LINES = CEFR_LEVELS.filter(level => Number.isFinite(level.theta.min))
@@ -160,6 +174,8 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
   const { toast } = useToast();
   const [report, setReport] = useState<AdaptiveReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<number | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [tab, setTab] = useState<"overview" | "insights" | "items" | "trajectory" | "cando" | "growth">("overview");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [sessionHistory, setSessionHistory] = useState<any[]>([]);
@@ -191,27 +207,31 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
     let cancelled = false;
     const controller = new AbortController();
     setLoading(true);
+    setLoadError(null);
     setReport(null);
     setTab('overview');
     setSessionHistory([]);
     fetch(`/api/sessions/${sessionId}/adaptive-report`, { credentials: "include", signal: controller.signal })
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => {
-        if (d && !cancelled) {
-          setReport(d);
-          // If candidateId is known, pre-fetch history for growth tab
-          if (d.candidateId) {
-            fetch(`/api/candidates/${d.candidateId}/history`, { credentials: "include", signal: controller.signal })
-              .then((r) => r.ok ? r.json() : [])
-              .then((hist: any[]) => { if (!cancelled) setSessionHistory(hist.filter((s: any) => s.id !== sessionId && s.completedAt)); })
-              .catch(() => {});
-          }
+      .then(async (r) => {
+        if (!r.ok) { if (!cancelled) setLoadError(r.status); return; }
+        const d = await r.json();
+        if (cancelled) return;
+        setReport(d);
+        // Pre-fetch the candidate's other final results for the Growth tab.
+        if (d.candidateId && d.sessionType !== 'FIXED_FORM') {
+          fetch(`/api/candidates/${d.candidateId}/history`, { credentials: "include", signal: controller.signal })
+            .then((h) => h.ok ? h.json() : [])
+            .then((hist: any[]) => {
+              if (!cancelled && Array.isArray(hist))
+                setSessionHistory(hist.filter((s: any) => s.id !== sessionId && s.metadata?.sessionType !== 'FIXED_FORM' && hasFinalResult(s)));
+            })
+            .catch(() => {});
         }
       })
-      .catch(() => { if (!cancelled) setReport(null); })
+      .catch((err) => { if (!cancelled && (err as Error).name !== 'AbortError') setLoadError(0); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; controller.abort(); };
-  }, [sessionId]);
+  }, [sessionId, reloadKey]);
 
   async function handleShare() {
     setShareLoading(true);
@@ -241,7 +261,29 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
   }
 
   if (!report) {
-    return <p className="text-center py-12 text-slate-400 text-sm">Report not available for this session.</p>;
+    const message = loadError === 403 ? "You do not have access to this report."
+      : loadError === 404 ? "This assessment could not be found."
+      : loadError === 409 ? "This assessment has not been completed yet, so no report is available."
+      : "Your report could not be loaded. Please check your connection and try again.";
+    const retryable = loadError !== 403 && loadError !== 404;
+    return (
+      <div data-testid="report-error" role="alert" className="max-w-lg mx-auto my-12 rounded-2xl border border-slate-200 bg-white p-8 text-center">
+        <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-amber-500" />
+        <p className="text-sm font-semibold text-slate-700">{message}</p>
+        <div className="mt-5 flex justify-center gap-3">
+          {retryable && (
+            <button onClick={() => setReloadKey(k => k + 1)} className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700">
+              <RefreshCw size={14} /> Try again
+            </button>
+          )}
+          {onClose && (
+            <button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:border-slate-400">
+              Back to dashboard
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   const cefrColor = CEFR_COLORS[report.cefrLevel] ?? "#64748b";
@@ -283,7 +325,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
             {report.productLine && <p className="text-sm text-slate-600">{assessmentDisplayName(report.productLine)}</p>}
             {report.reportStatus && <p className="text-xs text-slate-500">Status: {report.reportStatus}</p>}
             <p className="text-sm text-slate-400">
-              {report.completedAt ? new Date(report.completedAt).toLocaleString() : "—"} · {report.totalItems} items · {report.stopReason}
+              {report.completedAt ? new Date(report.completedAt).toLocaleString() : "—"} · {report.totalItems} items{STOP_REASON_LABELS[report.stopReason] ? ` · ${STOP_REASON_LABELS[report.stopReason]}` : ""}
             </p>
           </div>
         </div>
@@ -485,9 +527,8 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {report.responses.map((r, i) => (
-                    <>
+                    <Fragment key={r.itemId + i}>
                       <tr
-                        key={r.itemId + i}
                         className="hover:bg-slate-50 cursor-pointer"
                         onClick={() => setExpandedRow(expandedRow === r.itemId + i ? null : r.itemId + i)}
                       >
@@ -495,14 +536,16 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
                         <td className="px-3 py-2 text-slate-600">{SKILL_LABELS[r.skill] ?? r.skill}</td>
                         <td className="px-3 py-2">
                           <span className="px-1.5 py-0.5 rounded text-xs font-medium"
-                            style={{ backgroundColor: `${CEFR_COLORS[r.cefrLevel] ?? "#94a3b8"}20`, color: CEFR_COLORS[r.cefrLevel] ?? "#64748b" }}>
-                            {r.cefrLevel.replace("_", " ")}
+                            style={{ backgroundColor: `${CEFR_COLORS[r.cefrLevel ?? ""] ?? "#94a3b8"}20`, color: CEFR_COLORS[r.cefrLevel ?? ""] ?? "#64748b" }}>
+                            {cefrLabel(r.cefrLevel)}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-center">
-                          {r.isCorrect === true || (r.score ?? 0) >= 0.5
-                            ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" />
-                            : <XCircle className="w-4 h-4 text-red-400 mx-auto" />
+                          {r.pendingAsyncScore || (r.isCorrect === null && r.score === null)
+                            ? <Clock aria-label="Awaiting evaluation" className="w-4 h-4 text-amber-500 mx-auto" />
+                            : r.isCorrect === true || (r.score ?? 0) >= 0.5
+                            ? <CheckCircle2 aria-label="Correct" className="w-4 h-4 text-green-500 mx-auto" />
+                            : <XCircle aria-label="Incorrect" className="w-4 h-4 text-red-400 mx-auto" />
                           }
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-slate-700">
@@ -544,7 +587,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -586,7 +629,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
                           <p className="font-bold text-slate-700">Item {d.item} · {d.skill}</p>
                           <p className="font-mono" style={{ color: cefrColor }}>θ = {d.theta >= 0 ? "+" : ""}{d.theta.toFixed(3)}</p>
                           <p className="text-slate-400">SEM band [{d.lower.toFixed(2)}, {d.upper.toFixed(2)}]</p>
-                          <p className="text-slate-500">{d.cefr.replace("_", " ")}</p>
+                          <p className="text-slate-500">{cefrLabel(d.cefr)}</p>
                         </div>
                       );
                     }}
@@ -767,13 +810,13 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
           <div className="flex items-center gap-2 px-1">
             <TrendingUp className="w-4 h-4 text-indigo-500" />
             <span className="text-sm font-semibold text-slate-700">Growth Report</span>
-            <span className="ml-auto text-xs text-slate-400">Growth Report</span>
+            <span className="ml-auto text-xs text-slate-400">Compare with an earlier final result</span>
           </div>
 
           {/* Session picker */}
           {sessionHistory.length === 0 ? (
             <p className="text-center py-8 text-slate-400 text-sm">
-              No previous sessions found for this candidate to compare against.
+              No earlier final results are available to compare against yet.
             </p>
           ) : (
             <div className="space-y-3">
@@ -792,7 +835,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
                   <option value="">-- Select a session --</option>
                   {sessionHistory.map((s: any) => (
                     <option key={s.id} value={s.id}>
-                      {s.completedAt ? new Date(s.completedAt).toLocaleDateString("en-GB") : "—"} — {s.cefrLevel ?? "?"} (θ={s.theta?.toFixed(2) ?? "?"})
+                      {s.completedAt ? new Date(s.completedAt).toLocaleDateString("en-GB") : "—"} — {assessmentDisplayName(s.metadata?.productLine ?? "Assessment")} — {cefrLabel(s.scoreReport?.overallCefr ?? s.cefrLevel)}
                     </option>
                   ))}
                 </select>

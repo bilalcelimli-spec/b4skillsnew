@@ -9,6 +9,7 @@
  * Output: scripts/jobs/.out/review-packet.html
  */
 
+import "dotenv/config";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { prisma } from "../../src/lib/prisma.js";
 import { positionalHeadings } from "../../src/lib/content-factory/matching-items.js";
@@ -17,7 +18,7 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&
 const out = "scripts/jobs/.out";
 const readIds = (f: string): string[] => (existsSync(`${out}/${f}`) ? JSON.parse(readFileSync(`${out}/${f}`, "utf8")).map((x: any) => x.id) : []);
 
-const SOURCES: Array<{ file: string; label: string }> = [
+const SOURCES: Array<{ file: string; label: string; statuses?: string[] }> = [
   { file: "matching-listening-ids.json", label: "Listening — matching" },
   { file: "reading-headings-ids.json", label: "Reading — paragraph headings" },
   { file: "reading-headings-v2-ids.json", label: "Reading — paragraph headings (v2, position-neutral rules)" },
@@ -28,6 +29,20 @@ const SOURCES: Array<{ file: string; label: string }> = [
   { file: "ket-rebuild-ids.json", label: "Junior — KET Reading Part 1 rebuilt (matching + MCQ)" },
   { file: "a1-listening-adult-ids.json", label: "General — adult A1 listening (coverage gap)" },
   { file: "split-worksheet-ids.json", label: "Primary — listening worksheets split into single-blank items" },
+  { file: "phase1/content-gaps-ids.json", label: "Faz 1 — Junior B2 / Corporate A2 writing (content-only gaps)" },
+  { file: "phase1/junior-teen-ids.json", label: "Faz 1 — Junior teen drafts (B2 / A1)" },
+  { file: "phase2/pilot-ids.json", label: "Faz 2 — pilot: A1/A2 reading, A1/C1 listening, Junior teen re-run (strict text dependency)" },
+  { file: "phase2/pilot-v3-ids.json", label: "Faz 2 — pilot v3: text-bound MCQ prompt (TEXTDEP-UNCHECKED = gate did not run)" },
+  { file: "phase2/pilot-v3n10-ids.json", label: "Faz 2 — v3 MCQ, 10 per cell (strict gate, retried once)" },
+  { file: "phase2/pilot-c1match-ids.json", label: "Faz 2 — C1 listening as matching (attitude / inference / viewpoints)" },
+  { file: "phase2/pilot-matchfirst-ids.json", label: "Faz 2 — matching-first defaults: C1 attitude, Junior B2 (attitude rules)" },
+  { file: "phase2/pilot-matchfirst2-ids.json", label: "Faz 2 — Junior B2 listening matching after the 3-4 speaker rule" },
+  { file: "phase2/pilot-fill-ids.json", label: "Faz 2 — fill to target: General A1 reading" },
+  { file: "phase2/pilot-refill-c1c2-ids.json", label: "Faz 2 — C1-C2 reading refill as matching (after the pretest pull)" },
+  { file: "young-learners/smoke-ids.json", label: "Young learners — first picture item (smoke test)" },
+  { file: "young-learners/pilot-ids.json", label: "Young learners — picture task pilot (Primary / Junior; pictures vision-checked, listening voiced)" },
+  { file: "profile-level-gaps/ids.json", label: "Profile level gaps — Academia B1 listening, Corporate A2 reading/speaking, Language Schools A1/C1 reading" },
+  { file: "phase1/queue-ids.json", label: "Faz 1 — queue items that close coverage gaps (PRETEST / REVIEW / DRAFT)", statuses: ["DRAFT", "REVIEW", "PRETEST"] },
 ];
 
 const CHECKLIST = [
@@ -49,8 +64,12 @@ function renderItem(it: any, label: string): string {
     body = `<table><tr><th>Row</th><th>Key answer</th></tr>${c.dropZones.map((z: string, i: number) => `<tr><td>${esc(z)}</td><td>${esc(items[c.correctMapping[String(i)]])}</td></tr>`).join("")}</table>
       <p class="muted">Unused answers: ${esc(items.filter((_: string, i: number) => !Object.values(c.correctMapping).includes(i)).join(" | "))}</p>`;
   } else if (Array.isArray(c.options)) {
-    body = `<ol type="A">${c.options.map((o: any) => `<li class="${o.isCorrect ? "key" : ""}">${esc(o.text ?? o)}${o.isCorrect ? " <b>(key)</b>" : ""}</li>`).join("")}</ol>`;
+    body = `<ol type="A">${c.options.map((o: any) => `<li class="${o.isCorrect ? "key" : ""}">${o?.imageUrl ? `<img class="opt" src="${esc(o.imageUrl)}" alt="${esc(o.imageAlt ?? "")}"> <span class="muted">${esc(o.imageAlt ?? "")}</span> ` : ""}${esc(o.text ?? (typeof o === "string" ? o : ""))}${o.isCorrect ? " <b>(key)</b>" : ""}</li>`).join("")}</ol>`;
   }
+  // Pictures and audio: the reviewer must see and hear exactly what the candidate gets.
+  const media = `${c.imageUrl ? `<p><img class="stem" src="${esc(c.imageUrl)}" alt=""></p>` : ""}${c.audioUrl ? `<p><audio controls preload="none" src="${esc(c.audioUrl)}"></audio></p>` : ""}`;
+  const imageChecks = Array.isArray(it.metadata?.images) && it.metadata.images.length
+    ? `<p class="muted">Picture check (vision model): ${it.metadata.images.map((m: any) => `${esc(m.slot)} ${m.verdict?.ok ? "ok" : "FAILED"}${m.attempts > 1 ? ` after ${m.attempts} tries` : ""}`).join(" · ")}</p>` : "";
   const flags: string[] = [...(g.flags ?? [])];
   const isHeadings = Array.isArray(c.dropZones) && c.dropZones.every((z: string) => /^paragraph\s+\d+$/i.test(String(z).trim()));
   if (isHeadings && positionalHeadings(c.draggableItems ?? []).length) flags.push("POSITIONAL_HEADINGS");
@@ -58,8 +77,9 @@ function renderItem(it: any, label: string): string {
   const guided = typeof td.guidedExact === "boolean" ? td.guidedExact : td.guidedOk;
   return `<details class="item" data-id="${esc(it.id)}" data-code="${esc(it.itemCode ?? "")}"><summary><b>${esc(it.itemCode ?? it.id)}</b> · ${esc(it.cefrLevel)} · ${esc(it.subskill ?? "")} · demand: ${esc(it.metadata?.cognitiveDemand ?? "?")}
       <span class="tag ${blind ? "warn" : "ok"}">${blind ? "solvable without source" : "needs source"}</span>${guided === false ? '<span class="tag bad">key unconfirmed</span>' : ""}${flags.length ? `<span class="tag warn">${esc(flags.join(", "))}</span>` : ""}</summary>
+    ${media}
     <p><b>Prompt:</b> ${esc(c.question ?? c.stem ?? c.prompt)}</p>
-    ${body}
+    ${body}${imageChecks}
     <details><summary>${label.startsWith("Listening") ? "Recording script" : "Passage"}</summary><pre>${esc(source)}</pre></details>
     <p class="muted">Review: ${CHECKLIST.map((q) => `<label><input type="checkbox" data-check> ${esc(q)}</label>`).join(" ")}</p>
     <p><label>Decision: <select data-decision><option>—</option><option>Approve</option><option>Revise</option><option>Reject</option></select></label> <input type="text" data-notes placeholder="Notes (required for Reject)" size="60"></p>
@@ -73,7 +93,7 @@ async function main() {
     const ids = readIds(src.file);
     if (!ids.length) continue;
     const items = await prisma.item.findMany({
-      where: { id: { in: ids }, status: "DRAFT" as any },
+      where: { id: { in: ids }, status: { in: (src.statuses ?? ["DRAFT"]) as any } },
       select: { id: true, itemCode: true, cefrLevel: true, subskill: true, content: true, metadata: true },
       orderBy: { itemCode: "asc" },
     });
@@ -83,7 +103,7 @@ async function main() {
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Item review packet</title>
 <style>body{font:15px/1.5 system-ui,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#1b1f23;background:#fff}
 h1{margin-bottom:0}h2{margin-top:32px;border-bottom:1px solid #ddd;padding-bottom:4px}.muted{color:#586069;font-size:13px}
-details.item{border:1px solid #ddd;border-radius:6px;padding:8px 12px;margin:8px 0}summary{cursor:pointer}pre{white-space:pre-wrap;background:#f6f8fa;padding:10px;border-radius:4px}
+details.item{border:1px solid #ddd;border-radius:6px;padding:8px 12px;margin:8px 0}summary{cursor:pointer}pre{white-space:pre-wrap;background:#f6f8fa;padding:10px;border-radius:4px}img.stem{max-width:100%;max-height:360px;border:1px solid #ddd;border-radius:6px}img.opt{width:140px;height:140px;object-fit:contain;border:1px solid #ddd;border-radius:6px;vertical-align:middle}
 .tag{font-size:12px;border-radius:10px;padding:1px 8px;margin-left:6px;border:1px solid}.ok{color:#116329;border-color:#116329}.warn{color:#9a6700;border-color:#9a6700}.bad{color:#cf222e;border-color:#cf222e}
 table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:4px 8px;text-align:left}li.key{font-weight:600}label{display:block}.bar{position:sticky;top:0;background:inherit;padding:8px 0;border-bottom:1px solid #ddd;display:flex;gap:12px;align-items:center}button{padding:4px 10px}
 @media(prefers-color-scheme:dark){body{background:#0d1117;color:#e6edf3}pre{background:#161b22}details.item,td,th{border-color:#30363d}.muted{color:#8b949e}}</style></head><body>
