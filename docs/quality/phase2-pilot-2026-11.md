@@ -251,3 +251,16 @@ Değerlendirilen 341 soruda (288 metinsiz çözülen, 53 geçen) deterministik i
 - Bu 482 sorunun hiçbirine henüz aday yanıtı yok (`Response` 0). Havuzdan çıkarılırlarsa kalibrasyon verisi kaybolmaz.
 - Kuyruk kapsamı buna göre yeniden okunmalı: okuma A2–C2'de "kuyrukla minimumu geçiyor" sonucunun büyük kısmı bu havuzdan geliyor.
 - Sonuç dosyası: `scripts/jobs/.out/pretest-textdep/audit-READING-PRETEST.json` (soru bazında). Veritabanında hiçbir şey değiştirilmedi.
+
+### Metinsiz çözülebilen PRETEST soruları hizmetten alındı (2026-11-16)
+
+`scripts/jobs/pull-blind-pretest.ts --apply` (kullanıcı onayıyla, önce deneme modu).
+
+- 424 okuma sorusu PRETEST'ten REVIEW'a alındı: 421 metinsiz çözülebilir, 3 anahtarı doğrulanamadı. Atlanan yok; hepsi hâlâ PRETEST'ti ve denetimden sonra değişmemişti.
+- `isPretest` false yapıldı. Her soruya `metadata.textDependencyAudit { outcome, codes, auditedAt, pulledAt, previousStatus }` yazıldı. Hiçbir şey silinmedi.
+- Geri alma günlüğü: `scripts/jobs/.out/pretest-textdep/pulled-2026-11-16T12-44-51-828Z.jsonl` (424 satır, önceki durum ile). Bu dosya `.gitignore` kapsamında; yalnızca yerel makinede.
+- Doğrulama: veritabanında 424 soru REVIEW ve işaretli. Okuma PRETEST havuzunda kalan: PRE_A1 3, A1 17, A2 10, B1 14, B2 10, C1 1, C2 3 (toplam 58).
+- Canlı (ACTIVE) sorular etkilenmedi. Hiçbirinde aday yanıtı yoktu, kalibrasyon verisi kaybolmadı.
+- Çalışan sunucu, soru önbelleği nedeniyle değişikliği en geç 5 dakika içinde görür.
+
+Sonraki adım: C1–C2 okuma deneme havuzu neredeyse boş. Bu seviyelerde yeni okuma soruları eşleştirme öncelikli varsayılanla üretilmeli; ayrıntı ve doğrudan bilgi soruları için çoktan seçmeli yalnızca sıkı kapıyla.
