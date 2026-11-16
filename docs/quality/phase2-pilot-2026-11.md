@@ -217,3 +217,19 @@ Kredi kısa süre için geldi ve denetim 114 soru daha işledi, sonra yeniden bi
 | **Toplam** | **342** | **288 (%84)** |
 
 Değerlendirilemeyen 140 soru: B2'de 15, C1'de 49, C2'de 76. `--resume` bunları sonraki krediyle çalıştırır.
+
+### Kredisiz analiz: kural tabanlı işaretler metinsiz çözülmeyi ne kadar açıklıyor? (2026-11-16)
+
+Değerlendirilen 341 soruda (288 metinsiz çözülen, 53 geçen) deterministik içerik bütünlüğü kapısı ve iki basit ölçü:
+
+| İşaret | Metinsiz çözülen (n = 288) | Geçen (n = 53) |
+|---|---|---|
+| Doğru şık tek başına en uzun şık | 151 (%52) | 15 (%28) |
+| Test bilgisi (TEST_WISENESS: mutlak ifadeler, uzunluk/çekince farkı) | 106 (%37) | 8 (%15) |
+| Metinden kelime aktarımı (LEXICAL_LIFT) | 39 (%14) | 4 (%8) |
+| Herhangi bir bütünlük işareti | 134 (%47) | 11 (%21) |
+
+- Dört şıkta "en uzun şık doğru" oranının rastlantı değeri %25. Metinsiz çözülen sorularda bunun iki katı; bu soruların önemli bir kısmında doğru cevap biçiminden belli.
+- Bütünlük işareti taşıyan 145 sorunun 134'ü (%92) metinsiz çözülüyor. Kural tabanlı işaret güvenilir bir ön eleme.
+- Ama metinsiz çözülen 288 sorunun 154'ünde hiçbir işaret yok. Kurallar kör çözücünün yerini tutmuyor; kalan 140 soru için yine Gemini gerekiyor.
+- Hiçbir soru ürün kaynağı etiketi taşımıyor; hepsi genel çekirdek.
