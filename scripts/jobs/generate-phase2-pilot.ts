@@ -27,15 +27,16 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { runBatchGeneration } from "../../src/lib/content-factory/batch-generator.js";
 import { resolveItemType, type BlueprintCell } from "../../src/lib/content-factory/blueprint.js";
 import { prisma } from "../../src/lib/prisma.js";
+import { makeCellFilter } from "../../src/lib/content-factory/cli-filter.js";
 
 const OUT = "scripts/jobs/.out/phase2";
 /** --mcq-only --tag v3: re-run only the MCQ cells (prompt revision) into pilot-<tag>-*.json. */
 const MCQ_ONLY = process.argv.includes("--mcq-only");
 const MATCHING_ONLY = process.argv.includes("--matching-only");
 const arg = (name: string) => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
-/** --per-cell N overrides every cell's count; --only <regex> keeps cells whose group or label matches. */
+/** --per-cell N overrides every cell's count; --only "a|^b|c$" keeps cells whose group or label matches (see cli-filter). */
 const PER_CELL = arg("--per-cell") ? Number(arg("--per-cell")) : undefined;
-const ONLY = arg("--only") ? new RegExp(arg("--only")!) : undefined;
+const ONLY = makeCellFilter(arg("--only"));
 const TAG = arg("--tag") ? `-${arg("--tag")}` : "";
 const GENERAL: Partial<BlueprintCell> = { ageSuitability: "UNIVERSAL", culturalLoad: "LOW", englishVariant: "INTERNATIONAL" };
 const TEEN: Partial<BlueprintCell> = { productLine: "junior", ageSuitability: "TEEN", ageRange: [11, 14], culturalLoad: "LOW", englishVariant: "INTERNATIONAL" };
@@ -100,7 +101,7 @@ async function main(): Promise<void> {
   const cells = CELLS
     .filter((x) => !MCQ_ONLY || resolveItemType(x.cell) !== "DRAG_DROP")
     .filter((x) => !MATCHING_ONLY || resolveItemType(x.cell) === "DRAG_DROP")
-    .filter((x) => !ONLY || ONLY.test(x.group) || ONLY.test(label(x.cell)));
+    .filter((x) => !ONLY || ONLY(x.group) || ONLY(label(x.cell)));
   for (const { group, cell, count: baseCount } of cells) {
     const count = PER_CELL ?? baseCount;
     const r = await runBatchGeneration({ cell, count, triggeredBy: "claude-code:phase2-pilot", notes: "Faz 2 pilot (2026-11-14)", strictTextDependency: true });

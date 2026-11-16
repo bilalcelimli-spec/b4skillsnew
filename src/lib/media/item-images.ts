@@ -11,9 +11,9 @@
  * retry generation (bounded) and otherwise drop the draft.
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -167,7 +167,9 @@ const run = promisify(execFile);
  */
 export async function compressForWeb(image: GeneratedImage, maxSide = 768): Promise<GeneratedImage> {
   if (process.platform !== "darwin") return image;
-  const base = join(tmpdir(), `item-img-${randomUUID()}`);
+  // Private directory (mode 0700) rather than a guessable name in the shared tmp dir.
+  const dir = await mkdtemp(join(tmpdir(), "item-img-"));
+  const base = join(dir, "image");
   try {
     await writeFile(`${base}.png`, image.bytes);
     await run("sips", ["-Z", String(maxSide), "-s", "format", "jpeg", "-s", "formatOptions", "82", `${base}.png`, "--out", `${base}.jpg`]);
@@ -176,7 +178,7 @@ export async function compressForWeb(image: GeneratedImage, maxSide = 768): Prom
   } catch {
     return image;
   } finally {
-    await rm(`${base}.png`, { force: true }); await rm(`${base}.jpg`, { force: true });
+    await rm(dir, { recursive: true, force: true });
   }
 }
 

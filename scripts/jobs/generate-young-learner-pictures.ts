@@ -16,12 +16,13 @@ import "dotenv/config"; // first: the generators read GEMINI_API_KEY at import t
 import { mkdirSync, writeFileSync } from "node:fs";
 import { runPictureBatch, type PictureCell } from "../../src/lib/content-factory/picture-items.js";
 import { prisma } from "../../src/lib/prisma.js";
+import { makeCellFilter } from "../../src/lib/content-factory/cli-filter.js";
 
 const arg = (name: string) => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const OUT = "scripts/jobs/.out/young-learners";
 const TAG = arg("--tag") ?? "pilot";
 const PER_CELL = arg("--per-cell") ? Number(arg("--per-cell")) : undefined;
-const ONLY = arg("--only") ? new RegExp(arg("--only")!) : undefined;
+const ONLY = makeCellFilter(arg("--only"));
 const TRIGGER = "claude-code:yl-pictures";
 
 const c = (task: PictureCell["task"], productLine: PictureCell["productLine"], cefr: PictureCell["cefr"], topic: string, count = 3): PictureCell =>
@@ -64,7 +65,7 @@ export const WAVE1A: PictureCell[] = [
 async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true });
   const set = arg("--set") === "wave1a" ? WAVE1A : PILOT;
-  const cells = set.filter((x) => !ONLY || ONLY.test(`${x.task}/${x.productLine}/${x.cefr}/${x.topic}`))
+  const cells = set.filter((x) => !ONLY || ONLY(`${x.task}/${x.productLine}/${x.cefr}/${x.topic}`))
     .map((x) => ({ ...x, count: PER_CELL ?? x.count }));
   const results = [];
   for (const cell of cells) {
