@@ -43,3 +43,19 @@ describe('name and setting rotation', () => {
     expect(teenRules([11, 14])).toContain('11-14 years old');
   });
 });
+
+import { PRODUCT_SETTINGS, UNIVERSAL_SETTINGS, unanchoredNames } from '../src/lib/content-factory/age-context';
+describe('product settings and name anchoring', () => {
+  it('keeps Corporate and Academia drafts in their own settings', () => {
+    expect(settingsFor('ADULT', 'corporate')).toBe(PRODUCT_SETTINGS.corporate);
+    expect(settingsFor('ADULT', 'academia')).toBe(PRODUCT_SETTINGS.academia);
+    expect(settingsFor('UNIVERSAL', 'language-schools')).toBe(UNIVERSAL_SETTINGS);
+    expect(settingsFor('TEEN', 'junior')).toBe(TEEN_SETTINGS);
+  });
+  it('flags a name the question relies on but the text never mentions', () => {
+    expect(unanchoredNames({ ttsScript: 'Alright everyone, settle down.', question: 'According to Jonas, what is new?' })).toEqual(['Jonas']);
+    expect(unanchoredNames({ passage: 'Hi Luca, see you at 3.', question: 'When will Ines meet Luca?', options: ['At 3'] })).toEqual(['Ines']);
+    expect(unanchoredNames({ passage: 'Hi Luca, Ines here.', question: 'When will Ines meet Luca?' })).toEqual([]);
+    expect(unanchoredNames({ question: 'Choose the correct form: Jonas ___ late.' })).toEqual([]);
+  });
+});

@@ -49,8 +49,36 @@ export const YOUNG_LEARNER_SETTINGS = [
   "the school library", "a swimming pool", "a picnic in the park", "a child's bedroom",
 ];
 
-export function settingsFor(age: string | undefined): string[] {
-  return age === "YOUNG_LEARNER" ? YOUNG_LEARNER_SETTINGS : age === "TEEN" ? TEEN_SETTINGS : ADULT_SETTINGS;
+/** Everyday public settings that suit both teenagers and adults (UNIVERSAL cells, e.g. Language Schools 12+). */
+export const UNIVERSAL_SETTINGS = [
+  "a language school", "a local library", "a public park", "a train station", "a neighbourhood café",
+  "a museum", "a sports centre", "a farmers' market", "a cinema", "a bookshop", "a bus journey",
+  "a city festival", "a youth hostel", "a photography club", "a volunteer clean-up day", "a music shop",
+];
+
+/**
+ * Product-specific settings. Without these, Corporate and Academia drafts were
+ * placed in random adult settings (a swimming pool notice for a workplace
+ * reading cell, a coworking space for a university talk; dry run 2026-11-16).
+ */
+export const PRODUCT_SETTINGS: Record<string, string[]> = {
+  corporate: [
+    "an office team", "a customer service desk", "a logistics company", "a hotel management office",
+    "a small manufacturing firm", "a software company", "a retail chain head office", "an IT help desk",
+    "a sales department", "a warehouse", "a marketing agency", "an accounts department",
+    "a staff training day", "a company canteen", "a reception desk", "a project team meeting",
+  ],
+  academia: [
+    "a university lecture hall", "a seminar group", "a university library", "a student support office",
+    "a laboratory class", "a tutor's office hours", "an academic writing centre", "a field trip for a geography course",
+    "a university open day", "a research methods course", "an online course forum", "a student union meeting",
+  ],
+};
+
+export function settingsFor(age: string | undefined, productLine?: string): string[] {
+  if (productLine && PRODUCT_SETTINGS[productLine]) return PRODUCT_SETTINGS[productLine]!;
+  return age === "YOUNG_LEARNER" ? YOUNG_LEARNER_SETTINGS : age === "TEEN" ? TEEN_SETTINGS
+    : age === "UNIVERSAL" ? UNIVERSAL_SETTINGS : ADULT_SETTINGS;
 }
 
 /** FNV-1a; stable across runs so a cell + batch index + seed always gets the same picks. */
@@ -96,6 +124,24 @@ export function ageContextViolations(content: Record<string, unknown> | null | u
   const text = sourceText(content);
   const hits = [...(text.match(ADULT_CONTEXT) ?? []), ...(age === "YOUNG_LEARNER" ? text.match(TEEN_ONLY) ?? [] : [])];
   return [...new Set(hits.map((h) => h.toLowerCase()))];
+}
+
+/**
+ * Character names used in the question or options that never occur in the
+ * stimulus (passage / audio script). A receptive item that asks "According to
+ * Jonas…" when Jonas is never mentioned cannot be answered from the text
+ * (dry run 2026-11-16). Items without a stimulus (grammar, productive tasks)
+ * return no findings.
+ */
+export function unanchoredNames(content: Record<string, unknown> | null | undefined): string[] {
+  const c = content ?? {};
+  const stimulus = [c.passage, c.text, c.ttsScript, c.transcript, c.context]
+    .filter((x): x is string => typeof x === "string" && x.length > 0).join("\n");
+  if (!stimulus) return [];
+  const options = Array.isArray(c.options) ? (c.options as unknown[]).map((o) => (typeof o === "string" ? o : (o as { text?: string })?.text ?? "")) : [];
+  const asked = [c.question, c.stem, ...options].filter((x) => typeof x === "string").join("\n");
+  const has = (text: string, name: string) => new RegExp(`\\b${name}\\b`).test(text);
+  return DIVERSE_NAMES.filter((name) => has(asked, name) && !has(stimulus, name));
 }
 
 /** Prompt rules for 11-14 year olds; the age range comes from the cell. */

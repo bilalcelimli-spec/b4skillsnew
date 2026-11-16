@@ -35,7 +35,7 @@ import { runMatchingDependencyGate } from "../ai/validation/gates/matching-depen
 import { runContentIntegrityGate } from "../ai/validation/gates/content-integrity.js";
 import { runTextDependencyGate } from "../ai/validation/gates/text-dependency.js";
 import { hardenDistractors, type HardenResult } from "./distractor-hardening.js";
-import { DIVERSE_NAMES, ageContextViolations, rotatePick, settingsFor, teenRules } from "./age-context.js";
+import { DIVERSE_NAMES, ageContextViolations, rotatePick, settingsFor, teenRules, unanchoredNames } from "./age-context.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -121,7 +121,7 @@ export function buildSystemPrompt(
   // settings follow the candidate age (TEEN cells used to get the adult list).
   const rotationKey = [cell.skill, cell.cefr, cell.subskill, cell.topic ?? "", cell.genre ?? "", cell.ageSuitability ?? "", opts.seed ?? ""].join("|");
   const names = rotatePick(DIVERSE_NAMES, 6, `names|${rotationKey}`, batchIndex);
-  const settings = rotatePick(settingsFor(cell.ageSuitability), 3, `settings|${rotationKey}`, batchIndex);
+  const settings = rotatePick(settingsFor(cell.ageSuitability, cell.productLine), 3, `settings|${rotationKey}`, batchIndex);
 
   // The legacy prompt predates matching-first defaults and keeps the per-skill type.
   const itemType = legacy ? cell.itemType ?? DEFAULT_ITEM_TYPE[cell.skill] ?? "MULTIPLE_CHOICE" : resolveItemType(cell);
@@ -229,7 +229,7 @@ JSON ARRAY OUTPUT — exactly ${batchSize} items, each object:
     ${!legacy && ["GRAMMAR", "VOCABULARY"].includes(cell.skill) && ["B2", "C1", "C2"].includes(cell.cefr) ? `"context":       "...", // 2-4 sentence discourse context containing the gap` : ""}
     ${cell.skill === "READING" ? `"passage":       "...", // ${wc?.label ?? "appropriate length"}` : ""}
     ${cell.skill === "LISTENING" ? `"ttsScript":     "...", // natural spoken discourse, NOT a written essay read aloud` : ""}
-    "question":      "...",
+    "question":      "...", // any person named here must be named in the ${cell.skill === "LISTENING" ? "ttsScript (e.g. the speaker introduces themselves)" : "text"}
     "options": [
       {"id": "A", "text": "...", "isCorrect": false, "rationale": "...", "distractorRationale": "..."},
       {"id": "B", "text": "...", "isCorrect": true,  "rationale": "Correct because..."},
@@ -445,6 +445,8 @@ export async function generateDrafts(
       // Age-context gate (Faz 2): deterministic, before the paid model gates.
       const adult = raw && typeof raw.content === "object" ? ageContextViolations(raw.content as Record<string, unknown>, cell.ageSuitability) : [];
       if (adult.length) errs.push(`AGE_CONTEXT: adult setting for ${cell.ageSuitability} (${adult.join(", ")})`);
+      const ghosts = raw && typeof raw.content === "object" ? unanchoredNames(raw.content as Record<string, unknown>) : [];
+      if (ghosts.length) errs.push(`UNANCHORED_NAME: question names ${ghosts.join(", ")} but the text never mentions them`);
       if (errs.length) skippedReasons.push(`Item skipped — ${errs.join("; ")}`);
       else valid.push(raw);
     }
