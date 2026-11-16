@@ -215,3 +215,16 @@ Junior, kuyruk dahil: **24 hücrenin 24'ü minimumda veya üstünde.**
 Çoktan seçmeli dışı oran dilbilgisi/kelimede %16-61 (başlangıçta %0). Hedefe (okuma/dinleme 38, dilbilgisi/kelime 75, yazma/konuşma 17) Dalga 2'de, ilk kalibrasyon verisinden sonra gidilecek.
 
 **Bu sayılar inceleme onayına bağlı.** Dalga 1'in tüm taslakları (Primary + Junior, yaklaşık 690) DRAFT; canlı havuz değişmedi. Darboğaz artık inceleme: paket ~1.250 soru.
+
+## 14. İncelemesiz canlıya alma (2026-11-17)
+
+Ürün sahibinin açık talimatıyla ("bugün eklediğin tüm soruları canlıya al ve kullanılabilir hale getir, drafttan çıkar") ve puanlı/puansız seçiminde **"hepsi hemen puanlı"** tercihiyle, 2026-11-16'da üretilen **576 taslak** (Primary + Junior genç öğrenen partileri ve C1-C2 okuma doldurması) uzman incelemesi atlanarak `ACTIVE / isPretest=false / LIVE` yapıldı (`scripts/jobs/activate-young-learner-drafts.ts --mode active --apply`).
+
+- Dağılım: dinleme 96, okuma 92, dilbilgisi 141, kelime 161, yazma 38, konuşma 48. Atlanan yok (engelleyici kapı bayrağı, sessiz dinleme, resimsiz resimli görev ya da yapı hatası olan taslak yoktu).
+- Her soruda `metadata.provisionalActivation { reviewBypassed: true, paramsSource: "CEFR_PRIOR", calibrationPending: true, instructedBy: "product owner (chat, 2026-11-17)" }`. Geri alma günlüğü (yerel): `scripts/jobs/.out/young-learners/activated-2026-11-16T22-14-29-710Z.jsonl`.
+- **Riskler (kabul edildi):** IRT parametreleri yalnızca CEFR seviyesinden tahmin (a = 1, b = seviye tohumu, c = 1/3 ya da 1/4); doğru cevaplar, resimler ve sesler insan tarafından kontrol edilmedi; bu sorular adayların puanına doğrudan katılıyor.
+- Junior soruları yalnızca Junior'da değil, en küçük adayı 14 yaşından büyük olmayan General English (12+), Express ve 15-Min Diagnostic (14+) havuzlarına da girer (`excludedSources` kuralı); Primary soruları yalnızca Primary'de.
+
+Öneriler: (1) Bu 576 soru ilk 200 yanıtı topladığında kalibrasyon taraması öncelikli çalıştırılmalı; uyumsuz parametreler hızla yayımlanmalı ya da soru geri çekilmeli. (2) İnceleme paketi yine de işlenmeli; Reject kararı verilen soru `REVIEW`'a çekilmeli. (3) Kişi uyumu (person-fit) ve ilk sınav sonuçları ilk hafta yakından izlenmeli.
+
+Canlı kapasite (yalnızca ACTIVE): Junior dilbilgisi A1-B2, okuma A1, dinleme A2-B1, yazma A1/B1, konuşma A1/B1 minimumda. Junior dinleme B2 ve yazma B2 canlıda hâlâ 0; kuyruklu ölçümdeki karşılıkları 2026-11-14 tarihli Faz 1 taslaklarıydı ve bu işlemin kapsamında değildi. Primary'de okuma (5-7 metin) ve yazma/konuşma canlıda minimumun altında.
