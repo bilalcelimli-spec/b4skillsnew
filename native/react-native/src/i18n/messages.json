@@ -1571,10 +1571,6 @@
     "en": "Age and guardian consent",
     "ar": "العمر وموافقة ولي الأمر"
   },
-  "Tam doğum tarihinizi istemiyoruz. 18 yaş altı adaylar için veli e-posta onayı ve kurumun veli yetkisini doğrulaması gerekir. Bu adımlar tamamlanana kadar sınav, mikrofon ve kamera hazırlığı açılmaz.": {
-    "en": "We do not ask for your full date of birth. Candidates under 18 need guardian email consent and school verification of guardian authority. The assessment, microphone and camera checks remain unavailable until both steps are complete.",
-    "ar": "لا نطلب تاريخ ميلادك الكامل. يحتاج المتقدمون دون 18 عامًا إلى موافقة ولي الأمر بالبريد الإلكتروني وتحقق المؤسسة من صفته. لا يُتاح الاختبار أو فحص الميكروفون والكاميرا حتى اكتمال الخطوتين."
-  },
   "Onay durumu kontrol ediliyor…": {
     "en": "Checking consent status…",
     "ar": "جارٍ التحقق من حالة الموافقة…"
@@ -1602,14 +1598,6 @@
   "Veliye onay bağlantısı gönder": {
     "en": "Send consent link to guardian",
     "ar": "إرسال رابط الموافقة إلى ولي الأمر"
-  },
-  "Bağlantı gönderildi. Velinizin onayı ve kurumunuzun veli yetkisini doğrulaması bekleniyor.": {
-    "en": "Link sent. Waiting for guardian consent and school verification of guardian authority.",
-    "ar": "أُرسل الرابط. بانتظار موافقة ولي الأمر وتحقق المؤسسة من صفته."
-  },
-  "Veli e-posta onayı alındı. Kurumunuzun veli yetkisini doğrulaması bekleniyor.": {
-    "en": "Guardian email consent received. Waiting for school verification of guardian authority.",
-    "ar": "استُلمت موافقة ولي الأمر بالبريد الإلكتروني. بانتظار تحقق المؤسسة من صفته."
   },
   "Veli onayı geri çekildi. Sınav açılamaz.": {
     "en": "Guardian consent was withdrawn. The assessment is unavailable.",
@@ -1654,5 +1642,13 @@
   "· Zorunlu geçiş denetimi:": {
     "en": "· Required transition checks:",
     "ar": "· التحقق الإلزامي من انتقال التطبيق:"
+  },
+  "Tam doğum tarihinizi istemiyoruz. 18 yaş altı adaylar için velinin e-posta ile onay vermesi gerekir. Veli onaylayana kadar sınav, mikrofon ve kamera hazırlığı açılmaz.": {
+    "en": "We do not ask for your full date of birth. Candidates under 18 need their guardian to approve by email. The assessment, microphone and camera checks stay unavailable until the guardian approves.",
+    "ar": "لا نطلب تاريخ ميلادك الكامل. يحتاج المتقدمون دون 18 عامًا إلى موافقة ولي الأمر عبر البريد الإلكتروني. لا يُتاح الاختبار أو فحص الميكروفون والكاميرا حتى يوافق ولي الأمر."
+  },
+  "Bağlantı gönderildi. Veliniz e-postadaki “Onaylıyorum” butonuyla onay verdiğinde “Durumu yenile”ye basarak sınava başlayabilirsiniz.": {
+    "en": "Link sent. When your guardian taps “Onaylıyorum” (I approve) in the email, press “Refresh status” to start the assessment.",
+    "ar": "أُرسل الرابط. عندما يضغط ولي أمرك على زر الموافقة في البريد الإلكتروني، اضغط «تحديث الحالة» لبدء الاختبار."
   }
 }

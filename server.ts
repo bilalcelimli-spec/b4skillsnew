@@ -1408,10 +1408,18 @@ async function startServer() {
     if (!resendClient) throw new Error('Guardian email delivery unavailable');
     const base = new URL(APP_BASE_URL);
     if (process.env.NODE_ENV === 'production' && base.protocol !== 'https:') throw new Error('Secure public URL required');
-    const url = new URL('/guardian-consent', base); url.hash = token;
+    // Buttons open the decision page with the choice preselected. A GET never records a decision,
+    // so mail scanners that prefetch links cannot approve or decline on the guardian's behalf.
+    const link = (action: 'approve' | 'reject') => { const u = new URL('/guardian-consent', base); u.searchParams.set('action', action); u.hash = token; return u.toString(); };
+    const btn = (href: string, label: string, bg: string) => `<td style="padding:0 8px 0 0"><a href="${href}" style="display:inline-block;padding:14px 26px;border-radius:10px;background:${bg};color:#ffffff;font-weight:700;font-size:16px;text-decoration:none;font-family:Arial,sans-serif">${label}</a></td>`;
     const { error } = await resendClient.emails.send({ from: FROM_ADDRESS, to: email,
       subject: 'B4Skills — veli onayı talebi',
-      html: `<p>Bir aday B4Skills sınavı için bu adrese veli onayı talebi gönderdi.</p><p>Sınav yanıtları, ses kayıtları, otomatik kamera fotoğrafları ve AI sağlayıcılarına aktarım hakkında bilgi edinip karar verebilirsiniz.</p><p><a href="${url.toString()}">Bilgilendirmeyi okuyun ve karar verin</a></p><p>Bağlantı 48 saat geçerlidir. Onay vermek zorunda değilsiniz. Talebi tanımıyorsanız dikkate almayın. Onaydan sonra kurum ayrıca veli yetkisini doğrular.</p>` });
+      html: `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#0f172a;max-width:560px">
+<p>Bir aday B4Skills İngilizce sınavı için bu adrese veli onayı talebi gönderdi.</p>
+<p>Sınav sırasında yazılı yanıtlar ve ses kayıtları puanlama için OpenAI hizmetlerine aktarılabilir; sınav güvenliği için kamera fotoğrafları çekilip kuruma gönderilebilir. Onay verdiğinizde aday sınava hemen başlayabilir.</p>
+<table role="presentation" cellspacing="0" cellpadding="0" style="margin:20px 0"><tr>${btn(link('approve'), 'Onaylıyorum', '#15803d')}${btn(link('reject'), 'Reddediyorum', '#b91c1c')}</tr></table>
+<p style="font-size:13px;color:#475569">Butona bastığınızda açılan sayfada kararınızı tek adımda tamamlarsınız. Bağlantı 48 saat geçerlidir. Onay vermek zorunda değilsiniz; talebi tanımıyorsanız onaylamayın.</p>
+</div>` });
     if (error) throw new Error('Guardian email delivery failed');
   }));
   app.use((req: any, res, next) => {

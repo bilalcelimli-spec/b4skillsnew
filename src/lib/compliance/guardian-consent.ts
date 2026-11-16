@@ -15,10 +15,11 @@ const childProduct = (value?: string | null) => /primary|junior|kids|7\s*[-–]\
 export function consentStatus(record: any, productLine?: string | null) {
   const current = record?.policyVersion === CONSENT_VERSION;
   const guardianRequired = !!record && (record.ageBand !== 'ADULT' || record.guardianRequired === true || childProduct(productLine));
-  const allowed = !!current && (!guardianRequired || (!!record.approvedAt && !!record.verifiedAt && !record.revokedAt));
+  // The guardian's emailed decision admits the candidate; institutional verification is an optional record only.
+  const allowed = !!current && (!guardianRequired || (!!record.approvedAt && !record.revokedAt));
   return { allowed, ageBand: record?.ageBand ?? null, guardianRequired,
     status: !record ? 'AGE_REQUIRED' : !current ? 'RENEWAL_REQUIRED' : !guardianRequired ? 'READY' :
-      record.revokedAt ? 'REVOKED' : !record.approvedAt ? 'GUARDIAN_REQUIRED' : !record.verifiedAt ? 'SCHOOL_VERIFICATION_REQUIRED' : 'READY',
+      record.revokedAt ? 'REVOKED' : !record.approvedAt ? 'GUARDIAN_REQUIRED' : 'READY',
     policyVersion: CONSENT_VERSION };
 }
 export async function candidateConsent(db: PrismaClient, userId: string, productLine?: string | null) {
@@ -82,7 +83,7 @@ export async function guardianDecision(db: PrismaClient, raw: string, input: { a
       guardianName: input.approve ? input.guardianName!.trim() : null, relationship: input.approve ? input.relationship!.trim() : null,
       verifiedAt: null, manageHash: input.approve ? digestConsentToken(manageToken) : null, manageExpiresAt: input.approve ? new Date(now.getTime() + 365 * 86400_000) : null } });
   if (!result.count) throw new ConsentError(410, 'LINK_EXPIRED', 'Bağlantı kullanılmış veya süresi dolmuş.');
-  return { approved: input.approve, ...(input.approve ? { manageToken, status: 'SCHOOL_VERIFICATION_REQUIRED' } : {}) };
+  return { approved: input.approve, ...(input.approve ? { manageToken, status: 'READY' } : {}) };
 }
 export async function revokeGuardian(db: PrismaClient, raw: string, now = new Date()) {
   const result = await db.assessmentConsent.updateMany({ where: { manageHash: digestConsentToken(raw), manageExpiresAt: { gt: now }, revokedAt: null },
