@@ -178,10 +178,12 @@ Kuyruk dahil kapasite: Primary'de yalnızca dilbilgisi A2 (39/40) minimumun alt�
 
 ## 12. Dalga 1, parti C — Junior (2026-11-16)
 
-Metin görevleri (`generate-young-learner-text.ts --set wave1c`): **95/115** kaydedildi. Resimli görevler (`generate-young-learner-pictures.ts --set wave1c`): **15/26**; Gemini ön ödemeli kredisi partinin sonunda bitti (W-PICSTORY 1/4, S-PIC 0/4 bu yüzden). 27 dinleme taslağı (13 metin, 14 resimli) **henüz seslendirilmedi**; kredi gelince:
+Metin görevleri (`generate-young-learner-text.ts --set wave1c`): **95/115** kaydedildi. Resimli görevler (`generate-young-learner-pictures.ts --set wave1c`): **15/26**; Gemini ön ödemeli kredisi partinin sonunda bitti (W-PICSTORY 1/4, S-PIC 0/4 bu yüzden). 27 dinleme taslağı (13 metin, 14 resimli) o sırada seslendirilemedi; seslendirme komutu:
 
     npx tsx scripts/jobs/generate-primary-listening-audio.ts --trigger claude-code:yl-text --apply
     npx tsx scripts/jobs/generate-primary-listening-audio.ts --trigger claude-code:yl-pictures --apply
+
+Kredi yenilendikten sonra (aynı gün): 27 dinleme taslağının hepsi seslendirildi (genç öğrenen dinleme taslaklarının 81'inin tamamı artık sesli); kesilen iki resimli hücre tamamlandı, 5/8 daha kaydedildi (W-PICSTORY 2/4, S-PIC 3/4; 6 resim görme kontrolünden geçemedi). Parti C toplamı: **115 taslak**.
 
 Junior kapasitesi, kuyruk dahil (önce → sonra; minimum okuma/dinleme 25, dilbilgisi/kelime 50, yazma/konuşma 11):
 
