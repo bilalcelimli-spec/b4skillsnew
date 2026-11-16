@@ -139,3 +139,33 @@ Toplam yaklaşık 850 kullanılabilir soru; ~1.350 taslak talebi. Her parti sonr
 - R-PICSENT ölçeklenmeden önce yeniden pilotlanmalı (verim 1/6). Diğer dört görev Dalga 1'e hazır.
 
 Tüm taslaklar DRAFT / AI_DRAFT, inceleme paketinde (resim ve sesleriyle).
+
+## 10. Dalga 1, parti A (2026-11-16)
+
+`generate-young-learner-pictures.ts --set wave1a --tag wave1a`: 28 hücre, 151 taslak istendi, **116 kaydedildi**. 221 resim üretildi, 22'si görme kontrolünden geçemedi (%10; pilotta %29). 41 dinleme taslağının hepsi seslendirildi (11-28 saniye, her diyalogda iki ayrı ses).
+
+| Görev | Kaydedilen | Ana kayıp |
+|---|---|---|
+| L-PIC3 Primary (Pre-A1/A1/A2) | 32/48 | metinsiz çözülen 23 (tüm L-PIC3 dahil); A1 okul hücresi 1/6 |
+| L-PIC3 Junior (A1/A2/B1) | 9/18 | metinsiz çözülen, 2 resim |
+| V-PICWORD Primary | 34/36 | 3 resim |
+| S-PIC Primary + Junior | 23/26 | Junior B1 bilim fuarı: resimde yazı (4 ret) |
+| W-PICSTORY Primary + Junior | 17/18 | – |
+| R-PICSENT yeniden deneme | 3/8 | 5 resimsiz çözüldü |
+
+- İstem düzeltmesi resimdeki yazı sorununu büyük ölçüde çözdü: Junior B1 hikâyeleri pilotta 0/3, şimdi 4/4.
+- R-PICSENT hâlâ zayıf (3/8). Ölçeklenmeyecek; okuma için Primary'de metin tabanlı görevler (kısa notlar, tabelalar, kısa hikâye) kullanılacak.
+- Dinlemede metinsiz çözülme 3 şıkta beklenen düzeyde (~%30); kayıp kabul edilebilir.
+
+Kapasite, kuyruk dahil (`verify:capacity --with-queue`):
+
+| Profil | Hücre | Önce | Sonra |
+|---|---|---|---|
+| Primary | Dinleme Pre-A1 / A1 / A2 | 14 / 28 / 32 | 28 / 40 / 42 |
+| Primary | Kelime Pre-A1 / A1 | 31 / 47 | 52 / 66 |
+| Primary | Yazma A2, Konuşma A2 | 10 / 9 | 18 / 14 |
+| Junior | Dinleme A1 / B1 | 8 / 9 | 12 / 12 |
+
+Primary'de dinleme, kelime (Pre-A1/A1), yazma ve konuşma kuyrukla minimumu geçti. Kalan Primary açıkları: okuma Pre-A1 (18/20), kelime A2 (28/40), dilbilgisi A2. Junior hemen her hücrede minimumun altında; resimli görevler Junior'un dilbilgisi/kelime/okuma açığını kapatmaz.
+
+Sonraki parti (B): Junior için metin tabanlı üretim (çoktan seçmeli boşluk doldurma, diyalog tamamlama, tabela/mesaj, eşleştirme; `runBatchGeneration`, sıkı kapılar), Primary okuma Pre-A1 ve kelime/dilbilgisi A2. Taslaklar inceleme kapasitesine göre partilere bölünmeli: inceleme paketi şimdi yaklaşık 840 soru.

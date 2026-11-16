@@ -5,6 +5,7 @@
  *
  *   npx tsx scripts/jobs/generate-young-learner-pictures.ts                    # pilot cells (3 each)
  *   npx tsx scripts/jobs/generate-young-learner-pictures.ts --only L-PIC3 --per-cell 2 --tag try
+ *   npx tsx scripts/jobs/generate-young-learner-pictures.ts --set wave1a --tag wave1a
  *   → scripts/jobs/.out/young-learners/<tag>-ids.json, <tag>-results.json
  *
  * Listening audio afterwards:
@@ -40,9 +41,30 @@ export const PILOT: PictureCell[] = [
   c("W-PICSTORY", "junior", "B1", "sport"),
 ];
 
+/** Wave 1, batch A (2026-11-16): the four task types ready after the pilot, plus an R-PICSENT re-pilot. ~151 drafts. */
+export const WAVE1A: PictureCell[] = [
+  // Primary listening today (live stimuli, min 20): Pre-A1 3, A1 8, A2 6
+  c("L-PIC3", "primary", "PRE_A1", "animals", 6), c("L-PIC3", "primary", "PRE_A1", "family", 6), c("L-PIC3", "primary", "PRE_A1", "colours and clothes", 6),
+  c("L-PIC3", "primary", "A1", "school", 6), c("L-PIC3", "primary", "A1", "weather", 6), c("L-PIC3", "primary", "A1", "sports and games", 6),
+  c("L-PIC3", "primary", "A2", "holidays", 6), c("L-PIC3", "primary", "A2", "places in town", 6),
+  // Primary vocabulary: Pre-A1 9 of 40, A1 27
+  c("V-PICWORD", "primary", "PRE_A1", "animals", 6), c("V-PICWORD", "primary", "PRE_A1", "the body", 6), c("V-PICWORD", "primary", "PRE_A1", "toys", 6),
+  c("V-PICWORD", "primary", "A1", "food", 6), c("V-PICWORD", "primary", "A1", "transport", 6), c("V-PICWORD", "primary", "A1", "the home", 6),
+  // Primary speaking / writing
+  c("S-PIC", "primary", "PRE_A1", "the beach", 5), c("S-PIC", "primary", "A1", "a birthday party", 5), c("S-PIC", "primary", "A2", "the zoo", 5),
+  c("W-PICSTORY", "primary", "A1", "pets", 5), c("W-PICSTORY", "primary", "A2", "a school trip", 5),
+  // Junior (A1 listening has 0 stimuli)
+  c("L-PIC3", "junior", "A1", "sport", 6), c("L-PIC3", "junior", "A2", "shopping", 6), c("L-PIC3", "junior", "B1", "travel", 6),
+  c("S-PIC", "junior", "A2", "a sports day", 4), c("S-PIC", "junior", "B1", "a science fair", 4),
+  c("W-PICSTORY", "junior", "A2", "a lost phone", 4), c("W-PICSTORY", "junior", "B1", "a camping trip", 4),
+  // R-PICSENT re-pilot after the plausibility rule
+  c("R-PICSENT", "primary", "PRE_A1", "the garden", 4), c("R-PICSENT", "primary", "A1", "the classroom", 4),
+];
+
 async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true });
-  const cells = PILOT.filter((x) => !ONLY || ONLY.test(`${x.task}/${x.productLine}/${x.cefr}/${x.topic}`))
+  const set = arg("--set") === "wave1a" ? WAVE1A : PILOT;
+  const cells = set.filter((x) => !ONLY || ONLY.test(`${x.task}/${x.productLine}/${x.cefr}/${x.topic}`))
     .map((x) => ({ ...x, count: PER_CELL ?? x.count }));
   const results = [];
   for (const cell of cells) {
