@@ -7,6 +7,8 @@
  *   npx tsx scripts/jobs/activate-young-learner-drafts.ts                       # dry run, mode pretest-first
  *   npx tsx scripts/jobs/activate-young-learner-drafts.ts --mode active         # dry run, everything scored
  *   npx tsx scripts/jobs/activate-young-learner-drafts.ts --mode <m> --apply    # write
+ *   npx tsx scripts/jobs/activate-young-learner-drafts.ts --mode active --from-review scripts/jobs/.out/young-learners/backlog-review.json [--apply]
+ *     older backlog: only the items review-young-learner-backlog.ts marked READY
  *
  * Modes
  *   pretest-first  listening/reading/grammar/vocabulary → PRETEST (shown, unscored, calibrated);
@@ -23,7 +25,7 @@
  */
 
 import "dotenv/config";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import { PRODUCT_LINE_PROFILES } from "../../src/lib/product-lines/profiles.js";
 import { isAdaptiveEligible, isPretestEligible } from "../../src/lib/assessment-engine/adaptive-policy.js";
@@ -39,12 +41,19 @@ const TRIGGERS = ["claude-code:yl-pictures", "claude-code:yl-text", "claude-code
 const SINCE = new Date("2026-11-15T21:00:00Z"); // 2026-11-16 00:00 Europe/Istanbul
 const BLOCKING = /SOLVABLE-BLIND|KEY-UNCONFIRMED|TEXTDEP-UNCHECKED/;
 const PRODUCTIVE = new Set(["WRITING", "SPEAKING"]);
+/** --from-review <backlog-review.json>: activate the items that review marked READY (DRAFT or REVIEW, any date). */
+const FROM_REVIEW = arg("--from-review");
 
 async function main(): Promise<void> {
   const db = new PrismaClient();
   try {
+    const readyIds = FROM_REVIEW
+      ? (JSON.parse(readFileSync(FROM_REVIEW, "utf8")).results as Array<{ id: string; verdict: string }>).filter((r) => r.verdict === "READY").map((r) => r.id)
+      : null;
     const rows = await db.item.findMany({
-      where: { status: "DRAFT", createdAt: { gte: SINCE }, OR: TRIGGERS.map((t) => ({ metadata: { path: ["triggeredBy"], equals: t } })) },
+      where: readyIds
+        ? { id: { in: readyIds }, status: { in: ["DRAFT", "REVIEW"] } }
+        : { status: "DRAFT", createdAt: { gte: SINCE }, OR: TRIGGERS.map((t) => ({ metadata: { path: ["triggeredBy"], equals: t } })) },
       select: { id: true, itemCode: true, type: true, skill: true, cefrLevel: true, content: true, metadata: true, tags: true,
         ageSuitability: true, discrimination: true, guessing: true, status: true, isPretest: true, pipelineStage: true },
       orderBy: { itemCode: "asc" },
@@ -88,10 +97,10 @@ async function main(): Promise<void> {
           await tx.$queryRaw`SELECT id FROM "Item" WHERE id = ANY(${ids}) ORDER BY id FOR UPDATE`;
           for (const { row, target } of chunk) {
             const current = await tx.item.findUnique({ where: { id: row.id }, select: { status: true, metadata: true } });
-            if (current?.status !== "DRAFT") continue; // changed since the plan
+            if (current?.status !== row.status) continue; // changed since the plan
             const metadata = (current.metadata ?? {}) as Record<string, any>;
             const provisionalActivation = {
-              policyVersion: "yl-2026-11-17", mode: MODE, reviewBypassed: true, paramsSource: "CEFR_PRIOR", calibrationPending: true,
+              policyVersion: readyIds ? "yl-backlog-2026-11-17" : "yl-2026-11-17", mode: MODE, reviewBypassed: true, paramsSource: "CEFR_PRIOR", calibrationPending: true,
               instructedBy: "product owner (chat, 2026-11-17)", activatedBy: "claude-code:activate-young-learner-drafts", activatedAt: at,
             };
             await tx.item.update({ where: { id: row.id }, data: {
