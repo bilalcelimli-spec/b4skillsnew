@@ -5,9 +5,9 @@ import type { PrismaClient } from '@prisma/client';
  * No storage object or database record is changed by this service.
  */
 export async function previewDataRetention(prisma: PrismaClient, now = new Date()) {
-  const audioCutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  const audioCutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const sessionCutoff = new Date(now);
-  sessionCutoff.setUTCFullYear(sessionCutoff.getUTCFullYear() - 5);
+  sessionCutoff.setUTCFullYear(sessionCutoff.getUTCFullYear() - 2);
   const terminal = { status: { in: ['COMPLETED', 'EXPIRED'] as ('COMPLETED' | 'EXPIRED')[] } };
   const [expiredSessions, expiredAudioReferences, openReviews] = await Promise.all([
     prisma.session.count({ where: { ...terminal, createdAt: { lt: sessionCutoff } } }),
@@ -23,6 +23,6 @@ export async function previewDataRetention(prisma: PrismaClient, now = new Date(
     limitations: ['Inventory counts are not deletion eligibility decisions.',
       'Audio embedded in answer JSON, integrated tasks and storage-only objects are not included in the reference count.',
       'Legal holds, storage ownership and complete anonymisation across related records must be defined before applying retention.',
-      'Legacy two-year deletion conflicts with the workflow five-year anonymisation policy.'],
+      'Use the paginated retention sweep for complete eligibility and enforcement.'],
   };
 }

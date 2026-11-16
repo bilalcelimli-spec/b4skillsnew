@@ -7,6 +7,7 @@ const item=(id='first')=>({id,skill:'WRITING',type:'WRITING_PROMPT',content:{pro
 const response=(status:number,data:unknown)=>({ok:status>=200&&status<300,status,json:async()=>data});
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 async function begin(){
+ const age = screen.getByRole('checkbox',{name:/18 yaşında/}) as HTMLInputElement; if (!age.checked) fireEvent.click(age);
  fireEvent.click(await screen.findByRole('button',{name:/Start as Guest/}));
  fireEvent.click(await screen.findByRole('button',{name:/I'm Ready/}));
  await screen.findByRole('textbox');
@@ -60,4 +61,11 @@ it('allows closing an expired quick check without starting another attempt',asyn
  await begin();await submit();
  fireEvent.click(await screen.findByRole('button',{name:'Close quick check'}));
  expect(onClose).toHaveBeenCalledOnce();expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+it('does not start an anonymous assessment without an adult age declaration', async () => {
+ const fetchMock = vi.fn(); vi.stubGlobal('fetch',fetchMock);
+ render(<FreemiumTestWidget onClose={vi.fn()} />);
+ fireEvent.click(screen.getByRole('button',{name:/Start as Guest/}));
+ expect(fetchMock).not.toHaveBeenCalled(); expect(screen.getAllByText(/yalnızca 18 yaş/).length).toBeGreaterThan(0);
 });

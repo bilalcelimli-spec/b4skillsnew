@@ -32,8 +32,10 @@ services:
         value: proctoring-evidence
       - key: DATA_WAREHOUSE_BUCKET
         value: data-exports
+      - key: OPENAI_API_KEY
+        sync: false          # candidate writing/audio scoring; set securely in Render
       - key: GEMINI_API_KEY
-        sync: false          # set manually in Render dashboard
+        sync: false          # optional internal content authoring; not candidate scoring
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET

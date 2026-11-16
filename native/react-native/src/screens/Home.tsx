@@ -105,13 +105,13 @@ export function Ready({
                 standard: t("Standart"),
                 monitored: t("Otomatik gözetimli"),
                 secure: t("Güvenli değerlendirme")
-              }[store.policy.mode]}{t(" · Uygulama geçiş kaydı: ")}{store.policy.required.lifecycleEvents ? t("açık") : t("kapalı")}.</Text>
+              }[store.policy.mode]}{t(" · Zorunlu geçiş denetimi: ")}{store.policy.required.lifecycleEvents ? t("açık") : t("kapalı")}.</Text>
               {store.deviceChecks ? <Text style={[type.caption, {
               color: color.muted
             }]}>{t("Mikrofon: ")}{store.deviceChecks.microphone ? t("hazır") : t("izin gerekli")}{t(" · Teknik olay kaydı: ")}{store.deviceChecks.durableEvents ? t("hazır") : t("kullanılamıyor")}
               </Text> : null}
               {store.capabilityProblems.length ? <Message tone="error" text={t("Eksik yetenekler: {0}. Bu profil için sınav başlatılamaz.", [store.capabilityProblems.map(problem => t(problem)).join(', ')])} /> : null}
-              <Text style={[type.small, { color: color.body }]}>{t('Yazılı ve sesli sınav yanıtlarınız, puanlama ve gerektiğinde sesin metne dönüştürülmesi için Google (Gemini), OpenAI veya Anthropic hizmetlerine gönderilebilir. Sonuçlar kurumunuzla paylaşılır. Yanıtlarınıza gereksiz kişisel veya hassas bilgi eklemeyin. Onay vermeden yeni bir sınav başlatılmaz.')}</Text>
+              <Text style={[type.small, { color: color.body }]}>{t('Yazılı ve sesli sınav yanıtlarınız, puanlama ve gerektiğinde sesin metne dönüştürülmesi için OpenAI hizmetlerine gönderilebilir. Sonuçlar kurumunuzla paylaşılır. Yanıtlarınıza gereksiz kişisel veya hassas bilgi eklemeyin. Onay vermeden yeni bir sınav başlatılmaz.')}</Text>
               <LegalLinks />
               <Pressable accessibilityRole="checkbox" accessibilityLabel={t('Sınav koşullarını okudum; yanıtlarımın açıklanan AI sağlayıcılarına puanlama için gönderilmesine izin veriyorum.')} accessibilityState={{
               checked: store.policyAccepted

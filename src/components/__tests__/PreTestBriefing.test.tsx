@@ -6,6 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { OZGUN_PRODUCT } from "../../lib/fixed-forms/ozgun-kids";
 import { PreTestBriefing } from "../PreTestBriefing.js";
 
+// This suite covers briefing/routing; guardian admission has its own fail-closed integration tests.
+vi.mock('../GuardianConsent', async original => ({ ...await original<any>(), CandidateConsentGate: ({children}: any) => <>{children}</> }));
+
 afterEach(cleanup);
 
 describe("PreTestBriefing", () => {

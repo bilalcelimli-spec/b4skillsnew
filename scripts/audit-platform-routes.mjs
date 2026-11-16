@@ -55,7 +55,7 @@ for (const file of ['server.ts', ...sourceFiles('src')]) {
           routes.push({ file, line, method: target.split('.')[1].toUpperCase(), url: routeUrl });
         }
       }
-      if (target === 'app.use' && url) mounts.push({ url, handler: node.arguments[1]?.getText(source) ?? '' });
+      if (target === 'app.use' && url) mounts.push({ url, handler: node.arguments.slice(1).map(argument => argument.getText(source)).join(', ') });
       if ((target === 'fetch' || target.endsWith('.fetch')) && url?.startsWith('/api')) {
         let method = 'GET';
         const options = node.arguments[1];
@@ -72,6 +72,7 @@ for (const file of ['server.ts', ...sourceFiles('src')]) {
 }
 
 const factories = {
+  'src/routes/guardian-consent.ts': 'guardianConsentRouter',
   'src/routes/session-pause.ts': 'createSessionPauseRouter',
   'src/routes/items.ts': 'createItemsRouter',
   'src/routes/billing.ts': 'createBillingRouter',
@@ -91,7 +92,7 @@ const active = routes.flatMap(route => {
 function matches(route, url) {
   const escaped = route.url.split('/').map(segment => segment.startsWith(':') ? '[^/]+'
     : segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('/');
-  return new RegExp('^' + escaped + '/?$').test(url);
+  return new RegExp('^' + escaped + '/?$').test(url) || (url.includes(':dynamic') && new RegExp('^' + url.split('/').map(segment => segment === ':dynamic' ? '[^/]+' : segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('/') + '/?$').test(route.url));
 }
 const missing = calls.filter(call => !active.some(route =>
   (route.method === call.method || route.method === 'ALL') && matches(route, call.url.split('?')[0])));

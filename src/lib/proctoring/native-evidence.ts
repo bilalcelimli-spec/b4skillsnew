@@ -61,7 +61,7 @@ export async function reserveEvidence(db: PrismaClient, body: EvidenceReservatio
     const session = await tx.session.findUniqueOrThrow({ where: { id: body.sessionId }, include: { organization: { select: { settings: true } } } });
     const pilot = cameraPilot(session.organization?.settings);
     if (!pilot.enabled) throw new AppError(403, 'CAMERA_PILOT_DISABLED', 'Kamera pilotu bu kurumda açık değil.');
-    if (session.status !== 'IN_PROGRESS') throw new AppError(409, 'EVIDENCE_SESSION_CLOSED', 'Fotoğraf için aktif sınav gerekli.');
+    if (session.privacyErasedAt || session.status !== 'IN_PROGRESS') throw new AppError(409, 'EVIDENCE_SESSION_CLOSED', 'Fotoğraf için aktif sınav gerekli.');
     const now = Date.now(), capturedAt = Date.parse(body.capturedAt);
     if (capturedAt > now + 60_000 || capturedAt < now - 600_000) throw new AppError(422, 'EVIDENCE_CAPTURE_EXPIRED', 'Yeni fotoğraf çekin.');
     const count = await tx.proctoringEvent.count({ where: { sessionId: body.sessionId, id: { startsWith: 'evidence_' } } });
@@ -78,6 +78,14 @@ export async function reserveEvidence(db: PrismaClient, body: EvidenceReservatio
   });
 }
 export async function commitEvidence(db: PrismaClient, body: z.infer<typeof EvidenceCommitBody>, upload = uploadPrivateObjectOnce) {
+  return db.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${body.sessionId} FOR UPDATE`;
+    const session = await tx.session.findUnique({where:{id:body.sessionId}});
+    if (!session || session.privacyErasedAt) throw new AppError(410, 'EVIDENCE_SESSION_ERASED', 'Assessment data erased');
+    return commitEvidenceLocked(tx as any, body, upload);
+  }, {timeout:60000});
+}
+async function commitEvidenceLocked(db: PrismaClient, body: z.infer<typeof EvidenceCommitBody>, upload = uploadPrivateObjectOnce) {
   const event = await db.proctoringEvent.findUnique({ where: { id: rowId(body.evidenceId) } });
   if (!event || event.sessionId !== body.sessionId) throw new AppError(404, 'EVIDENCE_NOT_FOUND', 'Fotoğraf rezervasyonu bulunamadı.');
   if (event.type === 'EVIDENCE_EXPIRED') throw new AppError(410, 'EVIDENCE_UPLOAD_EXPIRED', 'Fotoğraf saklama süresi doldu.');

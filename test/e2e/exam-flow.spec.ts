@@ -42,6 +42,10 @@ async function login(page: Page, email = E2E_EMAIL, password = E2E_PASS): Promis
   await page.locator("#password").fill(password);
   await page.locator('form button[type="submit"]').click();
   await expect(page).not.toHaveURL(/\/login/, { timeout: 12_000 });
+  if (email === E2E_EMAIL) {
+    const age = await page.request.post(`${BASE_URL}/api/guardian-consent/age`, { data: { ageBand: 'ADULT' } });
+    expect(age.ok(), await age.text()).toBe(true);
+  }
 }
 
 /** Try to answer the currently visible assessment item. Handles MC, T/F, and text entry. */

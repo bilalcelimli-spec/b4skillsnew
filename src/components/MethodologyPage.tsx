@@ -30,7 +30,7 @@ Active item status does not by itself establish empirical calibration. Parameter
     id: "ai-scoring",
     title: "AI Scoring & Human Review",
     icon: <ShieldCheck size={22} className="text-[#9b276c]" />,
-    body: `Full assessments support AI-assisted scoring of writing and speaking against CEFR-based rubrics. The providers used depend on the configured scoring path and availability, including Google, OpenAI and Anthropic. Speaking audio may be transcribed before evaluation.
+    body: `Full assessments support AI-assisted scoring of writing and speaking against CEFR-based rubrics. Assessment scoring uses OpenAI. Speaking audio may be transcribed before evaluation.
 
 Responses requiring review are held for human assessment rather than treated as final scored evidence. We do not claim a published human–AI agreement coefficient. The free Quick Check does not evaluate open writing or speaking responses; its level is a provisional estimate from objectively scored responses.`,
   },

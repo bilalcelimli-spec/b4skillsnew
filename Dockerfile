@@ -36,6 +36,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
+# Decode uploaded assessment recordings locally; nothing is written to public storage.
+RUN apk add --no-cache ffmpeg
+
 # Security: non-root user
 RUN addgroup --system --gid 1001 appgroup && \
     adduser  --system --uid 1001 --ingroup appgroup appuser

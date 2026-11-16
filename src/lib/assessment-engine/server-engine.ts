@@ -1,3 +1,4 @@
+import { lockActiveCandidate } from '../compliance/active-candidate.js';
 import { examPolicy, admitExam, admitCurrentExam, ExamPreflight } from "../proctoring/exam-policy.js";
 import type { z } from "zod";
 import { resolveTaskRubric } from "../scoring/rubric-validation.js";
@@ -438,6 +439,7 @@ export const AssessmentService = {
 
     let created = false;
     const session = await createSessionOnce(prisma, identity, async tx => {
+      await lockActiveCandidate(tx, candidateId);
       const admission = await admitCurrentExam(tx, organizationId, preflight);
       const purchaseId = await BillingService.consumeCredit(organizationId, tx, candidateId, earlyStartConsentId);
       const launched = await tx.session.create({
@@ -1719,7 +1721,7 @@ export const AssessmentService = {
 
   async refreshSessionScoring(sessionId: string) {
     const session = await prisma.session.findUnique({ where: { id: sessionId }, include: { responses: { include: { item: true } } } });
-    if (!session) return;
+    if (!session || session.privacyErasedAt) return;
     if ((session.metadata as any)?.sessionType==='FIXED_FORM') {await createOzgunKidsService(prisma).read(sessionId);return;}
     if ((session.metadata as any)?.sessionType === 'DIAGNOSTIC') {
       const { DiagnosticService } = await import('./diagnostic-service.js');
@@ -1736,7 +1738,7 @@ export const AssessmentService = {
     const ended = await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
       const current = await tx.session.findUnique({ where: { id: sessionId }, include: { responses: { include: { item: true } } } });
-      if (!current) return false;
+      if (!current || current.privacyErasedAt) return false;
       if ([SessionStatus.COMPLETED, SessionStatus.SCORING, SessionStatus.FLAGGED].includes(current.status as any)) return true;
       const items = Object.fromEntries(current.responses.filter(r => r.item).map(r => [r.itemId, dbItemToEngineItem(r.item)]));
       const state = toEngineState(current);

@@ -1,0 +1,27 @@
+Prepared 4 November 2026 — not sent; no agreement accepted.
+Submit via the official OpenAI sales contact linked from the data controls guide.
+
+Subject: Zero Data Retention eligibility for B4Skills educational assessment
+
+Hello OpenAI team,
+
+I operate B4Skills (https://b4skills.com), an English assessment service based in Türkiye. We are preparing institution-authorized assessments for adults and minors, including children under 13. Processing minors is currently blocked pending provider and legal readiness.
+
+Please assess our eligibility for Zero Data Retention and confirm the onboarding steps, applicable additional terms, pricing and minimum commitments, if any. Our current implementation uses:
+- /v1/responses for writing assessment, with store:false and structured text output; default model gpt-6-astra.
+- /v1/chat/completions for speech assessment, with WAV audio input, text-only output and store:false; default model gpt-audio-1.5.
+
+Please confirm ZDR eligibility for these exact models, endpoints and input/output combinations, including any caching, safety-processing or retention exceptions. Please identify the approved organization/project scope in writing before we enable minor processing. We can provide the organization and production project identifiers through your authenticated support channel after confirming the production mapping.
+
+The workflow uses age bands, parental approval and institutional guardian verification. We do not intentionally include names or email addresses as scoring fields, but answers and voice recordings can contain personal data. We do not request biometric identification. Assessment results have a human-review path and are not represented as accredited certification.
+
+Please also identify the contracting entity, applicable DPA, subprocessors and processing/support locations. For regular transfers from Türkiye, please confirm whether you can execute the unchanged official Turkish KVKK standard contract with completed annexes for the applicable controller-to-processor and processor-to-processor roles, and provide authorized signatory requirements.
+
+We have not treated dashboard logging settings or store:false as ZDR approval. No candidate records or API keys are attached.
+
+Bilal Çelimli
+B4Skills
+hello@b4skills.com
+
+Reference: https://developers.openai.com/api/docs/guides/your-data
+Reference: https://developers.openai.com/api/docs/guides/safety-checks/under-18-api-guidance

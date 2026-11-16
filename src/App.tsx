@@ -1,3 +1,5 @@
+import { MarketingConsent, MeasurementPrivacyContext } from './components/MarketingConsent';
+import { GuardianDecisionPage, GuardianVerificationPage } from './components/GuardianConsent';
 import { AssessmentResumeCard } from './components/AssessmentContinuation';
 import { OZGUN_PRODUCT, assessmentDisplayName } from "./lib/fixed-forms/ozgun-kids";
 import { hasFinalResult, historyStatus, historySkills, historyResultLabel, isReportableSession } from "./lib/reporting/candidate-history";
@@ -56,6 +58,13 @@ const CandidateProfile       = lazy(() => import("./components/CandidateProfile"
 const ContentFactoryReviewQueue = lazy(() => import("./components/admin/ContentFactoryReviewQueue").then(m => ({ default: m.ContentFactoryReviewQueue })));
 
 // Shared loading fallback
+function MarketingPage({ children, enabled }: { children: React.ReactNode; enabled: boolean }) {
+  const { i18n } = useTranslation();
+  const { pathname } = useLocation();
+  const [privateAssessmentOpen, setPrivateAssessmentOpen] = useState(false);
+  return <MeasurementPrivacyContext.Provider value={setPrivateAssessmentOpen}>{children}<div className="bg-white p-4 text-center text-sm"><MarketingConsent path={pathname} isTr={(i18n.language || 'en').startsWith('tr')} enabled={enabled && !privateAssessmentOpen} /></div></MeasurementPrivacyContext.Provider>;
+}
+
 const PageLoader = () => (
   <div className="min-h-screen bg-slate-50 flex items-center justify-center">
     <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600" />
@@ -316,6 +325,8 @@ export default function App() {
     } catch {/* The report remains available if certificate issuance needs a retry. */}
   };
 
+  if (location.pathname === '/guardian-verification') return <GuardianVerificationPage />;
+  if (location.pathname === '/guardian-consent') return <GuardianDecisionPage />;
   const legalRoutes: Record<string, LegalPageKind> = { '/privacy': 'privacy', '/kvkk': 'kvkk', '/terms': 'terms', '/support': 'support', '/refund-policy': 'refund', '/sales-terms': 'sales' };
   if (legalRoutes[location.pathname]) return <LegalPage kind={legalRoutes[location.pathname]} />;
 
@@ -391,50 +402,50 @@ export default function App() {
 
   if (!user && location.pathname === "/methodology") {
     return (
-      <Suspense fallback={<PageLoader />}>
+      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
         <MethodologyPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} />
-      </Suspense>
+      </Suspense></MarketingPage>
     );
   }
 
   if (location.pathname === "/pricing") {
     return (
-      <Suspense fallback={<PageLoader />}>
+      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
         <PricingPage
           onBack={() => navigate("/")}
           onStart={() => { setShowLanding(false); navigate("/"); }}
         />
-      </Suspense>
+      </Suspense></MarketingPage>
     );
   }
 
   if (location.pathname === "/accessibility-statement") {
     return (
-      <Suspense fallback={<PageLoader />}>
+      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
         <AccessibilityStatementPage onStart={() => { setShowLanding(false); navigate("/"); }} />
-      </Suspense>
+      </Suspense></MarketingPage>
     );
   }
 
   if (location.pathname === "/research") {
     return (
-      <Suspense fallback={<PageLoader />}>
+      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
         <ResearchPage onStart={() => { setShowLanding(false); navigate("/"); }} />
-      </Suspense>
+      </Suspense></MarketingPage>
     );
   }
 
   if (!user && location.pathname === "/schools") {
-    return <Suspense fallback={<PageLoader />}><SchoolsPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense>;
+    return <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}><SchoolsPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense></MarketingPage>;
   }
   if (!user && location.pathname === "/academia") {
-    return <Suspense fallback={<PageLoader />}><AcademiaPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense>;
+    return <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}><AcademiaPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense></MarketingPage>;
   }
   if (!user && location.pathname === "/corporate") {
-    return <Suspense fallback={<PageLoader />}><CorporatePage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense>;
+    return <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}><CorporatePage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense></MarketingPage>;
   }
   if (!user && location.pathname === "/language-schools") {
-    return <Suspense fallback={<PageLoader />}><LanguageSchoolsPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense>;
+    return <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}><LanguageSchoolsPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense></MarketingPage>;
   }
 
   // Email verification link — /verify-email?token=...
@@ -452,13 +463,13 @@ export default function App() {
   const seoVariant = SEO_PATHS[location.pathname] ?? null;
   if (!user && seoVariant) {
     return (
-      <Suspense fallback={<PageLoader />}>
+      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
         <SeoLandingPage
           variant={seoVariant}
           onStart={() => { setShowLanding(false); navigate("/"); }}
           onPricing={() => navigate("/pricing")}
         />
-      </Suspense>
+      </Suspense></MarketingPage>
     );
   }
 
@@ -472,11 +483,12 @@ export default function App() {
 
   if (!user && showLanding) {
     return (
-      <Suspense fallback={<PageLoader />}>
+      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
         <LandingPage onStart={() => setShowLanding(false)} onCodeEntry={() => { setShowLanding(false); setShowCodeEntry(true); }} />
-      </Suspense>
+      </Suspense></MarketingPage>
     );
   }
+
 
   if (!user) {
     return <AuthPage onBack={() => setShowLanding(true)} />;

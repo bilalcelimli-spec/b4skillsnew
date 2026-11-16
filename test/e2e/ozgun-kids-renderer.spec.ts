@@ -28,6 +28,7 @@ test('admin selects the fixed form, saves its key and generates the matching cod
 for(const width of [320,1280])test(`candidate completes four sections and sees raw scores at ${width}px`,async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.setViewportSize({width,height:850});
+  await page.route('**/api/guardian-consent/status',route=>route.fulfill({json:{allowed:true,ageBand:'UNDER_13',guardianRequired:true,status:'READY'}}));
   let sectionIndex=0,started=false,launches=0,photoSaved=false,listeningStartedAt:string|null=null;
   const answers:FixedAnswers={};
   function view(){const section=OZGUN_SECTIONS[sectionIndex];return {sessionId:'fixture-fixed',status:sectionIndex===4?'COMPLETED':started?'IN_PROGRESS':'SCHEDULED',serverNow:new Date().toISOString(),sectionIndex,section,sectionDeadline:started&&section?new Date(Date.now()+section.minutes*60000).toISOString():null,answers,listeningStartedAt,

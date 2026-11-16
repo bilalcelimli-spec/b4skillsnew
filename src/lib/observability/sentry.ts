@@ -20,6 +20,7 @@ export function initSentry(): void {
     integrations: [nodeProfilingIntegration()],
     sendDefaultPii: false,
     beforeSend(event) {
+      if (event.request?.url?.includes('/api/guardian-consent')) return null;
       if (event.request?.cookies) delete event.request.cookies;
       if (event.request?.headers) {
         delete (event.request.headers as Record<string, unknown>).authorization;

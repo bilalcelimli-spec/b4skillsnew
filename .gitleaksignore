@@ -1,3 +1,9 @@
 # False positives: UserDefaults key name "b4skills.useMetro" (a debug flag), not a secret.
 a3f9b34d893bfdb8b139ee914fdb61ddce3ebfe1:native/react-native/ios/B4Skills/AppDelegate.swift:generic-api-key:49
 a3f9b34d893bfdb8b139ee914fdb61ddce3ebfe1:native/react-native/macos/b4skills-native-macOS/AppDelegate.swift:generic-api-key:45
+
+# Historical false positives reviewed against their exact source lines:
+# Deterministic shared-report fixture token; never a live report/access token.
+3097784871a79d3efbefb6d246353bcdc48ee0bb:test/e2e/fixtures/shared-report.tsx:generic-api-key:5
+# Browser localStorage preference key, not an authentication credential.
+1ff0a315010526e8d4d5ac1ba80eb935c8c97611:src/lib/accessibility/accessibility-settings.ts:generic-api-key:91

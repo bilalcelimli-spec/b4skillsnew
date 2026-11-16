@@ -1511,10 +1511,6 @@
     "en": "This cannot be undone. Your name, email address, sign-in details, voice recordings and camera photos are deleted, and any exam in progress is closed.",
     "ar": "لا يمكن التراجع عن هذا الإجراء. يُحذف اسمك وبريدك الإلكتروني وبيانات تسجيل الدخول وتسجيلاتك الصوتية وصور الكاميرا، ويُغلق أي اختبار جارٍ."
   },
-  "Puanlarınız kimliğinizden ayrılarak kurumunuzun toplu sonuçlarında ve ölçme kalitesi çalışmalarında kalır; adınızla ilişkilendirilemez. Ödeme kayıtları yasal süre boyunca saklanır.": {
-    "en": "Your scores are separated from your identity and remain only in your institution's aggregate results and in measurement-quality studies; they cannot be linked to your name. Payment records are kept for the legally required period.",
-    "ar": "تُفصل درجاتك عن هويتك وتبقى فقط في النتائج الإجمالية لمؤسستك وفي دراسات جودة القياس، ولا يمكن ربطها باسمك. تُحفظ سجلات الدفع للمدة التي يفرضها القانون."
-  },
   "Hesabımı kalıcı olarak sil": {
     "en": "Permanently delete my account",
     "ar": "حذف حسابي نهائيًا"
@@ -1543,10 +1539,6 @@
     "en": "Your account was deleted",
     "ar": "تم حذف حسابك"
   },
-  "Hesabınız ve kişisel verileriniz silindi. Bu cihazdaki bekleyen kayıtlar da kaldırıldı.": {
-    "en": "Your account and personal data were deleted. Pending records on this device were removed too.",
-    "ar": "تم حذف حسابك وبياناتك الشخصية. وأُزيلت أيضًا السجلات المعلقة على هذا الجهاز."
-  },
   "Tamam": {
     "en": "OK",
     "ar": "حسنًا"
@@ -1571,12 +1563,96 @@
     "en": "Multiple-choice, written and audio responses are supported. Automated monitoring enabled by your institution may use a baseline photo and technical event logs. Live human proctoring is not offered.",
     "ar": "تُدعم الإجابات متعددة الخيارات والكتابية والصوتية. قد تستخدم المراقبة الآلية التي تفعّلها مؤسستك صورة أولية وسجلات للأحداث التقنية. لا تتوفر مراقبة بشرية مباشرة."
   },
-  "Yazılı ve sesli sınav yanıtlarınız, puanlama ve gerektiğinde sesin metne dönüştürülmesi için Google (Gemini), OpenAI veya Anthropic hizmetlerine gönderilebilir. Sonuçlar kurumunuzla paylaşılır. Yanıtlarınıza gereksiz kişisel veya hassas bilgi eklemeyin. Onay vermeden yeni bir sınav başlatılmaz.": {
-    "en": "Your written and audio assessment responses may be sent to Google (Gemini), OpenAI or Anthropic for scoring and, when needed, audio transcription. Results are shared with your institution. Do not include unnecessary personal or sensitive information in your responses. A new assessment cannot start without your permission.",
-    "ar": "قد تُرسل إجاباتك الكتابية والصوتية إلى Google (Gemini) أو OpenAI أو Anthropic لتقييمها وتحويل الصوت إلى نص عند الحاجة. تُشارك النتائج مع مؤسستك. لا تضف معلومات شخصية أو حساسة غير ضرورية إلى إجاباتك. لن يبدأ تقييم جديد دون موافقتك."
-  },
   "Sınav koşullarını okudum; yanıtlarımın açıklanan AI sağlayıcılarına puanlama için gönderilmesine izin veriyorum.": {
     "en": "I have read the assessment conditions and allow my responses to be sent to the disclosed AI providers for scoring.",
     "ar": "قرأت شروط التقييم وأسمح بإرسال إجاباتي إلى مزودي الذكاء الاصطناعي المذكورين لغرض التقييم."
+  },
+  "Yaş ve veli onayı": {
+    "en": "Age and guardian consent",
+    "ar": "العمر وموافقة ولي الأمر"
+  },
+  "Tam doğum tarihinizi istemiyoruz. 18 yaş altı adaylar için veli e-posta onayı ve kurumun veli yetkisini doğrulaması gerekir. Bu adımlar tamamlanana kadar sınav, mikrofon ve kamera hazırlığı açılmaz.": {
+    "en": "We do not ask for your full date of birth. Candidates under 18 need guardian email consent and school verification of guardian authority. The assessment, microphone and camera checks remain unavailable until both steps are complete.",
+    "ar": "لا نطلب تاريخ ميلادك الكامل. يحتاج المتقدمون دون 18 عامًا إلى موافقة ولي الأمر بالبريد الإلكتروني وتحقق المؤسسة من صفته. لا يُتاح الاختبار أو فحص الميكروفون والكاميرا حتى اكتمال الخطوتين."
+  },
+  "Onay durumu kontrol ediliyor…": {
+    "en": "Checking consent status…",
+    "ar": "جارٍ التحقق من حالة الموافقة…"
+  },
+  "13 yaş altı": {
+    "en": "Under 13",
+    "ar": "أقل من 13 عامًا"
+  },
+  "13–17 yaş": {
+    "en": "Ages 13–17",
+    "ar": "من 13 إلى 17 عامًا"
+  },
+  "18 yaş ve üzeri": {
+    "en": "18 or older",
+    "ar": "18 عامًا أو أكثر"
+  },
+  "Güncel koşullarla devam et": {
+    "en": "Continue with current terms",
+    "ar": "المتابعة بالشروط الحالية"
+  },
+  "Velinin e-posta adresi": {
+    "en": "Guardian's email address",
+    "ar": "البريد الإلكتروني لولي الأمر"
+  },
+  "Veliye onay bağlantısı gönder": {
+    "en": "Send consent link to guardian",
+    "ar": "إرسال رابط الموافقة إلى ولي الأمر"
+  },
+  "Bağlantı gönderildi. Velinizin onayı ve kurumunuzun veli yetkisini doğrulaması bekleniyor.": {
+    "en": "Link sent. Waiting for guardian consent and school verification of guardian authority.",
+    "ar": "أُرسل الرابط. بانتظار موافقة ولي الأمر وتحقق المؤسسة من صفته."
+  },
+  "Veli e-posta onayı alındı. Kurumunuzun veli yetkisini doğrulaması bekleniyor.": {
+    "en": "Guardian email consent received. Waiting for school verification of guardian authority.",
+    "ar": "استُلمت موافقة ولي الأمر بالبريد الإلكتروني. بانتظار تحقق المؤسسة من صفته."
+  },
+  "Veli onayı geri çekildi. Sınav açılamaz.": {
+    "en": "Guardian consent was withdrawn. The assessment is unavailable.",
+    "ar": "سُحبت موافقة ولي الأمر. لا يمكن فتح الاختبار."
+  },
+  "Durumu yenile": {
+    "en": "Refresh status",
+    "ar": "تحديث الحالة"
+  },
+  "Onay durumu doğrulanamadı.": {
+    "en": "Consent status could not be verified.",
+    "ar": "تعذر التحقق من حالة الموافقة."
+  },
+  "Veli e-postası gönderilemedi.": {
+    "en": "The guardian email could not be sent.",
+    "ar": "تعذر إرسال البريد الإلكتروني إلى ولي الأمر."
+  },
+  "Yazılı ve sesli sınav yanıtlarınız, puanlama ve gerektiğinde sesin metne dönüştürülmesi için OpenAI hizmetlerine gönderilebilir. Sonuçlar kurumunuzla paylaşılır. Yanıtlarınıza gereksiz kişisel veya hassas bilgi eklemeyin. Onay vermeden yeni bir sınav başlatılmaz.": {
+    "en": "Your written and spoken assessment responses may be sent to OpenAI for scoring and, when needed, transcription. Results are shared with your institution. Do not include unnecessary personal or sensitive information. A new assessment cannot start without your permission.",
+    "ar": "قد تُرسل إجاباتك الكتابية والصوتية إلى OpenAI للتقييم وتحويل الصوت إلى نص عند الحاجة. تُشارك النتائج مع مؤسستك. لا تُضف معلومات شخصية أو حساسة غير ضرورية. لا يبدأ اختبار جديد دون موافقتك."
+  },
+  "Çocuk sürümünün veri işleme hazırlıkları sürüyor. Henüz sınav açılamaz veya veli onayı istenemez.": {
+    "en": "Data processing preparations for the child version are still in progress. Assessments and guardian consent requests are not available yet.",
+    "ar": "لا تزال ترتيبات معالجة بيانات إصدار الأطفال قيد الإعداد. الاختبارات وطلبات موافقة ولي الأمر غير متاحة بعد."
+  },
+  "Sınav yanıtlarınız, raporlarınız ve insan değerlendirme kayıtlarınız da silinir. Dosya ve yedek temizliği gizlilik politikasındaki süreçle tamamlanır. Yasal olarak gerekli ödeme ve silme işlem kayıtları ayrıca saklanır.": {
+    "en": "Your assessment answers, reports and human review records are also deleted. File and backup cleanup follows the process in the privacy policy. Legally required payment and erasure records are retained separately.",
+    "ar": "تُحذف أيضًا إجابات التقييم وتقاريره وسجلات المراجعة البشرية. تُستكمل إزالة الملفات والنسخ الاحتياطية وفق سياسة الخصوصية. تُحفظ سجلات الدفع والحذف المطلوبة قانونًا بشكل منفصل."
+  },
+  "Hesabınız ve sınav kayıtlarınız kaldırıldı. Bu cihazdaki bekleyen kayıtlar temizlendi. Dosya ve yedek temizliği gizlilik politikasındaki süreçle tamamlanır.": {
+    "en": "Your account and assessment records have been removed. Pending records on this device were cleared. File and backup cleanup follows the process in the privacy policy.",
+    "ar": "أُزيل حسابك وسجلات التقييم، ومُسحت السجلات المعلقة على هذا الجهاز. تُستكمل إزالة الملفات والنسخ الاحتياطية وفق سياسة الخصوصية."
+  },
+  "Konuşma yanıtları ses olarak gönderilir. Her sınavda uygulamanın ön/arka plana geçiş zamanları teknik olay olarak kaydedilir. Cihazın ilettiği ekran yakalama bildirimleri de kaydedilir. Teknik olay tek başına ihlal kararı değildir. Canlı insan gözetimi yapılmaz.": {
+    "en": "Speaking answers are sent as audio. In every exam, app foreground/background transition times are recorded as technical events. Screen capture notifications reported by the device are also recorded. A technical event alone does not determine a violation. There is no live human proctoring.",
+    "ar": "تُرسل إجابات التحدث كتسجيلات صوتية. في كل اختبار، تُسجّل أوقات انتقال التطبيق بين الواجهة والخلفية كأحداث تقنية. وتُسجّل أيضًا إشعارات التقاط الشاشة التي يرسلها الجهاز. الحدث التقني وحده لا يحدد وجود مخالفة. لا توجد مراقبة بشرية مباشرة."
+  },
+  "Sınav boyunca kamera açık kalır; yüzler cihazda sayılır ve video gönderilmez. Tek yüz göründüğünde bir başlangıç fotoğrafı otomatik olarak çekilip kuruma gönderilir. Konuşma yanıtları ses olarak gönderilir. Her sınavda uygulamanın ön/arka plana geçiş zamanları teknik olay olarak kaydedilir. Cihazın ilettiği ekran yakalama bildirimleri de kaydedilir. Teknik olay tek başına ihlal kararı değildir. Canlı insan gözetimi yapılmaz.": {
+    "en": "The camera stays on throughout the exam; faces are counted on the device and no video is sent. When a single face is visible, one baseline photo is taken automatically and sent to your institution. Speaking answers are sent as audio. In every exam, app foreground/background transition times are recorded as technical events. Screen capture notifications reported by the device are also recorded. A technical event alone does not determine a violation. There is no live human proctoring.",
+    "ar": "تبقى الكاميرا مفعّلة طوال الاختبار؛ تُعدّ الوجوه على الجهاز ولا يُرسل أي فيديو. عند ظهور وجه واحد تُلتقط صورة مرجعية واحدة تلقائيًا وتُرسل إلى مؤسستك. تُرسل إجابات التحدث كتسجيلات صوتية. في كل اختبار، تُسجّل أوقات انتقال التطبيق بين الواجهة والخلفية كأحداث تقنية. وتُسجّل أيضًا إشعارات التقاط الشاشة التي يرسلها الجهاز. الحدث التقني وحده لا يحدد وجود مخالفة. لا توجد مراقبة بشرية مباشرة."
+  },
+  "· Zorunlu geçiş denetimi:": {
+    "en": "· Required transition checks:",
+    "ar": "· التحقق الإلزامي من انتقال التطبيق:"
   }
 }

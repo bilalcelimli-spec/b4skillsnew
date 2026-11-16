@@ -5,6 +5,9 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { CheckoutPage } from '../CheckoutPage';
 import { PreTestBriefing } from '../PreTestBriefing';
 import { EARLY_START_ACKNOWLEDGEMENT, EARLY_START_REQUEST, PURCHASE_POLICY_VERSION } from '../../lib/payments/purchase-policy';
+// This suite covers briefing/routing; guardian admission has its own fail-closed integration tests.
+vi.mock('../GuardianConsent', async original => ({ ...await original<any>(), CandidateConsentGate: ({children}: any) => <>{children}</> }));
+
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 it('does not collect payment or legal consents when no web provider is active', () => {
   const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);

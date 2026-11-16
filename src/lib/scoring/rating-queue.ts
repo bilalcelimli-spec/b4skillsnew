@@ -50,39 +50,18 @@ export const RatingQueueService = {
    * Add a response to the queue
    */
   async enqueue(params: EnqueueParams) {
-    // Find the response record first
-    const response = await prisma.response.findFirst({
-      where: {
-        sessionId: params.sessionId,
-        itemId: params.itemId
-      },
-      orderBy: { createdAt: 'desc' }
+    return prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${params.sessionId} FOR UPDATE`;
+      const response = await tx.response.findFirst({ where: { sessionId: params.sessionId, itemId: params.itemId,
+        contentErasedAt: null, session: { privacyErasedAt: null } }, orderBy: { createdAt: 'desc' } });
+      if (!response) throw new Error('Response unavailable for review');
+      await tx.response.update({ where: { id: response.id }, data: { metadata: {
+        ...((response.metadata as any) || {}), scoringMode: params.type,
+        reviewQueue: { enqueuedAt: new Date().toISOString(), aiResult: params.aiResult } } } });
+      const task = await tx.ratingTask.upsert({ where: { responseId: response.id },
+        create: { responseId: response.id, status: RatingStatus.PENDING }, update: {} });
+      return task.id;
     });
-
-    if (!response) throw new Error("Response not found for enqueuing");
-
-    {
-      await prisma.response.update({
-        where: { id: response.id },
-        data: {
-          metadata: {
-            ...((response.metadata as any) || {}),
-            scoringMode: params.type,
-            reviewQueue: {
-              enqueuedAt: new Date().toISOString(),
-              aiResult: params.aiResult
-            }
-          }
-        }
-      });
-    }
-
-    const task = await prisma.ratingTask.upsert({
-      where:{responseId:response.id},
-      create:{responseId:response.id,status:RatingStatus.PENDING},
-      update:{},
-    });
-    return task.id;
   },
 
   /**
@@ -120,7 +99,7 @@ export const RatingQueueService = {
    * Claim a task for rating
    */
   async claimTask(taskId: string, raterId: string) {
-    const claimed = await prisma.ratingTask.updateMany({where:{id:taskId,status:RatingStatus.PENDING,raterId:null,score:null,secondRaterId:null,arbitratorId:null},
+    const claimed = await prisma.ratingTask.updateMany({where:{id:taskId,response:{contentErasedAt:null,session:{privacyErasedAt:null}},status:RatingStatus.PENDING,raterId:null,score:null,secondRaterId:null,arbitratorId:null},
       data:{status:RatingStatus.CLAIMED,raterId}});
     if (claimed.count !== 1) throw new Error("Rating task is already claimed or awaits a second rater");
     return prisma.ratingTask.findUnique({where:{id:taskId}});
@@ -135,7 +114,7 @@ export const RatingQueueService = {
     validateScore(score);
     if (!raterId) throw new Error("Assigned rater required");
     const saved = await prisma.ratingTask.updateMany({
-      where:{id:taskId,raterId,status:RatingStatus.CLAIMED,score:null,secondRaterId:null,arbitratorId:null},
+      where:{id:taskId,response:{contentErasedAt:null,session:{privacyErasedAt:null}},raterId,status:RatingStatus.CLAIMED,score:null,secondRaterId:null,arbitratorId:null},
       data:{score,feedback,status:RatingStatus.PENDING},
     });
     if (saved.count !== 1) throw new Error("Only the assigned first rater can submit once");
@@ -147,7 +126,7 @@ export const RatingQueueService = {
    * The second rater must be a different user from the first rater.
    */
   async claimSecondRating(taskId: string, raterId: string) {
-    const claimed = await prisma.ratingTask.updateMany({where:{id:taskId,status:RatingStatus.PENDING,
+    const claimed = await prisma.ratingTask.updateMany({where:{id:taskId,response:{contentErasedAt:null,session:{privacyErasedAt:null}},status:RatingStatus.PENDING,
       score:{not:null},raterId:{not:raterId},secondRaterId:null,secondRaterScore:null,requiresArbitration:false,arbitratorId:null},data:{secondRaterId:raterId,status:RatingStatus.CLAIMED}});
     if (claimed.count !== 1) throw new Error("Second rater must be different and the task must be available");
     const task = await prisma.ratingTask.findUnique({where:{id:taskId}});
@@ -169,7 +148,7 @@ export const RatingQueueService = {
         throw new Error("Second rating has already been submitted");
       const requiresArbitration = Math.abs(task.score-score) > SECOND_RATER_AGREEMENT_THRESHOLD + 4*Number.EPSILON;
       const saved = await tx.ratingTask.updateMany({
-        where:{id:taskId,status:RatingStatus.CLAIMED,secondRaterId:raterId,secondRaterScore:null,
+        where:{id:taskId,response:{contentErasedAt:null,session:{privacyErasedAt:null}},status:RatingStatus.CLAIMED,secondRaterId:raterId,secondRaterScore:null,
           requiresArbitration:false,score:task.score,arbitratorId:null},
         data:{secondRaterScore:score,secondRaterFeedback:feedback,qwk:null,requiresArbitration,
           status:requiresArbitration?RatingStatus.FLAGGED:RatingStatus.COMPLETED},
@@ -188,7 +167,7 @@ export const RatingQueueService = {
   async claimArbitration(taskId:string,raterId:string) {
     if (!raterId) throw new Error("Independent arbitrator required");
     const claimed = await prisma.ratingTask.updateMany({
-      where:{id:taskId,status:RatingStatus.FLAGGED,requiresArbitration:true,arbitratorId:null,arbitrationScore:null,
+      where:{id:taskId,response:{contentErasedAt:null,session:{privacyErasedAt:null}},status:RatingStatus.FLAGGED,requiresArbitration:true,arbitratorId:null,arbitrationScore:null,
         score:{not:null},secondRaterScore:{not:null},raterId:{not:raterId},secondRaterId:{not:raterId}},
       data:{arbitratorId:raterId,status:RatingStatus.CLAIMED},
     });
@@ -208,7 +187,7 @@ export const RatingQueueService = {
       if (task.status === RatingStatus.COMPLETED && task.arbitrationScore === score && task.arbitrationFeedback === feedback) return task;
       if (task.status !== RatingStatus.CLAIMED || task.arbitrationScore != null) throw new Error("Arbitration has already been submitted");
       const saved = await tx.ratingTask.updateMany({
-        where:{id:taskId,status:RatingStatus.CLAIMED,arbitratorId:raterId,arbitrationScore:null,requiresArbitration:true,
+        where:{id:taskId,response:{contentErasedAt:null,session:{privacyErasedAt:null}},status:RatingStatus.CLAIMED,arbitratorId:raterId,arbitrationScore:null,requiresArbitration:true,
           score:task.score,secondRaterScore:task.secondRaterScore},
         data:{arbitrationScore:score,arbitrationFeedback:feedback,status:RatingStatus.COMPLETED},
       });

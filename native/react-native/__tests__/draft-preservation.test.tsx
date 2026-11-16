@@ -31,6 +31,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   api = {
     baseUrl: 'http://localhost:3001', me: jest.fn(async () => ({ uid: 'u1', email: 'u@example.test', organizationId: 'o1' })),
+    consentStatus: jest.fn(async () => ({ allowed: true, ageBand: 'ADULT', guardianRequired: false, status: 'READY', policyVersion: 'v1' })),
     examPolicy: jest.fn(async () => ({ version: 1, revision: 'a'.repeat(64), mode: 'standard', enforcePreflight: false, disclosure: 'Exam conditions', required: { microphone: true, lifecycleEvents: false, durableEvents: false, cameraEvidence: false, assessmentMode: false } })),
     sendEvent: jest.fn(async () => {}),
     cameraPolicy: jest.fn(async () => ({ enabled: false, retentionDays: 7 })),

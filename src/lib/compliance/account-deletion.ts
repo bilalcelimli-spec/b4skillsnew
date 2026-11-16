@@ -2,7 +2,7 @@
  * Self-service account deletion (App Store Guideline 5.1.1(v), GDPR Art. 17, KVKK md. 7).
  *
  * A candidate deletes their own account from the app or the web. The account can no longer
- * sign in and everything that identifies the person is erased:
+ * sign in. The deletion scope includes:
  *   - User identity, credentials, tokens, social login and 2FA fields
  *   - CandidateProfile (demographics, school/class) and class memberships
  *   - The e-mail recorded on redeemed exam codes
@@ -11,19 +11,21 @@
  *   - IP addresses on the user's own audit-log entries
  *   - Signed certificates (they show the name and are publicly verifiable): withdrawn
  *
- * Scored responses, ability estimates and payment records stay, linked only to the
- * anonymised account: institutions keep their aggregate results, calibration keeps its data,
- * and payment records are kept for tax law. Unfinished sessions are closed (EXPIRED).
+ * Assessment sessions, responses, reports, ratings and feedback are deleted.
+ * A disabled pseudonymous account row and restricted statutory payment/erasure records remain.
  *
- * Storage objects are deleted first (both providers delete idempotently). If storage fails,
- * nothing in the database changes and the request can simply be repeated.
+ * Storage deletion intent commits with database erasure. A durable worker retries failures.
+ * Provider backups and legally retained payment records follow the documented separate schedule.
  */
-import type { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import type { StorageProvider, StorageReference } from '../storage/private-storage.js';
+
+import { eraseSessionData } from './erase-session.js';
+import { drainErasureObjects, erasureReceipt, retentionHold } from './erasure-storage.js';
 
 export const ACCOUNT_DELETION_CONFIRMATION = 'DELETE_MY_ACCOUNT';
 
-/** Deleted accounts keep an anonymised row whose e-mail ends with this domain. */
+/** Deleted accounts keep a disabled pseudonymous row whose e-mail ends with this domain. */
 export const DELETED_ACCOUNT_DOMAIN = '@deleted.invalid';
 export const isDeletedAccountEmail = (email: string | null | undefined) => !!email && email.endsWith(DELETED_ACCOUNT_DOMAIN);
 
@@ -46,6 +48,7 @@ export interface AccountDeletionResult {
   erasedAudio: number;
   erasedMedia: number;
   withdrawnCertificates: number;
+  storageDeletionPending?: number | boolean;
 }
 
 type Json = Record<string, unknown>;
@@ -113,99 +116,56 @@ export async function deleteOwnAccount(
     if (!(await deps.verifyPassword(input.password, user.password))) throw new AccountDeletionError(403, 'invalid_password', 'The password is incorrect.');
   }
 
-  const sessions = await db.session.findMany({ where: { candidateId: userId }, select: { id: true, status: true, metadata: true } });
-  const sessionIds = sessions.map(s => s.id);
-  const events = sessionIds.length
-    ? await db.proctoringEvent.findMany({ where: { sessionId: { in: sessionIds } }, select: { id: true, metadata: true } })
-    : [];
-  const mediaEvents = events.filter(e => eventMediaReference(e.metadata, deps));
+  return eraseCandidateData(db, userId, deps);
+}
 
-  const objects: StorageReference[] = [
-    ...mediaEvents.map(e => eventMediaReference(e.metadata, deps)!),
-    ...sessions.map(s => identityReference(s.metadata, deps)).filter((r): r is StorageReference => !!r),
-  ];
-  for (const object of objects) {
-    try {
-      await deps.deleteObject(object);
-    } catch {
-      throw new AccountDeletionError(503, 'storage_unavailable', 'Your files could not be deleted right now. Nothing was changed; please try again later.');
-    }
-  }
-
+/** Internal erasure primitive. Call only after self-service or administrator authorization. */
+export async function eraseCandidateData(db: PrismaClient, userId: string, deps: AccountDeletionDeps): Promise<AccountDeletionResult> {
+  const user = await db.user.findUniqueOrThrow({where:{id:userId},select:{email:true,role:true}});
+  if (user.role !== 'CANDIDATE') throw new AccountDeletionError(403,'staff_account','Only candidate accounts can be erased by this flow');
+  const initialSessions = await db.session.findMany({ where: { candidateId: userId }, select: { id: true, status: true, metadata: true } });
   const now = (deps.now ?? (() => new Date()))();
+  if (initialSessions.some(s => retentionHold(s.metadata, now))) throw new AccountDeletionError(409, 'legal_hold', 'A restricted preservation obligation requires review. Contact support for the scope and expiry.');
   const erasedAt = now.toISOString();
   const anonEmail = `deleted-${userId}${DELETED_ACCOUNT_DOMAIN}`;
-
-  return db.$transaction(async tx => {
-    for (const event of mediaEvents) {
-      await tx.proctoringEvent.update({ where: { id: event.id }, data: {
-        type: 'EVIDENCE_ERASED', metadata: { reason: 'account-deleted', erasedAt },
-      } });
-    }
-
-    let closedSessions = 0;
+  const objectIds: string[] = [];
+  const result = await db.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+    const sessions = await tx.session.findMany({where:{candidateId:userId},select:{id:true,status:true,metadata:true}});
+    await tx.assessmentConsent.deleteMany({ where: { userId } });
+    let closedSessions = 0, erasedAudio = 0, erasedMedia = 0, withdrawnCertificates = 0;
     for (const session of sessions) {
-      const metadata = { ...(asObject(session.metadata) ?? {}) };
-      const hadIdentity = typeof metadata.identitySnapshotKey === 'string';
-      for (const key of SESSION_PII_KEYS) delete metadata[key];
-      if (hadIdentity) metadata.identitySnapshotErasedAt = erasedAt;
-      const close = OPEN_STATUSES.has(session.status);
-      if (close) closedSessions++;
-      await tx.session.update({ where: { id: session.id }, data: {
-        metadata: metadata as Prisma.InputJsonValue, ...(close ? { status: 'EXPIRED' as const } : {}),
-      } });
+      const erased = await eraseSessionData(tx, session.id, deps, now, 'account-deleted');
+      objectIds.push(...erased.objectIds);
+      closedSessions += Number(erased.closed); erasedAudio += erased.erasedAudio;
+      erasedMedia += erased.queuedMedia; withdrawnCertificates += erased.withdrawnCertificates;
     }
-
-    let erasedAudio = 0;
-    if (sessionIds.length) {
-      // Only rows that can hold audio; the rest of the candidate's answers stay untouched and unread.
-      const responses = await tx.response.findMany({
-        where: { sessionId: { in: sessionIds }, OR: [{ value: { contains: '"audio"' } }, { artifactUrl: { not: null } }] },
-        select: { id: true, value: true, artifactUrl: true },
-      });
-      for (const response of responses) {
-        const scrubbed = scrubAudio(response.value);
-        if (scrubbed === null && !response.artifactUrl) continue;
-        erasedAudio++;
-        await tx.response.update({ where: { id: response.id }, data: {
-          ...(scrubbed !== null ? { value: scrubbed } : {}), artifactUrl: null,
-        } });
-      }
-    }
-
-    // Signed certificates carry the candidate's name and are publicly verifiable by id:
-    // deleting the account withdraws them.
-    let withdrawnCertificates = 0;
-    if (sessionIds.length) {
-      const reports = await tx.scoreReport.findMany({ where: { sessionId: { in: sessionIds } }, select: { id: true, diagnosticReport: true, certificateUrl: true } });
-      for (const report of reports) {
-        const diagnostic = asObject(report.diagnosticReport);
-        if (!diagnostic?.signedCertificate && !report.certificateUrl) continue;
-        const { signedCertificate: _signed, ...rest } = diagnostic ?? {};
-        withdrawnCertificates++;
-        await tx.scoreReport.update({ where: { id: report.id }, data: {
-          diagnosticReport: { ...rest, certificateWithdrawn: { reason: 'account-deleted', at: erasedAt } } as Prisma.InputJsonValue,
-          certificateUrl: null, isVerified: false,
-        } });
-      }
-    }
-
+    await tx.ltiSession.deleteMany({ where: { userId } });
+    await tx.concurrentValidityRecord.updateMany({ where: { candidateId: userId }, data: { candidateId: null } });
+    await tx.auditLog.updateMany({ where: { OR: [{ userId }, { entityType: 'User', entityId: userId }] },
+      data: { ipAddress: null, previousData: Prisma.DbNull, newData: Prisma.DbNull, details: { erased: true } } });
+    await erasureReceipt(tx, 'USER', userId, 'account-deleted');
     await tx.candidateProfile.deleteMany({ where: { userId } });
     await tx.classMember.deleteMany({ where: { userId } });
     await tx.examCode.updateMany({ where: { usedByEmail: user.email }, data: { usedByEmail: anonEmail } });
-    await tx.auditLog.updateMany({ where: { userId }, data: { ipAddress: null } });
     await tx.user.update({ where: { id: userId }, data: {
       email: anonEmail, name: null, image: null, password: null, emailVerified: null,
       refreshToken: null, resetPasswordToken: null, resetPasswordExpires: null, verifyEmailToken: null,
       oauthProvider: null, oauthProviderId: null, twoFactorSecret: null, twoFactorEnabled: false,
     } });
     const result: AccountDeletionResult = {
-      deleted: true, sessions: sessions.length, closedSessions, erasedAudio, erasedMedia: objects.length, withdrawnCertificates,
+      deleted: true, sessions: sessions.length, closedSessions, erasedAudio, erasedMedia, withdrawnCertificates,
     };
     await tx.auditLog.create({ data: {
       userId, action: 'PRIVACY:ACCOUNT_DELETED_BY_USER', entityType: 'User', entityId: userId,
       details: { ...result, erasedAt } as unknown as Prisma.InputJsonValue,
     } });
     return result;
-  }, { timeout: 60_000, maxWait: 10_000 }); // a candidate with many sessions needs more than the 5 s default
+  }, { timeout: 60_000, maxWait: 10_000 });
+  // Identity is already erased. Storage outages leave durable retry records, never lost references.
+  await drainErasureObjects(db, deps.deleteObject).catch(() => null);
+  const pending = await db.erasureObject.count({where:{id:{in:objectIds},deletedAt:null}}).catch(()=>true);
+  const { clearPrivacyCache } = await import('./privacy-manager.js');
+  clearPrivacyCache(userId);
+  return { ...result, storageDeletionPending: pending };
 }

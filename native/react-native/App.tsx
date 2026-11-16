@@ -1,3 +1,4 @@
+import { GuardianConsentGate } from './src/components/GuardianConsent';
 import { ScrollView } from './src/i18n/ScrollView';
 import { hydrateLanguage, useLanguage } from './src/i18n/store';
 import { LanguagePicker } from './src/i18n/LanguagePicker';
@@ -216,7 +217,7 @@ function Shell() {
             gap: 8
           }}><Message tone="error" text={store.auditWarning} /><Button label={t("Olay teslimini yeniden dene")} variant="secondary" onPress={store.retryAudit} /></View> : null}
             {store.notice ? <Message text={store.notice} onDismiss={() => store.setNotice(null)} /> : null}
-            {body}
+            {store.candidate && store.cameraBackend ? <GuardianConsentGate key={store.candidate.uid} backend={store.cameraBackend}>{body}</GuardianConsentGate> : body}
             <Footer store={store} />
           </View>
         </ScrollView>
@@ -478,7 +479,7 @@ function DeleteAccountSheet({
     return <Sheet visible={visible} onClose={onClose} eyebrow={t("Hesap")} title={t("Hesabınız silindi")}>
         <Text style={[type.body, {
         color: color.muted
-      }]}>{t("Hesabınız ve kişisel verileriniz silindi. Bu cihazdaki bekleyen kayıtlar da kaldırıldı.")}</Text>
+      }]}>{t("Hesabınız ve sınav kayıtlarınız kaldırıldı. Bu cihazdaki bekleyen kayıtlar temizlendi. Dosya ve yedek temizliği gizlilik politikasındaki süreçle tamamlanır.")}</Text>
         <Button label={t("Tamam")} onPress={onClose} />
       </Sheet>;
   }
@@ -488,7 +489,7 @@ function DeleteAccountSheet({
     }]}>{t("Bu işlem geri alınamaz. Adınız, e-posta adresiniz, giriş bilgileriniz, ses kayıtlarınız ve kamera fotoğraflarınız silinir; süren sınavınız kapatılır.")}</Text>
       <Text style={[type.small, {
       color: color.body
-    }]}>{t("Puanlarınız kimliğinizden ayrılarak kurumunuzun toplu sonuçlarında ve ölçme kalitesi çalışmalarında kalır; adınızla ilişkilendirilemez. Ödeme kayıtları yasal süre boyunca saklanır.")}</Text>
+    }]}>{t("Sınav yanıtlarınız, raporlarınız ve insan değerlendirme kayıtlarınız da silinir. Dosya ve yedek temizliği gizlilik politikasındaki süreçle tamamlanır. Yasal olarak gerekli ödeme ve silme işlem kayıtları ayrıca saklanır.")}</Text>
       {needsPassword ? <Field label={t("Şifre")} icon="lock" value={password} onChangeText={setPassword} placeholder={t("Şifrenizi girin")} secureTextEntry textContentType="password" autoComplete="password" returnKeyType="go" onSubmitEditing={remove} /> : null}
       {error ? <Message tone="error" text={error} /> : null}
       <View style={styles.deleteActions}>

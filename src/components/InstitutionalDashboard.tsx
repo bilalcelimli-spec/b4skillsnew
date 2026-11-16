@@ -298,7 +298,7 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
     <div className="space-y-8">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Institutional Dashboard</h1>
+          <a className="text-sm font-semibold underline" href="/guardian-verification">Veli onaylarını doğrula</a><h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Institutional Dashboard</h1>
           <p className="text-slate-500 mt-1 font-medium">Cohort performance and proficiency distribution for {organizationId}.</p>
         </div>
         <div className="flex items-center gap-3">

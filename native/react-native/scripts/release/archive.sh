@@ -55,9 +55,6 @@ import shlex, sys
 print(shlex.join([sys.argv[1], sys.argv[2], 'config']))
 PY
 )"
-export PROJECT_ROOT="$b4_root"
-export CLI_PATH="$b4_cli/scripts/bundle.js"
-export CONFIG_CMD="$b4_config_cmd"
 b4_jobs="${B4_BUILD_JOBS:-1}"
 if [[ "$b4_jobs" != 1 && "$b4_jobs" != 2 ]]; then printf '%s\n' 'B4_BUILD_JOBS must be 1 or 2'; exit 2; fi
 xcodebuild -jobs "$b4_jobs" -workspace "$b4_workspace" -scheme "$b4_scheme" \
@@ -66,6 +63,7 @@ xcodebuild -jobs "$b4_jobs" -workspace "$b4_workspace" -scheme "$b4_scheme" \
   DEVELOPMENT_TEAM="$b4_team" \
   MARKETING_VERSION="$b4_version" CURRENT_PROJECT_VERSION="$B4_BUILD_NUMBER" \
   ENTRY_FILE=index.js FORCE_BUNDLING=1 'EXTRA_PACKAGER_ARGS=--max-workers 1' \
+  PROJECT_ROOT="$b4_root" CLI_PATH="$b4_cli/scripts/bundle.js" CONFIG_CMD="$b4_config_cmd" \
   "${b4_signing[@]}" archive
 python3 scripts/release/vendor-symbols.py "$b4_platform" "$b4_archive"
 b4_verify=(--source-only --platform "$b4_platform" --archive "$b4_archive")

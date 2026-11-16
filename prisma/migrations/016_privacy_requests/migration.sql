@@ -1,0 +1,2 @@
+CREATE TABLE "PrivacyDeletionRequest" ("requestId" TEXT PRIMARY KEY, "userId" TEXT NOT NULL, "actorAdminId" TEXT NOT NULL, "requestedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "scheduledFor" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "status" TEXT NOT NULL DEFAULT 'pending', "reason" TEXT);
+CREATE INDEX "PrivacyDeletionRequest_userId_status_idx" ON "PrivacyDeletionRequest"("userId","status");

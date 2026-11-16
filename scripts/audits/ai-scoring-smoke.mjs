@@ -8,11 +8,13 @@ assert(process.env.ALLOW_REAL_AI_SCORING_SMOKE === '1', 'Set ALLOW_REAL_AI_SCORI
 assert(process.env.B4SKILLS_AI_SMOKE_AUDIO_PATH, 'Provide a synthetic English WAV response as B4SKILLS_AI_SMOKE_AUDIO_PATH');
 const audio = readFileSync(process.env.B4SKILLS_AI_SMOKE_AUDIO_PATH);
 assert(audio.subarray(0, 4).toString() === 'RIFF' && audio.subarray(8, 12).toString() === 'WAVE', 'Synthetic smoke audio must be WAV');
+const { CONSENT_VERSION } = await import('../../src/lib/compliance/guardian-consent.ts');
 const { prisma: db } = await import('../../src/lib/prisma.ts');
 const { enqueueScoringJob } = await import('../../src/lib/scoring/scoring-queue.ts');
 try {
   const org = await db.organization.create({ data: { name: 'Synthetic AI queue smoke', slug: 'ai-smoke-' + Date.now() } });
   const user = await db.user.create({ data: { email: `synthetic-${Date.now()}@local-audit.test`, role: 'CANDIDATE', organizationId: org.id } });
+  await db.assessmentConsent.create({data:{userId:user.id,ageBand:'ADULT',policyVersion:CONSENT_VERSION,approvedAt:new Date()}});
   const session = await db.session.create({ data: { organizationId: org.id, candidateId: user.id, status: 'IN_PROGRESS', metadata: { productLine: 'General English' } } });
   const text = 'Last summer I travelled to a small seaside town with my family. We stayed in a comfortable hotel near the beach. Each morning we walked along the coast and visited the local market. I enjoyed trying fresh food and talking with the people who lived there. In the evening we watched the sunset together. I would like to return next year because the town was peaceful and welcoming.';
   for (const [index, skill] of ['WRITING', 'SPEAKING'].entries()) {

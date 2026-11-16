@@ -342,7 +342,7 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
                 {
                   icon: <FlaskConical size={20} className="text-indigo-500" />,
                   title: "AI Scoring Governance",
-                  body: "Full assessments support AI-assisted writing and speaking scoring using configured providers, including Google, OpenAI, and Anthropic. Review requirements depend on assessment configuration. No independently validated human–AI agreement coefficient is claimed. The free Quick Check does not evaluate open writing or speaking responses.",
+                  body: "Full assessments support AI-assisted writing and speaking scoring using OpenAI. Review requirements depend on assessment configuration. No independently validated human–AI agreement coefficient is claimed. The free Quick Check does not evaluate open writing or speaking responses.",
                 },
                 {
                   icon: <BookOpen size={20} className="text-indigo-500" />,

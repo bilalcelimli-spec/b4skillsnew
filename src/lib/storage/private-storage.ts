@@ -133,8 +133,33 @@ export async function deletePrivateObject(reference: StorageReference): Promise<
     if (error) throw new Error('Private evidence deletion failed');
     return;
   }
-  const { S3Client, DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+  const { S3Client, DeleteObjectCommand, GetBucketVersioningCommand, ListObjectVersionsCommand, DeleteObjectsCommand, HeadObjectCommand } = await import('@aws-sdk/client-s3');
   const client = new S3Client({ region: process.env.AWS_REGION || 'eu-west-1' });
-  try { await client.send(new DeleteObjectCommand({ Bucket: reference.bucket, Key: reference.key }), { abortSignal: AbortSignal.timeout(15_000) }); }
+  const timeout = () => ({ abortSignal: AbortSignal.timeout(15_000) });
+  try {
+    const versioning = await client.send(new GetBucketVersioningCommand({ Bucket: reference.bucket }), timeout());
+    if (versioning.Status) {
+      // Delete versions as well as markers. A normal DELETE on a versioned bucket only hides the object.
+      let finished = false;
+      for (let page = 0; page < 10; page++) {
+        const versions = await client.send(new ListObjectVersionsCommand({ Bucket: reference.bucket, Prefix: reference.key, MaxKeys: 1000 }), timeout());
+        const objects = [...(versions.Versions ?? []), ...(versions.DeleteMarkers ?? [])]
+          .filter(object => object.Key === reference.key).map(object => ({ Key: object.Key!, VersionId: object.VersionId! }));
+        if (!objects.length) { finished = true; break; }
+        const deleted = await client.send(new DeleteObjectsCommand({ Bucket: reference.bucket, Delete: { Objects: objects, Quiet: true } }), timeout());
+        if (deleted.Errors?.length) throw new Error('Versioned object deletion incomplete');
+      }
+      if (!finished) throw new Error('Version deletion batch limit reached; retry required');
+    } else {
+      await client.send(new DeleteObjectCommand({ Bucket: reference.bucket, Key: reference.key }), timeout());
+    }
+    try {
+      await client.send(new HeadObjectCommand({ Bucket: reference.bucket, Key: reference.key }), timeout());
+    } catch (error: any) {
+      if (error?.$metadata?.httpStatusCode === 404 || error?.name === 'NotFound' || error?.name === 'NoSuchKey') return;
+      throw error;
+    }
+    throw new Error('Deleted object is still readable');
+  }
   finally { client.destroy(); }
 }

@@ -138,6 +138,16 @@ export function normaliseBaseUrl(raw: string): string {
 /** Must match ACCOUNT_DELETION_CONFIRMATION in src/lib/compliance/account-deletion.ts. */
 export const ACCOUNT_DELETION_CONFIRMATION = 'DELETE_MY_ACCOUNT';
 
+export type AgeBand = 'UNDER_13' | '13_17' | 'ADULT';
+export type ConsentState = { allowed: boolean; ageBand: AgeBand | null; guardianRequired: boolean; status: string; policyVersion: string };
+// Cookies are shared by every Backend instance for an origin. Rotate them once,
+// including when an older request's 401 arrives after another refresh finishes.
+const refreshStates = new Map<string, { generation: number; pending?: Promise<void> }>();
+function refreshState(origin: string) {
+  let state = refreshStates.get(origin);
+  if (!state) { state = { generation: 0 }; refreshStates.set(origin, state); }
+  return state;
+}
 export class Backend {
   constructor(readonly baseUrl: string) {}
 
@@ -201,6 +211,17 @@ export class Backend {
     return this.request<{ sessionId: string }>('api/sessions/launch', {
       ...(preflight ? { preflight } : {}), productLine, ...(organizationId ? { organizationId } : {}), ...(launchRequestId ? { launchRequestId } : {}),
     });
+  }
+
+  async consentStatus(): Promise<ConsentState> {
+    const state = await this.request<ConsentState>('api/guardian-consent/status');
+    if (typeof state?.allowed !== 'boolean' || !state.policyVersion || !state.status) throw new ApiError('Onay durumu doğrulanamadı.');
+    return state;
+  }
+  declareAge(ageBand: AgeBand) { return this.request<ConsentState>('api/guardian-consent/age', { ageBand }); }
+  async requestGuardian(email: string) {
+    const result = await this.request<{ sent: boolean }>('api/guardian-consent/request', { email });
+    if (result?.sent !== true) throw new ApiError('Veli e-postası gönderilemedi.');
   }
 
   examPolicy() { return this.request<ExamPolicy>('api/assessment/policy'); }
@@ -281,12 +302,21 @@ export class Backend {
       }).finally(() => clearTimeout(timer));
     };
 
+    const auth = refreshState(this.baseUrl);
+    const generation = auth.generation;
     let response: Response;
     try {
       response = await send();
       if (response.status === 401 && refresh) {
         // A rejected authenticated request never reached its handler, so only this case is replayed.
-        await this.request('api/auth/refresh', {}, false);
+        if (auth.generation === generation) {
+          if (!auth.pending) {
+            auth.pending = this.request('api/auth/refresh', {}, false)
+              .then(() => { auth.generation += 1; })
+              .finally(() => { auth.pending = undefined; });
+          }
+          await auth.pending;
+        }
         response = await send();
       }
     } catch (error) {

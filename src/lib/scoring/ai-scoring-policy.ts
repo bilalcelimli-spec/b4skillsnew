@@ -1,6 +1,6 @@
 /** One bounded retry fits inside the background job deadline, including backoff. */
-export const SCORING_POLICY_VERSION = '2026-10-14.5';
-export const SCORING_MODEL = 'gemini-2.5-flash';
+export const SCORING_POLICY_VERSION = '2026-11-04-openai-1';
+export const SCORING_MODEL = process.env.OPENAI_SCORING_MODEL || 'gpt-6-astra';
 export const SCORING_REQUEST_TIMEOUT_MS = 45_000;
 export const SCORING_MAX_RETRIES = 1;
 export const SCORING_MAX_RETRY_DELAY_MS = 5_000;

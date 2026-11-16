@@ -157,6 +157,8 @@ test('initial connection retry preserves the existing exam without reloading',as
  await page.goto('/test/e2e/fixtures/item-renderer.html?mode=exam',{waitUntil:'domcontentloaded'});
  await page.getByRole('button',{name:'Try Reconnecting'}).click();
  await page.getByRole('button',{name:'Take Photo',exact:true}).click();
- await expect(page.getByRole('form',{name:'Original question'})).toBeVisible();
+ // FaceCapture alone spends 4.2s on fixed timers (3s countdown + 1.2s advance) before
+ // camera start, upload and /next; the 5s default left no headroom on CI runners.
+ await expect(page.getByRole('form',{name:'Original question'})).toBeVisible({timeout:20000});
  expect(launches).toBe(0);expect(navigations).toBe(1);
 });

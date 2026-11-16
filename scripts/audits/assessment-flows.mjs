@@ -22,6 +22,11 @@ async function ok(path,body,cookie,method){const {response,data}=await request(p
 async function check(name,fn){try{await fn();results.push({name,passed:true});console.log('PASS',name);}catch(error){results.push({name,passed:false,error:error.message});console.log('FAIL',name,error.message);}}
 async function candidate(product){const {codes}=await ok('/api/codes/generate',{organizationId:org,productLine:product,quantity:1},staff);
  const {response,data}=await request('/api/codes/redeem',{code:codes[0],email:`${randomUUID()}@local-audit.test`,name:'Audit',surname:'Candidate'});assert(response.ok,JSON.stringify(data));
+ const cookie=response.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ');
+ const blocked=await request('/api/sessions/launch',{productLine:product},cookie);
+ assert.equal(blocked.response.status,428,'A newly redeemed account cannot skip age/guardian consent');
+ // Synthetic approval fixture, only in the guarded disposable localhost database.
+ await db.assessmentConsent.create({data:{userId:data.candidateId,ageBand:/Primary|Junior|Kids/i.test(product)?'UNDER_13':'ADULT',policyVersion:'2026-11-04-openai-v2',approvedAt:new Date(),verifiedAt:new Date(),guardianName:'Synthetic Guardian',verificationReference:'LOCAL-AUDIT-FIXTURE'}});
  return {id:data.candidateId,cookie:response.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ')};
 }
 async function verifyLockedAttempt(id,cookie){
@@ -74,7 +79,7 @@ async function verifyPause(id,cookie,currentItemId){
 function valueFor(item){if(item.skill==='WRITING')return 'x';if(item.skill==='SPEAKING')return audio;
  const content=item.metadata??item.content;const options=content.options;const index=options.findIndex(option=>(typeof option==='string'?option:option.text).startsWith('Correct response'));assert(index>=0,'Controlled objective fixture required');return String.fromCharCode(65+index);}
 async function startAuditServer(){
- child=spawn(process.execPath,['dist/server.js'],{env:{...process.env,NODE_ENV:'test',APP_URL:base,DISABLE_HMR:'true',PORT:'39482',DATABASE_URL:database,DIRECT_URL:database,JWT_SECRET:secret,REFRESH_SECRET:secret+'-refresh',AWS_SECRET_ARN:'',SENTRY_DSN:'',OTEL_SDK_DISABLED:'true',REDIS_URL:'',GEMINI_API_KEY:'',GOOGLE_API_KEY:'',OPENAI_API_KEY:'',ANTHROPIC_API_KEY:''},stdio:['ignore',log,log]});
+ child=spawn(process.execPath,['dist/server.js'],{env:{...process.env,NODE_ENV:'test',MINOR_PROCESSING_READY:'true',APP_URL:base,DISABLE_HMR:'true',PORT:'39482',DATABASE_URL:database,DIRECT_URL:database,JWT_SECRET:secret,REFRESH_SECRET:secret+'-refresh',AWS_SECRET_ARN:'',SENTRY_DSN:'',OTEL_SDK_DISABLED:'true',REDIS_URL:'',GEMINI_API_KEY:'',GOOGLE_API_KEY:'',OPENAI_API_KEY:'',ANTHROPIC_API_KEY:''},stdio:['ignore',log,log]});
  let ready=false;for(let i=0;i<100;i++){try{if((await request('/api/health')).response.ok){ready=true;break;}}catch{}if(child.exitCode!==null||child.signalCode!==null)throw Error('Local audit server exited');await new Promise(resolve=>setTimeout(resolve,200));}assert(ready,'Server readiness');
 }
 async function crashAuditServer(){
@@ -92,6 +97,13 @@ try{
  await db.license.create({data:{organizationId:org,type:'ENTERPRISE',credits:1000,expiresAt:new Date(Date.now()+86400000)}});
  log=openSync('/tmp/b4skills-all-exams-server.log','w');
  await startAuditServer();
+ await check('Guardian withdrawal blocks assessment and legacy scoring is retired',async()=>{
+  const user=await candidate('Primary (7-10)');
+  assert.equal((await request('/api/speaking/transcribe',{audio:'AAAA'},user.cookie)).response.status,410);
+  await db.assessmentConsent.update({where:{userId:user.id},data:{revokedAt:new Date()}});
+  const blocked=await request('/api/sessions/launch',{productLine:'Primary (7-10)'},user.cookie);
+  assert.equal(blocked.response.status,428);assert.equal(blocked.data.code,'REVOKED');
+ });
  await check('Version-bound expert reviews accept UI scores and serialize review/edit races',async()=>{
   const people={};
   for(const role of ['LANGUAGE_REVIEWER','CEFR_REVIEWER','MODERATOR','ITEM_WRITER']){
@@ -203,6 +215,7 @@ try{
   const report=await ok(`/api/sessions/${id}/adaptive-report`,undefined,user.cookie);assert(report,'Report available');
   const pdf=await request(`/api/sessions/${id}/report.pdf`,undefined,user.cookie);assert.equal(pdf.response.status,200);assert(pdf.response.headers.get('content-type').includes('pdf'));
   const outsider=await db.user.create({data:{email:`${randomUUID()}@local-audit.test`,role:'CANDIDATE',organizationId:org}});
+  await db.assessmentConsent.create({data:{userId:outsider.id,ageBand:'ADULT',policyVersion:'2026-11-04-openai-v2'}});
   const denied=await request(`/api/sessions/${id}/status`,undefined,'accessToken='+jwt.sign({userId:outsider.id},secret));assert.equal(denied.response.status,403);
  });
  for(const product of [...products,'Fixed Diagnostic (30 items)','Özgün Kids — Form A (96 soru)'])await check(product+' expired-resume protection',async()=>{
@@ -335,6 +348,7 @@ try{
  await check('Diagnostic launch rejects another product code and unaffiliated users',async()=>{
   const other=await candidate('Primary (7-10)');assert.equal((await request('/api/sessions/diagnostic/launch',{},other.cookie)).response.status,403);
   const user=await db.user.create({data:{email:`${randomUUID()}@local-audit.test`,role:'CANDIDATE'}});
+  await db.assessmentConsent.create({data:{userId:user.id,ageBand:'ADULT',policyVersion:'2026-11-04-openai-v2'}});
   const cookie='accessToken='+jwt.sign({userId:user.id},secret);assert.equal((await request('/api/sessions/diagnostic/launch',{},cookie)).response.status,403);
  });
  await check('Concurrent question delivery and duplicate answer rejection',async()=>{
@@ -481,7 +495,7 @@ try{
    assert(fixed?status.answers['1']:status.answeredItemIds.length===1,'Server confirms the saved answer before crashing');
    cases.push({user,id,prefix,fixed,diagnostic,product,nextItemId,stored});
   }
-  const preview=await ok('/api/assessment/placement/start',{});
+  const preview=await ok('/api/assessment/placement/start',{adultConfirmed:true});
   const credits=(await db.license.findFirstOrThrow({where:{organizationId:org}})).credits;
   const sessionCount=await db.session.count({where:{organizationId:org}});
   await crashAuditServer();
@@ -524,7 +538,7 @@ try{
   }
  });
  await check('Freemium six-skill completion with ungraded speech',async()=>{
-  const start=await ok('/api/assessment/placement/start',{});let item=start.firstItem,result;
+  const start=await ok('/api/assessment/placement/start',{adultConfirmed:true});let item=start.firstItem,result;
   for(let i=0;i<50;i++){result=await ok(`/api/assessment/placement/${start.placementId}/respond`,{itemId:item.id,selectedOption:valueFor(item),latencyMs:30000});if(result.complete)break;item=result.nextItem;assert(item);}
   assert(result.complete);assert.deepEqual(Object.keys(result.result.skillBreakdown).sort(),['GRAMMAR','VOCABULARY','READING','LISTENING','WRITING','SPEAKING'].sort());
  });
