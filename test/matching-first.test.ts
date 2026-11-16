@@ -25,6 +25,7 @@ describe("matching-first defaults (Faz 2)", () => {
   it("adds attitude rules only to attitude matching", () => {
     expect(matchingRules("LISTENING", "SPEAKER_ATTITUDE")).toContain("ATTITUDE MATCHING RULES");
     expect(matchingRules("READING", "WRITER_ATTITUDE")).toContain("writer");
+    expect(matchingRules("READING", "WRITER_ATTITUDE")).toContain("3–4 named writers");
     expect(matchingRules("LISTENING", "INFERENCE")).not.toContain("ATTITUDE MATCHING RULES");
     // Two-speaker recordings gave only 2 pairs (5 of 10 Junior drafts failed structure).
     expect(matchingRules("LISTENING")).toContain("3–4 named speakers");

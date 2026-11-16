@@ -63,6 +63,14 @@ const CELLS = [
   c("Fill to target", GENERAL, { cefr: "A1", skill: "READING", subskill: "EXPLICIT_DETAIL", genre: "notice", topic: "travel" }, 8),
   c("Fill to target", GENERAL, { cefr: "A2", skill: "LISTENING", subskill: "FACTUAL_DETAIL", genre: "conversation", topic: "shopping" }, 6),
   c("Fill to target", GENERAL, { cefr: "A2", skill: "LISTENING", subskill: "SPECIFIC_INFORMATION", genre: "announcement", topic: "leisure" }, 6),
+  // C1-C2 reading refill (2026-11-16): 424 blind-solvable pretest items pulled, C1 1 / C2 3 reading pretest items left.
+  // No itemType: resolveItemType makes these matching. Run with --only Refill.
+  c("Refill C1-C2 reading", GENERAL, { cefr: "C1", skill: "READING", subskill: "INFERENCE", genre: "article", topic: "society" }, 5),
+  c("Refill C1-C2 reading", GENERAL, { cefr: "C1", skill: "READING", subskill: "WRITER_ATTITUDE", genre: "review", topic: "media" }, 5),
+  c("Refill C1-C2 reading", GENERAL, { cefr: "C1", skill: "READING", subskill: "MAIN_IDEA", genre: "article", topic: "science", format: "HEADINGS" }, 5),
+  c("Refill C1-C2 reading", GENERAL, { cefr: "C2", skill: "READING", subskill: "INFERENCE", genre: "essay", topic: "technology" }, 5),
+  c("Refill C1-C2 reading", GENERAL, { cefr: "C2", skill: "READING", subskill: "WRITER_ATTITUDE", genre: "opinion", topic: "education" }, 5),
+  c("Refill C1-C2 reading", GENERAL, { cefr: "C2", skill: "READING", subskill: "MAIN_IDEA", genre: "article", topic: "society", format: "HEADINGS" }, 5),
   // Junior TEEN re-run of the Faz 1 cells that drifted (university / professor settings)
   c("Junior TEEN re-run", TEEN, { cefr: "B2", skill: "LISTENING", subskill: "GIST", genre: "conversation", topic: "education" }, 3),
   c("Junior TEEN re-run", TEEN, { cefr: "B2", skill: "LISTENING", subskill: "SPEAKER_ATTITUDE", genre: "interview", topic: "media" }, 3),

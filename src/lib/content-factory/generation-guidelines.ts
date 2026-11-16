@@ -162,6 +162,7 @@ export function attitudeMatchingRules(skill: string): string {
     `- Each ${who} shows their stance through HOW they say it (hedges, concessions, "yes, but…", what they stress or play down), never by naming it. No ${who} may use an attitude word that appears in, or is a synonym of, any answer.`,
     `- At least two ${who}s mention the same positives and negatives; they differ only in the weight they give them.`,
     `- Each extra is a stance that one ${who} reports someone else holding, or considers and rejects.`,
+    ...(skill === "READING" ? [`- The rows are 3–4 named writers (e.g. short reviews, letters or forum posts on the same question), not one writer: a single-writer text gave only 2 pairs.`] : []),
   ].join("\n");
 }
 

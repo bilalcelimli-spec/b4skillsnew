@@ -264,3 +264,24 @@ Değerlendirilen 341 soruda (288 metinsiz çözülen, 53 geçen) deterministik i
 - Çalışan sunucu, soru önbelleği nedeniyle değişikliği en geç 5 dakika içinde görür.
 
 Sonraki adım: C1–C2 okuma deneme havuzu neredeyse boş. Bu seviyelerde yeni okuma soruları eşleştirme öncelikli varsayılanla üretilmeli; ayrıntı ve doğrudan bilgi soruları için çoktan seçmeli yalnızca sıkı kapıyla.
+
+## C1–C2 okuma yeniden doldurma, eşleştirme olarak (2026-11-16)
+
+`generate-phase2-pilot.ts --only Refill --tag refill-c1c2`. Hücrelerde `itemType` yok; `resolveItemType` hepsini eşleştirmeye çevirdi. Ana fikir hücreleri paragrafa başlık eşleştirme (HEADINGS).
+
+| Hücre | Kaydedilen | Kayıp |
+|---|---|---|
+| C1 çıkarım | 3/5 | 1 JSON hatası |
+| C1 yazarın tutumu | 3/5 | 2 yapı (yalnızca 2 çift) |
+| C1 ana fikir (başlık) | 4/5 | 1 konum belirten başlık |
+| C2 çıkarım | 1/5 | 4 metinsiz çözüldü |
+| C2 yazarın tutumu | 5/5 | – |
+| C2 ana fikir (başlık) | 4/5 | 1 metinsiz çözüldü |
+| **Toplam** | **20/30** | |
+
+- Kontrole ulaşan 25 taslağın 5'i (%20) metinsiz çözüldü. Aynı seviyelerdeki PRETEST havuzunda bu oran %95–98'di.
+- Zayıf nokta C2 çıkarım (4/5). Bu hücre için ayrı bir kural ya da format (ör. "seçilen N ifade", SELECTION) denenmeli.
+- Okuma tutum eşleştirmesinde tek yazarlı metin yalnızca 2 çift verdi; dinlemedeki konuşmacı sorununun aynısı. Kural eklendi: satırlar 3–4 adlandırılmış yazar (kısa eleştiriler, mektuplar, forum gönderileri). Bu kural bu partiden sonra eklendi, henüz denenmedi.
+- Bu parti, başka bir oturumun o sırada commit edilmemiş üretici değişiklikleriyle çalıştı (genel yaş ortam listesi, metinde geçmeyen isim kontrolü; sonradan `edb173c` ile commit edildi).
+
+20 taslak DRAFT/AI_DRAFT olarak kaydedildi ve inceleme paketine eklendi.
