@@ -3,13 +3,13 @@ import { CONSENT_VERSION, consentStatus } from '../src/lib/compliance/guardian-c
 import { requiresConsentGate } from '../src/routes/guardian-consent';
 describe('consent admission', () => {
   const approved = { ageBand: 'UNDER_13', policyVersion: CONSENT_VERSION, approvedAt: new Date(), verifiedAt: new Date(), revokedAt: null };
-  it('fails closed for missing age, stale policies and unverified email declarations', () => {
+  it('fails closed for missing age, stale policies and missing guardian decisions', () => {
     expect(consentStatus(null).allowed).toBe(false);
     expect(consentStatus({ ...approved, policyVersion: 'old' }).allowed).toBe(false);
     expect(consentStatus({ ...approved, approvedAt: null }).status).toBe('GUARDIAN_REQUIRED');
-    expect(consentStatus({ ...approved, verifiedAt: null }).status).toBe('SCHOOL_VERIFICATION_REQUIRED');
+    expect(consentStatus({ ...approved, verifiedAt: null })).toMatchObject({ allowed: true, status: 'READY' });
   });
-  it.each(['UNDER_13', '13_17'])('requires both guardian decision and school verification for %s', ageBand => {
+  it.each(['UNDER_13', '13_17'])('admits %s on the guardian email approval until it is revoked', ageBand => {
     expect(consentStatus({ ...approved, ageBand }).allowed).toBe(true);
     expect(consentStatus({ ...approved, ageBand, revokedAt: new Date() }).allowed).toBe(false);
   });

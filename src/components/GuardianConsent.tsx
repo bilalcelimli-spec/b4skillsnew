@@ -15,7 +15,7 @@ export function CandidateConsentGate({ children, onCancel }: { children: React.R
   if (state?.allowed) return <>{children}</>;
   return <section className={shell} aria-label="Yaş ve veli onayı">
     <h1 className="text-2xl font-bold">Sınavdan önce yaş ve veli onayı</h1>
-    <p>Tam doğum tarihinizi istemiyoruz. 18 yaş altı adaylar için velinin e-posta onayı ve kurumun veli yetkisini doğrulaması gerekir. Bu adımlar tamamlanana kadar sınav, mikrofon ve kamera hazırlığı açılmaz.</p>
+    <p>Tam doğum tarihinizi istemiyoruz. 18 yaş altı adaylar için velinin e-posta ile onay vermesi gerekir. Veli onaylayana kadar sınav, mikrofon ve kamera hazırlığı açılmaz.</p>
     {!state && !error && <p>Onay durumu kontrol ediliyor…</p>}
     {state && !state.ageBand && <div className="flex flex-wrap gap-3">{[['UNDER_13', '13 yaş altı'], ['13_17', '13–17 yaş'], ['ADULT', '18 yaş ve üzeri']].map(([value, label]) => <button className={button} disabled={busy} key={value} onClick={() => void act(() => request('age', { ageBand: value }))}>{label}</button>)}</div>}
     {state?.ageBand && state.status === 'RENEWAL_REQUIRED' && <button className={button} disabled={busy} onClick={() => void act(() => request('age', { ageBand: state.ageBand }))}>Güncel koşullarla devam et</button>}
@@ -24,8 +24,7 @@ export function CandidateConsentGate({ children, onCancel }: { children: React.R
       <label className="block">Velinin e-posta adresi<input className="block w-full border p-3 rounded-lg" type="email" autoComplete="email" required maxLength={254} value={email} onChange={e => setEmail(e.target.value)} /></label>
       <button className={button} disabled={busy}>Veliye onay bağlantısı gönder</button>
     </form>}
-    {sent && <p role="status">Bağlantı gönderildi. Veliniz onay verdikten sonra kurumunuz veli yetkisini doğrulamalıdır.</p>}
-    {state?.status === 'SCHOOL_VERIFICATION_REQUIRED' && <p>Veli e-posta onayı alındı. Kurumunuzun veli yetkisini doğrulaması bekleniyor.</p>}
+    {sent && <p role="status">Bağlantı gönderildi. Veliniz e-postadaki “Onaylıyorum” butonuyla onay verdiğinde “Durumu yenile”ye basarak sınava başlayabilirsiniz.</p>}
     {state?.status === 'REVOKED' && <p>Veli onayı geri çekildi. Sınav açılamaz.</p>}
     {error && <p role="alert">{error}</p>}
     <div className="flex gap-3"><button className={button} disabled={busy} onClick={() => void act(async () => {})}>Durumu yenile</button>{onCancel && <button onClick={onCancel}>Geri dön</button>}</div>
@@ -37,7 +36,10 @@ export function GuardianDecisionPage() {
   const [token] = useState(() => window.location.hash.slice(1));
   const [name, setName] = useState(''); const [relationship, setRelationship] = useState('PARENT'); const [ack, setAck] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [result, setResult] = useState<any>(null);
-  const manage = new URLSearchParams(window.location.search).get('manage') === '1';
+  const params = new URLSearchParams(window.location.search);
+  const manage = params.get('manage') === '1';
+  // Preselected by the email button; the decision is still recorded only by an explicit POST below.
+  const action = params.get('action') === 'approve' ? 'approve' : params.get('action') === 'reject' ? 'reject' : null;
   useEffect(() => { document.title = 'B4Skills — Veli kararı'; }, []);
   async function decide(approve: boolean) {
     setBusy(true); setError(''); try { setResult(await request(manage ? 'revoke' : 'decision', manage ? { token } : { token, approve, ...(approve ? { guardianName: name, relationship, acknowledged: ack } : {}) })); }
@@ -48,17 +50,20 @@ export function GuardianDecisionPage() {
     <h1 className="text-2xl font-bold">B4Skills veli onayı</h1>
     <p>Bir aday hesabı sizin e-posta adresinizi veli olarak bildirdi. Talebi tanımıyorsanız onaylamayın. Veli onayı sınava katılma zorunluluğu oluşturmaz.</p>
     <p>Sınav sırasında yazılı yanıtlar ve ses kayıtları puanlama ve transkripsiyon amacıyla OpenAI hizmetlerine aktarılabilir. Sınav güvenliği için kamera fotoğrafları otomatik çekilip kuruma gönderilebilir. Sonuçları yetkili kurum görevlileri görebilir.</p>
-    <p>Onay vermeden önce <a className="underline" href="/privacy" target="_blank" rel="noreferrer">gizlilik bilgilerini</a> ve <a className="underline" href="/terms" target="_blank" rel="noreferrer">kullanım koşullarını</a> okuyun. Veli yetkiniz kurum tarafından ayrıca doğrulanmadan sınav açılmaz. Tam kimlik belgesini bu forma yüklemeyin.</p>
+    <p>Onay vermeden önce <a className="underline" href="/privacy" target="_blank" rel="noreferrer">gizlilik bilgilerini</a> ve <a className="underline" href="/terms" target="_blank" rel="noreferrer">kullanım koşullarını</a> okuyun. Onay verdiğinizde aday sınava hemen başlayabilir. Tam kimlik belgesini bu forma yüklemeyin.</p>
     <p>Onayı geri çektiğinizde yeni sınav, yanıt ve kayıt gönderimi durur. Önceden işlenen verilerin silinmesi için <a className="underline" href="mailto:hello@b4skills.com">hello@b4skills.com</a> adresine başvurabilir veya aday hesabındaki “Hesabımı sil” seçeneğini kullanabilirsiniz.</p>
-    {!result && !manage && <form className="space-y-4" onSubmit={e => { e.preventDefault(); void decide(true); }}>
+    {!result && !manage && action === 'reject' && <div className="space-y-3"><p>Onay vermemeyi seçtiniz. Kararınızı kaydetmek için butona basın; sınav kapalı kalır.</p>
+      <button className="px-4 py-3 bg-red-700 text-white rounded-xl disabled:opacity-50" disabled={busy} onClick={() => void decide(false)}>Reddediyorum</button>
+      <a className="ml-4 underline" href={`/guardian-consent?action=approve#${token}`}>Onay vermek istiyorum</a></div>}
+    {!result && !manage && action !== 'reject' && <form className="space-y-4" onSubmit={e => { e.preventDefault(); void decide(true); }}>
       <label className="block">Adınız ve soyadınız<input required minLength={2} maxLength={120} className="block w-full border p-3 rounded-lg" value={name} onChange={e => setName(e.target.value)} /></label>
       <label className="block">Veli yetkisi<select className="block w-full border p-3 rounded-lg" value={relationship} onChange={e => setRelationship(e.target.value)}><option value="PARENT">Anne / baba</option><option value="LEGAL_GUARDIAN">Yasal vasi</option></select></label>
       <label className="flex gap-3"><input type="checkbox" required checked={ack} onChange={e => setAck(e.target.checked)} />Bu adayın yasal velisiyim. Açıklanan sınav, ses, kamera ve AI veri aktarımını okuyup açıkça onaylıyorum.</label>
-      <button className={button} disabled={busy || !ack}>Onay ver</button>
+      <button className="px-4 py-3 bg-green-700 text-white rounded-xl disabled:opacity-50" disabled={busy || !ack}>Onaylıyorum</button>
       <button type="button" className="ml-4 underline" disabled={busy} onClick={() => void decide(false)}>Onay vermiyorum</button>
     </form>}
     {!result && manage && <button className={button} disabled={busy} onClick={() => void decide(false)}>Veli onayımı geri çek</button>}
-    {result && <p role="status">{result.revoked || !result.approved ? 'Onay verilmedi veya geri çekildi. Sınav kapalı kalır.' : 'E-posta onayınız kaydedildi. Kurumun veli yetkisini doğrulaması bekleniyor.'}</p>}
+    {result && <p role="status">{result.revoked || !result.approved ? 'Onay verilmedi veya geri çekildi. Sınav kapalı kalır.' : 'Onayınız kaydedildi. Aday sınava başlayabilir.'}</p>}
     {withdrawalUrl && <div><p>Onayı geri çekmek için bu kişisel bağlantıyı saklayın. Paylaşmayın.</p><a className="underline break-all" href={withdrawalUrl}>Onayı yönet ve geri çek</a><input aria-label="Saklanacak geri çekme bağlantısı" className="block w-full border p-2" readOnly value={withdrawalUrl} /></div>}
     {error && <p role="alert">{error}</p>}
   </section></main>;
@@ -72,6 +77,7 @@ export function GuardianVerificationPage() {
   async function verify(userId: string, approvedAt: string) { setBusy(true); setError(''); try { await request('verify', { userId, approvedAt, reference, guardianAuthorityChecked: checked }); setReference(''); setChecked(false); await refresh(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
   return <main className="min-h-screen bg-slate-50 p-6"><section className={shell}>
     <h1 className="text-2xl font-bold">Veli yetkisi doğrulaması</h1>
+    <p>Bu kayıt isteğe bağlıdır; velinin e-posta onayı sınavı tek başına açar. </p>
     <p>Yalnızca kurumunuzun mevcut kayıtları veya uygun yüz yüze doğrulamasıyla veli yetkisini belirledikten sonra onaylayın. Buraya kimlik belgesi, kimlik numarası veya belge kopyası girmeyin; kurumunuzdaki kontrol kaydının referansını yazın.</p>
     <label className="block">Kurum kontrol kaydı referansı<input className="block w-full border p-3" value={reference} minLength={8} maxLength={200} onChange={e => setReference(e.target.value)} /></label>
     <label className="flex gap-3"><input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} />Onaylayacağım adayın yasal veli yetkisini kurum kayıtlarından doğruladım.</label>

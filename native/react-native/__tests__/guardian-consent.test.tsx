@@ -28,12 +28,12 @@ it('allows adults only after server acknowledgement of the age declaration', asy
   expect(backend.declareAge).toHaveBeenCalledWith('ADULT'); expect(content(tree)).toBe(true);
   await act(async () => { tree.unmount(); });
 });
-it('requests guardian email and remains blocked until school verification is complete', async () => {
+it('requests guardian email and opens as soon as the guardian approves', async () => {
   const { backend, typed } = setup(); backend.consentStatus.mockResolvedValue({ ...pending, ageBand: 'UNDER_13' as any, guardianRequired: true, status: 'GUARDIAN_REQUIRED' });
   let tree!: ReactTestRenderer;
   await act(async () => { tree = create(<GuardianConsentGate backend={typed}><Text>Assessment content</Text></GuardianConsentGate>); });
   await act(async () => { tree.root.findByType(Field).props.onChangeText('guardian@example.invalid'); });
-  backend.consentStatus.mockResolvedValue({ ...pending, ageBand: 'UNDER_13' as any, guardianRequired: true, status: 'SCHOOL_VERIFICATION_REQUIRED' });
+  backend.consentStatus.mockResolvedValue({ ...pending, ageBand: 'UNDER_13' as any, guardianRequired: true, status: 'GUARDIAN_REQUIRED' });
   await act(async () => { await tree.root.findAllByType(Button).find(node => node.props.label === 'Veliye onay bağlantısı gönder')!.props.onPress(); });
   expect(backend.requestGuardian).toHaveBeenCalledWith('guardian@example.invalid'); expect(content(tree)).toBe(false);
   backend.consentStatus.mockResolvedValue({ ...pending, allowed: true, ageBand: 'UNDER_13' as any, guardianRequired: true, status: 'READY' });

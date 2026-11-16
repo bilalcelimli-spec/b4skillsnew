@@ -48,13 +48,11 @@ describe.skipIf(!enabled)('guardian flow against PostgreSQL in an isolated dispo
     await declareAge(db, userId, '13_17');
     await expect(declareAge(db, userId, 'ADULT')).rejects.toMatchObject({ code: 'AGE_LOCKED' });
   });
-  it('stores only a token hash, then requires school verification before admission', async () => {
+  it('stores only a token hash and admits the candidate as soon as the guardian approves', async () => {
     const token = await requested(); const row = await db.assessmentConsent.findUniqueOrThrow({ where: { userId } });
     expect(row.requestHash).toBe(digestConsentToken(token)); expect(row.requestHash).not.toBe(token);
     const decision = await guardianDecision(db, token, approve);
-    expect((await candidateConsent(db, userId)).status).toBe('SCHOOL_VERIFICATION_REQUIRED');
-    await db.assessmentConsent.update({ where: { userId }, data: { verifiedAt: new Date(), verifiedBy: 'synthetic-staff', verificationReference: 'synthetic-record-123' } });
-    expect((await candidateConsent(db, userId)).allowed).toBe(true);
+    expect(await candidateConsent(db, userId)).toMatchObject({ allowed: true, status: 'READY' });
     await revokeGuardian(db, decision.manageToken!);
     expect((await candidateConsent(db, userId)).status).toBe('REVOKED');
     await expect(revokeGuardian(db, decision.manageToken!)).rejects.toMatchObject({ code: 'LINK_EXPIRED' });
