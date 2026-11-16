@@ -41,3 +41,16 @@ it('requires another explicit click after a dashboard remount or changed assignm
  fireEvent.click(screen.getByTestId('test-card'));
  expect(onSelect).toHaveBeenLastCalledWith('Academia');
 });
+it('offers every adaptive assessment, grouped by the age band of its profile',()=>{
+ const onSelect=vi.fn();
+ render(<AssessmentModeSelector onSelect={onSelect}/>);
+ const cards=screen.getAllByTestId('test-card');
+ expect(cards.map(card=>card.getAttribute('data-assessment-mode'))).toHaveLength(Object.keys(PRODUCT_LINE_PROFILES).length);
+ const groups=screen.getAllByTestId('age-group');
+ expect(groups[0].textContent).toMatch(/Children/);
+ expect(within(groups[0]).getByText('Ages 7–10')).toBeTruthy();
+ expect(within(groups[1]).getByText('Ages 11–14')).toBeTruthy();
+ for(const card of cards)fireEvent.click(card);
+ expect(new Set(onSelect.mock.calls.map(call=>call[0]))).toEqual(new Set(Object.keys(PRODUCT_LINE_PROFILES)));
+ expect(screen.queryByRole('button',{name:/Özgün/})).toBeNull();
+});

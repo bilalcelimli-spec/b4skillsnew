@@ -8,7 +8,7 @@ import { OZGUN_PRODUCT, OZGUN_TITLE } from "../lib/fixed-forms/ozgun-kids";
  */
 
 import { motion } from "motion/react";
-import { Clock, Zap, BarChart2, BookOpen, ShieldCheck, ChevronRight } from "lucide-react";
+import { Clock, Zap, BarChart2, BookOpen, ShieldCheck, ChevronRight, Baby, Backpack, Briefcase, School, Layers, Users } from "lucide-react";
 import { cn } from "../lib/utils";
 import { assessmentPresentation } from "../lib/product-lines/assessment-presentation";
 import { PRODUCT_LINE_PROFILES, resolveProfileName } from "../lib/product-lines/profiles";
@@ -24,9 +24,51 @@ export interface AssessmentMode {
   accent: string;        // Tailwind bg class for the icon block
   productLine: string;   // value passed to startNewTest()
   recommended?: boolean;
+  /** Candidate age band, derived from the delivery profile. */
+  ages?: string;
+  group?: AgeGroupId;
 }
 
-const MODE_CARDS: Omit<AssessmentMode, "time" | "skills">[] = [
+type AgeGroupId = "children" | "young-teens" | "teens-adults" | "adults" | "professionals";
+
+/** Age groups shown in order; each card is placed by its profile's age range. */
+const AGE_GROUPS: { id: AgeGroupId; label: string; icon: React.ReactNode }[] = [
+  { id: "children",      label: "Children · ages 7–10",       icon: <Baby size={14} /> },
+  { id: "young-teens",   label: "Young teens · ages 11–14",   icon: <Backpack size={14} /> },
+  { id: "teens-adults",  label: "Teens & adults",             icon: <Users size={14} /> },
+  { id: "adults",        label: "Adults · 16+",               icon: <ShieldCheck size={14} /> },
+  { id: "professionals", label: "Professionals · 18+",        icon: <Briefcase size={14} /> },
+];
+
+function ageGroupFor(productLine: string): { group: AgeGroupId; ages: string } {
+  if (productLine === OZGUN_PRODUCT) return { group: "children", ages: "Ages 7–10" };
+  const profile = PRODUCT_LINE_PROFILES[resolveProfileName(productLine) ?? "General English"];
+  const [min, max] = profile.ageRange;
+  const ages = max >= 99 ? `Ages ${min}+` : `Ages ${min}–${max}`;
+  const group: AgeGroupId = max <= 10 ? "children" : max <= 14 ? "young-teens"
+    : min >= 18 ? "professionals" : min >= 16 ? "adults" : "teens-adults";
+  return { group, ages };
+}
+
+const MODE_CARDS: Omit<AssessmentMode, "time" | "skills" | "ages" | "group">[] = [
+  {
+    id: "primary",
+    label: "Primary English",
+    tagline: "Young learners",
+    purpose: "Child-friendly adaptive test with short listening, reading and picture-based tasks from Pre-A1 to A2.",
+    icon: <Baby size={22} />,
+    accent: "bg-sky-500",
+    productLine: "Primary (7-10)",
+  },
+  {
+    id: "junior",
+    label: "Junior Suite",
+    tagline: "Secondary school placement",
+    purpose: "Adaptive six-skill assessment for lower-secondary students, A1 to B2.",
+    icon: <Backpack size={22} />,
+    accent: "bg-teal-500",
+    productLine: "Junior Suite (11-14)",
+  },
   {id:'ozgun-kids-form-a',label:OZGUN_TITLE,tagline:'96 soruluk sabit sınav',purpose:'Kitapçıktaki soru sırası, bölüm süreleri ve dinleme kayıtlarıyla uygulanır.',icon:<BookOpen size={22}/>,accent:'bg-pink-600',productLine:OZGUN_PRODUCT},
   {
     id: "quick-check",
@@ -65,12 +107,38 @@ const MODE_CARDS: Omit<AssessmentMode, "time" | "skills">[] = [
     accent: "bg-violet-500",
     productLine: "Academia",
   },
-
+  {
+    id: "language-schools",
+    label: "Language School Placement",
+    tagline: "Course-level placement",
+    purpose: "Places learners into language-school course levels from A1 to C1 across all six skills.",
+    icon: <School size={22} />,
+    accent: "bg-orange-500",
+    productLine: "Language Schools",
+  },
+  {
+    id: "specialized",
+    label: "Integrated Skills",
+    tagline: "Advanced specialised English",
+    purpose: "Integrated reading, listening, writing and speaking for advanced B1–C2 candidates.",
+    icon: <Layers size={22} />,
+    accent: "bg-fuchsia-500",
+    productLine: "Specialized / Integrated Skills",
+  },
+  {
+    id: "corporate",
+    label: "Business English",
+    tagline: "Workplace English",
+    purpose: "Workplace communication assessment for hiring and staff development, A2 to C1.",
+    icon: <Briefcase size={22} />,
+    accent: "bg-slate-700",
+    productLine: "Corporate",
+  },
 ];
 
 const MODES: AssessmentMode[] = MODE_CARDS.map(mode => {
   const facts = assessmentPresentation(mode.productLine);
-  return {...mode, time: `${facts.duration} min`, skills: facts.skills};
+  return {...mode, time: `${facts.duration} min`, skills: facts.skills, ...ageGroupFor(mode.productLine)};
 });
 
 interface Props {
@@ -90,21 +158,41 @@ export function AssessmentModeSelector({ onSelect, allowedProductLine, className
     id: assignedProfile.name, label: assignedProfile.displayName ?? assignedProfile.name,
     tagline: "Assigned assessment", time: `${assessmentPresentation(assignedProfile.name).duration} min`,
     skills: assessmentPresentation(assignedProfile.name).skills, purpose: "Start the assessment assigned to your exam code.",
-    icon: <BookOpen size={22}/>, accent: "bg-indigo-500", productLine: assignedProfile.name,
+    icon: <BookOpen size={22}/>, accent: "bg-indigo-500", productLine: assignedProfile.name, ...ageGroupFor(assignedProfile.name),
   }] : [];
   const visible = filtered.length > 0 ? filtered : MODES.filter(mode=>mode.productLine!==OZGUN_PRODUCT);
   if (assignedProduct && filtered.length === 0) return <p role="alert">The assigned assessment is unavailable. Please contact your institution.</p>;
 
-  return (
-    <div className={cn("space-y-3", className)}>
-      <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">
-        Choose Assessment Mode
-      </h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
-        {visible.map((mode, i) => (
-          <ModeCard key={mode.id} mode={mode} delay={i * 0.05} onSelect={onSelect} />
-        ))}
+  // An assigned code shows exactly one card; no grouping needed.
+  if (filtered.length > 0) {
+    return (
+      <div className={cn("space-y-3", className)}>
+        <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Your Assessment</h2>
+        {visible.map((mode, i) => <ModeCard key={mode.id} mode={mode} delay={i * 0.05} onSelect={onSelect} />)}
       </div>
+    );
+  }
+
+  return (
+    <div className={cn("space-y-6", className)}>
+      <div>
+        <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest">Choose Assessment</h2>
+        <p className="text-xs text-slate-500 mt-1">Pick the assessment for the test taker's age group.</p>
+      </div>
+      {AGE_GROUPS.map(group => {
+        const modes = visible.filter(mode => mode.group === group.id);
+        if (modes.length === 0) return null;
+        return (
+          <section key={group.id} aria-labelledby={`age-group-${group.id}`} data-testid="age-group">
+            <h3 id={`age-group-${group.id}`} className="flex items-center gap-1.5 text-[11px] font-black text-slate-600 uppercase tracking-widest mb-3">
+              {group.icon} {group.label}
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
+              {modes.map((mode, i) => <ModeCard key={mode.id} mode={mode} delay={i * 0.05} onSelect={onSelect} />)}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -147,6 +235,11 @@ function ModeCard({ mode, delay, onSelect }: { mode: AssessmentMode; delay: numb
             </span>
           </div>
 
+          {mode.ages && (
+            <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+              {mode.ages}
+            </span>
+          )}
           <p className="text-xs text-slate-500 mt-1 leading-relaxed line-clamp-2">
             {mode.purpose}
           </p>
