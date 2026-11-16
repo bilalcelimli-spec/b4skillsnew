@@ -6,7 +6,7 @@
  * Junior's grammar/vocabulary/reading gaps or Primary's A2 vocabulary/grammar.
  * Stored as DRAFT / AI_DRAFT with the product tag.
  *
- *   npx tsx scripts/jobs/generate-young-learner-text.ts [--only "junior|GRAMMAR"] [--per-cell N] [--tag wave1b]
+ *   npx tsx scripts/jobs/generate-young-learner-text.ts [--set wave1c] [--only "junior|GRAMMAR"] [--per-cell N] [--tag wave1b]
  *   → scripts/jobs/.out/young-learners/<tag>-ids.json, <tag>-results.json
  * Listening audio afterwards:
  *   npx tsx scripts/jobs/generate-primary-listening-audio.ts --trigger claude-code:yl-text --apply
@@ -61,11 +61,41 @@ export const WAVE1B = [
   c(PRIMARY, { cefr: "A2", skill: "GRAMMAR", subskill: "TENSE_ASPECT", genre: "gap_fill", topic: "weekend", ...FIB }, 8),
 ];
 
+/** Batch C (Junior): reading, listening, writing, speaking and the remaining grammar/vocabulary gap. ~114 drafts. */
+export const WAVE1C = [
+  // Reading (with queue: A1 14, A2 13, B1 20, B2 12; min 25)
+  c(JUNIOR, { cefr: "A1", skill: "READING", subskill: "SPECIFIC_INFORMATION", genre: "notice", topic: "school clubs" }, 8),
+  c(JUNIOR, { cefr: "A1", skill: "READING", subskill: "EXPLICIT_DETAIL", genre: "message", topic: "family" }, 6),
+  c(JUNIOR, { cefr: "A2", skill: "READING", subskill: "EXPLICIT_DETAIL", genre: "email", topic: "holidays" }, 8),
+  c(JUNIOR, { cefr: "A2", skill: "READING", subskill: "SPECIFIC_INFORMATION", genre: "notice", topic: "sport" }, 6),
+  c(JUNIOR, { cefr: "B1", skill: "READING", subskill: "EXPLICIT_DETAIL", genre: "article", topic: "animals" }, 8),
+  c(JUNIOR, { cefr: "B2", skill: "READING", subskill: "WRITER_ATTITUDE", genre: "review", topic: "films and books" }, 6),
+  c(JUNIOR, { cefr: "B2", skill: "READING", subskill: "MAIN_IDEA", genre: "article", topic: "science", format: "HEADINGS" }, 5),
+  // Listening (A1 12, A2 12, B1 14; min 25) — picture listening comes from generate-young-learner-pictures --set wave1c
+  c(JUNIOR, { cefr: "A1", skill: "LISTENING", subskill: "SPECIFIC_INFORMATION", genre: "conversation", topic: "school" }, 6),
+  c(JUNIOR, { cefr: "B1", skill: "LISTENING", subskill: "FACTUAL_DETAIL", genre: "conversation", topic: "hobbies" }, 6),
+  c(JUNIOR, { cefr: "B1", skill: "LISTENING", subskill: "SPECIFIC_INFORMATION", genre: "interview", topic: "sport" }, 6),
+  // Writing (A1 4, A2 7, B1 10; min 11)
+  c(JUNIOR, { cefr: "A1", skill: "WRITING", subskill: "TASK_FULFILMENT", genre: "message", topic: "free time" }, 5),
+  c(JUNIOR, { cefr: "A2", skill: "WRITING", subskill: "TASK_FULFILMENT", genre: "email", topic: "a party" }, 4),
+  c(JUNIOR, { cefr: "B1", skill: "WRITING", subskill: "COHERENCE", genre: "email", topic: "school trip" }, 3),
+  // Speaking (A1 4, B1 6, B2 6; min 11)
+  c(JUNIOR, { cefr: "A1", skill: "SPEAKING", subskill: "TASK_FULFILMENT", genre: "personal_questions", topic: "daily_life" }, 5),
+  c(JUNIOR, { cefr: "B1", skill: "SPEAKING", subskill: "DISCOURSE_MANAGEMENT", genre: "discussion", topic: "free time" }, 4),
+  c(JUNIOR, { cefr: "B2", skill: "SPEAKING", subskill: "INTERACTION", genre: "opinion", topic: "technology" }, 5),
+  // Grammar / vocabulary (31-40 of 50)
+  c(JUNIOR, { cefr: "A2", skill: "GRAMMAR", subskill: "TENSE_ASPECT", genre: "gap_fill", topic: "weekend", ...FIB }, 6),
+  c(JUNIOR, { cefr: "B1", skill: "GRAMMAR", subskill: "PASSIVE", genre: "article", topic: "inventions" }, 6),
+  c(JUNIOR, { cefr: "A1", skill: "VOCABULARY", subskill: "RECEPTIVE_VOCABULARY", genre: "dialogue", topic: "food" }, 6),
+  c(JUNIOR, { cefr: "B1", skill: "VOCABULARY", subskill: "COLLOCATION", genre: "gap_fill", topic: "music", ...FIB }, 6),
+];
+
 const label = (x: BlueprintCell) => `${x.productLine}/${x.cefr}/${x.skill}/${x.subskill}/${x.genre}/${resolveItemType(x)}`;
 
 async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true });
-  const cells = WAVE1B.filter((x) => !ONLY || ONLY(label(x.cell))).map((x) => ({ ...x, count: PER_CELL ?? x.count }));
+  const set = arg("--set") === "wave1c" ? WAVE1C : WAVE1B;
+  const cells = set.filter((x) => !ONLY || ONLY(label(x.cell))).map((x) => ({ ...x, count: PER_CELL ?? x.count }));
   const results = [];
   for (const { cell, count } of cells) {
     const t = Date.now();

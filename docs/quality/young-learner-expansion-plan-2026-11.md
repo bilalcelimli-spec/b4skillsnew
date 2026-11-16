@@ -175,3 +175,23 @@ Sonraki parti (B): Junior için metin tabanlı üretim (çoktan seçmeli boşluk
 `generate-young-learner-text.ts --tag wave1b` (+ iki hücre yeniden): 149 + 14 istendi, **126 kaydedildi** (116 + 10), 6 dinleme seslendirildi. Kayıplar: metinsiz çözülen 14, eşleştirmede metinsiz/anahtar 4, yinelenen 4, bir bozuk JSON yanıtı (hücre yeniden çalıştırıldı), Junior B1 kısa konuşmada konuşmacının adı metinde yoktu (6/6). Bu sonuncusu için üreticiye kural eklendi: tek kişilik konuşmada konuşmacı adını söyler ya da soru "the speaker" der; yeniden çalıştırmada 1/6'ya indi.
 
 Kuyruk dahil kapasite: Primary'de yalnızca dilbilgisi A2 (39/40) minimumun altında kaldı. Junior'da dilbilgisi/kelime arttı ama minimum 50'nin altında (31-40); çoktan seçmeli dışı oran %0'dan %20-47'ye çıktı. Junior okuma, dinleme A1-B1, yazma ve konuşma hâlâ açık: sonraki parti (C) bunlara ayrılmalı.
+
+## 12. Dalga 1, parti C — Junior (2026-11-16)
+
+Metin görevleri (`generate-young-learner-text.ts --set wave1c`): **95/115** kaydedildi. Resimli görevler (`generate-young-learner-pictures.ts --set wave1c`): **15/26**; Gemini ön ödemeli kredisi partinin sonunda bitti (W-PICSTORY 1/4, S-PIC 0/4 bu yüzden). 27 dinleme taslağı (13 metin, 14 resimli) **henüz seslendirilmedi**; kredi gelince:
+
+    npx tsx scripts/jobs/generate-primary-listening-audio.ts --trigger claude-code:yl-text --apply
+    npx tsx scripts/jobs/generate-primary-listening-audio.ts --trigger claude-code:yl-pictures --apply
+
+Junior kapasitesi, kuyruk dahil (önce → sonra; minimum okuma/dinleme 25, dilbilgisi/kelime 50, yazma/konuşma 11):
+
+| Beceri | A1 | A2 | B1 | B2 |
+|---|---|---|---|---|
+| Dinleme | 12 → **27** | 12 → 16 | 14 → 22 | 30 |
+| Okuma | 14 → **25** | 13 → 20 | 20 → 24 | 12 → 20 |
+| Dilbilgisi | 31 | 35 → 41 | 38 → 45 | 17 |
+| Kelime | 34 → 41 | 40 | 36 → 42 | 24 |
+| Yazma | 4 → 10 | 7 → **11** | 10 → **13** | 12 |
+| Konuşma | 4 → 9 | 11 | 6 → 10 | 6 → **11** |
+
+Kalan Junior açıkları (minimuma): dinleme A2 9, B1 3; okuma A2 5, B1 1, B2 5; dilbilgisi 19/9/5/33; kelime 9/10/8/26; yazma A1 1; konuşma A1 2, B1 1. En büyüğü B2 dilbilgisi/kelime.

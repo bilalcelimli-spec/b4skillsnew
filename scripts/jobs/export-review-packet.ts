@@ -40,6 +40,8 @@ const SOURCES: Array<{ file: string; label: string; statuses?: string[] }> = [
   { file: "phase2/pilot-fill-ids.json", label: "Faz 2 — fill to target: General A1 reading" },
   { file: "phase2/pilot-refill-c1c2-ids.json", label: "Faz 2 — C1-C2 reading refill as matching (after the pretest pull)" },
   { file: "young-learners/smoke-ids.json", label: "Young learners — first picture item (smoke test)" },
+  { file: "young-learners/wave1c-ids.json", label: "Young learners — Wave 1 batch C (Junior text tasks)" },
+  { file: "young-learners/wave1c-pic-ids.json", label: "Young learners — Wave 1 batch C (Junior picture tasks; audio pending)" },
   { file: "young-learners/wave1b-ids.json", label: "Young learners — Wave 1 batch B (text tasks, Junior + Primary A2)" },
   { file: "young-learners/wave1b-retry-ids.json", label: "Young learners — Wave 1 batch B retry (Junior A2 grammar, B1 listening)" },
   { file: "young-learners/smoke-b-ids.json", label: "Young learners — batch B smoke test" },
