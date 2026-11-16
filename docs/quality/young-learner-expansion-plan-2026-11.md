@@ -139,3 +139,79 @@ Toplam yaklaşık 850 kullanılabilir soru; ~1.350 taslak talebi. Her parti sonr
 - R-PICSENT ölçeklenmeden önce yeniden pilotlanmalı (verim 1/6). Diğer dört görev Dalga 1'e hazır.
 
 Tüm taslaklar DRAFT / AI_DRAFT, inceleme paketinde (resim ve sesleriyle).
+
+## 10. Dalga 1, parti A (2026-11-16)
+
+`generate-young-learner-pictures.ts --set wave1a --tag wave1a`: 28 hücre, 151 taslak istendi, **116 kaydedildi**. 221 resim üretildi, 22'si görme kontrolünden geçemedi (%10; pilotta %29). 41 dinleme taslağının hepsi seslendirildi (11-28 saniye, her diyalogda iki ayrı ses).
+
+| Görev | Kaydedilen | Ana kayıp |
+|---|---|---|
+| L-PIC3 Primary (Pre-A1/A1/A2) | 32/48 | metinsiz çözülen 23 (tüm L-PIC3 dahil); A1 okul hücresi 1/6 |
+| L-PIC3 Junior (A1/A2/B1) | 9/18 | metinsiz çözülen, 2 resim |
+| V-PICWORD Primary | 34/36 | 3 resim |
+| S-PIC Primary + Junior | 23/26 | Junior B1 bilim fuarı: resimde yazı (4 ret) |
+| W-PICSTORY Primary + Junior | 17/18 | – |
+| R-PICSENT yeniden deneme | 3/8 | 5 resimsiz çözüldü |
+
+- İstem düzeltmesi resimdeki yazı sorununu büyük ölçüde çözdü: Junior B1 hikâyeleri pilotta 0/3, şimdi 4/4.
+- R-PICSENT hâlâ zayıf (3/8). Ölçeklenmeyecek; okuma için Primary'de metin tabanlı görevler (kısa notlar, tabelalar, kısa hikâye) kullanılacak.
+- Dinlemede metinsiz çözülme 3 şıkta beklenen düzeyde (~%30); kayıp kabul edilebilir.
+
+Kapasite, kuyruk dahil (`verify:capacity --with-queue`):
+
+| Profil | Hücre | Önce | Sonra |
+|---|---|---|---|
+| Primary | Dinleme Pre-A1 / A1 / A2 | 14 / 28 / 32 | 28 / 40 / 42 |
+| Primary | Kelime Pre-A1 / A1 | 31 / 47 | 52 / 66 |
+| Primary | Yazma A2, Konuşma A2 | 10 / 9 | 18 / 14 |
+| Junior | Dinleme A1 / B1 | 8 / 9 | 12 / 12 |
+
+Primary'de dinleme, kelime (Pre-A1/A1), yazma ve konuşma kuyrukla minimumu geçti. Kalan Primary açıkları: okuma Pre-A1 (18/20), kelime A2 (28/40), dilbilgisi A2. Junior hemen her hücrede minimumun altında; resimli görevler Junior'un dilbilgisi/kelime/okuma açığını kapatmaz.
+
+Sonraki parti (B): Junior için metin tabanlı üretim (çoktan seçmeli boşluk doldurma, diyalog tamamlama, tabela/mesaj, eşleştirme; `runBatchGeneration`, sıkı kapılar), Primary okuma Pre-A1 ve kelime/dilbilgisi A2. Taslaklar inceleme kapasitesine göre partilere bölünmeli: inceleme paketi şimdi yaklaşık 840 soru.
+
+## 11. Dalga 1, parti B — metin görevleri (2026-11-16)
+
+`generate-young-learner-text.ts --tag wave1b` (+ iki hücre yeniden): 149 + 14 istendi, **126 kaydedildi** (116 + 10), 6 dinleme seslendirildi. Kayıplar: metinsiz çözülen 14, eşleştirmede metinsiz/anahtar 4, yinelenen 4, bir bozuk JSON yanıtı (hücre yeniden çalıştırıldı), Junior B1 kısa konuşmada konuşmacının adı metinde yoktu (6/6). Bu sonuncusu için üreticiye kural eklendi: tek kişilik konuşmada konuşmacı adını söyler ya da soru "the speaker" der; yeniden çalıştırmada 1/6'ya indi.
+
+Kuyruk dahil kapasite: Primary'de yalnızca dilbilgisi A2 (39/40) minimumun altında kaldı. Junior'da dilbilgisi/kelime arttı ama minimum 50'nin altında (31-40); çoktan seçmeli dışı oran %0'dan %20-47'ye çıktı. Junior okuma, dinleme A1-B1, yazma ve konuşma hâlâ açık: sonraki parti (C) bunlara ayrılmalı.
+
+## 12. Dalga 1, parti C — Junior (2026-11-16)
+
+Metin görevleri (`generate-young-learner-text.ts --set wave1c`): **95/115** kaydedildi. Resimli görevler (`generate-young-learner-pictures.ts --set wave1c`): **15/26**; Gemini ön ödemeli kredisi partinin sonunda bitti (W-PICSTORY 1/4, S-PIC 0/4 bu yüzden). 27 dinleme taslağı (13 metin, 14 resimli) o sırada seslendirilemedi; seslendirme komutu:
+
+    npx tsx scripts/jobs/generate-primary-listening-audio.ts --trigger claude-code:yl-text --apply
+    npx tsx scripts/jobs/generate-primary-listening-audio.ts --trigger claude-code:yl-pictures --apply
+
+Kredi yenilendikten sonra (aynı gün): 27 dinleme taslağının hepsi seslendirildi (genç öğrenen dinleme taslaklarının 81'inin tamamı artık sesli); kesilen iki resimli hücre tamamlandı, 5/8 daha kaydedildi (W-PICSTORY 2/4, S-PIC 3/4; 6 resim görme kontrolünden geçemedi). Parti C toplamı: **115 taslak**.
+
+Junior kapasitesi, kuyruk dahil (önce → sonra; minimum okuma/dinleme 25, dilbilgisi/kelime 50, yazma/konuşma 11):
+
+| Beceri | A1 | A2 | B1 | B2 |
+|---|---|---|---|---|
+| Dinleme | 12 → **27** | 12 → 16 | 14 → 22 | 30 |
+| Okuma | 14 → **25** | 13 → 20 | 20 → 24 | 12 → 20 |
+| Dilbilgisi | 31 | 35 → 41 | 38 → 45 | 17 |
+| Kelime | 34 → 41 | 40 | 36 → 42 | 24 |
+| Yazma | 4 → 10 | 7 → **11** | 10 → **13** | 12 |
+| Konuşma | 4 → 9 | 11 | 6 → 10 | 6 → **11** |
+
+Kalan Junior açıkları (minimuma): dinleme A2 9, B1 3; okuma A2 5, B1 1, B2 5; dilbilgisi 19/9/5/33; kelime 9/10/8/26; yazma A1 1; konuşma A1 2, B1 1. En büyüğü B2 dilbilgisi/kelime.
+
+## 13. Dalga 1, parti D — Junior (2026-11-17)
+
+İlk çalıştırma geçici bir ağ kesintisine denk geldi (Supabase ve Gemini'ye ulaşılamadı); metin görevlerinden hiçbiri kaydedilmedi, yarım kayıt oluşmadı. Yeniden çalıştırma: metin **153/172**, iki hücre tamamlaması **13/17**, resimli dinleme **7/12**; toplam **173 taslak**. 15 dinleme taslağının hepsi seslendirildi. Kayıplar: metinsiz çözülen 9, yaş bağlamı 2, bir bozuk JSON yanıtı (hücre yeniden çalıştırıldı), isim kontrolü 1.
+
+Junior, kuyruk dahil: **24 hücrenin 24'ü minimumda veya üstünde.**
+
+| Beceri | A1 | A2 | B1 | B2 |
+|---|---|---|---|---|
+| Dinleme (min 25) | 27 | 27 | 26 | 30 |
+| Okuma (min 25) | 25 | 25+ | 28 | 27 |
+| Dilbilgisi (min 50) | 54 | 51 | 51 | 53 |
+| Kelime (min 50) | 51 | 51 | 51 | 50 |
+| Yazma / Konuşma (min 11) | 15 / 15 | 11 / 11 | 13 / 12 | 12 / 11 |
+
+Çoktan seçmeli dışı oran dilbilgisi/kelimede %16-61 (başlangıçta %0). Hedefe (okuma/dinleme 38, dilbilgisi/kelime 75, yazma/konuşma 17) Dalga 2'de, ilk kalibrasyon verisinden sonra gidilecek.
+
+**Bu sayılar inceleme onayına bağlı.** Dalga 1'in tüm taslakları (Primary + Junior, yaklaşık 690) DRAFT; canlı havuz değişmedi. Darboğaz artık inceleme: paket ~1.250 soru.

@@ -96,7 +96,10 @@ export function settingsFor(age: string | undefined, productLine?: string): stri
 /** FNV-1a; stable across runs so a cell + batch index + seed always gets the same picks. */
 export function hashString(text: string): number {
   let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+  // Rotation keys are short strings; a numeric cap keeps the loop independent of input size.
+  const s = typeof text === "string" ? text : String(text);
+  const n = Math.min(s.length, 1024);
+  for (let i = 0; i < n; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
   return h;
 }
 
