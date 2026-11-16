@@ -90,11 +90,42 @@ export const WAVE1C = [
   c(JUNIOR, { cefr: "B1", skill: "VOCABULARY", subskill: "COLLOCATION", genre: "gap_fill", topic: "music", ...FIB }, 6),
 ];
 
+/**
+ * Batch D (Junior): what batch C left below the minimum, with queue — grammar A1 31 / A2 41 / B1 45 / B2 17,
+ * vocabulary 41 / 40 / 42 / 24 (min 50); reading A2 20, B1 24, B2 20; listening A2 16, B1 22 (min 25);
+ * writing A1 10, speaking A1 9, B1 10 (min 11). FIB-heavy to lift the non-MC share. ~160 drafts.
+ */
+export const WAVE1D = [
+  c(JUNIOR, { cefr: "B2", skill: "GRAMMAR", subskill: "CONDITIONALS", genre: "gap_fill", topic: "travel", ...FIB }, 9),
+  c(JUNIOR, { cefr: "B2", skill: "GRAMMAR", subskill: "REPORTED_LANGUAGE", genre: "gap_fill", topic: "school news", ...FIB }, 9),
+  c(JUNIOR, { cefr: "B2", skill: "GRAMMAR", subskill: "PASSIVE", genre: "article", topic: "history" }, 9),
+  c(JUNIOR, { cefr: "B2", skill: "GRAMMAR", subskill: "RELATIVE_CLAUSES", genre: "gap_fill", topic: "inventors", ...FIB }, 9),
+  c(JUNIOR, { cefr: "B2", skill: "VOCABULARY", subskill: "COLLOCATION", genre: "gap_fill", topic: "environment", ...FIB }, 9),
+  c(JUNIOR, { cefr: "B2", skill: "VOCABULARY", subskill: "PHRASAL_VERBS", genre: "gap_fill", topic: "friendship", ...FIB }, 9),
+  c(JUNIOR, { cefr: "B2", skill: "VOCABULARY", subskill: "LEXICAL_PRECISION", genre: "article", topic: "media" }, 9),
+  c(JUNIOR, { cefr: "A1", skill: "GRAMMAR", subskill: "QUANTIFICATION", genre: "gap_fill", topic: "food", ...FIB }, 9),
+  c(JUNIOR, { cefr: "A1", skill: "GRAMMAR", subskill: "AGREEMENT", genre: "dialogue", topic: "family" }, 9),
+  c(JUNIOR, { cefr: "A1", skill: "GRAMMAR", subskill: "TENSE_ASPECT", genre: "message", topic: "weekend" }, 4),
+  c(JUNIOR, { cefr: "A2", skill: "GRAMMAR", subskill: "MODALITY", genre: "gap_fill", topic: "rules at school", ...FIB }, 10),
+  c(JUNIOR, { cefr: "B1", skill: "GRAMMAR", subskill: "SUBORDINATION", genre: "gap_fill", topic: "volunteering", ...FIB }, 6),
+  c(JUNIOR, { cefr: "A1", skill: "VOCABULARY", subskill: "RECEPTIVE_VOCABULARY", genre: "gap_fill", topic: "clothes", ...FIB }, 10),
+  c(JUNIOR, { cefr: "A2", skill: "VOCABULARY", subskill: "MULTI_WORD_EXPRESSIONS", genre: "dialogue", topic: "shopping" }, 11),
+  c(JUNIOR, { cefr: "B1", skill: "VOCABULARY", subskill: "WORD_FORMATION", genre: "word_formation", topic: "careers of the future", ...FIB }, 9),
+  c(JUNIOR, { cefr: "A2", skill: "READING", subskill: "SPECIFIC_INFORMATION", genre: "notice", topic: "the library" }, 8),
+  c(JUNIOR, { cefr: "B1", skill: "READING", subskill: "EXPLICIT_DETAIL", genre: "blog", topic: "cooking" }, 4),
+  c(JUNIOR, { cefr: "B2", skill: "READING", subskill: "STANCE", genre: "opinion", topic: "homework" }, 8),
+  c(JUNIOR, { cefr: "A2", skill: "LISTENING", subskill: "FACTUAL_DETAIL", genre: "conversation", topic: "weekend plans" }, 8),
+  c(JUNIOR, { cefr: "B1", skill: "LISTENING", subskill: "SPECIFIC_INFORMATION", genre: "announcement", topic: "a school event" }, 5),
+  c(JUNIOR, { cefr: "A1", skill: "WRITING", subskill: "TASK_FULFILMENT", genre: "postcard", topic: "holidays" }, 3),
+  c(JUNIOR, { cefr: "A1", skill: "SPEAKING", subskill: "TASK_FULFILMENT", genre: "personal_questions", topic: "hobbies" }, 3),
+  c(JUNIOR, { cefr: "B1", skill: "SPEAKING", subskill: "COHERENCE", genre: "describe_experience", topic: "a trip" }, 2),
+];
+
 const label = (x: BlueprintCell) => `${x.productLine}/${x.cefr}/${x.skill}/${x.subskill}/${x.genre}/${resolveItemType(x)}`;
 
 async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true });
-  const set = arg("--set") === "wave1c" ? WAVE1C : WAVE1B;
+  const set = arg("--set") === "wave1d" ? WAVE1D : arg("--set") === "wave1c" ? WAVE1C : WAVE1B;
   const cells = set.filter((x) => !ONLY || ONLY(label(x.cell))).map((x) => ({ ...x, count: PER_CELL ?? x.count }));
   const results = [];
   for (const { cell, count } of cells) {

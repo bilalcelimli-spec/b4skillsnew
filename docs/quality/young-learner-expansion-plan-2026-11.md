@@ -197,3 +197,21 @@ Junior kapasitesi, kuyruk dahil (önce → sonra; minimum okuma/dinleme 25, dilb
 | Konuşma | 4 → 9 | 11 | 6 → 10 | 6 → **11** |
 
 Kalan Junior açıkları (minimuma): dinleme A2 9, B1 3; okuma A2 5, B1 1, B2 5; dilbilgisi 19/9/5/33; kelime 9/10/8/26; yazma A1 1; konuşma A1 2, B1 1. En büyüğü B2 dilbilgisi/kelime.
+
+## 13. Dalga 1, parti D — Junior (2026-11-17)
+
+İlk çalıştırma geçici bir ağ kesintisine denk geldi (Supabase ve Gemini'ye ulaşılamadı); metin görevlerinden hiçbiri kaydedilmedi, yarım kayıt oluşmadı. Yeniden çalıştırma: metin **153/172**, iki hücre tamamlaması **13/17**, resimli dinleme **7/12**; toplam **173 taslak**. 15 dinleme taslağının hepsi seslendirildi. Kayıplar: metinsiz çözülen 9, yaş bağlamı 2, bir bozuk JSON yanıtı (hücre yeniden çalıştırıldı), isim kontrolü 1.
+
+Junior, kuyruk dahil: **24 hücrenin 24'ü minimumda veya üstünde.**
+
+| Beceri | A1 | A2 | B1 | B2 |
+|---|---|---|---|---|
+| Dinleme (min 25) | 27 | 27 | 26 | 30 |
+| Okuma (min 25) | 25 | 25+ | 28 | 27 |
+| Dilbilgisi (min 50) | 54 | 51 | 51 | 53 |
+| Kelime (min 50) | 51 | 51 | 51 | 50 |
+| Yazma / Konuşma (min 11) | 15 / 15 | 11 / 11 | 13 / 12 | 12 / 11 |
+
+Çoktan seçmeli dışı oran dilbilgisi/kelimede %16-61 (başlangıçta %0). Hedefe (okuma/dinleme 38, dilbilgisi/kelime 75, yazma/konuşma 17) Dalga 2'de, ilk kalibrasyon verisinden sonra gidilecek.
+
+**Bu sayılar inceleme onayına bağlı.** Dalga 1'in tüm taslakları (Primary + Junior, yaklaşık 690) DRAFT; canlı havuz değişmedi. Darboğaz artık inceleme: paket ~1.250 soru.

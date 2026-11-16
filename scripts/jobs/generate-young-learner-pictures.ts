@@ -68,9 +68,12 @@ export const WAVE1C: PictureCell[] = [
   c("W-PICSTORY", "junior", "A1", "a day at the park", 4), c("S-PIC", "junior", "A1", "a school canteen", 4),
 ];
 
+/** Batch D: Junior A2 picture listening (A2 listening 16 of 25 with the queue). */
+export const WAVE1D: PictureCell[] = [c("L-PIC3", "junior", "A2", "free time", 6), c("L-PIC3", "junior", "A2", "food and drink", 6)];
+
 async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true });
-  const set = arg("--set") === "wave1a" ? WAVE1A : arg("--set") === "wave1c" ? WAVE1C : PILOT;
+  const set = arg("--set") === "wave1a" ? WAVE1A : arg("--set") === "wave1c" ? WAVE1C : arg("--set") === "wave1d" ? WAVE1D : PILOT;
   const cells = set.filter((x) => !ONLY || ONLY(`${x.task}/${x.productLine}/${x.cefr}/${x.topic}`))
     .map((x) => ({ ...x, count: PER_CELL ?? x.count }));
   const results = [];
