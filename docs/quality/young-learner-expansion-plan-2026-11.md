@@ -251,3 +251,14 @@ Canlı kapasite (yalnızca ACTIVE): Junior dilbilgisi A1-B2, okuma A1, dinleme A
 - Düzeltilebilir: dış sitede barındırılan resim (19; `mirror-item-images.ts` ile kopyalanır), sesi olmayan dinleme (10; seslendirme betiği), anahtar kelime gövdede (2; elle düzeltme).
 - Elle okunan örneklerde ret kararları yerinde bulundu; "hazır" Primary okuma/kelime soruları kısa, seviyeye uygun ve tek doğru cevaplı. Kuralların yakalamadığı bir kusur: REA-A1-0082'de renk sorusunun şıklarından biri "two" (aynı türden olmayan şık).
 - Sonuç dosyası (soru bazında): `scripts/jobs/.out/young-learners/backlog-review.json`. Veritabanında hiçbir şey değiştirilmedi.
+
+## 16. Eski taslaklardan canlıya alınanlar ve düzeltmeler (2026-11-17)
+
+Ürün sahibinin talimatıyla:
+
+- **272 "hazır" taslak** `ACTIVE / LIVE` yapıldı, puanlı (`activate-young-learner-drafts.ts --mode active --from-review …backlog-review.json --apply`; `provisionalActivation.policyVersion = "yl-backlog-2026-11-17"`, geri alma günlüğü yerel). Öncesinde REA-A1-0082'deki renk sorusunun "two" şıkkı, metinde geçmeyen bir renkle ("yellow") değiştirildi (`metadata.editorialRevision`).
+- **19 dış resim:** 17'si kendi depolamaya kopyalandı (`mirror-item-images.ts --from-review`); 2'sinin kaynağı artık yok (HTTP 404: `primary-speaking-a1-a1-075`, `SPE-PRE_A1-0047-MVX1N3PR`), yeni resim gerekiyor.
+- **10 Junior B2 dinleme taslağı seslendirildi.** 6'sı 3-4 konuşmacılı eşleştirme; eski yöntem iki sesle sınırlıydı ve konuşmacılar ses olarak ayırt edilemiyordu. Ses işine `--per-turn` eklendi: 3+ konuşmacıda her söz kendi sesiyle ayrı sentezlenip 0,5 sn arayla birleştiriliyor (ör. LIS-B2-0118: Charon, Leda, Puck, Kore). Önizleme TTS modelinin günlük 100 istek kotası dolduğu için 8 taslak `--model gemini-2.5-pro-preview-tts` ile seslendirildi. Hepsi söz kontrolünden geçti; süreler 1,7–3,3 dakika.
+- **Doğru cevabı gövdede geçen 2 taslak** talimat gereği yoksayıldı.
+
+Bu 10 dinleme ve resmi kopyalanan 17 taslak hâlâ DRAFT/REVIEW; canlıya alınmaları ayrı karar. Canlı kapasitede kalan açıklar: Primary okuma (12-16/20), dilbilgisi A2 (38/40); Junior dinleme B2 (0/25, bu 10 taslak kapatır), kelime (46-49/50), okuma A2-B2 (19-24/25), yazma A2, konuşma A2/B2.

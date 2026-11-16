@@ -8,6 +8,7 @@
  *   npx tsx scripts/jobs/generate-primary-listening-audio.ts --apply    # synthesise, upload, set audioUrl
  *   npx tsx scripts/jobs/generate-primary-listening-audio.ts --apply --limit 2
  *   npx tsx scripts/jobs/generate-primary-listening-audio.ts --trigger claude-code:a1-listening-adult --audience adult [--apply]
+ *   npx tsx scripts/jobs/generate-primary-listening-audio.ts --codes LIS-B2-0099,LIS-B2-0106 [--per-turn] [--apply]
  *
  * Voices follow the speaker label (Mum → adult female, Kenji → boy …) instead
  * of turn order, so "Dad" never gets a female voice. Gemini dialogue mode
@@ -35,12 +36,17 @@ const APPLY = process.argv.includes("--apply");
 const argOf = (name: string) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined);
 /** Which generation batch to voice (metadata.triggeredBy) and who listens. */
 const TRIGGER = argOf("--trigger") ?? "claude-code:primary-expansion";
+/** --codes A,B,…: voice exactly these DRAFT items instead of a whole trigger batch. */
+/** --per-turn: 3+ speaker scripts get one voice per speaker (one request per turn) instead of two shared channels. */
+const PER_TURN = process.argv.includes("--per-turn");
+const CODES = argOf("--codes")?.split(",").map((s) => s.trim()).filter(Boolean);
 const ADULT = argOf("--audience") === "adult";
 const KEY_PREFIX = ADULT ? "general" : "primary";
 const li = process.argv.indexOf("--limit");
 const LIMIT = li >= 0 ? Number(process.argv[li + 1]) : Infinity;
 const BUCKET = "question-audio";
-const MODEL = "gemini-2.5-flash-preview-tts";
+/** --model: another TTS model with the same 24 kHz PCM output (each model has its own daily quota). */
+const MODEL = process.argv.includes("--model") ? process.argv[process.argv.indexOf("--model") + 1]! : "gemini-2.5-flash-preview-tts";
 
 type Kind = "adultF" | "childF" | "adultM" | "childM";
 const VOICE: Record<Kind, [string, string]> = {
@@ -71,7 +77,17 @@ const isFemale = (k: Kind) => k === "adultF" || k === "childF";
 /** Plain spoken text: no markup, no quote marks around turns. */
 const clean = (s: string) => s.replace(/\*+/g, "").replace(/^["“”']+|["“”']+$/g, "").replace(/\s+/g, " ").trim();
 
-interface Plan { prompt: string; speechConfig: Record<string, unknown>; voices: string; speakers: string[]; sharedVoices: boolean }
+interface Plan {
+  prompt: string; speechConfig: Record<string, unknown>; voices: string; speakers: string[]; sharedVoices: boolean;
+  /** 3+ speakers: one single-voice request per turn, joined with short pauses, so every speaker keeps a voice of their own. */
+  perTurn?: Array<{ voice: string; prompt: string }>;
+}
+
+/** Distinct voices per kind for per-turn synthesis (Gemini prebuilt voices). */
+const VOICE_POOL: Record<Kind, string[]> = {
+  adultF: ["Aoede", "Kore", "Despina", "Zephyr"], childF: ["Leda", "Kore", "Zephyr", "Despina"],
+  adultM: ["Charon", "Iapetus", "Orus", "Fenrir"], childM: ["Puck", "Fenrir", "Orus", "Iapetus"],
+};
 
 function plan(script: string): Plan {
   const turns = script.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => parseSpeakerTurn(l) ?? { speaker: "", utterance: l });
@@ -85,6 +101,24 @@ function plan(script: string): Plan {
     const voice = VOICE[kind][0];
     const text = turns.map((t) => clean(t.utterance)).join("\n");
     return { prompt: (ADULT ? buildTtsPrompt("general-item", text, "A1") : buildTtsPrompt("primary-item", text, "A1", "primary")), speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }, voices: voice, speakers, sharedVoices: false };
+  }
+
+  if (speakers.length > 2 && PER_TURN) {
+    const used = new Set<string>();
+    const voiceOf = new Map<string, string>();
+    for (const sp of speakers) {
+      const pool = VOICE_POOL[kindOf(sp)];
+      const v = pool.find((x) => !used.has(x)) ?? pool[0]!;
+      used.add(v); voiceOf.set(sp, v);
+    }
+    const lead = ADULT
+      ? "Read this line for adult learners of English. Speak naturally but slowly and clearly:\n\n"
+      : "Read this line for young learners of English. Speak slowly and clearly, in a warm, friendly way:\n\n";
+    return {
+      prompt: "", speechConfig: {}, speakers, sharedVoices: false,
+      voices: speakers.map((sp) => `${sp}=${voiceOf.get(sp)}`).join(", "),
+      perTurn: turns.map((t) => ({ voice: voiceOf.get(t.speaker) ?? voiceOf.get(speakers[0]!)!, prompt: lead + clean(t.utterance) })),
+    };
   }
 
   // Two voice channels. Two speakers: one each. 3+: adults vs children (a teacher
@@ -141,7 +175,7 @@ async function missingTurns(ai: GoogleGenAI, wav: Buffer, script: string): Promi
 /** Read-only: run the turn check on every audio this job produced. */
 async function check() {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const items = await prisma.item.findMany({ where: { skill: "LISTENING", status: "DRAFT", metadata: { path: ["triggeredBy"], equals: TRIGGER } }, select: { itemCode: true, content: true }, orderBy: { itemCode: "asc" } });
+  const items = await prisma.item.findMany({ where: { skill: "LISTENING", status: "DRAFT", ...(CODES ? { itemCode: { in: CODES } } : { metadata: { path: ["triggeredBy"], equals: TRIGGER } }) }, select: { itemCode: true, content: true }, orderBy: { itemCode: "asc" } });
   const failed: string[] = [];
   const unchecked: string[] = [];
   for (const it of items) {
@@ -168,7 +202,7 @@ async function main() {
   const ri = process.argv.indexOf("--redo");
   const REDO = new Set(ri >= 0 ? process.argv[ri + 1].split(",") : []);
   const items = (await prisma.item.findMany({
-    where: { skill: "LISTENING", status: "DRAFT", metadata: { path: ["triggeredBy"], equals: TRIGGER } },
+    where: { skill: "LISTENING", status: "DRAFT", ...(CODES ? { itemCode: { in: CODES } } : { metadata: { path: ["triggeredBy"], equals: TRIGGER } }) },
     select: { id: true, itemCode: true, cefrLevel: true, content: true, metadata: true },
     orderBy: { itemCode: "asc" },
   })).filter((it) => (it.content as any)?.ttsScript && (REDO.size ? REDO.has(it.itemCode!) : !(it.content as any)?.audioUrl));
@@ -193,10 +227,27 @@ async function main() {
       let secs = 0;
       for (let attempt = 1; attempt <= 4 && !wav; attempt++) {
         try {
-          const resp = await ai.models.generateContent({ model: MODEL, contents: [{ role: "user", parts: [{ text: p.prompt }] }], config: { responseModalities: [Modality.AUDIO], speechConfig: p.speechConfig } } as any);
-          const data = resp.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-          if (!data) throw new Error("no audio data");
-          const candidate = buildWavHeader(Buffer.from(data, "base64"));
+          let pcm: Buffer;
+          if (p.perTurn) {
+            // 0.5 s of silence between turns (24 kHz, 16-bit mono).
+            const pause = Buffer.alloc(24000);
+            const parts: Buffer[] = [];
+            for (const turn of p.perTurn) {
+              const r = await ai.models.generateContent({ model: MODEL, contents: [{ role: "user", parts: [{ text: turn.prompt }] }],
+                config: { responseModalities: [Modality.AUDIO], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: turn.voice } } } } } as any);
+              const d = r.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+              if (!d) throw new Error("no audio data for a turn");
+              if (parts.length) parts.push(pause);
+              parts.push(Buffer.from(d, "base64"));
+            }
+            pcm = Buffer.concat(parts);
+          } else {
+            const resp = await ai.models.generateContent({ model: MODEL, contents: [{ role: "user", parts: [{ text: p.prompt }] }], config: { responseModalities: [Modality.AUDIO], speechConfig: p.speechConfig } } as any);
+            const data = resp.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            if (!data) throw new Error("no audio data");
+            pcm = Buffer.from(data, "base64");
+          }
+          const candidate = buildWavHeader(pcm);
           const ev = inspectWav(candidate);
           secs = ev.durationSeconds ?? 0;
           // ~1.0–3.5 words per second for slow child-directed speech.

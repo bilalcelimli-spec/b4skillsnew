@@ -9,6 +9,8 @@
  *
  *   npx tsx scripts/jobs/mirror-item-images.ts            # plan: what would be copied (downloads, writes nothing)
  *   npx tsx scripts/jobs/mirror-item-images.ts --apply    # create bucket if missing, upload, switch URLs
+ *   npx tsx scripts/jobs/mirror-item-images.ts --from-review scripts/jobs/.out/young-learners/backlog-review.json [--apply]
+ *     the backlog drafts flagged IMAGE_EXTERNAL_HOTLINK (any status)
  *
  * Scope: ACTIVE and PRETEST items whose imageUrl is http(s) on a host other
  * than our Supabase project. The bytes are fetched from the current URL, so the
@@ -19,7 +21,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { prisma } from "../../src/lib/prisma.js";
 import { supabaseStorageClient } from "../../src/lib/storage/private-storage.js";
 
@@ -41,8 +43,14 @@ const LICENCE: Record<string, string> = {
 };
 
 async function main() {
+  // --from-review <backlog-review.json>: also the DRAFT/REVIEW items that review flagged IMAGE_EXTERNAL_HOTLINK.
+  const reviewIdx = process.argv.indexOf("--from-review");
+  const reviewIds = reviewIdx >= 0
+    ? (JSON.parse(readFileSync(process.argv[reviewIdx + 1]!, "utf8")).results as Array<{ id: string; fix?: string[] }>)
+      .filter((r) => (r.fix ?? []).some((f) => f.startsWith("IMAGE_EXTERNAL_HOTLINK"))).map((r) => r.id)
+    : null;
   const rows = await prisma.item.findMany({
-    where: { status: { in: ["ACTIVE", "PRETEST"] } },
+    where: reviewIds ? { id: { in: reviewIds } } : { status: { in: ["ACTIVE", "PRETEST"] } },
     select: { id: true, itemCode: true, skill: true, status: true, content: true, metadata: true },
   });
   const targets = rows.filter((r) => {
