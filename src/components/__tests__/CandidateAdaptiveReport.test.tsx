@@ -65,3 +65,28 @@ it('shows product identity and same-band uncertainty without claiming zero error
  fireEvent.click(screen.getByRole('button',{name:'Insights'}));
  expect(gaps.render.mock.calls.at(-1)?.[0]).toMatchObject({skillScores:{reading:{theta:0,sem:.1}}});
 });
+
+it('explains a failed report load and retries instead of showing a blank page',async()=>{
+ const fetchMock=vi.fn()
+  .mockResolvedValueOnce({ok:false,status:503,json:async()=>({})})
+  .mockResolvedValueOnce({ok:true,json:async()=>({...base,candidateName:'Recovered'})});
+ vi.stubGlobal('fetch',fetchMock);
+ render(<CandidateAdaptiveReport sessionId="session" />);
+ expect((await screen.findByTestId('report-error')).textContent).toMatch(/could not be loaded/);
+ fireEvent.click(screen.getByRole('button',{name:/try again/i}));
+ expect(await screen.findByText('Recovered — Adaptive Report')).toBeTruthy();
+});
+
+it('does not offer a retry for a report the user may not open',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>({ok:false,status:403,json:async()=>({})})));
+ render(<CandidateAdaptiveReport sessionId="session" />);
+ expect((await screen.findByTestId('report-error')).textContent).toMatch(/do not have access/);
+ expect(screen.queryByRole('button',{name:/try again/i})).toBeNull();
+});
+
+it('marks responses awaiting AI evaluation as pending, not incorrect',async()=>{
+ show({...base,hasScoredEvidence:true,responses:[{itemId:'w1',skill:'WRITING',cefrLevel:null,isCorrect:null,score:null,thetaAfter:0,semAfter:1,latencyMs:0,pendingAsyncScore:true}] as any});
+ fireEvent.click(await screen.findByRole('button',{name:'Items (1)'}));
+ expect(screen.getByLabelText('Awaiting evaluation')).toBeTruthy();
+ expect(screen.queryByLabelText('Incorrect')).toBeNull();
+});

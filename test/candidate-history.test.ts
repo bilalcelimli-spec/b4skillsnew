@@ -19,3 +19,17 @@ describe('candidate history score evidence',()=>{
   expect(hasFinalResult(s)).toBe(false);expect(historySkills(s)).toEqual([]);
  });
 });
+import {historyResultLabel,isReportableSession} from '../src/lib/reporting/candidate-history';
+describe('candidate history result label',()=>{
+ it('shows CEFR only for final results and never a pending grade',()=>{
+  const s:any={...session(),scoreReport:{...session().scoreReport,overallCefr:'PRE_A1'}};
+  expect(historyResultLabel(s)).toBe('PRE A1');
+  s.scoreReport.isVerified=false;expect(historyResultLabel(s)).toBeNull();
+ });
+ it('uses the fixed-form total instead of a hard-coded maximum',()=>{
+  expect(historyResultLabel({status:'COMPLETED',metadata:{sessionType:'FIXED_FORM',fixedForm:{report:{correct:40,total:48}}}})).toBe('40/48');
+ });
+ it('lists completed, scoring and flagged sessions only',()=>{
+  expect(['COMPLETED','SCORING','FLAGGED','IN_PROGRESS'].map(status=>isReportableSession({status}))).toEqual([true,true,true,false]);
+ });
+});

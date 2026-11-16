@@ -22,3 +22,16 @@ export function historySkills(session: any) {
     return [{ label, value: Math.round(score), level: profile?.cefr ?? profile?.cefrLevel ?? '—' }];
   });
 }
+/** Headline result for a history row: raw score for fixed forms, CEFR when final, otherwise null. */
+export function historyResultLabel(session: any): string | null {
+  const fixed = session?.metadata?.fixedForm?.report;
+  if (session?.metadata?.sessionType === 'FIXED_FORM' && fixed && typeof fixed.correct === 'number')
+    return `${fixed.correct}/${typeof fixed.total === 'number' ? fixed.total : 96}`;
+  if (hasFinalResult(session) && typeof session.scoreReport.overallCefr === 'string')
+    return session.scoreReport.overallCefr.replace('_', ' ');
+  return null;
+}
+/** Sessions that have something to show in the results list. */
+export function isReportableSession(session: any): boolean {
+  return ['COMPLETED', 'SCORING', 'FLAGGED'].includes(session?.status);
+}
