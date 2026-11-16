@@ -233,3 +233,21 @@ Değerlendirilen 341 soruda (288 metinsiz çözülen, 53 geçen) deterministik i
 - Bütünlük işareti taşıyan 145 sorunun 134'ü (%92) metinsiz çözülüyor. Kural tabanlı işaret güvenilir bir ön eleme.
 - Ama metinsiz çözülen 288 sorunun 154'ünde hiçbir işaret yok. Kurallar kör çözücünün yerini tutmuyor; kalan 140 soru için yine Gemini gerekiyor.
 - Hiçbir soru ürün kaynağı etiketi taşımıyor; hepsi genel çekirdek.
+
+### Denetim tamamlandı (2026-11-16)
+
+| Seviye | Değerlendirilen | Metinsiz çözülen | Anahtar doğrulanamadı |
+|---|---|---|---|
+| PRE_A1 | 11 | 8 (%73) | – |
+| A1 | 48 | 31 (%65) | – |
+| A2 | 72 | 62 (%86) | – |
+| B1 | 106 | 91 (%86) | 1 |
+| B2 | 120 | 109 (%91) | 1 |
+| C1 | 49 | 48 (%98) | – |
+| C2 | 76 | 72 (%95) | 1 |
+| **Toplam** | **482** | **421 (%87)** | **3** |
+
+- Okuma PRETEST havuzunun yalnızca 58 sorusu (%12) metinsiz çözülemiyor. Rastlantı tabanı (%25) düşünülürse metne gerçekten bağlı sorular bu 58'den biraz fazla olabilir. Yine de havuzun büyük çoğunluğu okuma becerisini ölçmüyor.
+- Bu 482 sorunun hiçbirine henüz aday yanıtı yok (`Response` 0). Havuzdan çıkarılırlarsa kalibrasyon verisi kaybolmaz.
+- Kuyruk kapsamı buna göre yeniden okunmalı: okuma A2–C2'de "kuyrukla minimumu geçiyor" sonucunun büyük kısmı bu havuzdan geliyor.
+- Sonuç dosyası: `scripts/jobs/.out/pretest-textdep/audit-READING-PRETEST.json` (soru bazında). Veritabanında hiçbir şey değiştirilmedi.
