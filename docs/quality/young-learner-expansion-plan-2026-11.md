@@ -262,3 +262,5 @@ Canlı kapasite (yalnızca ACTIVE): Junior dilbilgisi A1-B2, okuma A1, dinleme A
 - **Doğru cevabı gövdede geçen 2 taslak** talimat gereği yoksayıldı.
 
 Bu 10 dinleme ve resmi kopyalanan 17 taslak hâlâ DRAFT/REVIEW; canlıya alınmaları ayrı karar. Canlı kapasitede kalan açıklar: Primary okuma (12-16/20), dilbilgisi A2 (38/40); Junior dinleme B2 (0/25, bu 10 taslak kapatır), kelime (46-49/50), okuma A2-B2 (19-24/25), yazma A2, konuşma A2/B2.
+
+**Ek (aynı gün):** Düzeltmesi tamamlanan **26 taslak** daha canlıya alındı (10 seslendirilen Junior B2 dinleme + resmi kopyalanan 16 Primary/Junior kelime ve konuşma sorusu; `--from-review …backlog-fixed-27.json`). Resmi kopyalanan 17. soru reddedilen bir taslaktı ve canlıya alınmadı. Junior dinleme B2 canlıda 0 → 10 (minimum 25).
