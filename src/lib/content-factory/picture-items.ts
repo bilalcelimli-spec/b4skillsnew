@@ -84,6 +84,7 @@ function taskSpec(task: PictureTask, cefr: string): { instructions: string; sche
         "- mustShow: 3-5 short facts the picture must show, including the fact the correct sentence states.",
         "- prompt: \"Look at the picture. Which sentence is true?\"",
         "- options: 3 sentences of the same length and pattern. Exactly one is true of the scene. The other two each change ONE detail of something that IS in the picture (number, colour, position, action, who), so they cannot be rejected without looking.",
+        "- All three sentences must be equally likely in an ordinary scene of this kind: never make the true one the most typical (a teddy bear on a bed) and the false ones unusual. Prefer arbitrary details (which colour, how many, left or right of, who is holding what).",
         "- falseFacts: for each wrong sentence, the fact that would make it true (it must NOT be in the picture).",
         "- correctIndex: 0, 1 or 2.",
       ].join("\n"),
@@ -164,6 +165,19 @@ async function draftItems(cell: PictureCell, n: number, batchIndex: number, seed
 
 const LETTERS = ["A", "B", "C", "D"];
 
+/**
+ * One "Name: words" turn per line. The model sometimes returns the dialogue on
+ * a single line ("…Jonas?Jonas: I have cookies."), which the TTS step would
+ * read with one voice. Only names that open a turn somewhere are split on.
+ */
+export function normalizeDialogue(script: string): string {
+  const text = script.replace(/\r\n?/g, "\n").trim();
+  const names = [...new Set([...text.matchAll(/(?:^|[\n.!?"')\s])([A-Z][a-z]+(?: [A-Z][a-z]+)?):\s/g)].map((m) => m[1]!))];
+  if (!names.length) return text;
+  const pattern = new RegExp(`\\s*(?<![\\w'])(${names.map((n) => n.replace(/ /g, "\\s")).join("|")}):\\s*`, "g");
+  return text.replace(pattern, (_m, name: string) => `\n${name}: `).split("\n").map((l) => l.trim()).filter(Boolean).join("\n");
+}
+
 /** Shape the model output into item content; null with a reason when it is unusable. */
 export function shapeContent(task: PictureTask, raw: any): { content: Record<string, any>; reason?: undefined } | { content?: undefined; reason: string } {
   const three = (a: unknown) => Array.isArray(a) && a.length === 3;
@@ -173,7 +187,7 @@ export function shapeContent(task: PictureTask, raw: any): { content: Record<str
     case "L-PIC3":
       if (!three(raw.options) || !raw.ttsScript || !raw.prompt) return { reason: "need prompt, ttsScript and 3 picture options" };
       return { content: {
-        prompt: String(raw.prompt), ttsScript: String(raw.ttsScript), numberOfSpeakers: 2,
+        prompt: String(raw.prompt), ttsScript: normalizeDialogue(String(raw.ttsScript)), numberOfSpeakers: 2,
         options: raw.options.map((o: any, i: number) => ({ id: LETTERS[i], text: "", imageAlt: String(o.imageAlt ?? ""), isCorrect: i === key })),
         correctAnswer: LETTERS[key], imageSpecs: raw.options.map((o: any) => String(o.imageDescription ?? "")), evidence: raw.evidence ?? null,
       } };

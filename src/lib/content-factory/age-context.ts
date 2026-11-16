@@ -24,6 +24,18 @@ export const DIVERSE_NAMES = [
   "Santiago", "Amina", "Oskar", "Thandi", "Rafael", "Selin", "Hiro", "Esther",
 ];
 
+/**
+ * Voice gender for each name above, so TTS gives a boy's name a male voice
+ * (the audio job guessed unknown names as an adult woman). Yuki and Noor are
+ * used for girls in our items.
+ */
+export const NAME_GENDER: Readonly<Record<string, "F" | "M">> = Object.fromEntries([
+  ...["Amara", "Sofia", "Malia", "Yuna", "Fatima", "Lena", "Priya", "Yuki", "Nadia", "Ingrid", "Hana", "Leila", "Zara", "Mia",
+    "Elif", "Aiko", "Rosa", "Ayesha", "Noor", "Ines", "Mei", "Amina", "Thandi", "Selin", "Esther"].map((n) => [n, "F"] as const),
+  ...["Kenji", "Ravi", "Dario", "Chidi", "Omar", "Elias", "Tobias", "Kwame", "Tariq", "Marcus", "Soren", "Arnav", "Emeka", "Jonas",
+    "Daniel", "Mateo", "Finn", "Kofi", "Luca", "Santiago", "Oskar", "Rafael", "Hiro"].map((n) => [n, "M"] as const),
+]);
+
 export const ADULT_SETTINGS = [
   "a community centre", "an international university", "a research institute",
   "a local library", "a public park", "a small business", "a community garden",

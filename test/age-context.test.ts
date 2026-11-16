@@ -59,3 +59,10 @@ describe('product settings and name anchoring', () => {
     expect(unanchoredNames({ question: 'Choose the correct form: Jonas ___ late.' })).toEqual([]);
   });
 });
+
+describe("NAME_GENDER", () => {
+  it("covers every generator name", async () => {
+    const { DIVERSE_NAMES, NAME_GENDER } = await import("../src/lib/content-factory/age-context");
+    expect(DIVERSE_NAMES.filter((n) => !NAME_GENDER[n])).toEqual([]);
+  });
+});

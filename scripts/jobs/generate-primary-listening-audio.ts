@@ -20,6 +20,7 @@
  * audioMetadata.humanListeningVerdict = "PENDING".
  */
 
+import "dotenv/config"; // first: GEMINI_API_KEY and DATABASE_URL
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { GoogleGenAI, Modality } from "@google/genai";
@@ -27,6 +28,7 @@ import { prisma } from "../../src/lib/prisma.js";
 import { buildWavHeader, buildTtsPrompt } from "../../src/lib/audio/tts-generator.js";
 import { parseSpeakerTurn } from "../../src/lib/audio/speaker-labels.js";
 import { inspectWav } from "../../src/lib/audio/wav-evidence.js";
+import { NAME_GENDER } from "../../src/lib/content-factory/age-context.js";
 import { supabaseStorageClient } from "../../src/lib/storage/private-storage.js";
 
 const APPLY = process.argv.includes("--apply");
@@ -59,6 +61,9 @@ function childOrAdult(label: string): Kind {
   if (M_ADULT.test(label)) return "adultM";
   if (M_CHILD.test(label)) return "childM";
   if (F_CHILD.test(label)) return "childF";
+  // Generator names (age-context DIVERSE_NAMES): a named character is a child or teen.
+  const g = NAME_GENDER[label.trim().split(/\s+/)[0] ?? ""];
+  if (g) return g === "M" ? "childM" : "childF";
   return "adultF"; // unknown narrator/announcer
 }
 const isFemale = (k: Kind) => k === "adultF" || k === "childF";

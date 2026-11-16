@@ -119,3 +119,23 @@ Toplam yaklaşık 850 kullanılabilir soru; ~1.350 taslak talebi. Her parti sonr
 - Avrupa Konseyi, genç öğrenen tanımlayıcıları (Szabo & Goodier, 2018), Cilt 1 (7-10) ve Cilt 2 (11-15)
 - Cambridge YLE ve Key/Preliminary for Schools biçim sayfaları (cambridgeenglish.org; araştırma sırasında erişilemedi, Starters ayrıntıları resmî örnek sınavdan doğrulandı; Key/Preliminary bölüm ayrıntıları doğrulanmadı)
 - Trinity GESE: https://trinitycollege.com/GESE
+
+## 9. Pilot sonuçları (2026-11-16)
+
+`scripts/jobs/generate-young-learner-pictures.ts --tag pilot`: 11 hücre × 3 taslak.
+
+| Görev | Hücreler | Kaydedilen | Kayıp nedeni |
+|---|---|---|---|
+| L-PIC3 dinle, resim seç | Primary Pre-A1, A1; Junior A2 | 7/9 | 2 metinsiz çözüldü (3 şıkta rastlantı %33) |
+| R-PICSENT resim, doğru cümle | Primary Pre-A1, A1 | 1/6 | 3 resimsiz çözüldü, 2 resim doğrulanamadı |
+| V-PICWORD resim, kelime | Primary Pre-A1, A1 | 5/6 | 1 resim başka şıkka da uyuyordu |
+| S-PIC resmi anlat | Primary A1; Junior A2 | 5/6 | 1 resimde yazı |
+| W-PICSTORY 3 resimli hikâye | Primary A2; Junior B1 | 3/6 | Junior B1'in 3'ü de resimde yazı/numara |
+| **Toplam** | | **21/33** | |
+
+- 49 resim üretildi, 14'ü görme kontrolünden geçemedi (%29); geçemeyen resim hiçbir soruya bağlanmadı. Örnek resimler elle de incelendi: seçenekler tek ayrıntıda ayrışıyor, sahne doğru cümleyle uyumlu, üç karelik hikâyede karakterler tutarlı.
+- 7 dinleme taslağı seslendirildi. İki hata bulundu ve düzeltildi: model diyaloğu tek satıra yazıyordu (seslendirme tek sesle okurdu; `normalizeDialogue`), ses betiği üretici isimlerinin yarısını tanımıyor ve erkek karakterlere kadın sesi veriyordu (`NAME_GENDER`).
+- Pilot sonrası istem düzeltmeleri: resimlerde tüm yüzeyler boş (tahta, forma numarası, skor tabelası yok); R-PICSENT'te üç cümle eşit olasılıkta, doğru olan en tipik olan olamaz. Bu iki düzeltme henüz denenmedi.
+- R-PICSENT ölçeklenmeden önce yeniden pilotlanmalı (verim 1/6). Diğer dört görev Dalga 1'e hazır.
+
+Tüm taslaklar DRAFT / AI_DRAFT, inceleme paketinde (resim ve sesleriyle).

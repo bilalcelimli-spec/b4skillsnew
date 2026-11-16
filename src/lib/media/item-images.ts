@@ -41,6 +41,7 @@ export function illustrationStyle(age: AgeBand): string {
     "People: a diverse mix of skin tones and features, everyday modern clothes, no brand logos.",
     "Absolutely no text, letters, numbers, signs with words, speech bubbles, scribbles or captions anywhere in the picture.",
     "Draw only the people, animals and objects that are named; do not add extra characters, toys or props.",
+    "Keep every surface blank: empty chalkboards and whiteboards, plain book covers, plain shirts without numbers or logos, no scoreboards, posters, clocks with numerals or labelled signs.",
     "Nothing frightening, violent, unsafe or adult. Culturally neutral settings.",
   ].join(" ");
 }
