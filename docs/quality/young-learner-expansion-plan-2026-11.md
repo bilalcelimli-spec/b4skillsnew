@@ -228,3 +228,26 @@ Junior, kuyruk dahil: **24 hücrenin 24'ü minimumda veya üstünde.**
 Öneriler: (1) Bu 576 soru ilk 200 yanıtı topladığında kalibrasyon taraması öncelikli çalıştırılmalı; uyumsuz parametreler hızla yayımlanmalı ya da soru geri çekilmeli. (2) İnceleme paketi yine de işlenmeli; Reject kararı verilen soru `REVIEW`'a çekilmeli. (3) Kişi uyumu (person-fit) ve ilk sınav sonuçları ilk hafta yakından izlenmeli.
 
 Canlı kapasite (yalnızca ACTIVE): Junior dilbilgisi A1-B2, okuma A1, dinleme A2-B1, yazma A1/B1, konuşma A1/B1 minimumda. Junior dinleme B2 ve yazma B2 canlıda hâlâ 0; kuyruklu ölçümdeki karşılıkları 2026-11-14 tarihli Faz 1 taslaklarıydı ve bu işlemin kapsamında değildi. Primary'de okuma (5-7 metin) ve yazma/konuşma canlıda minimumun altında.
+
+## 15. Eski taslakların gözden geçirilmesi (2026-11-17)
+
+`scripts/jobs/review-young-learner-backlog.ts` (salt okunur): 2026-11-16'dan önce eklenmiş, DRAFT ya da REVIEW durumundaki 424 Primary/Junior taslağı. Kontroller: editoryal kurallar, yapı doğrulaması, yaş bağlamı, metinde geçmeyen isim, ses/resim durumu, önceki kapı işaretleri ve okuma/dinleme için yeniden çalıştırılan metinsiz çözme kontrolü (182 soru; 99 geçti, 83 metinsiz çözüldü, 2 anahtar doğrulanamadı).
+
+| Ürün / beceri | Hazır | Düzeltilebilir | Ret |
+|---|---|---|---|
+| Primary dinleme | 89 | 0 | 23 |
+| Primary okuma | 26 | 0 | 39 |
+| Primary dilbilgisi | 34 | 0 | 0 |
+| Primary kelime | 49 | 6 | 1 |
+| Primary yazma | 22 | 0 | 5 |
+| Primary konuşma | 25 | 6 | 0 |
+| Junior dinleme | 0 | 10 | 28 |
+| Junior okuma | 6 | 0 | 19 |
+| Junior dilbilgisi / kelime | 6 | 9 | 3 |
+| Junior yazma / konuşma | 15 | 0 | 3 |
+| **Toplam** | **272** | **31** | **121** |
+
+- Ret nedenleri: metinsiz çözülebilir (83 yeni + 62 önceki işaret, örtüşen), yaşa uygun olmayan bağlam (13; Junior'da üniversite/profesör), resme atıf yapıp resmi olmayan (7), geçersiz şık sayısı (6), metinde geçmeyen isim (6), seslendirme metninde biçimlendirme (10).
+- Düzeltilebilir: dış sitede barındırılan resim (19; `mirror-item-images.ts` ile kopyalanır), sesi olmayan dinleme (10; seslendirme betiği), anahtar kelime gövdede (2; elle düzeltme).
+- Elle okunan örneklerde ret kararları yerinde bulundu; "hazır" Primary okuma/kelime soruları kısa, seviyeye uygun ve tek doğru cevaplı. Kuralların yakalamadığı bir kusur: REA-A1-0082'de renk sorusunun şıklarından biri "two" (aynı türden olmayan şık).
+- Sonuç dosyası (soru bazında): `scripts/jobs/.out/young-learners/backlog-review.json`. Veritabanında hiçbir şey değiştirilmedi.
