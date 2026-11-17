@@ -38,6 +38,7 @@ const RatingDashboard        = lazy(() => import("./components/RatingDashboard")
 const InstitutionalDashboard = lazy(() => import("./components/InstitutionalDashboard").then(m => ({ default: m.InstitutionalDashboard })));
 const TeacherDashboard       = lazy(() => import("./components/teacher/TeacherDashboard").then(m => ({ default: m.TeacherDashboard })));
 const CertificateView        = lazy(() => import("./components/CertificateView").then(m => ({ default: m.CertificateView })));
+const PrintableReportPage     = lazy(() => import("./components/reports/print/PrintableReportPage").then(m => ({ default: m.PrintableReportPage })));
 const CandidateAdaptiveReport = lazy(() => import("./components/CandidateAdaptiveReport").then(m => ({ default: m.CandidateAdaptiveReport })));
 const AssessmentModeSelector  = lazy(() => import("./components/AssessmentModeSelector").then(m => ({ default: m.AssessmentModeSelector })));
 const TestPlayer             = lazy(() => import("./components/TestPlayer").then(m => ({ default: m.TestPlayer })));
@@ -113,13 +114,14 @@ import { cn } from "./lib/utils";
 import { getWorkspaceCapabilities, getWorkspaceNavigation, type WorkspaceTab } from "./lib/navigation/workspace-navigation";
 
 export default function App() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const verifyMatch = location.pathname.match(/^\/verify(?:\/([^/]+))?\/?$/);
   const isCertificateVerification = verifyMatch !== null;
   const isCommercePath = ["/checkout", "/pricing", "/payment/success", "/payment/cancel", "/refund-policy", "/sales-terms", "/privacy", "/kvkk", "/terms", "/support"].includes(location.pathname);
   const isPublicShare = /^\/share\/[a-f0-9]{32}\/?$/.test(location.pathname);
+  const printMatch = location.pathname.match(/^\/print\/(report|certificate)\/([^/]+)\/?$/);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showLanding, setShowLanding] = useState(true);
@@ -181,7 +183,7 @@ export default function App() {
   // Sync state → URL
   useEffect(() => {
     // Public verification must stay accessible even after authentication resolves.
-    if (isCertificateVerification || isPublicShare || isCommercePath) return;
+    if (isCertificateVerification || isPublicShare || isCommercePath || printMatch) return;
     if (activeSession?.sessionId) {
       navigate(`/exam/${activeSession.sessionId}`, { replace: true });
     } else if (testCompleted?.sessionId) {
@@ -196,7 +198,7 @@ export default function App() {
       };
       navigate(tabPath[activeTab] ?? "/dashboard", { replace: true });
     }
-  }, [activeTab, activeSession, testCompleted, selectedHistorySessionId, user, isCertificateVerification, isPublicShare, isCommercePath]);
+  }, [activeTab, activeSession, testCompleted, selectedHistorySessionId, user, isCertificateVerification, isPublicShare, isCommercePath, printMatch !== null]);
 
   useEffect(() => {
     const fetchUser = async (retryRefresh = true) => {
@@ -475,7 +477,7 @@ export default function App() {
 
   const protectedPath = [
     "/dashboard", "/admin", "/rating", "/institutional", "/teacher",
-    "/content", "/results", "/profile", "/settings", "/exam", "/report",
+    "/content", "/results", "/profile", "/settings", "/exam", "/report", "/print",
   ].some((prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`));
   if (!user && protectedPath) {
     return <AuthPage initialMode="signin" onBack={() => navigate("/")} />;
@@ -492,6 +494,18 @@ export default function App() {
 
   if (!user) {
     return <AuthPage onBack={() => setShowLanding(true)} />;
+  }
+
+  // Printable A4 score report / certificate (no app chrome).
+  if (printMatch) {
+    const langParam = new URLSearchParams(location.search).get("lang");
+    const lang = langParam === "en" || langParam === "tr" ? langParam : i18n.language?.startsWith("tr") ? "tr" : "en";
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <PrintableReportPage sessionId={decodeURIComponent(printMatch[2])} initialKind={printMatch[1] as "report" | "certificate"} initialLocale={lang}
+          onBack={() => navigate(`/report/${printMatch[2]}`)} />
+      </Suspense>
+    );
   }
 
   if (activeSession) {
