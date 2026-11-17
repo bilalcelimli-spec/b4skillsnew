@@ -4576,6 +4576,37 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
+  // ── GET /api/sessions/:id/report-document — printable A4 report/certificate ─
+  // View model for PrintableReportPage (?lang=tr|en). Same status/certificate
+  // rules as the PDF; external alignments only for a final result.
+  app.get("/api/sessions/:id/report-document", authMiddleware, async (req: any, res) => {
+    const { id } = req.params;
+    res.setHeader("Cache-Control", "private, no-store");
+    try {
+      if (!(await assertSessionOwnership(req, res, id))) return;
+      if (!dbAvailable) return res.status(503).json({ error: "Score reports are temporarily unavailable. Please try again shortly." });
+      const { buildReportDocument, certificateAvailable } = await import("./src/lib/reporting/report-document.js");
+      const session = await prisma.session.findUnique({
+        where: { id },
+        include: {
+          candidate: { select: { name: true, email: true } },
+          organization: { select: { name: true, branding: true } },
+          scoreReport: true,
+          responses: { include: { item: { select: { skill: true } } } },
+        },
+      });
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      if ((session.metadata as any)?.sessionType === 'FIXED_FORM') return res.status(409).json({ error: 'Özgün Placement raporunu sonuç sayfasındaki Yazdır seçeneğinden alın.' });
+      if (!session.scoreReport) return res.status(409).json({ error: "The score report is not ready yet." });
+      const locale = req.query.lang === 'tr' ? 'tr' : 'en';
+      const document = buildReportDocument(session as any, { baseUrl: APP_BASE_URL, locale });
+      res.json({ document, certificateAvailable: certificateAvailable(document) });
+    } catch (err) {
+      console.error("report-document error:", err);
+      res.status(500).json({ error: "Failed to build the report document" });
+    }
+  });
+
   // ── POST /api/sessions/:id/share — generate a shareable results token ────────
   app.post("/api/sessions/:id/share", authMiddleware, async (req: any, res) => {
     const { id } = req.params;

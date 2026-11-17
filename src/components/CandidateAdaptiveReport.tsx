@@ -358,6 +358,28 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
           >
             <Printer size={14} /> Download PDF
           </a>
+          <a
+            data-testid="print-report-a4"
+            href={`/print/report/${encodeURIComponent(sessionId)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Printable A4 score report (TR/EN)"
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-400 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            <Printer size={14} /> A4 report
+          </a>
+          {isFinal && report.certificateId && (
+            <a
+              data-testid="print-certificate-a4"
+              href={`/print/certificate/${encodeURIComponent(sessionId)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Printable A4 certificate (TR/EN)"
+              className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 hover:text-amber-800 border border-amber-200 hover:border-amber-400 bg-amber-50 rounded-lg px-3 py-1.5 transition-colors"
+            >
+              <Printer size={14} /> A4 certificate
+            </a>
+          )}
         </div>
         {/* CEFR badge */}
         <div
