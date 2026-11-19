@@ -16,6 +16,7 @@
 
 import crypto from "crypto";
 import https from "https";
+import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ export interface OAuthStatePayload {
 
 // ── State (signed, TTL 10 min) ───────────────────────────────────────────────
 //
-// The state is a self-contained HMAC-signed token rather than a key into a
+// The state is a self-contained signed token (HS256 JWT, own audience) rather than a key into a
 // per-process map, so the OAuth callback can land on any web instance (Render
 // has no sticky sessions). It is still bound to the browser: the start route
 // sets it as the `oauth_state` cookie and the callback requires the two to match
@@ -52,30 +53,28 @@ function stateSecret(): string {
   return secret;
 }
 
-function signState(body: string): string {
-  return crypto.createHmac("sha256", stateSecret()).update(`oauth-state:${body}`).digest("base64url");
-}
+const STATE_AUDIENCE = "b4skills:oauth-state";
 
 export function createOAuthState(provider: string, redirectUri: string, now = Date.now()): string {
-  const payload: OAuthStatePayload = {
-    provider, redirectUri, nonce: crypto.randomBytes(16).toString("hex"), createdAt: now,
-  };
-  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  return `${body}.${signState(body)}`;
+  const nonce = crypto.randomBytes(16).toString("hex");
+  return jwt.sign(
+    { provider, redirectUri, nonce, iat: Math.floor(now / 1000) },
+    stateSecret(),
+    { algorithm: "HS256", audience: STATE_AUDIENCE, expiresIn: STATE_TTL_MS / 1000 },
+  );
 }
 
 export function consumeOAuthState(state: string, now = Date.now()): OAuthStatePayload | null {
-  if (typeof state !== "string" || state.length > 2048) return null;
-  const [body, signature, extra] = state.split(".");
-  if (!body || !signature || extra !== undefined) return null;
-  const expected = Buffer.from(signState(body));
-  const given = Buffer.from(signature);
-  if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) return null;
-  let payload: OAuthStatePayload;
-  try { payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")); }
-  catch { return null; }
-  if (typeof payload?.createdAt !== "number" || now - payload.createdAt > STATE_TTL_MS || payload.createdAt > now + 60_000) return null;
-  return payload;
+  if (typeof state !== "string" || !state || state.length > 2048) return null;
+  try {
+    const claims = jwt.verify(state, stateSecret(), {
+      algorithms: ["HS256"], audience: STATE_AUDIENCE, clockTimestamp: Math.floor(now / 1000),
+    }) as jwt.JwtPayload;
+    if (typeof claims.provider !== "string" || typeof claims.redirectUri !== "string" || typeof claims.nonce !== "string") return null;
+    return { provider: claims.provider, redirectUri: claims.redirectUri, nonce: claims.nonce, createdAt: (claims.iat ?? 0) * 1000 };
+  } catch {
+    return null;
+  }
 }
 
 /** Same-site path to return to after sign-in; anything else (including `//host`) becomes "/". */

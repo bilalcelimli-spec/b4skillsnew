@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import jwt from 'jsonwebtoken';
 import { claimScoring } from '../src/lib/scoring/scoring-claim';
 import { consumeOAuthState, createOAuthState, safeRedirectPath } from '../src/lib/auth/social-sso';
 
@@ -53,10 +54,12 @@ describe('social sign-in state', () => {
 
   it('rejects tampered, foreign and expired states', () => {
     const state = createOAuthState('google', '/dashboard');
-    const [body, sig] = state.split('.');
-    const forged = Buffer.from(JSON.stringify({ provider: 'google', redirectUri: '//evil.example', nonce: 'x', createdAt: Date.now() })).toString('base64url');
-    expect(consumeOAuthState(`${forged}.${sig}`)).toBeNull();
-    expect(consumeOAuthState(`${body}.${sig.slice(0, -2)}xx`)).toBeNull();
+    const [header, , sig] = state.split('.');
+    const forged = Buffer.from(JSON.stringify({ provider: 'google', redirectUri: '//evil.example', nonce: 'x', aud: 'b4skills:oauth-state' })).toString('base64url');
+    expect(consumeOAuthState(`${header}.${forged}.${sig}`)).toBeNull();
+    expect(consumeOAuthState(state.slice(0, -2) + 'xx')).toBeNull();
+    // A normal access token signed with the same secret is not a valid state.
+    expect(consumeOAuthState(jwt.sign({ userId: 'u1' }, process.env.JWT_SECRET!))).toBeNull();
     expect(consumeOAuthState('not-a-state')).toBeNull();
     const old = createOAuthState('google', '/', Date.now() - 11 * 60 * 1000);
     expect(consumeOAuthState(old)).toBeNull();
