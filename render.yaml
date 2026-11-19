@@ -7,13 +7,35 @@ services:
     env: node
     region: oregon
     plan: starter
-    buildCommand: npm ci && npm run build && npm run db:migrate
+    buildCommand: npm ci && npm run build
+    # Migrations run once per deploy, after a successful build and before the new
+    # instances take traffic (a failed build no longer leaves a migrated schema).
+    preDeployCommand: npm run db:migrate
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true
+    # Time Render waits after SIGTERM before killing an old instance. server.ts
+    # drains in-flight requests (AI-scored answers can take tens of seconds);
+    # SHUTDOWN_GRACE_MS below must stay under this.
+    maxShutdownDelaySeconds: 60
+    # Horizontal scaling. Safe once REDIS_URL is set: rate limits and freemium
+    # placement sessions are shared through Redis. Autoscaling needs a
+    # Professional workspace; otherwise use a fixed numInstances.
+    # scaling:
+    #   minInstances: 2
+    #   maxInstances: 6
+    #   targetCPUPercent: 60
+    #   targetMemoryPercent: 70
     envVars:
       - key: NODE_ENV
         value: production
+      - key: SHUTDOWN_GRACE_MS
+        value: "55000"
+      - key: REDIS_URL
+        sync: false          # Render Key Value internal URL; required before running >1 instance
+      # Per instance. Total (instances × limit) must stay under the Supabase
+      # pooler's client limit. With the transaction pooler (6543, ?pgbouncer=true)
+      # this can rise to ~10.
       - key: DB_CONNECTION_LIMIT
         value: "3"
       - key: DATABASE_URL

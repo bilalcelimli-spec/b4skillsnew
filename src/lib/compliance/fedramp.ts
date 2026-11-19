@@ -107,7 +107,7 @@ export const FEDRAMP_MODERATE_CONTROLS: NistControl[] = [
   {
     id: "AC-7", family: "Access Control", title: "Unsuccessful Logon Attempts",
     baseline: "MODERATE", fedrampRequired: true, implemented: true,
-    implementationNotes: "express-rate-limit: 5 login attempts per 15 min per IP. loginLimiter middleware on POST /api/auth/login.",
+    implementationNotes: "express-rate-limit (Redis-backed when REDIS_URL is set): 5 login attempts per 15 min per IP + account, plus a per-IP ceiling (LOGIN_PER_IP_15MIN, default 300). loginLimiter middleware on POST /api/auth/login.",
     testProcedure: "Attempt > 5 logins; verify 429 response and lockout message.",
   },
   {
