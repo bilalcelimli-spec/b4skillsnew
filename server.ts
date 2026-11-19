@@ -49,14 +49,17 @@ import { nativeAppConfig } from "./src/lib/proctoring/native-app-config.js";
 import { AITutorBody, SpeakingMultimodalBody } from "./src/lib/security/schemas/ai.js";
 import { CodeRedemptionError, redeemExamCode } from "./src/lib/security/exam-code-redemption.js";
 import { GenerateCodesBody, RedeemCodeBody, ValidateCodeBody, SendExamInviteBody, CreateAssignmentBody } from "./src/lib/security/schemas/codes.js";
-import { recordFreemiumScore, type FreemiumSkillBreakdown } from "./src/lib/product-lines/freemium-response-scoring.js";
+import { recordFreemiumScore } from "./src/lib/product-lines/freemium-response-scoring.js";
 import { pickPlacementItem, placementPrecisionReached, PLACEMENT_SKILLS, PLACEMENT_MIN_PER_SKILL, PLACEMENT_MAX_PER_SKILL } from "./src/lib/product-lines/placement-selection.js";
 import { evaluateFreemiumResponse } from "./src/lib/product-lines/freemium-productive-scoring.js";
 import { estimateTheta as estimatePlacementTheta } from "./src/lib/assessment-engine/estimator.js";
 import { thetaToCefr as placementThetaToCefr } from "./src/lib/cefr/cefr-framework.js";
-import type { Response as PlacementResponse, Item as PlacementItem } from "./src/lib/assessment-engine/types.js";
 import { shouldExcludeResponseFromAbility } from "./src/lib/scoring/score-evidence.js";
 import { stripAnswerKeys } from "./src/lib/security/answer-sanitizer.js";
+import { getSharedRedis, closeSharedRedis } from "./src/lib/redis/shared-redis.js";
+import { accessTokenUserId, clientIpKey, createLimiterStoreFactory, ipAndEmailKey, limitFromEnv, userOrIpKey } from "./src/lib/security/rate-limit-keys.js";
+import { createPlacementSessionStore, type PlacementSessionState } from "./src/lib/product-lines/placement-session-store.js";
+import { createPlacementPoolCache } from "./src/lib/product-lines/placement-pool.js";
 import { staticCacheControl, noStoreMissingAsset } from "./src/lib/security/static-cache.js";
 import { uploadPrivateObject, downloadPrivateObject, deletePrivateObject, storageReference, StorageConfigurationError } from "./src/lib/storage/private-storage.js";
 import { AccountDeletionError, deleteOwnAccount, isDeletedAccountEmail } from "./src/lib/compliance/account-deletion.js";
@@ -219,24 +222,35 @@ async function startServer() {
     next();
   });
 
+  // Shared Redis (rate limits + freemium placement sessions). Null without
+  // REDIS_URL — then both fall back to per-instance memory (single instance only).
+  const sharedRedis = await getSharedRedis();
+  const limiterStore = await createLimiterStoreFactory(sharedRedis);
+
   // --- SECURITY: Rate-limit unauthenticated POST/PUT/DELETE to non-API paths ---
   const genericPostLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 minute
     max: 20,
     standardHeaders: true,
     legacyHeaders: false,
+    ...limiterStore("generic_post"),
     skip: (req) => req.path.startsWith("/api/") || req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS",
   });
   app.use(genericPostLimiter);
 
   // --- SECURITY: Global rate-limit for /api/ requests (bot / crawler protection) ---
   // Only applies to API routes — static assets and Vite HMR are never rate-limited.
-  // In development the limit is relaxed so rapid page reloads don't trigger 429s.
+  // Keyed by the signed-in user when the access token verifies, otherwise by IP,
+  // so a classroom behind one school NAT does not share a single budget.
   const globalLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 minute
-    max: 300,
+    limit: (req) => accessTokenUserId(req, process.env.JWT_SECRET)
+      ? limitFromEnv("API_RATE_LIMIT_PER_USER_MIN", 300)
+      : limitFromEnv("API_RATE_LIMIT_PER_IP_MIN", 600),
+    keyGenerator: userOrIpKey(process.env.JWT_SECRET),
     standardHeaders: true,
     legacyHeaders: false,
+    ...limiterStore("api"),
     message: { error: "Too many requests, please slow down." },
     // Only throttle API calls — static assets and Vite HMR are exempt.
     // Also skip entirely in development to avoid false positives from rapid reloads.
@@ -263,61 +277,115 @@ async function startServer() {
   const JWT_SECRET = process.env.JWT_SECRET;
   const REFRESH_SECRET = process.env.REFRESH_SECRET;
 
-  // Login limiter — Redis-backed when REDIS_URL is set (works across instances),
-  // falls back to per-process in-memory store when Redis is unavailable.
-  let loginLimiterStore: import("express-rate-limit").Store | undefined;
-  if (process.env.REDIS_URL) {
-    try {
-      const { default: Redis } = await import("ioredis");
-      const { RedisStore } = await import("rate-limit-redis");
-      const redisClient = new Redis(process.env.REDIS_URL, { lazyConnect: true, enableOfflineQueue: false });
-      await redisClient.connect().catch(() => {});
-      loginLimiterStore = new RedisStore({
-        sendCommand: (args_0: string, ...args: string[]) => redisClient.call(args_0, ...args) as any,
-        prefix: "rl_login:",
-      });
-      console.log("✅ loginLimiter backed by Redis");
-    } catch {
-      console.warn("⚠️  Redis unavailable — loginLimiter using in-memory store");
-    }
-  }
-
-  const loginLimiter = rateLimit({
+  // Credential limiters are keyed by IP + email: brute force against one account
+  // stays capped at 5 per 15 min, while 30 students on one school network can
+  // all sign in. A looser per-IP ceiling still stops spraying across accounts.
+  const skipInTest = () => process.env.NODE_ENV === "test";
+  const loginAccountLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5,
-    message: { error: 'Too many login attempts from this IP, please try again after 15 minutes' },
+    keyGenerator: ipAndEmailKey,
+    message: { error: 'Too many login attempts for this account, please try again after 15 minutes' },
     standardHeaders: true,
     legacyHeaders: false,
-    store: loginLimiterStore,
-    skip: () => process.env.NODE_ENV === "test",
+    ...limiterStore("login"),
+    skip: skipInTest,
   });
+  const loginIpLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: limitFromEnv("LOGIN_PER_IP_15MIN", 300),
+    keyGenerator: clientIpKey,
+    message: { error: 'Too many login attempts from this network, please try again after 15 minutes' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    ...limiterStore("login_ip"),
+    skip: skipInTest,
+  });
+  const loginLimiter = [loginIpLimiter, loginAccountLimiter];
+
+  // Exam-code redemption: same shape as login, own counters (a class redeems
+  // codes and then signs in from the same network).
+  const redeemLimiter = [
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: limitFromEnv("REDEEM_PER_IP_15MIN", 300),
+      keyGenerator: clientIpKey,
+      message: { error: 'Too many code attempts from this network, please try again after 15 minutes' },
+      standardHeaders: true,
+      legacyHeaders: false,
+      ...limiterStore("redeem_ip"),
+      skip: skipInTest,
+    }),
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 5,
+      keyGenerator: ipAndEmailKey,
+      message: { error: 'Too many code attempts for this email, please try again after 15 minutes' },
+      standardHeaders: true,
+      legacyHeaders: false,
+      ...limiterStore("redeem"),
+      skip: skipInTest,
+    }),
+  ];
 
   const registerLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 10,
+    limit: limitFromEnv("REGISTER_PER_IP_HOUR", 10),
+    keyGenerator: clientIpKey,
     message: { error: 'Too many registrations from this IP, please try again later' },
     standardHeaders: true,
     legacyHeaders: false,
-    skip: () => process.env.NODE_ENV === "test",
+    ...limiterStore("register"),
+    skip: skipInTest,
   });
 
-  const passwordResetLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 3,
-    message: { error: 'Too many password reset requests, please try again after 15 minutes' },
-    standardHeaders: true,
-    legacyHeaders: false,
-    skip: () => process.env.NODE_ENV === "test",
-  });
+  // forgot-password / verify-email carry an email; reset-password carries only a
+  // token and falls back to one "-" bucket per IP.
+  const passwordResetLimiter = [
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: limitFromEnv("PASSWORD_RESET_PER_IP_15MIN", 60),
+      keyGenerator: clientIpKey,
+      message: { error: 'Too many password reset requests, please try again after 15 minutes' },
+      standardHeaders: true,
+      legacyHeaders: false,
+      ...limiterStore("pwreset_ip"),
+      skip: skipInTest,
+    }),
+    rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 3,
+      keyGenerator: ipAndEmailKey,
+      message: { error: 'Too many password reset requests, please try again after 15 minutes' },
+      standardHeaders: true,
+      legacyHeaders: false,
+      ...limiterStore("pwreset"),
+      skip: skipInTest,
+    }),
+  ];
 
-  // Freemium placement: 10 starts per IP per hour prevents memory-exhaustion abuse
-  const placementLimiter = rateLimit({
+  // Freemium placement starts: per IP (public, adults only). Answers are limited
+  // per placement session instead — a test needs up to 36 answers, so sharing the
+  // start budget would end it with a 429 after the tenth.
+  const placementStartLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
-    max: 10,
+    limit: limitFromEnv("PLACEMENT_STARTS_PER_IP_HOUR", 10),
+    keyGenerator: clientIpKey,
     message: { error: 'Too many test attempts. Please try again in an hour.' },
     standardHeaders: true,
     legacyHeaders: false,
-    skip: () => process.env.NODE_ENV === "test",
+    ...limiterStore("placement_start"),
+    skip: skipInTest,
+  });
+  const placementRespondLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 120,
+    keyGenerator: (req) => `${clientIpKey(req)}:${String(req.params?.id ?? "-").slice(0, 64)}`,
+    message: { error: 'Too many answers for this test. Please start a new quick check later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    ...limiterStore("placement_respond"),
+    skip: skipInTest,
   });
 
   const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -520,6 +588,7 @@ async function startServer() {
     windowMs: 15 * 60 * 1000,
     max: 10,
     keyGenerator: (req) => `delete-account:${(req as any).user?.id ?? 'anonymous'}`,
+    ...limiterStore("delete_account"),
     message: { error: 'Too many account deletion attempts. Please try again in 15 minutes.', code: 'rate_limited' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -790,12 +859,16 @@ async function startServer() {
   const { createOAuthState, consumeOAuthState, getSocialAuthUrl, exchangeSocialCode, verifyGoogleIdToken } =
     await import("./src/lib/auth/social-sso.js");
 
+  // Per IP: Google sign-in carries no account before the callback. The default
+  // fits a full classroom signing in from one school network.
   const socialAuthLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 30,
+    limit: limitFromEnv("SOCIAL_AUTH_PER_IP_15MIN", 300),
+    keyGenerator: clientIpKey,
     message: { error: "Too many auth attempts" },
     standardHeaders: true,
     legacyHeaders: false,
+    ...limiterStore("social_auth"),
   });
 
   // Helper: upsert user from social profile, issue tokens, set cookies
@@ -1402,7 +1475,7 @@ async function startServer() {
 
   // API Routes
   // Public: native apps check this before sign-in and refuse exams on an unsupported build.
-  const guardianLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+  const guardianLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, keyGenerator: clientIpKey, standardHeaders: true, legacyHeaders: false, ...limiterStore("guardian") });
   app.use('/api/guardian-consent', guardianLimiter, guardianConsentRouter(prisma, authMiddleware, checkRole, async (email, token) => {
     // Fail closed: development logging is never accepted as successful delivery.
     if (!resendClient) throw new Error('Guardian email delivery unavailable');
@@ -3980,7 +4053,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     }
   });
 
-  app.post("/api/codes/redeem", loginLimiter, async (req, res) => {
+  app.post("/api/codes/redeem", redeemLimiter, async (req, res) => {
     try {
       const body = validate(RedeemCodeBody, req.body, res);
       if (!body) return;
@@ -5823,27 +5896,12 @@ ${codeSection}
   });
 
   // --- FREEMIUM PLACEMENT TEST API ---
-  // Anonymous, no-auth CAT placement test used by FreemiumTestWidget
-  const placementSessions: Record<string, {
-    theta: number; sem: number; items: any[]; usedIds: Set<string>;
-    itemsAdministered: number; maxItems: number;
-    name: string; email: string;
-    skillBreakdown: Record<string, FreemiumSkillBreakdown>;
-    skillProfiles: Record<string, { theta: number; sem: number }>;
-    responses: PlacementResponse[];
-    itemMeta: Record<string, PlacementItem>;
-    scoringInProgress: boolean;
-    currentItemId: string;
-    createdAt: number;
-  }> = Object.create(null);
-
-  // Purge placement sessions older than 2 hours (abandoned tests)
-  setInterval(() => {
-    const cutoff = Date.now() - 2 * 60 * 60 * 1000;
-    for (const id of Object.keys(placementSessions)) {
-      if (placementSessions[id].createdAt < cutoff) delete placementSessions[id];
-    }
-  }, 30 * 60 * 1000); // runs every 30 min
+  // Anonymous, no-auth CAT placement test used by FreemiumTestWidget.
+  // Session state lives in Redis when REDIS_URL is set, so any web instance can
+  // continue a test (Render has no sticky sessions); see placement-session-store.ts.
+  const placementStore = createPlacementSessionStore(sharedRedis);
+  console.log(`[placement] session store: ${placementStore.kind}`);
+  const PLACEMENT_ID_PATTERN = /^placement-\d{13}-[0-9a-f]{8}$/;
 
   const thetaToCefr = placementThetaToCefr;
 
@@ -5869,83 +5927,123 @@ ${codeSection}
     return { ...item, content: stripAnswerKeys(item.content ?? {}) };
   };
 
-  app.post("/api/assessment/placement/start", placementLimiter, express.json({ limit: "4kb" }), async (req, res) => {
+  const isPlacementEligible = (item: any) => {
+    const content = item.content ?? {};
+    if (item.skill === "LISTENING" && !content.audioUrl) return false;
+    if (["WRITING", "SPEAKING"].includes(item.skill)) return !(content.options?.length) &&
+      item.type !== "FILL_IN_BLANKS" && item.type !== "DRAG_DROP" && item.type !== "INTEGRATED_TASK";
+    if (item.type === "MULTIPLE_CHOICE") return Array.isArray(content.options) && content.options.length >= 2 &&
+      ((Number.isInteger(content.correctIndex) && content.correctIndex >= 0 && content.correctIndex < content.options.length) ||
+        content.correctAnswer !== undefined || content.correctOption !== undefined);
+    return item.type === "FILL_IN_BLANKS" && !content.blanks?.length && content.correctAnswer !== undefined;
+  };
+
+  class PlacementBankUnavailable extends Error {}
+
+  // One bank read per instance per TTL instead of one per visitor.
+  const placementPool = createPlacementPoolCache<any>(async () => {
+    let allItems: any[] = [];
+    try {
+      const dbItems = await prisma.item.findMany({
+        where: { status: "ACTIVE", isPretest: false },
+        select: { id: true, skill: true, type: true, cefrLevel: true, content: true,
+                  difficulty: true, discrimination: true, guessing: true, assets: true }
+      });
+      allItems = dbItems.map(it => {
+        const raw = it.content as any;
+        // Normalize options: DB may store them as objects {id,text,isCorrect,rationale} or strings
+        const normalizeOptions = (opts: any[]): string[] =>
+          (opts ?? []).map(o => (typeof o === "string" ? o : String(o?.text ?? o)));
+        const content = {
+          ...raw,
+          audioUrl: raw?.audioUrl ?? it.assets.find(asset => asset.type === "AUDIO")?.url,
+          options: raw?.options ? normalizeOptions(raw.options) : undefined,
+          correctIndex: raw?.correctIndex ?? (Array.isArray(raw?.options)
+            ? raw.options.findIndex((o: any) => typeof o === "object" && o?.isCorrect)
+            : undefined),
+        };
+        return {
+          id: it.id, skill: it.skill, type: it.type, cefrLevel: it.cefrLevel,
+          content, irtA: it.discrimination, irtB: it.difficulty, irtC: it.guessing,
+          assets: it.assets ?? [], active: true,
+        };
+      });
+    } catch {
+      if (process.env.NODE_ENV === "production") throw new PlacementBankUnavailable("Item bank is unavailable");
+      // DB unavailable — fall back to studioItems
+      const { studioItems } = await import("./src/data/studioItems.js");
+      allItems = (studioItems as any[]).map((it: any) => ({
+        id: it.id, skill: it.skill, type: it.type, cefrLevel: it.cefrLevel,
+        content: { prompt: it.prompt, options: it.options?.map((o: any) => o.text), correctIndex: it.options?.findIndex((o: any) => o.isCorrect) },
+        irtA: it.discrimination ?? 1, irtB: it.difficulty ?? 0, irtC: it.guessing ?? 0,
+        assets: [], active: true,
+      }));
+    }
+    return allItems.filter(isPlacementEligible);
+  });
+
+  const buildPlacementResult = (id: string, sess: PlacementSessionState) => {
+    const cefrLevel = thetaToCefr(sess.theta);
+    const ciLow = sess.theta - 1.645 * sess.sem;
+    const ciHigh = sess.theta + 1.645 * sess.sem;
+    const lowerCEFR = thetaToCefr(ciLow);
+    const upperCEFR = thetaToCefr(ciHigh);
+    const cefrRange = lowerCEFR === upperCEFR ? cefrLevel : `${lowerCEFR}–${upperCEFR}`;
+    const completionMs = Date.now() - (Number(id.split("-")[1]) || Date.now());
+    return {
+      placementId: id,
+      cefrLevel,
+      theta: sess.theta,
+      sem: sess.sem,
+      cefrConfidenceInterval: [ciLow, ciHigh] as [number, number],
+      cefrRange,
+      itemsAdministered: sess.itemsAdministered,
+      completionMs,
+      skillBreakdown: sess.skillBreakdown,
+      assessmentScope: "SCORED_EVIDENCE",
+      scoringComplete: Object.values(sess.skillBreakdown).every(skill => skill.unassessed === 0),
+      scoredItems: sess.responses.length,
+      upgradePrompt: {
+        message: "Unlock the full psychometric report — detailed error analysis, per-CEFR can-do breakdown, and a personalised study plan.",
+        skills: ["Detailed Psychometrics", "Error Analysis", "Personalised Study Plan"],
+        callToActionUrl: "#pricing"
+      }
+    };
+  };
+
+  app.post("/api/assessment/placement/start", placementStartLimiter, express.json({ limit: "4kb" }), async (req, res) => {
     if (req.body?.adultConfirmed !== true) return res.status(428).json({ error: 'Bu herkese açık deneme yalnızca 18 yaş ve üzeri içindir. Çocuklar kurum koduyla giriş yapıp veli onayını tamamlamalıdır.' });
     try {
-      const { name, email, consentToResearch } = req.body;
+      const { name, email } = req.body;
       // name/email are optional for guest sessions; collect at result if desired
       const guestName  = (typeof name  === "string" && name.trim())  ? name.trim()  : "Guest";
       const guestEmail = (typeof email === "string" && email.trim()) ? email.trim() : null;
-      // Hard cap on concurrent in-memory sessions to prevent memory exhaustion
-      if (Object.keys(placementSessions).length >= 500) {
-        return res.status(503).json({ error: "Service temporarily busy. Please try again shortly." });
-      }
 
-      let allItems: any[] = [];
-      try {
-        const dbItems = await prisma.item.findMany({
-          where: { status: "ACTIVE", isPretest: false },
-          select: { id: true, skill: true, type: true, cefrLevel: true, content: true,
-                    difficulty: true, discrimination: true, guessing: true, assets: true }
-        });
-        allItems = dbItems.map(it => {
-          const raw = it.content as any;
-          // Normalize options: DB may store them as objects {id,text,isCorrect,rationale} or strings
-          const normalizeOptions = (opts: any[]): string[] =>
-            (opts ?? []).map(o => (typeof o === "string" ? o : String(o?.text ?? o)));
-          const content = {
-            ...raw,
-            audioUrl: raw?.audioUrl ?? it.assets.find(asset => asset.type === "AUDIO")?.url,
-            options: raw?.options ? normalizeOptions(raw.options) : undefined,
-            correctIndex: raw?.correctIndex ?? (Array.isArray(raw?.options)
-              ? raw.options.findIndex((o: any) => typeof o === "object" && o?.isCorrect)
-              : undefined),
-          };
-          return {
-            id: it.id, skill: it.skill, type: it.type, cefrLevel: it.cefrLevel,
-            content, irtA: it.discrimination, irtB: it.difficulty, irtC: it.guessing,
-            assets: it.assets ?? [], active: true,
-          };
-        });
-      } catch {
-        if (process.env.NODE_ENV === "production") return res.status(503).json({ error: "Item bank is unavailable" });
-        // DB unavailable — fall back to studioItems
-        const { studioItems } = await import("./src/data/studioItems.js");
-        allItems = (studioItems as any[]).map((it: any) => ({
-          id: it.id, skill: it.skill, type: it.type, cefrLevel: it.cefrLevel,
-          content: { prompt: it.prompt, options: it.options?.map((o: any) => o.text), correctIndex: it.options?.findIndex((o: any) => o.isCorrect) },
-          irtA: it.discrimination ?? 1, irtB: it.difficulty ?? 0, irtC: it.guessing ?? 0,
-          assets: [], active: true,
-        }));
+      let pool;
+      try { pool = await placementPool.get(); }
+      catch (err) {
+        if (err instanceof PlacementBankUnavailable) return res.status(503).json({ error: "Item bank is unavailable" });
+        throw err;
       }
-
-      allItems = allItems.filter(item => {
-        const content = item.content ?? {};
-        if (item.skill === "LISTENING" && !content.audioUrl) return false;
-        if (["WRITING", "SPEAKING"].includes(item.skill)) return !(content.options?.length) &&
-          item.type !== "FILL_IN_BLANKS" && item.type !== "DRAG_DROP" && item.type !== "INTEGRATED_TASK";
-        if (item.type === "MULTIPLE_CHOICE") return Array.isArray(content.options) && content.options.length >= 2 &&
-          ((Number.isInteger(content.correctIndex) && content.correctIndex >= 0 && content.correctIndex < content.options.length) ||
-            content.correctAnswer !== undefined || content.correctOption !== undefined);
-        return item.type === "FILL_IN_BLANKS" && !content.blanks?.length && content.correctAnswer !== undefined;
-      });
+      const allItems = pool.items;
       const missingSkills = FREEMIUM_PLACEMENT_SKILLS.filter(skill =>
         allItems.filter(item => item.skill === skill).length < FREEMIUM_MIN_ITEMS_PER_SKILL);
       if (missingSkills.length) return res.status(503).json({error: "Six-skill placement requires valid items and listening audio for every section", missingSkills});
 
       const pId = "placement-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
-      const startTheta = 0.0;
       const firstItem = pickPlacementItem(allItems, new Set());
       if (!firstItem) return res.status(503).json({ error: "No items available" });
 
-      placementSessions[pId] = {
-        theta: startTheta, sem: 1.5, items: allItems,
-        usedIds: new Set([firstItem.id]),
+      const created = await placementStore.create(pId, {
+        theta: 0.0, sem: 1.5,
+        usedIds: [firstItem.id],
         itemsAdministered: 0, maxItems: FREEMIUM_PLACEMENT_SKILLS.length * FREEMIUM_MAX_ITEMS_PER_SKILL,
         name: guestName, email: guestEmail ?? "",
-        skillBreakdown: {}, skillProfiles: {}, responses: [], itemMeta: {}, currentItemId: firstItem.id, scoringInProgress: false,
+        skillBreakdown: {}, skillProfiles: {}, responses: [], itemMeta: {}, currentItemId: firstItem.id,
         createdAt: Date.now(),
-      };
+      });
+      // Cap on concurrently active sessions (PLACEMENT_MAX_ACTIVE_SESSIONS)
+      if (!created) return res.status(503).json({ error: "Service temporarily busy. Please try again shortly." });
 
       // sectionOrder lets the frontend render the section breadcrumb directly
       // from the server response (no more hardcoded 4-skill list in the UI).
@@ -5961,129 +6059,80 @@ ${codeSection}
     }
   });
 
-  app.post("/api/assessment/placement/:id/respond", placementLimiter, express.json({ limit: "14mb" }), async (req, res) => {
+  app.post("/api/assessment/placement/:id/respond", placementRespondLimiter, express.json({ limit: "14mb" }), async (req, res) => {
+    const expired = { code: "PLACEMENT_SESSION_EXPIRED", error: "This quick check is no longer available. Please start a new quick check." };
+    const notCurrent = { error: "Response must match the current unanswered item" };
     try {
       const { id } = req.params;
-      const sess = placementSessions[id];
-      if (!sess) return res.status(410).json({ code: "PLACEMENT_SESSION_EXPIRED", error: "This quick check is no longer available. Please start a new quick check." });
+      if (!PLACEMENT_ID_PATTERN.test(id)) return res.status(410).json(expired);
 
-      const { itemId, selectedOption, latencyMs } = req.body;
-      const item = sess.items.find(it => it.id === itemId);
+      // The lock rejects a second submission while the first is being scored,
+      // even when the two requests reach different instances.
+      const outcome = await placementStore.withLock(id, async (): Promise<{ status: number; body: unknown }> => {
+        const sess = await placementStore.get(id);
+        if (!sess) return { status: 410, body: expired };
 
-      if (sess.scoringInProgress || !item || itemId !== sess.currentItemId) {
-        return res.status(409).json({ error: "Response must match the current unanswered item" });
-      }
-      sess.scoringInProgress = true;
-      let evaluation;
-      try { evaluation = await evaluateFreemiumResponse(item, selectedOption); }
-      finally { sess.scoringInProgress = false; }
-      recordFreemiumScore(sess.skillBreakdown, item.skill || "GENERAL", evaluation.score, evaluation.kind);
-      if (evaluation.status === "review_required") {
-        sess.skillBreakdown[item.skill].reviewRequired = (sess.skillBreakdown[item.skill].reviewRequired ?? 0) + 1;
-      }
-      if (evaluation.score !== null) {
-        sess.responses.push({ itemId, score: evaluation.score, latencyMs: Number(latencyMs) || 0 });
-        sess.itemMeta[itemId] = {
-          id: itemId, skill: item.skill, type: item.type,
-          params: { a: item.irtA ?? 1, b: item.irtB ?? 0, c: item.irtC ?? 0 },
-          isPretest: false, status: "ACTIVE", metadata: item.content,
+        const { itemId, selectedOption, latencyMs } = req.body;
+        if (typeof itemId !== "string" || itemId !== sess.currentItemId) return { status: 409, body: notCurrent };
+        const item = await placementPool.find(itemId);
+        if (!item) return { status: 409, body: notCurrent };
+
+        const evaluation = await evaluateFreemiumResponse(item, selectedOption);
+        recordFreemiumScore(sess.skillBreakdown, item.skill || "GENERAL", evaluation.score, evaluation.kind);
+        if (evaluation.status === "review_required") {
+          sess.skillBreakdown[item.skill].reviewRequired = (sess.skillBreakdown[item.skill].reviewRequired ?? 0) + 1;
+        }
+        if (evaluation.score !== null) {
+          sess.responses.push({ itemId, score: evaluation.score, latencyMs: Number(latencyMs) || 0 });
+          sess.itemMeta[itemId] = {
+            id: itemId, skill: item.skill, type: item.type,
+            params: { a: item.irtA ?? 1, b: item.irtB ?? 0, c: item.irtC ?? 0 },
+            isPretest: false, status: "ACTIVE", metadata: item.content,
+          };
+          const estimate = estimatePlacementTheta(sess.responses, sess.itemMeta, 0, 1, { useGrmProductive: true });
+          sess.theta = estimate.theta;
+          sess.sem = estimate.sem;
+          sess.skillProfiles[item.skill] = estimatePlacementTheta(
+            sess.responses.filter(response => sess.itemMeta[response.itemId]?.skill === item.skill),
+            sess.itemMeta, 0, 1, { useGrmProductive: true });
+        }
+        sess.currentItemId = "";
+        sess.itemsAdministered++;
+        // ── Stop condition (6-skill coverage required) ─────────────────────────
+        // The session may stop only when every skill in FREEMIUM_PLACEMENT_SKILLS
+        // has received its minimum number of items AND we're either out of
+        // questions or have hit our SEM target. This prevents the test from
+        // ending early on a stretch of low-θ items before WRITING/SPEAKING ran.
+        const allSkillsCovered = FREEMIUM_PLACEMENT_SKILLS.every(
+          s => (sess.skillBreakdown[s]?.total ?? 0) >= FREEMIUM_MIN_ITEMS_PER_SKILL
+        );
+        const reachedMax = sess.itemsAdministered >= sess.maxItems;
+        const semOk = placementPrecisionReached(sess.skillBreakdown, sess.skillProfiles);
+        const usedIds = new Set(sess.usedIds);
+        const nextItem = reachedMax || (allSkillsCovered && semOk)
+          ? null
+          : pickPlacementItem((await placementPool.get()).items, usedIds, sess.skillBreakdown, sess.skillProfiles);
+
+        if (!nextItem) {
+          await placementStore.delete(id);
+          return { status: 200, body: { complete: true, result: buildPlacementResult(id, sess) } };
+        }
+        sess.currentItemId = nextItem.id;
+        sess.usedIds.push(nextItem.id);
+        await placementStore.save(id, sess);
+        return {
+          status: 200,
+          body: {
+            complete: false, nextItem: stripAnswers(nextItem),
+            itemsAdministered: sess.itemsAdministered,
+            currentCefrBand: thetaToCefr(sess.theta),
+          },
         };
-        const estimate = estimatePlacementTheta(sess.responses, sess.itemMeta, 0, 1, { useGrmProductive: true });
-        sess.theta = estimate.theta;
-        sess.sem = estimate.sem;
-        sess.skillProfiles[item.skill] = estimatePlacementTheta(
-          sess.responses.filter(response => sess.itemMeta[response.itemId]?.skill === item.skill),
-          sess.itemMeta, 0, 1, { useGrmProductive: true });
-      }
-      sess.currentItemId = "";
-      sess.itemsAdministered++;
-      // ── Stop condition (6-skill coverage required) ─────────────────────────
-      // The session may stop only when every skill in FREEMIUM_PLACEMENT_SKILLS
-      // has received its minimum number of items AND we're either out of
-      // questions or have hit our SEM target. This prevents the test from
-      // ending early on a stretch of low-θ items before WRITING/SPEAKING ran.
-      const allSkillsCovered = FREEMIUM_PLACEMENT_SKILLS.every(
-        s => (sess.skillBreakdown[s]?.total ?? 0) >= FREEMIUM_MIN_ITEMS_PER_SKILL
-      );
-      const reachedMax = sess.itemsAdministered >= sess.maxItems;
-      const semOk = placementPrecisionReached(sess.skillBreakdown, sess.skillProfiles);
-      const done = reachedMax || (allSkillsCovered && semOk);
-
-      if (done) {
-        const cefrLevel = thetaToCefr(sess.theta);
-        const ciLow = sess.theta - 1.645 * sess.sem;
-        const ciHigh = sess.theta + 1.645 * sess.sem;
-        const lowerCEFR = thetaToCefr(ciLow);
-        const upperCEFR = thetaToCefr(ciHigh);
-        const cefrRange = lowerCEFR === upperCEFR ? cefrLevel : `${lowerCEFR}–${upperCEFR}`;
-        
-        const completionMs = Date.now() - (Number(id.split("-")[1]) || Date.now());
-        
-        const result = {
-          placementId: id,
-          cefrLevel,
-          theta: sess.theta,
-          sem: sess.sem,
-          cefrConfidenceInterval: [ciLow, ciHigh] as [number, number],
-          cefrRange,
-          itemsAdministered: sess.itemsAdministered,
-          completionMs,
-          skillBreakdown: sess.skillBreakdown,
-          assessmentScope: "SCORED_EVIDENCE",
-          scoringComplete: Object.values(sess.skillBreakdown).every(skill => skill.unassessed === 0),
-          scoredItems: sess.responses.length,
-          upgradePrompt: {
-            message: "Unlock the full psychometric report — detailed error analysis, per-CEFR can-do breakdown, and a personalised study plan.",
-            skills: ["Detailed Psychometrics", "Error Analysis", "Personalised Study Plan"],
-            callToActionUrl: "#pricing"
-          }
-        };
-
-        delete placementSessions[id]; // clean up
-        return res.json({ complete: true, result });
-      }
-
-      const nextItem = pickPlacementItem(sess.items, sess.usedIds, sess.skillBreakdown, sess.skillProfiles);
-      if (!nextItem) {
-        const cefrLevel = thetaToCefr(sess.theta);
-        const ciLow = sess.theta - 1.645 * sess.sem;
-        const ciHigh = sess.theta + 1.645 * sess.sem;
-        const lowerCEFR = thetaToCefr(ciLow);
-        const upperCEFR = thetaToCefr(ciHigh);
-        const cefrRange = lowerCEFR === upperCEFR ? cefrLevel : `${lowerCEFR}–${upperCEFR}`;
-        const completionMs = Date.now() - (Number(id.split("-")[1]) || Date.now());
-
-        const result = {
-          placementId: id,
-          cefrLevel,
-          theta: sess.theta,
-          sem: sess.sem,
-          cefrConfidenceInterval: [ciLow, ciHigh] as [number, number],
-          cefrRange,
-          itemsAdministered: sess.itemsAdministered,
-          completionMs,
-          skillBreakdown: sess.skillBreakdown,
-          assessmentScope: "SCORED_EVIDENCE",
-          scoringComplete: Object.values(sess.skillBreakdown).every(skill => skill.unassessed === 0),
-          scoredItems: sess.responses.length,
-          upgradePrompt: {
-            message: "Unlock the full psychometric report — detailed error analysis, per-CEFR can-do breakdown, and a personalised study plan.",
-            skills: ["Detailed Psychometrics", "Error Analysis", "Personalised Study Plan"],
-            callToActionUrl: "#pricing"
-          }
-        };
-
-        delete placementSessions[id];
-        return res.json({ complete: true, result });
-      }
-      sess.currentItemId = nextItem.id;
-      sess.usedIds.add(nextItem.id);
-      return res.json({
-        complete: false, nextItem: stripAnswers(nextItem),
-        itemsAdministered: sess.itemsAdministered,
-        currentCefrBand: thetaToCefr(sess.theta),
       });
+      if (!outcome.locked) return res.status(409).json(notCurrent);
+      return res.status(outcome.value.status).json(outcome.value.body);
     } catch (err) {
+      console.error("PLACEMENT RESPOND ERROR", err);
       res.status(500).json({ error: "Failed to process response"});
     }
   });
@@ -8298,11 +8347,47 @@ ${entries}
   const httpServer = http.createServer(app);
   realtimeManager.attach(httpServer);
 
+  // Keep idle sockets open longer than the platform load balancer does, so it
+  // never reuses a connection Node has just closed (intermittent 502s).
+  httpServer.keepAliveTimeout = 65_000;
+  httpServer.headersTimeout = 66_000;
+
   // Override app.listen with httpServer.listen below
   httpServer.listen(parseInt(process.env.PORT || "3001", 10), validationOnly ? "127.0.0.1" : "0.0.0.0", () => {
     console.log(`LinguAdapt Server running on http://localhost:${process.env.PORT || "3001"}`);
     console.log(`[WS] Realtime dashboard WebSocket attached at /ws/dashboard`);
   });
+
+  // ── Graceful shutdown ───────────────────────────────────────────────────
+  // Render sends SIGTERM on every deploy and scale-down. Stop accepting new
+  // connections, let in-flight requests (an answer being AI-scored, an upload)
+  // finish, then close Redis and Prisma. SHUTDOWN_GRACE_MS must stay below the
+  // service's maxShutdownDelaySeconds in render.yaml.
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    const graceMs = limitFromEnv("SHUTDOWN_GRACE_MS", 25_000);
+    console.log(`[shutdown] ${signal} received — draining for up to ${graceMs} ms`);
+    const force = setTimeout(() => {
+      console.warn("[shutdown] grace period over — closing remaining connections");
+      httpServer.closeAllConnections();
+      process.exit(1);
+    }, graceMs);
+    force.unref();
+    realtimeManager.shutdown();
+    httpServer.close(async () => {
+      await closeSharedRedis().catch(() => {});
+      await prisma.$disconnect().catch(() => {});
+      clearTimeout(force);
+      console.log("[shutdown] drained cleanly");
+      process.exit(0);
+    });
+    // Idle keep-alive sockets would otherwise hold close() open until they time out.
+    httpServer.closeIdleConnections();
+  };
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
 
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "API endpoint not found" });
