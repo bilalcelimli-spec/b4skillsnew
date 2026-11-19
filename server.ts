@@ -38,7 +38,7 @@ import { compareSessionGrowth } from "./src/lib/analytics/session-growth.js";
 import { createDatabaseProbe } from "./src/lib/database/availability.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
 import { SecretsManager } from "./src/lib/secrets/secrets-manager.js";
-import { buildCorsMiddleware, buildHelmetMiddleware } from "./src/lib/security/http-security.js";
+import { buildCorsMiddleware, buildHelmetMiddleware, buildOriginAllowlist } from "./src/lib/security/http-security.js";
 import { RegisterBody, LoginBody, ForgotPasswordBody, ResetPasswordBody } from "./src/lib/security/schemas/auth.js";
 import { SessionLaunchBody, SessionRespondBody, SessionCompleteBody, SessionFeedbackBody } from "./src/lib/security/schemas/sessions.js";
 import { CreateItemBody, UpdateItemBody, ItemPipelineBody, ItemReviewBody, ItemContentPatchBody } from "./src/lib/security/schemas/items.js";
@@ -8345,7 +8345,35 @@ ${entries}
 
   // Create http.Server from Express app and attach WS
   const httpServer = http.createServer(app);
-  realtimeManager.attach(httpServer);
+  // The realtime dashboard has no client yet, so it stays off unless enabled.
+  // When on, every socket needs a valid access token, an allowed Origin and a
+  // staff role; the organisation comes from the account (websocket-manager.ts).
+  const realtimeDashboardEnabled = process.env.REALTIME_DASHBOARD_ENABLED === "true";
+  if (realtimeDashboardEnabled) {
+    const wsOrigins = buildOriginAllowlist();
+    realtimeManager.attach(httpServer, {
+      isAllowedOrigin: (origin) => wsOrigins.has(origin),
+      authenticate: async (req) => {
+        const header = req.headers.authorization;
+        const cookieToken = (req.headers.cookie ?? "").split(";").map((part) => part.trim())
+          .find((part) => part.startsWith("accessToken="))?.slice("accessToken=".length);
+        const token = header?.startsWith("Bearer ") ? header.slice(7) : cookieToken && decodeURIComponent(cookieToken);
+        if (!token || !dbAvailable) return null;
+        let userId: string;
+        try {
+          const decoded: any = jwt.verify(token, JWT_SECRET);
+          if (typeof decoded?.userId !== "string") return null;
+          userId = decoded.userId;
+        } catch { return null; }
+        const profile = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { role: true, organizationId: true, email: true },
+        });
+        if (!profile || isDeletedAccountEmail(profile.email)) return null;
+        return { userId, role: profile.role, organizationId: profile.organizationId };
+      },
+    });
+  }
 
   // Keep idle sockets open longer than the platform load balancer does, so it
   // never reuses a connection Node has just closed (intermittent 502s).
@@ -8355,7 +8383,7 @@ ${entries}
   // Override app.listen with httpServer.listen below
   httpServer.listen(parseInt(process.env.PORT || "3001", 10), validationOnly ? "127.0.0.1" : "0.0.0.0", () => {
     console.log(`LinguAdapt Server running on http://localhost:${process.env.PORT || "3001"}`);
-    console.log(`[WS] Realtime dashboard WebSocket attached at /ws/dashboard`);
+    if (realtimeDashboardEnabled) console.log(`[WS] Realtime dashboard WebSocket attached at /ws/dashboard (authenticated)`);
   });
 
   // ── Graceful shutdown ───────────────────────────────────────────────────

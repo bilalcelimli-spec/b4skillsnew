@@ -1,11 +1,17 @@
 # render.yaml — Render.com Infrastructure as Code
 # https://render.com/docs/infrastructure-as-code
+#
+# The live web service (b4skills, Frankfurt) is configured in the Render
+# dashboard, not synced from this file. Keep the two in step by hand; settings
+# the dashboard does not offer (maxShutdownDelaySeconds) only take effect if
+# this blueprint is synced. Live as of 2026-11-19: pre-deploy `npm run
+# db:migrate`, Key Value `b4skills-redis` (Frankfurt, 1 GB) as REDIS_URL.
 
 services:
   - type: web
-    name: linguadapt-app
+    name: b4skills
     env: node
-    region: oregon
+    region: frankfurt
     plan: starter
     buildCommand: npm ci && npm run build
     # Migrations run once per deploy, after a successful build and before the new
@@ -29,10 +35,12 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Must stay below maxShutdownDelaySeconds. The dashboard-managed service
+      # uses Render's 30 s default, so the code default (25 s) applies there.
       - key: SHUTDOWN_GRACE_MS
         value: "55000"
       - key: REDIS_URL
-        sync: false          # Render Key Value internal URL; required before running >1 instance
+        sync: false          # b4skills-redis internal URL (set in the dashboard); required before running >1 instance
       # Per instance. Total (instances × limit) must stay under the Supabase
       # pooler's client limit. With the transaction pooler (6543, ?pgbouncer=true)
       # this can rise to ~10.
@@ -65,7 +73,7 @@ services:
       - key: APP_URL
         fromService:
           type: web
-          name: linguadapt-app
+          name: b4skills
           property: host
 
 # Existing Render database is intentionally not removed from this blueprint.

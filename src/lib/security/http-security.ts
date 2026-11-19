@@ -9,7 +9,8 @@ function parseOrigins(raw: string | undefined): string[] {
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-export function buildCorsMiddleware(): RequestHandler {
+/** Browser origins allowed to make credentialed requests (CORS and the realtime WebSocket). */
+export function buildOriginAllowlist(): Set<string> {
   // APP_URL: explicit; RENDER_EXTERNAL_URL: set on Render.com web services
   const appBase = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL;
   const configured = [
@@ -25,6 +26,11 @@ export function buildCorsMiddleware(): RequestHandler {
     allowlist.add("http://localhost:5173");
     allowlist.add("http://127.0.0.1:3001");
   }
+  return allowlist;
+}
+
+export function buildCorsMiddleware(): RequestHandler {
+  const allowlist = buildOriginAllowlist();
 
   const options: CorsOptions = {
     credentials: true,
