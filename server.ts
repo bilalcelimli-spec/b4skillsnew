@@ -856,7 +856,7 @@ async function startServer() {
 
   // ── Social SSO — redirect-based flows (Google, Microsoft, LinkedIn) ────────
 
-  const { createOAuthState, consumeOAuthState, getSocialAuthUrl, exchangeSocialCode, verifyGoogleIdToken } =
+  const { createOAuthState, consumeOAuthState, safeRedirectPath, getSocialAuthUrl, exchangeSocialCode, verifyGoogleIdToken } =
     await import("./src/lib/auth/social-sso.js");
 
   // Per IP: Google sign-in carries no account before the callback. The default
@@ -929,10 +929,12 @@ async function startServer() {
     if (!["google", "microsoft", "linkedin"].includes(provider)) {
       return res.status(400).json({ error: "Unknown provider" });
     }
-    const state   = createOAuthState(provider, req.query.redirect_uri as string ?? "/");
+    // CSRF: a random browser binding goes in the cookie; the signed state carries
+    // the same value and the callback requires the two to match.
+    const browserBinding = crypto.randomBytes(16).toString("hex");
+    const state   = createOAuthState(provider, safeRedirectPath(req.query.redirect_uri), Date.now(), browserBinding);
     const authUrl = getSocialAuthUrl(provider, state);
-    // Store state in a short-lived signed cookie for CSRF protection
-    res.cookie("oauth_state", state, { httpOnly: true, sameSite: "lax", maxAge: 10 * 60 * 1000, secure: process.env.NODE_ENV === "production" });
+    res.cookie("oauth_state", browserBinding, { httpOnly: true, sameSite: "lax", maxAge: 10 * 60 * 1000, secure: process.env.NODE_ENV === "production" });
     return res.redirect(authUrl);
   });
 
@@ -945,19 +947,20 @@ async function startServer() {
       if (error) return res.status(401).json({ error: `Provider error: ${error}` });
       if (!code || !state) return res.status(400).json({ error: "Missing code or state" });
 
-      // CSRF check
-      const cookieState = req.cookies?.oauth_state;
-      if (!cookieState || cookieState !== state) return res.status(403).json({ error: "State mismatch" });
+      // CSRF check: the signed state must verify and carry this browser's nonce.
+      const cookieNonce = req.cookies?.oauth_state;
       res.clearCookie("oauth_state");
-
       const statePayload = consumeOAuthState(state);
       if (!statePayload) return res.status(403).json({ error: "Expired or unknown state" });
+      if (typeof cookieNonce !== "string" || !cookieNonce || cookieNonce !== statePayload.nonce) {
+        return res.status(403).json({ error: "State mismatch" });
+      }
 
       const profile = await exchangeSocialCode(provider, code);
       const { accessToken, user } = await handleSocialProfile(profile, res);
 
       // Redirect back to SPA with a one-time code (token already in cookies)
-      const redirectTo = statePayload.redirectUri && statePayload.redirectUri.startsWith("/") ? statePayload.redirectUri : "/";
+      const redirectTo = safeRedirectPath(statePayload.redirectUri);
       return res.redirect(`${redirectTo}?sso=ok`);
     } catch (err: any) {
       console.error("[social-sso] callback:", err.message);

@@ -16,6 +16,7 @@
 
 import crypto from "crypto";
 import https from "https";
+import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -36,28 +37,50 @@ export interface OAuthStatePayload {
   createdAt:   number;
 }
 
-// ── State store (in-memory, TTL 10 min) ──────────────────────────────────────
+// ── State (signed, TTL 10 min) ───────────────────────────────────────────────
+//
+// The state is a self-contained signed token (HS256 JWT, own audience) rather than a key into a
+// per-process map, so the OAuth callback can land on any web instance (Render
+// has no sticky sessions). It is still bound to the browser: the start route
+// sets the state's nonce as the `oauth_state` cookie, and the callback requires
+// the verified state's nonce to match it and clears the cookie, which keeps the
+// state single-use for that browser. The cookie never holds the token itself.
 
 const STATE_TTL_MS = 10 * 60 * 1000;
-const pendingStates = new Map<string, OAuthStatePayload>();
 
-export function createOAuthState(provider: string, redirectUri: string): string {
-  const state = crypto.randomBytes(24).toString("hex");
-  const nonce = crypto.randomBytes(16).toString("hex");
-  pendingStates.set(state, { provider, redirectUri, nonce, createdAt: Date.now() });
-  // Prune old entries
-  for (const [k, v] of pendingStates) {
-    if (Date.now() - v.createdAt > STATE_TTL_MS) pendingStates.delete(k);
-  }
-  return state;
+function stateSecret(): string {
+  const secret = process.env.OAUTH_STATE_SECRET || process.env.JWT_SECRET;
+  if (!secret) throw new Error("OAUTH_STATE_SECRET or JWT_SECRET must be set for social sign-in");
+  return secret;
 }
 
-export function consumeOAuthState(state: string): OAuthStatePayload | null {
-  const payload = pendingStates.get(state);
-  if (!payload) return null;
-  pendingStates.delete(state);
-  if (Date.now() - payload.createdAt > STATE_TTL_MS) return null;
-  return payload;
+const STATE_AUDIENCE = "b4skills:oauth-state";
+
+/** `nonce` is the random browser binding the start route also sets as the `oauth_state` cookie. */
+export function createOAuthState(provider: string, redirectUri: string, now = Date.now(), nonce = crypto.randomBytes(16).toString("hex")): string {
+  return jwt.sign(
+    { provider, redirectUri, nonce, iat: Math.floor(now / 1000) },
+    stateSecret(),
+    { algorithm: "HS256", audience: STATE_AUDIENCE, expiresIn: STATE_TTL_MS / 1000 },
+  );
+}
+
+export function consumeOAuthState(state: string, now = Date.now()): OAuthStatePayload | null {
+  if (typeof state !== "string" || !state || state.length > 2048) return null;
+  try {
+    const claims = jwt.verify(state, stateSecret(), {
+      algorithms: ["HS256"], audience: STATE_AUDIENCE, clockTimestamp: Math.floor(now / 1000),
+    }) as jwt.JwtPayload;
+    if (typeof claims.provider !== "string" || typeof claims.redirectUri !== "string" || typeof claims.nonce !== "string") return null;
+    return { provider: claims.provider, redirectUri: claims.redirectUri, nonce: claims.nonce, createdAt: (claims.iat ?? 0) * 1000 };
+  } catch {
+    return null;
+  }
+}
+
+/** Same-site path to return to after sign-in; anything else (including `//host`) becomes "/". */
+export function safeRedirectPath(value: unknown): string {
+  return typeof value === "string" && /^\/(?![\/\\])/.test(value) ? value : "/";
 }
 
 // ── Google ────────────────────────────────────────────────────────────────────
