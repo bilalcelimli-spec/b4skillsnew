@@ -56,12 +56,8 @@ function stateSecret(): string {
 
 const STATE_AUDIENCE = "b4skills:oauth-state";
 
-/** Random value the start route also sets as the `oauth_state` cookie; the callback matches the two. */
-export function createOAuthNonce(): string {
-  return crypto.randomBytes(16).toString("hex");
-}
-
-export function createOAuthState(provider: string, redirectUri: string, now = Date.now(), nonce = createOAuthNonce()): string {
+/** `nonce` is the random browser binding the start route also sets as the `oauth_state` cookie. */
+export function createOAuthState(provider: string, redirectUri: string, now = Date.now(), nonce = crypto.randomBytes(16).toString("hex")): string {
   return jwt.sign(
     { provider, redirectUri, nonce, iat: Math.floor(now / 1000) },
     stateSecret(),

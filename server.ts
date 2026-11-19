@@ -856,7 +856,7 @@ async function startServer() {
 
   // ── Social SSO — redirect-based flows (Google, Microsoft, LinkedIn) ────────
 
-  const { createOAuthNonce, createOAuthState, consumeOAuthState, safeRedirectPath, getSocialAuthUrl, exchangeSocialCode, verifyGoogleIdToken } =
+  const { createOAuthState, consumeOAuthState, safeRedirectPath, getSocialAuthUrl, exchangeSocialCode, verifyGoogleIdToken } =
     await import("./src/lib/auth/social-sso.js");
 
   // Per IP: Google sign-in carries no account before the callback. The default
@@ -929,11 +929,12 @@ async function startServer() {
     if (!["google", "microsoft", "linkedin"].includes(provider)) {
       return res.status(400).json({ error: "Unknown provider" });
     }
-    const nonce   = createOAuthNonce();
-    const state   = createOAuthState(provider, safeRedirectPath(req.query.redirect_uri), Date.now(), nonce);
+    // CSRF: a random browser binding goes in the cookie; the signed state carries
+    // the same value and the callback requires the two to match.
+    const browserBinding = crypto.randomBytes(16).toString("hex");
+    const state   = createOAuthState(provider, safeRedirectPath(req.query.redirect_uri), Date.now(), browserBinding);
     const authUrl = getSocialAuthUrl(provider, state);
-    // CSRF: the browser keeps the nonce; the signed state carries the same nonce.
-    res.cookie("oauth_state", nonce, { httpOnly: true, sameSite: "lax", maxAge: 10 * 60 * 1000, secure: process.env.NODE_ENV === "production" });
+    res.cookie("oauth_state", browserBinding, { httpOnly: true, sameSite: "lax", maxAge: 10 * 60 * 1000, secure: process.env.NODE_ENV === "production" });
     return res.redirect(authUrl);
   });
 
