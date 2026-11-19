@@ -36,28 +36,51 @@ export interface OAuthStatePayload {
   createdAt:   number;
 }
 
-// ── State store (in-memory, TTL 10 min) ──────────────────────────────────────
+// ── State (signed, TTL 10 min) ───────────────────────────────────────────────
+//
+// The state is a self-contained HMAC-signed token rather than a key into a
+// per-process map, so the OAuth callback can land on any web instance (Render
+// has no sticky sessions). It is still bound to the browser: the start route
+// sets it as the `oauth_state` cookie and the callback requires the two to match
+// and clears the cookie, which keeps it single-use for that browser.
 
 const STATE_TTL_MS = 10 * 60 * 1000;
-const pendingStates = new Map<string, OAuthStatePayload>();
 
-export function createOAuthState(provider: string, redirectUri: string): string {
-  const state = crypto.randomBytes(24).toString("hex");
-  const nonce = crypto.randomBytes(16).toString("hex");
-  pendingStates.set(state, { provider, redirectUri, nonce, createdAt: Date.now() });
-  // Prune old entries
-  for (const [k, v] of pendingStates) {
-    if (Date.now() - v.createdAt > STATE_TTL_MS) pendingStates.delete(k);
-  }
-  return state;
+function stateSecret(): string {
+  const secret = process.env.OAUTH_STATE_SECRET || process.env.JWT_SECRET;
+  if (!secret) throw new Error("OAUTH_STATE_SECRET or JWT_SECRET must be set for social sign-in");
+  return secret;
 }
 
-export function consumeOAuthState(state: string): OAuthStatePayload | null {
-  const payload = pendingStates.get(state);
-  if (!payload) return null;
-  pendingStates.delete(state);
-  if (Date.now() - payload.createdAt > STATE_TTL_MS) return null;
+function signState(body: string): string {
+  return crypto.createHmac("sha256", stateSecret()).update(`oauth-state:${body}`).digest("base64url");
+}
+
+export function createOAuthState(provider: string, redirectUri: string, now = Date.now()): string {
+  const payload: OAuthStatePayload = {
+    provider, redirectUri, nonce: crypto.randomBytes(16).toString("hex"), createdAt: now,
+  };
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `${body}.${signState(body)}`;
+}
+
+export function consumeOAuthState(state: string, now = Date.now()): OAuthStatePayload | null {
+  if (typeof state !== "string" || state.length > 2048) return null;
+  const [body, signature, extra] = state.split(".");
+  if (!body || !signature || extra !== undefined) return null;
+  const expected = Buffer.from(signState(body));
+  const given = Buffer.from(signature);
+  if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) return null;
+  let payload: OAuthStatePayload;
+  try { payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")); }
+  catch { return null; }
+  if (typeof payload?.createdAt !== "number" || now - payload.createdAt > STATE_TTL_MS || payload.createdAt > now + 60_000) return null;
   return payload;
+}
+
+/** Same-site path to return to after sign-in; anything else (including `//host`) becomes "/". */
+export function safeRedirectPath(value: unknown): string {
+  return typeof value === "string" && /^\/(?![\/\\])/.test(value) ? value : "/";
 }
 
 // ── Google ────────────────────────────────────────────────────────────────────

@@ -28,6 +28,7 @@ import { prisma } from "../prisma.js";
 import { ScoringOrchestrator } from "./scoring-orchestrator.js";
 import { RatingQueueService } from "./rating-queue.js";
 import { logger } from "../observability/index.js";
+import { claimScoring } from "./scoring-claim.js";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,8 @@ export interface ScoringJob {
   prompt: string;
   rubric?: unknown;
   targetCefr?: import("../cefr/cefr-framework.js").CefrLevel;
+  /** Set by the recovery scan, whose snapshot may be stale by the time the job runs. */
+  recovered?: boolean;
 }
 
 type ScoringJobWithResolve = ScoringJob & {
@@ -92,11 +95,27 @@ async function resolveHumanGrade(job: ScoringJobWithResolve): Promise<void> {
 
 // ─── Core processor ───────────────────────────────────────────────────────────
 
+/** Long enough for one full job (all retries) plus persistence; a dead worker's claim then lapses. */
+const SCORING_CLAIM_TTL_MS = AI_TIMEOUT_MS + 2 * 60_000;
+
 async function processJob(job: ScoringJobWithResolve): Promise<void> {
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  // Another web instance may already be scoring this response (see scoring-claim.ts).
+  const claim = await claimScoring(job.responseId, SCORING_CLAIM_TTL_MS);
   try {
-    const evidence = await prisma.response.findUnique({ where: { id: job.responseId }, select: { contentErasedAt: true } });
+    if (!claim.owned) {
+      logger.debug({ responseId: job.responseId }, "async-scoring: claimed by another instance, skipping");
+      job.reject(new Error("Response is being scored by another instance"));
+      return;
+    }
+    const evidence = await prisma.response.findUnique({ where: { id: job.responseId }, select: { contentErasedAt: true, metadata: true } });
     if (!evidence || evidence.contentErasedAt) throw new ConsentError(410, 'CONTENT_ERASED', 'Assessment content erased');
+    // A recovery snapshot can predate another instance finishing the job.
+    const meta = (evidence.metadata as Record<string, unknown> | null) ?? {};
+    if (job.recovered && (meta.asyncScored === true || meta.pendingAsyncScore === false)) {
+      job.reject(new Error("Response was already scored"));
+      return;
+    }
     const session = await prisma.session.findUnique({ where: { id: job.sessionId }, select: { candidateId: true, candidate: { select: { role: true } } } });
     if (!session) throw new ConsentError(404, 'SESSION_MISSING', 'Assessment session unavailable');
     if (session.candidate.role === 'CANDIDATE') {
@@ -246,6 +265,7 @@ async function processJob(job: ScoringJobWithResolve): Promise<void> {
     job.reject(err as Error);
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
+    void claim.release();
     activeCount--;
     pendingResponseIds.delete(job.responseId);
     drain();
@@ -369,7 +389,7 @@ async function recoverPendingBatch(): Promise<number> {
       catch { logger.warn({ responseId: response.id }, "async-scoring: invalid recovery submission"); continue; }
       if (!mode) continue;
       void enqueueScoringJob({ sessionId: response.sessionId, responseId: response.id, itemId: response.itemId,
-        skill: mode, value, prompt: buildScoringPrompt(content), targetCefr: scoringTargetCefr(response.item.cefrLevel), rubric: resolveTaskRubric(content) }).catch(() => undefined);
+        skill: mode, value, prompt: buildScoringPrompt(content), targetCefr: scoringTargetCefr(response.item.cefrLevel), rubric: resolveTaskRubric(content), recovered: true }).catch(() => undefined);
       recovered++;
       if (recovered >= capacity) return recovered;
     }

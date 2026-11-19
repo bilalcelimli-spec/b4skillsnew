@@ -856,7 +856,7 @@ async function startServer() {
 
   // ── Social SSO — redirect-based flows (Google, Microsoft, LinkedIn) ────────
 
-  const { createOAuthState, consumeOAuthState, getSocialAuthUrl, exchangeSocialCode, verifyGoogleIdToken } =
+  const { createOAuthState, consumeOAuthState, safeRedirectPath, getSocialAuthUrl, exchangeSocialCode, verifyGoogleIdToken } =
     await import("./src/lib/auth/social-sso.js");
 
   // Per IP: Google sign-in carries no account before the callback. The default
@@ -929,7 +929,7 @@ async function startServer() {
     if (!["google", "microsoft", "linkedin"].includes(provider)) {
       return res.status(400).json({ error: "Unknown provider" });
     }
-    const state   = createOAuthState(provider, req.query.redirect_uri as string ?? "/");
+    const state   = createOAuthState(provider, safeRedirectPath(req.query.redirect_uri));
     const authUrl = getSocialAuthUrl(provider, state);
     // Store state in a short-lived signed cookie for CSRF protection
     res.cookie("oauth_state", state, { httpOnly: true, sameSite: "lax", maxAge: 10 * 60 * 1000, secure: process.env.NODE_ENV === "production" });
@@ -957,7 +957,7 @@ async function startServer() {
       const { accessToken, user } = await handleSocialProfile(profile, res);
 
       // Redirect back to SPA with a one-time code (token already in cookies)
-      const redirectTo = statePayload.redirectUri && statePayload.redirectUri.startsWith("/") ? statePayload.redirectUri : "/";
+      const redirectTo = safeRedirectPath(statePayload.redirectUri);
       return res.redirect(`${redirectTo}?sso=ok`);
     } catch (err: any) {
       console.error("[social-sso] callback:", err.message);
