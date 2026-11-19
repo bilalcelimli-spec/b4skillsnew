@@ -42,8 +42,9 @@ export interface OAuthStatePayload {
 // The state is a self-contained signed token (HS256 JWT, own audience) rather than a key into a
 // per-process map, so the OAuth callback can land on any web instance (Render
 // has no sticky sessions). It is still bound to the browser: the start route
-// sets it as the `oauth_state` cookie and the callback requires the two to match
-// and clears the cookie, which keeps it single-use for that browser.
+// sets the state's nonce as the `oauth_state` cookie, and the callback requires
+// the verified state's nonce to match it and clears the cookie, which keeps the
+// state single-use for that browser. The cookie never holds the token itself.
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 
@@ -55,8 +56,12 @@ function stateSecret(): string {
 
 const STATE_AUDIENCE = "b4skills:oauth-state";
 
-export function createOAuthState(provider: string, redirectUri: string, now = Date.now()): string {
-  const nonce = crypto.randomBytes(16).toString("hex");
+/** Random value the start route also sets as the `oauth_state` cookie; the callback matches the two. */
+export function createOAuthNonce(): string {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+export function createOAuthState(provider: string, redirectUri: string, now = Date.now(), nonce = createOAuthNonce()): string {
   return jwt.sign(
     { provider, redirectUri, nonce, iat: Math.floor(now / 1000) },
     stateSecret(),

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import jwt from 'jsonwebtoken';
 import { claimScoring } from '../src/lib/scoring/scoring-claim';
-import { consumeOAuthState, createOAuthState, safeRedirectPath } from '../src/lib/auth/social-sso';
+import { consumeOAuthState, createOAuthNonce, createOAuthState, safeRedirectPath } from '../src/lib/auth/social-sso';
 
 /** The two ioredis commands a claim uses, shared like one Redis between instances. */
 class FakeRedis {
@@ -47,9 +47,10 @@ describe('scoring claim across instances', () => {
 describe('social sign-in state', () => {
   beforeAll(() => { process.env.JWT_SECRET ??= 'test-jwt-secret'; });
 
-  it('is verifiable without the instance that issued it', () => {
-    const state = createOAuthState('google', '/dashboard');
-    expect(consumeOAuthState(state)).toMatchObject({ provider: 'google', redirectUri: '/dashboard' });
+  it('is verifiable without the instance that issued it and carries the cookie nonce', () => {
+    const nonce = createOAuthNonce();
+    const state = createOAuthState('google', '/dashboard', Date.now(), nonce);
+    expect(consumeOAuthState(state)).toMatchObject({ provider: 'google', redirectUri: '/dashboard', nonce });
   });
 
   it('rejects tampered, foreign and expired states', () => {

@@ -856,7 +856,7 @@ async function startServer() {
 
   // ── Social SSO — redirect-based flows (Google, Microsoft, LinkedIn) ────────
 
-  const { createOAuthState, consumeOAuthState, safeRedirectPath, getSocialAuthUrl, exchangeSocialCode, verifyGoogleIdToken } =
+  const { createOAuthNonce, createOAuthState, consumeOAuthState, safeRedirectPath, getSocialAuthUrl, exchangeSocialCode, verifyGoogleIdToken } =
     await import("./src/lib/auth/social-sso.js");
 
   // Per IP: Google sign-in carries no account before the callback. The default
@@ -929,10 +929,11 @@ async function startServer() {
     if (!["google", "microsoft", "linkedin"].includes(provider)) {
       return res.status(400).json({ error: "Unknown provider" });
     }
-    const state   = createOAuthState(provider, safeRedirectPath(req.query.redirect_uri));
+    const nonce   = createOAuthNonce();
+    const state   = createOAuthState(provider, safeRedirectPath(req.query.redirect_uri), Date.now(), nonce);
     const authUrl = getSocialAuthUrl(provider, state);
-    // Store state in a short-lived signed cookie for CSRF protection
-    res.cookie("oauth_state", state, { httpOnly: true, sameSite: "lax", maxAge: 10 * 60 * 1000, secure: process.env.NODE_ENV === "production" });
+    // CSRF: the browser keeps the nonce; the signed state carries the same nonce.
+    res.cookie("oauth_state", nonce, { httpOnly: true, sameSite: "lax", maxAge: 10 * 60 * 1000, secure: process.env.NODE_ENV === "production" });
     return res.redirect(authUrl);
   });
 
@@ -945,13 +946,14 @@ async function startServer() {
       if (error) return res.status(401).json({ error: `Provider error: ${error}` });
       if (!code || !state) return res.status(400).json({ error: "Missing code or state" });
 
-      // CSRF check
-      const cookieState = req.cookies?.oauth_state;
-      if (!cookieState || cookieState !== state) return res.status(403).json({ error: "State mismatch" });
+      // CSRF check: the signed state must verify and carry this browser's nonce.
+      const cookieNonce = req.cookies?.oauth_state;
       res.clearCookie("oauth_state");
-
       const statePayload = consumeOAuthState(state);
       if (!statePayload) return res.status(403).json({ error: "Expired or unknown state" });
+      if (typeof cookieNonce !== "string" || !cookieNonce || cookieNonce !== statePayload.nonce) {
+        return res.status(403).json({ error: "State mismatch" });
+      }
 
       const profile = await exchangeSocialCode(provider, code);
       const { accessToken, user } = await handleSocialProfile(profile, res);
