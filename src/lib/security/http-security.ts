@@ -134,6 +134,10 @@ export function assertProductionSecrets(): void {
   if (!process.env.STRIPE_SECRET_KEY) {
     console.warn("[startup] WARNING: STRIPE_SECRET_KEY is not set — payment endpoints will fail.");
   }
+  // Webhook signing secrets are encrypted at rest; without a key, registration is refused.
+  if (!process.env.SECRET_ENCRYPTION_KEY) {
+    console.warn("[startup] WARNING: SECRET_ENCRYPTION_KEY is not set — webhook registration is disabled and stored webhook secrets stay unencrypted.");
+  }
   // Redis: warn if not set — rate limiting and exposure store will be per-instance
   if (!process.env.REDIS_URL) {
     console.warn("[startup] WARNING: REDIS_URL is not set — rate limiting and exposure tracking will not persist across restarts or scale horizontally.");
