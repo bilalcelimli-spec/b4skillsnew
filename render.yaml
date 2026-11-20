@@ -39,6 +39,8 @@ services:
       # uses Render's 30 s default, so the code default (25 s) applies there.
       - key: SHUTDOWN_GRACE_MS
         value: "55000"
+      - key: SECRET_ENCRYPTION_KEY
+        sync: false          # 32 bytes (openssl rand -base64 32); encrypts webhook signing secrets at rest
       - key: REDIS_URL
         sync: false          # b4skills-redis internal URL (set in the dashboard); required before running >1 instance
       # Per instance. Total (instances × limit) must stay under the Supabase
