@@ -87,6 +87,42 @@ describe.skipIf(!enabled)('privacy consents and webhooks persist in PostgreSQL',
     }
   });
 
+  it('stores signing secrets encrypted, signs with the real secret and migrates plaintext rows', async () => {
+    const crypto = await import('node:crypto');
+    const key = crypto.randomBytes(32).toString('base64');
+    const previous = process.env.SECRET_ENCRYPTION_KEY;
+    process.env.SECRET_ENCRYPTION_KEY = key;
+    try {
+      let signature = '';
+      let signedBody = '';
+      const capture = async (_url: string, init: { headers: Record<string, string>; body: string }) => {
+        if (init.headers['X-b4skills-Event'] !== 'ping') { signature = init.headers['X-b4skills-Signature']; signedBody = init.body; }
+        return { status: 200, body: 'ok' };
+      };
+      const manager = new WebhookManager(capture);
+      const hook = await manager.registerWebhook({ url: 'https://hooks.example.invalid/enc', organizationId: orgId, events: ['user.invited'], secret: 'customer-visible-secret-123' });
+      expect(hook.secret).toBe('customer-visible-secret-123');                       // shown once
+      const stored = await prisma.webhook.findUniqueOrThrow({ where: { id: hook.id } });
+      expect(stored.secret).toMatch(/^enc:v1:/);
+      expect(stored.secret).not.toContain('customer-visible-secret-123');
+      expect((await manager.getEndpointsForOrg(orgId)).find((e) => e.id === hook.id)?.secret).toBe('********');
+
+      const delivery = await prisma.webhookDelivery.create({ data: { webhookId: hook.id, event: 'user.invited', payload: { a: 1 } } });
+      await manager.attemptDelivery(delivery.id);
+      const timestamp = JSON.parse(signedBody).timestamp;
+      const expected = crypto.createHmac('sha256', 'customer-visible-secret-123').update(`${timestamp}:${signedBody}`).digest('hex');
+      expect(signature).toBe(`sha256=${expected}`);
+
+      const legacy = await prisma.webhook.create({ data: { organizationId: orgId, url: 'https://hooks.example.invalid/legacy', secret: 'legacy-plaintext-secret', events: ['user.invited'] } });
+      expect(await manager.reencryptStoredSecrets()).toBeGreaterThanOrEqual(1);
+      const migrated = await prisma.webhook.findUniqueOrThrow({ where: { id: legacy.id } });
+      expect(migrated.secret).toMatch(/^enc:v1:/);
+      expect(await manager.reencryptStoredSecrets()).toBe(0);
+    } finally {
+      if (previous === undefined) delete process.env.SECRET_ENCRYPTION_KEY; else process.env.SECRET_ENCRYPTION_KEY = previous;
+    }
+  });
+
   it('an attempt abandoned mid-send by a dead instance is taken over by the sweep', async () => {
     const fetchOk = async () => ({ status: 200, body: 'ok' });
     const hook = await new WebhookManager(fetchOk).registerWebhook({ url: 'https://hooks.example.invalid/c', organizationId: orgId, events: ['report.generated'] });

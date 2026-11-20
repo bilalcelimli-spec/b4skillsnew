@@ -15,12 +15,22 @@
  *  - Delivery rows carry candidate data and are pruned after RETENTION_DAYS.
  *  - Every request goes through postToPublicHttps: the address actually
  *    connected to must be public, whatever the URL looked like at registration.
+ *  - Signing secrets are stored encrypted (AES-256-GCM, SECRET_ENCRYPTION_KEY);
+ *    the plaintext is returned once, at registration. Rows still in plaintext
+ *    or under a previous key are re-encrypted by the sweep.
  */
 
 import * as crypto from "crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
 import { postToPublicHttps, type OutboundResponse } from "../security/outbound-request.js";
+import { currentKeyPrefix, decryptSecret, encryptSecret, encryptionConfigured } from "../security/secret-box.js";
+
+/** AAD for webhook signing secrets in Webhook.secret (see secret-box.ts). */
+const SECRET_PURPOSE = "webhook.signing-secret";
+
+/** Production refuses to store a signing secret it cannot encrypt. */
+export class WebhookEncryptionRequiredError extends Error {}
 
 /** Sends one signed POST; the default refuses non-public destinations (see outbound-request.ts). */
 export type WebhookSender = (
@@ -110,12 +120,15 @@ type WebhookRow = {
   isActive: boolean; createdAt: Date; description: string | null;
 };
 
-function toEndpoint(row: WebhookRow): WebhookEndpoint {
+/** The stored secret is never exposed again after registration. */
+const MASKED_SECRET = "********";
+
+function toEndpoint(row: WebhookRow, plaintextSecret = MASKED_SECRET): WebhookEndpoint {
   return {
     id: row.id,
     organizationId: row.organizationId,
     url: row.url,
-    secret: row.secret,
+    secret: plaintextSecret,
     events: row.events as WebhookEventType[],
     active: row.isActive,
     createdAt: row.createdAt,
@@ -168,6 +181,15 @@ export class WebhookManager {
   async registerWebhook(registration: WebhookRegistration): Promise<WebhookEndpoint> {
     if (!registration.organizationId) throw new Error("A webhook must belong to an organisation");
     const secret = registration.secret ?? crypto.randomBytes(32).toString("hex");
+    let storedSecret: string;
+    if (encryptionConfigured()) {
+      storedSecret = encryptSecret(secret, SECRET_PURPOSE);
+    } else if (process.env.NODE_ENV === "production") {
+      throw new WebhookEncryptionRequiredError("SECRET_ENCRYPTION_KEY must be set to register webhooks");
+    } else {
+      console.warn("[Webhook] SECRET_ENCRYPTION_KEY not set — storing the signing secret unencrypted (development only)");
+      storedSecret = secret;
+    }
 
     const reachable = await this.testEndpoint(registration.url, secret);
     if (!reachable) {
@@ -178,13 +200,14 @@ export class WebhookManager {
       data: {
         organizationId: registration.organizationId,
         url: registration.url,
-        secret,
+        secret: storedSecret,
         events: registration.events,
         isActive: registration.active ?? true,
         description: registration.description?.slice(0, 500),
       },
     });
-    return toEndpoint(row);
+    // The only time the caller sees the secret: they need it to verify signatures.
+    return toEndpoint(row, secret);
   }
 
   /** Deregister a webhook endpoint (its delivery rows go with it). */
@@ -239,6 +262,7 @@ export class WebhookManager {
    * every instance at once. Returns how many attempts this call made.
    */
   async processDueDeliveries(now = new Date()): Promise<number> {
+    await this.reencryptStoredSecrets().catch((err) => console.error("[Webhook] secret re-encryption failed:", err instanceof Error ? err.message : err));
     const due = await prisma.webhookDelivery.findMany({
       where: claimableWhere(now),
       orderBy: { nextAttemptAt: "asc" },
@@ -283,12 +307,14 @@ export class WebhookManager {
 
     const timestamp = Math.floor(now.getTime() / 1000);
     const body = JSON.stringify({ event: current.event, timestamp, data: current.payload });
-    const signature = sign(current.webhook.secret, timestamp, body);
 
     let responseCode: number | null = null;
     let responseBody: string | null = null;
     let ok = false;
     try {
+      // A missing or wrong key fails this attempt like a network error; retries
+      // resume once the key is fixed.
+      const signature = sign(decryptSecret(current.webhook.secret, SECRET_PURPOSE), timestamp, body);
       const response = await this.send(current.webhook.url, {
         headers: {
           "Content-Type": "application/json",
@@ -327,6 +353,31 @@ export class WebhookManager {
     return true;
   }
 
+  /**
+   * Encrypts signing secrets stored in plaintext, and re-encrypts those under a
+   * previous key, with the current key. Conditional on the old value, so
+   * concurrent instances cannot overwrite each other. Returns rows rewritten.
+   */
+  async reencryptStoredSecrets(batch = 100): Promise<number> {
+    const prefix = currentKeyPrefix();
+    if (!prefix) return 0;
+    const rows = await prisma.webhook.findMany({
+      where: { NOT: { secret: { startsWith: prefix } } },
+      select: { id: true, secret: true },
+      take: batch,
+    });
+    let rewritten = 0;
+    for (const row of rows) {
+      const plaintext = decryptSecret(row.secret, SECRET_PURPOSE);
+      const result = await prisma.webhook.updateMany({
+        where: { id: row.id, secret: row.secret },
+        data: { secret: encryptSecret(plaintext, SECRET_PURPOSE) },
+      });
+      rewritten += result.count;
+    }
+    return rewritten;
+  }
+
   // ---------------------------------------------------------------------------
   // Endpoint test
   // ---------------------------------------------------------------------------
@@ -357,7 +408,7 @@ export class WebhookManager {
 
   async getEndpointsForOrg(organizationId: string): Promise<WebhookEndpoint[]> {
     const rows = await prisma.webhook.findMany({ where: { organizationId }, orderBy: { createdAt: "desc" } });
-    return rows.map(toEndpoint);
+    return rows.map((row) => toEndpoint(row));
   }
 
   /** Recent deliveries, optionally for one webhook and/or limited to one organisation. */

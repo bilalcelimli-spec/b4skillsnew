@@ -6469,7 +6469,7 @@ ${codeSection}
   });
 
   // ── Q7: Webhook Manager ───────────────────────────────────────────────────
-  const { webhookManager } = await import("./src/lib/webhooks/webhook-manager.js");
+  const { webhookManager, WebhookEncryptionRequiredError } = await import("./src/lib/webhooks/webhook-manager.js");
   // Every instance sends whatever webhook attempts are due (first attempts,
   // retries, attempts abandoned by a stopped instance); rows are claimed
   // atomically, so instances never double-send.
@@ -6514,7 +6514,13 @@ ${codeSection}
       const { organizationId: _ignored, ...registration } = body;
       const endpoint = await webhookManager.registerWebhook({ ...registration, organizationId } as any);
       res.status(201).json(endpoint);
-    } catch (err) { res.status(500).json({ error: "Internal server error" }); }
+    } catch (err) {
+      if (err instanceof WebhookEncryptionRequiredError) {
+        console.error("[Webhook] registration refused:", err.message);
+        return res.status(503).json({ error: "Webhook registration is temporarily unavailable" });
+      }
+      res.status(500).json({ error: "Internal server error" });
+    }
   });
 
   app.get("/api/webhooks/logs", checkRole(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR", "INST_ADMIN"]), async (req: express.Request, res: express.Response) => {
