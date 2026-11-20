@@ -4,6 +4,13 @@
  *
  * Integrates with the Express HTTP server via `ws` library.
  * Broadcasts: candidate progress updates, metric changes, proctoring alerts.
+ *
+ * Every connection is authenticated before the upgrade completes: the caller
+ * supplies `authenticate` (access token → user) and `isAllowedOrigin`. The
+ * organisation comes from the user's account, never from the query string —
+ * only platform roles may pick another organisation with `?orgId=`. A
+ * browser connection must come from an allowed origin, because the access
+ * cookie would otherwise let any site open a socket as the signed-in user.
  */
 
 import { EventEmitter } from "events";
@@ -27,6 +34,7 @@ export interface RealtimeMessage {
 
 export interface ConnectedClient {
   id: string;
+  userId: string;
   organizationId: string;
   role: string;
   subscriptions: Set<ChannelType>;
@@ -45,6 +53,47 @@ export interface LiveMetrics {
   avgResponseMs: number;
 }
 
+export interface RealtimeIdentity {
+  userId: string;
+  role: string;
+  organizationId: string | null;
+}
+
+export interface RealtimeAttachOptions {
+  /** Resolves the user behind the upgrade request (cookie or bearer token), or null. */
+  authenticate(req: IncomingMessage): Promise<RealtimeIdentity | null>;
+  /** True when a browser Origin may open a credentialed socket. */
+  isAllowedOrigin(origin: string): boolean;
+}
+
+/** Roles that see their own organisation's dashboard. */
+const ORG_DASHBOARD_ROLES = new Set(["INST_ADMIN", "TEACHER", "PROCTOR"]);
+/** Platform roles that may open any organisation's dashboard. */
+const PLATFORM_DASHBOARD_ROLES = new Set(["SUPER_ADMIN", "ASSESSMENT_DIRECTOR"]);
+const MAX_CONNECTIONS_PER_USER = 5;
+
+/**
+ * Which organisation a user may watch, or null when the connection must be refused.
+ * Exported for tests.
+ */
+export function resolveDashboardOrganization(identity: RealtimeIdentity, requestedOrgId: string | null): string | null {
+  if (PLATFORM_DASHBOARD_ROLES.has(identity.role)) return requestedOrgId || identity.organizationId;
+  if (!ORG_DASHBOARD_ROLES.has(identity.role) || !identity.organizationId) return null;
+  if (requestedOrgId && requestedOrgId !== identity.organizationId) return null;
+  return identity.organizationId;
+}
+
+/**
+ * Origin rule for the upgrade. Browsers always send Origin on a WebSocket
+ * handshake; a request without one is a non-browser client, which must then
+ * present a bearer token (it cannot ride on someone's cookie). Exported for tests.
+ */
+export function upgradeOriginAllowed(req: IncomingMessage, isAllowedOrigin: (origin: string) => boolean): boolean {
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && origin) return isAllowedOrigin(origin);
+  return typeof req.headers.authorization === "string" && req.headers.authorization.startsWith("Bearer ");
+}
+
 // ---------------------------------------------------------------------------
 // Manager
 // ---------------------------------------------------------------------------
@@ -56,10 +105,27 @@ export class RealtimeDashboardManager extends EventEmitter {
   private wss: any = null; // WebSocketServer
 
   /** Attach to an existing HTTP server */
-  async attach(server: HttpServer): Promise<void> {
+  async attach(server: HttpServer, options: RealtimeAttachOptions): Promise<void> {
     try {
       const { WebSocketServer } = await import("ws");
-      this.wss = new WebSocketServer({ server, path: "/ws/dashboard" });
+      this.wss = new WebSocketServer({
+        server,
+        path: "/ws/dashboard",
+        maxPayload: 4 * 1024,
+        verifyClient: (info: { req: IncomingMessage }, done: (ok: boolean, code?: number, message?: string) => void) => {
+          if (!upgradeOriginAllowed(info.req, options.isAllowedOrigin)) return done(false, 403, "Forbidden");
+          options.authenticate(info.req).then((identity) => {
+            if (!identity) return done(false, 401, "Unauthorized");
+            const requested = new URL(info.req.url ?? "/", "http://localhost").searchParams.get("orgId");
+            const organizationId = resolveDashboardOrganization(identity, requested);
+            if (!organizationId) return done(false, 403, "Forbidden");
+            const open = [...this.clients.values()].filter((c) => c.userId === identity.userId).length;
+            if (open >= MAX_CONNECTIONS_PER_USER) return done(false, 429, "Too many connections");
+            (info.req as any).realtime = { identity, organizationId };
+            done(true);
+          }, () => done(false, 401, "Unauthorized"));
+        },
+      });
 
       this.wss.on("connection", (ws: any, req: IncomingMessage) => {
         this.handleConnection(ws, req);
@@ -78,15 +144,17 @@ export class RealtimeDashboardManager extends EventEmitter {
   }
 
   private handleConnection(ws: any, req: IncomingMessage): void {
-    const url = new URL(req.url ?? "/", "http://localhost");
-    const orgId = url.searchParams.get("orgId") ?? "unknown";
-    const role = url.searchParams.get("role") ?? "INST_ADMIN";
+    // Set by verifyClient; a connection without it was never authenticated.
+    const verified = (req as any).realtime as { identity: RealtimeIdentity; organizationId: string } | undefined;
+    if (!verified) { ws.close(1008, "Unauthorized"); return; }
+    const orgId = verified.organizationId;
     const clientId = `${orgId}-${crypto.randomUUID().slice(0, 8)}`;
 
     const client: ConnectedClient = {
       id: clientId,
+      userId: verified.identity.userId,
       organizationId: orgId,
-      role,
+      role: verified.identity.role,
       subscriptions: new Set(["candidate_update", "metric_change", "alert", "heartbeat"]),
       ws,
       lastPing: new Date(),
@@ -156,7 +224,7 @@ export class RealtimeDashboardManager extends EventEmitter {
   sendToUser(userId: string, payload: Record<string, unknown>): void {
     const msg = JSON.stringify({ channel: "candidate_update", payload, timestamp: new Date().toISOString() });
     for (const client of this.clients.values()) {
-      if (client.id.startsWith(userId) && client.ws.readyState === 1) {
+      if (client.userId === userId && client.ws.readyState === 1) {
         client.ws.send(msg);
       }
     }
