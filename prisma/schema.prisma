@@ -103,6 +103,31 @@ model Webhook {
   secret         String       // For signature verification
   events         String[]     // e.g., ["session.completed", "proctoring.alert"]
   isActive       Boolean      @default(true)
+  description    String?
+  updatedAt      DateTime     @default(now()) @updatedAt
+  deliveries     WebhookDelivery[]
+
+  @@index([organizationId])
+}
+
+/// One event sent to one webhook. Retries are driven from these rows (status +
+/// nextAttemptAt), so they survive restarts and any instance can send them.
+model WebhookDelivery {
+  id            String    @id @default(cuid())
+  webhookId     String
+  webhook       Webhook   @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event         String
+  payload       Json
+  status        String    @default("pending") // pending | sending | retrying | delivered | failed
+  attempts      Int       @default(0)
+  lastAttemptAt DateTime?
+  nextAttemptAt DateTime? @default(now())
+  responseCode  Int?
+  responseBody  String?
+  createdAt     DateTime  @default(now())
+
+  @@index([webhookId, createdAt])
+  @@index([status, nextAttemptAt])
 }
 
 model ApiKey {
@@ -167,6 +192,8 @@ model User {
   raterTasks       RatingTask[] @relation("RaterTasks")
   candidateProfile CandidateProfile?
   assessmentConsent AssessmentConsent?
+  privacyConsent    PrivacyConsent?
+  privacyConsentEvents PrivacyConsentEvent[]
   auditLogs        AuditLog[]
   transactions     PaymentTransaction[]
   taughtClasses    Class[]      @relation("ClassTeacher")
@@ -1231,4 +1258,31 @@ model PrivacyDeletionRequest {
   status String @default("pending")
   reason String?
   @@index([userId, status])
+}
+
+/// Current optional-processing consents of a user (GDPR Art. 6/7). Absent row = all off.
+model PrivacyConsent {
+  userId            String   @id
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analyticsConsent  Boolean  @default(false)
+  marketingConsent  Boolean  @default(false)
+  thirdPartyConsent Boolean  @default(false)
+  dataRetentionDays Int      @default(730)
+  consentVersion    String
+  updatedAt         DateTime @updatedAt
+}
+
+/// Append-only history of consent changes (proof of consent, Art. 7(1)).
+model PrivacyConsentEvent {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consentType String
+  granted     Boolean
+  version     String
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
