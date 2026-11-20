@@ -49,10 +49,10 @@ describe.skipIf(!enabled)('privacy consents and webhooks persist in PostgreSQL',
 
   it('a webhook registered on one instance is delivered by another, once', async () => {
     const sent: string[] = [];
-    const fetchOk = (async (_url: string, init?: RequestInit) => {
-      if (String(init?.headers && (init.headers as any)['X-b4skills-Event']) !== 'ping') sent.push(String(init?.body));
-      return new Response('ok', { status: 200 });
-    }) as typeof fetch;
+    const fetchOk = async (_url: string, init: { headers: Record<string, string>; body: string }) => {
+      if (init.headers['X-b4skills-Event'] !== 'ping') sent.push(init.body);
+      return { status: 200, body: 'ok' };
+    };
     const instanceA = new WebhookManager(fetchOk);
     const instanceB = new WebhookManager(fetchOk);
     const hook = await instanceA.registerWebhook({ url: 'https://hooks.example.invalid/a', organizationId: orgId, events: ['assessment.completed'] });
@@ -67,7 +67,7 @@ describe.skipIf(!enabled)('privacy consents and webhooks persist in PostgreSQL',
   });
 
   it('retries survive a restart and stop after the last attempt', async () => {
-    const failing = (async () => new Response('down', { status: 503 })) as typeof fetch;
+    const failing = async () => ({ status: 503, body: 'down' });
     const hook = await new WebhookManager(failing).registerWebhook({ url: 'https://hooks.example.invalid/b', organizationId: orgId, events: ['score.updated'] });
     const delivery = await prisma.webhookDelivery.create({ data: { webhookId: hook.id, event: 'score.updated', payload: {} } });
 
@@ -88,7 +88,7 @@ describe.skipIf(!enabled)('privacy consents and webhooks persist in PostgreSQL',
   });
 
   it('an attempt abandoned mid-send by a dead instance is taken over by the sweep', async () => {
-    const fetchOk = (async () => new Response('ok', { status: 200 })) as typeof fetch;
+    const fetchOk = async () => ({ status: 200, body: 'ok' });
     const hook = await new WebhookManager(fetchOk).registerWebhook({ url: 'https://hooks.example.invalid/c', organizationId: orgId, events: ['report.generated'] });
     const started = new Date(Date.now() - SENDING_STALE_MS - 1000);
     const delivery = await prisma.webhookDelivery.create({ data: { webhookId: hook.id, event: 'report.generated', payload: {}, status: 'sending', attempts: 1, lastAttemptAt: started } });

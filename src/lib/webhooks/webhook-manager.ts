@@ -13,11 +13,20 @@
  *    send the same attempt; a claim abandoned by a dead instance is retaken
  *    after SENDING_STALE_MS.
  *  - Delivery rows carry candidate data and are pruned after RETENTION_DAYS.
+ *  - Every request goes through postToPublicHttps: the address actually
+ *    connected to must be public, whatever the URL looked like at registration.
  */
 
 import * as crypto from "crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
+import { postToPublicHttps, type OutboundResponse } from "../security/outbound-request.js";
+
+/** Sends one signed POST; the default refuses non-public destinations (see outbound-request.ts). */
+export type WebhookSender = (
+  url: string,
+  init: { headers: Record<string, string>; body: string; timeoutMs: number },
+) => Promise<OutboundResponse>;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -150,7 +159,7 @@ function claimableWhere(now: Date): Prisma.WebhookDeliveryWhereInput {
 // ---------------------------------------------------------------------------
 
 export class WebhookManager {
-  constructor(private readonly fetchImpl: typeof fetch = (input, init) => fetch(input, init)) {}
+  constructor(private readonly send: WebhookSender = postToPublicHttps) {}
 
   /**
    * Register a new webhook endpoint.
@@ -280,29 +289,21 @@ export class WebhookManager {
     let responseBody: string | null = null;
     let ok = false;
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-      try {
-        const response = await this.fetchImpl(current.webhook.url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-b4skills-Signature": `sha256=${signature}`,
-            "X-b4skills-Timestamp": String(timestamp),
-            "X-b4skills-Event": current.event,
-            "X-b4skills-Delivery": deliveryId,
-            "User-Agent": "b4skills-Webhooks/1.0",
-          },
-          body,
-          signal: controller.signal,
-          redirect: "manual",
-        });
-        responseCode = response.status;
-        responseBody = (await response.text()).slice(0, 500);
-        ok = response.ok;
-      } finally {
-        clearTimeout(timeout);
-      }
+      const response = await this.send(current.webhook.url, {
+        headers: {
+          "Content-Type": "application/json",
+          "X-b4skills-Signature": `sha256=${signature}`,
+          "X-b4skills-Timestamp": String(timestamp),
+          "X-b4skills-Event": current.event,
+          "X-b4skills-Delivery": deliveryId,
+          "User-Agent": "b4skills-Webhooks/1.0",
+        },
+        body,
+        timeoutMs: REQUEST_TIMEOUT_MS,
+      });
+      responseCode = response.status;
+      responseBody = response.body.slice(0, 500);
+      ok = response.status >= 200 && response.status < 300;
     } catch (err) {
       responseBody = (err instanceof Error ? err.message : String(err)).slice(0, 500);
     }
@@ -335,20 +336,15 @@ export class WebhookManager {
       const timestamp = Math.floor(Date.now() / 1000);
       const body = JSON.stringify({ event: "ping", timestamp, data: {} });
       const signature = sign(secret, timestamp, body);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5_000);
-      const res = await this.fetchImpl(url, {
-        method: "POST",
+      const res = await this.send(url, {
         headers: {
           "Content-Type": "application/json",
           "X-b4skills-Signature": `sha256=${signature}`,
           "X-b4skills-Event": "ping",
         },
         body,
-        signal: controller.signal,
-        redirect: "manual",
+        timeoutMs: 5_000,
       });
-      clearTimeout(timeout);
       return res.status < 500;
     } catch {
       return false;
