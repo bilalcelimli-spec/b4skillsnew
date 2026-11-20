@@ -166,6 +166,7 @@ export async function eraseCandidateData(db: PrismaClient, userId: string, deps:
   await drainErasureObjects(db, deps.deleteObject).catch(() => null);
   const pending = await db.erasureObject.count({where:{id:{in:objectIds},deletedAt:null}}).catch(()=>true);
   const { clearPrivacyCache } = await import('./privacy-manager.js');
-  clearPrivacyCache(userId);
+  // Consent history holds IP and user agent; a failure here must be visible, not silent.
+  await clearPrivacyCache(userId).catch((err) => console.error('[account-deletion] consent records not erased', { userId, err: err instanceof Error ? err.message : String(err) }));
   return { ...result, storageDeletionPending: pending };
 }

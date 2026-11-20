@@ -9,6 +9,7 @@
  *  - Automated retention policy enforcement
  */
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
 
 // ---------------------------------------------------------------------------
@@ -77,14 +78,29 @@ export interface DeletionRequest {
 }
 
 // ---------------------------------------------------------------------------
-// In-memory consent store (replace with DB table in production)
+// Consent storage: PrivacyConsent (current state) + PrivacyConsentEvent
+// (append-only history). Both live in Postgres so every web instance sees the
+// same consent and it survives restarts.
 // ---------------------------------------------------------------------------
 
-const consentStore = new Map<string, PrivacySettings>();
-const consentHistory: ConsentRecord[] = [];
-export function clearPrivacyCache(userId: string) {
-  consentStore.delete(userId);
-  for (let index=consentHistory.length-1;index>=0;index--) if(consentHistory[index].userId===userId) consentHistory.splice(index,1);
+const CONSENT_TYPES = ["analyticsConsent", "marketingConsent", "thirdPartyConsent"] as const;
+type ConsentType = typeof CONSENT_TYPES[number];
+
+/** Keeps only known consent keys with boolean values; anything else is ignored. */
+export function sanitizeConsentChanges(input: unknown): Partial<Record<ConsentType, boolean>> {
+  const changes: Partial<Record<ConsentType, boolean>> = {};
+  if (!input || typeof input !== "object") return changes;
+  for (const type of CONSENT_TYPES) {
+    const value = (input as Record<string, unknown>)[type];
+    if (typeof value === "boolean") changes[type] = value;
+  }
+  return changes;
+}
+
+/** Erases a user's stored consents and their history (account erasure). */
+export async function clearPrivacyCache(userId: string): Promise<void> {
+  await prisma.privacyConsentEvent.deleteMany({ where: { userId } });
+  await prisma.privacyConsent.deleteMany({ where: { userId } });
 }
 
 // ---------------------------------------------------------------------------
@@ -100,60 +116,64 @@ export class PrivacyManager {
   // -------------------------------------------------------------------------
 
   async getPrivacySettings(userId: string): Promise<PrivacySettings> {
-    if (consentStore.has(userId)) {
-      return consentStore.get(userId)!;
+    const stored = await prisma.privacyConsent.findUnique({ where: { userId } });
+    if (stored) {
+      return {
+        userId,
+        analyticsConsent: stored.analyticsConsent,
+        marketingConsent: stored.marketingConsent,
+        thirdPartyConsent: stored.thirdPartyConsent,
+        dataRetentionDays: stored.dataRetentionDays,
+        consentVersion: stored.consentVersion,
+        lastUpdated: stored.updatedAt,
+      };
     }
 
-    // Check user exists
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    // No row yet: every optional processing is off until the user opts in.
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
     if (!user) throw new Error(`User ${userId} not found`);
-
-    const defaults: PrivacySettings = {
+    return {
       userId,
       analyticsConsent: false,
       marketingConsent: false,
       thirdPartyConsent: false,
       dataRetentionDays: this.DATA_RETENTION_DAYS_DEFAULT,
       consentVersion: this.CONSENT_VERSION,
-      lastUpdated: new Date(),
+      lastUpdated: new Date(0),
     };
-    consentStore.set(userId, defaults);
-    return defaults;
   }
 
   async updateConsent(
     userId: string,
-    consents: {
-      analyticsConsent?: boolean;
-      marketingConsent?: boolean;
-      thirdPartyConsent?: boolean;
-    },
+    consents: unknown,
     meta?: { ipAddress?: string; userAgent?: string }
   ): Promise<PrivacySettings> {
-    const current = await this.getPrivacySettings(userId);
-    const updated: PrivacySettings = {
-      ...current,
-      ...consents,
-      consentVersion: this.CONSENT_VERSION,
-      lastUpdated: new Date(),
-    };
-    consentStore.set(userId, updated);
+    const changes = sanitizeConsentChanges(consents);
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!user) throw new Error(`User ${userId} not found`);
 
-    // Record consent history
-    for (const [type, granted] of Object.entries(consents)) {
-      consentHistory.push({
-        userId,
-        consentType: type,
-        granted: granted as boolean,
-        version: this.CONSENT_VERSION,
-        ipAddress: meta?.ipAddress,
-        userAgent: meta?.userAgent,
-        timestamp: new Date(),
-      });
-    }
+    // Current state and its history change together.
+    await prisma.$transaction([
+      prisma.privacyConsent.upsert({
+        where: { userId },
+        create: { userId, ...changes, dataRetentionDays: this.DATA_RETENTION_DAYS_DEFAULT, consentVersion: this.CONSENT_VERSION },
+        update: { ...changes, consentVersion: this.CONSENT_VERSION },
+      }),
+      prisma.privacyConsentEvent.createMany({
+        data: Object.entries(changes).map(([consentType, granted]) => ({
+          userId,
+          consentType,
+          granted: granted as boolean,
+          version: this.CONSENT_VERSION,
+          ipAddress: meta?.ipAddress?.slice(0, 64) ?? null,
+          userAgent: meta?.userAgent?.slice(0, 512) ?? null,
+        })),
+      }),
+    ]);
+    const updated = await this.getPrivacySettings(userId);
 
     await this.logComplianceEvent(userId, "CONSENT_UPDATED", {
-      changes: consents,
+      changes,
       version: this.CONSENT_VERSION,
     });
 
@@ -204,7 +224,7 @@ export class PrivacyManager {
       // AuditLog table may not exist — silently skip
     }
 
-    const userConsents = consentHistory.filter((c) => c.userId === userId);
+    const userConsents = await this.getAuditLog(userId, 1000);
     const settings = await this.getPrivacySettings(userId);
 
     const retainUntil = new Date();
@@ -294,8 +314,21 @@ export class PrivacyManager {
   // Audit log
   // -------------------------------------------------------------------------
 
+  /** The user's consent history, oldest first (the most recent `limit` changes). */
   async getAuditLog(userId: string, limit = 100): Promise<ConsentRecord[]> {
-    return consentHistory.filter((c) => c.userId === userId).slice(-limit);
+    const take = Math.min(Math.max(1, Math.floor(limit) || 100), 1000);
+    const rows = await prisma.privacyConsentEvent.findMany({
+      where: { userId }, orderBy: { createdAt: "desc" }, take,
+    });
+    return rows.reverse().map((row) => ({
+      userId: row.userId,
+      consentType: row.consentType,
+      granted: row.granted,
+      version: row.version,
+      ipAddress: row.ipAddress ?? undefined,
+      userAgent: row.userAgent ?? undefined,
+      timestamp: row.createdAt,
+    }));
   }
 
   async getDeletionRequests(userId?: string): Promise<DeletionRequest[]> {
@@ -305,12 +338,13 @@ export class PrivacyManager {
 
   private async logComplianceEvent(userId: string, action: string, details: Record<string, unknown>): Promise<void> {
     try {
-      await (prisma as any).auditLog.create({
+      await prisma.auditLog.create({
         data: {
           userId,
           action: `PRIVACY:${action}`,
-          details: JSON.stringify(details),
-          createdAt: new Date(),
+          entityType: "User",
+          entityId: userId,
+          details: details as Prisma.InputJsonValue,
         },
       });
     } catch {

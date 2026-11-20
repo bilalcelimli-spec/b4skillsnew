@@ -6470,7 +6470,16 @@ ${codeSection}
 
   // ── Q7: Webhook Manager ───────────────────────────────────────────────────
   const { webhookManager } = await import("./src/lib/webhooks/webhook-manager.js");
-  await webhookManager.loadFromDatabase();
+  // Every instance sends whatever webhook attempts are due (first attempts,
+  // retries, attempts abandoned by a stopped instance); rows are claimed
+  // atomically, so instances never double-send.
+  if (!validationOnly) {
+    const webhookSweep = setInterval(() => {
+      if (!dbAvailable) return;
+      webhookManager.processDueDeliveries().catch((err) => console.error("[Webhook] sweep failed:", err instanceof Error ? err.message : err));
+    }, 30_000);
+    webhookSweep.unref();
+  }
 
   // SSRF guard: reject webhook URLs that resolve to private/loopback addresses
   const isWebhookUrlSafe = (rawUrl: string): boolean => {
@@ -6496,7 +6505,14 @@ ${codeSection}
       if (!body) return;
       const caller = (req as any).user;
       if (!isWebhookUrlSafe(body.url)) return res.status(400).json({ error: "Webhook URL must be a public HTTPS endpoint" });
-      const endpoint = await webhookManager.registerWebhook({ ...body, organizationId: caller?.role === "INST_ADMIN" ? caller.organizationId : undefined } as any);
+      const organizationId = caller?.role === "INST_ADMIN" ? caller.organizationId : (body.organizationId ?? caller?.organizationId);
+      if (!organizationId) return res.status(400).json({ error: "organizationId is required" });
+      if (caller?.role !== "INST_ADMIN" && body.organizationId) {
+        const org = await prisma.organization.findUnique({ where: { id: organizationId }, select: { id: true } });
+        if (!org) return res.status(404).json({ error: "Organization not found" });
+      }
+      const { organizationId: _ignored, ...registration } = body;
+      const endpoint = await webhookManager.registerWebhook({ ...registration, organizationId } as any);
       res.status(201).json(endpoint);
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
@@ -6505,14 +6521,16 @@ ${codeSection}
     try {
       const caller = (req as any).user;
       const { webhookId, limit } = req.query;
+      const id = typeof webhookId === "string" && webhookId ? webhookId : undefined;
       if (caller?.role === "INST_ADMIN") {
-        const orgEndpointIds = new Set(webhookManager.getEndpointsForOrg(caller.organizationId).map((e: any) => e.id));
-        if (webhookId && !orgEndpointIds.has(webhookId as string)) return res.status(403).json({ error: "Forbidden" });
-        const logs = webhookManager.getDeliveryLog(webhookId as string, parseInt(limit as string) || 100);
-        return res.json(logs.filter((l: any) => orgEndpointIds.has(l.webhookId)));
+        if (!caller.organizationId) return res.status(403).json({ error: "Forbidden" });
+        if (id) {
+          const owned = await prisma.webhook.findFirst({ where: { id, organizationId: caller.organizationId }, select: { id: true } });
+          if (!owned) return res.status(403).json({ error: "Forbidden" });
+        }
+        return res.json(await webhookManager.getDeliveryLog(id, parseInt(limit as string) || 100, caller.organizationId));
       }
-      const logs = webhookManager.getDeliveryLog(webhookId as string, parseInt(limit as string) || 100);
-      res.json(logs);
+      res.json(await webhookManager.getDeliveryLog(id, parseInt(limit as string) || 100));
     } catch (err) { res.status(500).json({ error: "Internal server error" }); }
   });
 

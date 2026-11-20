@@ -33,6 +33,9 @@ export const CreateWebhookBody = z.object({
   events: z.array(z.string().max(100)).min(1).max(50),
   secret: z.string().min(16).max(200).optional(),
   active: z.boolean().optional(),
+  description: z.string().max(500).optional(),
+  // Platform roles only; an institution admin always registers for their own organisation.
+  organizationId: z.string().min(1).max(100).optional(),
 }).strict();
 
 export const CreateApiKeyBody = z.object({
