@@ -102,8 +102,14 @@ export function buildHelmetMiddleware(): RequestHandler {
   return helmet(options);
 }
 
+/**
+ * Refuses to start a production server with missing or unsafe configuration,
+ * and warns about optional settings. Called from server.ts right after
+ * SecretsManager.load(). On Render a failed start keeps the previous instances
+ * serving, so a bad setting blocks the deploy instead of taking the site down.
+ */
 export function assertProductionSecrets(): void {
-  if (!isProd) return;
+  if (process.env.NODE_ENV !== "production") return;
   const required = [
     "JWT_SECRET",
     "REFRESH_SECRET",
@@ -123,11 +129,13 @@ export function assertProductionSecrets(): void {
     throw new Error("JWT_SECRET or REFRESH_SECRET is set to a known weak default. Rotate now.");
   }
   const appUrl = process.env.APP_URL!;
-  if (!appUrl.startsWith("https://")) {
+  // Local production builds (docker-compose) run on http://localhost.
+  const localHttp = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(appUrl);
+  if (!appUrl.startsWith("https://") && !localHttp) {
     throw new Error("APP_URL must be an https URL in production.");
   }
   const corsOrigins = parseOrigins(process.env.CORS_ORIGINS);
-  if (!corsOrigins.includes(appUrl)) {
+  if (!localHttp && !corsOrigins.includes(appUrl)) {
     throw new Error("CORS_ORIGINS must include APP_URL in production.");
   }
   // Stripe: warn but don't hard-fail — some deployments may not use payments
@@ -135,7 +143,12 @@ export function assertProductionSecrets(): void {
     console.warn("[startup] WARNING: STRIPE_SECRET_KEY is not set — payment endpoints will fail.");
   }
   // Webhook signing secrets are encrypted at rest; without a key, registration is refused.
-  if (!process.env.SECRET_ENCRYPTION_KEY) {
+  // A malformed key would make every signed delivery fail, so it stops the start.
+  const encryptionKey = process.env.SECRET_ENCRYPTION_KEY?.trim();
+  if (encryptionKey) {
+    const bytes = /^[0-9a-fA-F]{64}$/.test(encryptionKey) ? Buffer.from(encryptionKey, "hex") : Buffer.from(encryptionKey, "base64");
+    if (bytes.length !== 32) throw new Error("SECRET_ENCRYPTION_KEY must be 32 bytes (openssl rand -base64 32).");
+  } else {
     console.warn("[startup] WARNING: SECRET_ENCRYPTION_KEY is not set — webhook registration is disabled and stored webhook secrets stay unencrypted.");
   }
   // Redis: warn if not set — rate limiting and exposure store will be per-instance

@@ -38,7 +38,7 @@ import { compareSessionGrowth } from "./src/lib/analytics/session-growth.js";
 import { createDatabaseProbe } from "./src/lib/database/availability.js";
 import { BillingService } from "./src/lib/enterprise/billing-service.js";
 import { SecretsManager } from "./src/lib/secrets/secrets-manager.js";
-import { buildCorsMiddleware, buildHelmetMiddleware, buildOriginAllowlist } from "./src/lib/security/http-security.js";
+import { assertProductionSecrets, buildCorsMiddleware, buildHelmetMiddleware, buildOriginAllowlist } from "./src/lib/security/http-security.js";
 import { RegisterBody, LoginBody, ForgotPasswordBody, ResetPasswordBody } from "./src/lib/security/schemas/auth.js";
 import { SessionLaunchBody, SessionRespondBody, SessionCompleteBody, SessionFeedbackBody } from "./src/lib/security/schemas/sessions.js";
 import { CreateItemBody, UpdateItemBody, ItemPipelineBody, ItemReviewBody, ItemContentPatchBody } from "./src/lib/security/schemas/items.js";
@@ -78,6 +78,8 @@ async function startServer() {
   const validationOnly = process.env.B4SKILLS_API_VALIDATION_MODE === "true";
   // Load secrets first — AWS Secrets Manager if configured, else env vars
   await SecretsManager.load();
+  // Fail fast on missing/unsafe production configuration (no-op outside production).
+  assertProductionSecrets();
 
   const app = express();
   const PORT = parseInt(process.env.PORT || "3001", 10);
