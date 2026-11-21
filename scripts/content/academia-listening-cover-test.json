@@ -1,0 +1,222 @@
+{
+ "ACA-LIS-B1-W01-01A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-B1-W01-01B": {
+  "solved": true,
+  "confidence": "low"
+ },
+ "ACA-LIS-B1-W01-02A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-B1-W01-03A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-B1-W01-03B": {
+  "solved": false,
+  "confidence": "medium"
+ },
+ "ACA-LIS-B1-W01-04A": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-B1-W01-04B": {
+  "solved": false,
+  "confidence": "medium"
+ },
+ "ACA-LIS-B1-W01-05A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-B1-W01-05B": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-B1-W01-06A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-B1-W01-06B": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-B1-W01-07A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-B1-W01-07B": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-B1-W01-08A": {
+  "solved": false,
+  "confidence": "low"
+ },
+ "ACA-LIS-B1-W01-08B": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-B1-W01-09B": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-B1-W01-10A": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-B2-W01-01B": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-B2-W01-03A": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-B2-W01-03B": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-B2-W01-04A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-B2-W01-06A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-B2-W01-07A": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-B2-W01-08A": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-B2-W01-08B": {
+  "solved": false,
+  "confidence": "medium"
+ },
+ "ACA-LIS-B2-W01-09A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-B2-W01-10B": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C1-W01-01A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C1-W01-01B": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C1-W01-02A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C1-W01-02B": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-C1-W01-03A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C1-W01-05A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C1-W01-05B": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C1-W01-06A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C1-W01-07A": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-C1-W01-08A": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-C1-W01-08B": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-C1-W01-09A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C1-W01-09B": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C1-W01-10A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C2-W01-01B": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C2-W01-02A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C2-W01-02B": {
+  "solved": false,
+  "confidence": "low"
+ },
+ "ACA-LIS-C2-W01-04A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C2-W01-04B": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C2-W01-05A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C2-W01-06B": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C2-W01-07A": {
+  "solved": true,
+  "confidence": "medium"
+ },
+ "ACA-LIS-C2-W01-07B": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C2-W01-08A": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C2-W01-08B": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C2-W01-09A": {
+  "solved": false,
+  "confidence": "low"
+ },
+ "ACA-LIS-C2-W01-09B": {
+  "solved": true,
+  "confidence": "high"
+ },
+ "ACA-LIS-C2-W01-10A": {
+  "solved": true,
+  "confidence": "high"
+ }
+}

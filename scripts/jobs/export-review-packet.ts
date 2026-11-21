@@ -52,6 +52,7 @@ const SOURCES: Array<{ file: string; label: string; statuses?: string[] }> = [
   { file: "young-learners/wave1a-ids.json", label: "Young learners — Wave 1 batch A (picture tasks; listening voiced)" },
   { file: "young-learners/pilot-ids.json", label: "Young learners — picture task pilot (Primary / Junior; pictures vision-checked, listening voiced)" },
   { file: "profile-level-gaps/ids.json", label: "Profile level gaps — Academia B1 listening, Corporate A2 reading/speaking, Language Schools A1/C1 reading" },
+  { file: "academia-listening/wave-01-ids.json", label: "Academia — listening sets, wave 01 (authored; one recording, two questions; no audio yet)" },
   { file: "phase1/queue-ids.json", label: "Faz 1 — queue items that close coverage gaps (PRETEST / REVIEW / DRAFT)", statuses: ["DRAFT", "REVIEW", "PRETEST"] },
 ];
 
