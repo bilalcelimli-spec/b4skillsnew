@@ -1,5 +1,7 @@
 # B4Skills Kullanım Koşulları
 
+> **ESKİ SÜRÜM — kullanmayın (21 Kasım 2026).** Yayındaki metin [`src/components/LegalPage.tsx`](../../src/components/LegalPage.tsx) içindedir; şirket bilgileri `src/lib/site/company.ts`. Bu dosyadaki Gemini, Anthropic, Whisper ve Stripe ifadeleri artık geçerli değildir: puanlama ve AI tutor yalnız OpenAI kullanır, çevrim içi ödeme yoktur. Yeni madde eklenecekse `LegalPage.tsx` güncellenir.
+
 > **TASLAK — hukuki inceleme yapılmadı, yayımlanmadı.** İngilizce sürüm hukuki onaydan sonra çevrilecek. `[[DOLDUR]]` / `[[KARAR]]` listesi: [README.md](README.md).
 
 Son güncelleme: [[DOLDUR: yayın tarihi]]

@@ -1,5 +1,7 @@
 # B4Skills Gizlilik Politikası ve KVKK Aydınlatma Metni
 
+> **ESKİ SÜRÜM — kullanmayın (21 Kasım 2026).** Yayındaki metin [`src/components/LegalPage.tsx`](../../src/components/LegalPage.tsx) içindedir; şirket bilgileri `src/lib/site/company.ts`. Bu dosyadaki Gemini, Anthropic, Whisper ve Stripe ifadeleri artık geçerli değildir: puanlama ve AI tutor yalnız OpenAI kullanır, çevrim içi ödeme yoktur. Yeni madde eklenecekse `LegalPage.tsx` güncellenir.
+
 > **TASLAK — hukuki inceleme yapılmadı, yayımlanmadı.** `[[DOLDUR: …]]` ile işaretli yerler yalnız ürün sahibinin bilebileceği bilgilerdir. `[[KARAR: …]]` işaretli yerler ürün veya hukuk kararı ister. Liste: [README.md](README.md).
 
 Son güncelleme: [[DOLDUR: yayın tarihi]]

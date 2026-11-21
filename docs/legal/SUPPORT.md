@@ -1,5 +1,7 @@
 # Destek sayfası taslağı / Support page draft
 
+> **ESKİ SÜRÜM — kullanmayın (21 Kasım 2026).** Yayındaki metin [`src/components/LegalPage.tsx`](../../src/components/LegalPage.tsx) içindedir; şirket bilgileri `src/lib/site/company.ts`. Bu dosyadaki Gemini, Anthropic, Whisper ve Stripe ifadeleri artık geçerli değildir: puanlama ve AI tutor yalnız OpenAI kullanır, çevrim içi ödeme yoktur. Yeni madde eklenecekse `LegalPage.tsx` güncellenir.
+
 > **TASLAK.** App Store Connect'teki "Support URL" bu sayfayı göstermeli (`b4skills.com/support`). Apple, destek URL'sinin gerçek iletişim bilgisi içermesini ister.
 
 ---
