@@ -41,7 +41,7 @@ import { BillingService } from "./src/lib/enterprise/billing-service.js";
 import { SecretsManager } from "./src/lib/secrets/secrets-manager.js";
 import { assertProductionSecrets, buildCorsMiddleware, buildHelmetMiddleware, buildOriginAllowlist } from "./src/lib/security/http-security.js";
 import { RegisterBody, LoginBody, ForgotPasswordBody, ResetPasswordBody } from "./src/lib/security/schemas/auth.js";
-import { SessionLaunchBody, SessionRespondBody, SessionAudioPlayBody, SessionCompleteBody, SessionFeedbackBody } from "./src/lib/security/schemas/sessions.js";
+import { SessionLaunchBody, SessionRespondBody, SessionAudioPlayBody, SessionFeedbackBody } from "./src/lib/security/schemas/sessions.js";
 import { CreateItemBody, UpdateItemBody, ItemPipelineBody, ItemReviewBody, ItemContentPatchBody } from "./src/lib/security/schemas/items.js";
 import { SystemConfigBody } from "./src/lib/security/schemas/calibration.js";
 import { CreateWebhookBody, BrandingPatchBody, UpdateSettingsBody, SsoConfigBody } from "./src/lib/security/schemas/organizations.js";
