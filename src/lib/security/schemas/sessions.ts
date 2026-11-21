@@ -26,6 +26,8 @@ export const SessionLaunchBody = z.object({
   }),
 }).strict();
 
+export const SessionAudioPlayBody = z.object({ itemId: CuidLike }).strict();
+
 export const SessionRespondBody = z.object({
   itemId: CuidLike,
   /**

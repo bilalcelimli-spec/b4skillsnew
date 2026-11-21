@@ -5,7 +5,8 @@
  * what candidates get.
  *
  *   prepareSelectionPool  warm-up filter → seeded shuffle → content-tag /
- *                         task-family diversity → gated item-type rotation → family cap → passage cap
+ *                         task-family diversity → gated item-type rotation → family cap → passage cap;
+ *                         inside a recording / reading text: its remaining questions only
  *   evaluateSectionStop   section budget + per-profile stop rules
  *
  * server-engine.ts owns everything that touches Postgres (loading the pool,
@@ -17,12 +18,13 @@
 import type { ProductLineProfile } from "../product-lines/profiles.js";
 import { sectionItemBudget } from "./adaptive-policy.js";
 import { seededFisherYates } from "./mcq-options.js";
-import { capItemsPerPassage } from "./passage-cap.js";
+import { excludeUsedPassages, setProgress } from "./passage-cap.js";
 import { capItemsPerFamily, distinctFamilies, taskFamilyKey } from "./task-family.js";
+import { information } from "./irt.js";
 import { evaluateSectionStopRules, type StopDecision, type StopRuleInput } from "./stop-rules.js";
 import { SkillType, type Item, type Response, type SkillProfile } from "./types.js";
 
-export type PoolFallbackReason = "warmup_filter";
+export type PoolFallbackReason = "warmup_filter" | "passage_reopened";
 
 export interface PrepareSelectionPoolInput {
   profile: ProductLineProfile;
@@ -39,11 +41,18 @@ export interface PrepareSelectionPoolInput {
   sectionCount: number;
   /** Session id (shuffle seed). */
   sessionId: string;
+  /** The question already promised for the open set (planSetSibling); served if still available. */
+  plannedItemId?: string | null;
 }
 
 export interface PreparedSelectionPool {
   pool: Item[];
   fallbacks: PoolFallbackReason[];
+  /**
+   * Set when `pool` holds only the remaining questions of the current recording /
+   * text: the pool to select from if the selector can serve none of them.
+   */
+  retryPool?: Item[];
 }
 
 const CONTENT_TAG_PREFIXES = ["content:", "passage:", "topic:"];
@@ -56,6 +65,21 @@ export const MIN_ROTATION_FAMILIES = 3;
  * Mirrors the live order of operations exactly; see server-engine.getNextItem.
  */
 export function prepareSelectionPool(input: PrepareSelectionPoolInput): PreparedSelectionPool {
+  // Set continuity: while the current recording / text has questions left, the
+  // next item is one of them — ahead of warm-up, diversity and rotation, which
+  // only decide how a new set is opened.
+  const { siblings } = setProgress(input.itemPool, input.administeredItems, input.skill);
+  if (siblings.length > 0) {
+    const planned = input.plannedItemId ? siblings.filter((item) => item.id === input.plannedItemId) : [];
+    if (planned.length > 0) return { pool: planned, fallbacks: [], retryPool: prepareNewSetPool(input).pool };
+    const pool = seededFisherYates(siblings, `${input.sessionId}:${input.skill}:${input.sectionCount}`);
+    return { pool, fallbacks: [], retryPool: prepareNewSetPool(input).pool };
+  }
+  return prepareNewSetPool(input);
+}
+
+/** Candidate pool when no set is open (a standalone item or the first question of a new set). */
+function prepareNewSetPool(input: PrepareSelectionPoolInput): PreparedSelectionPool {
   const { profile, skill, itemPool, administeredItems, ability, totalOperationalResponses, sectionCount, sessionId } = input;
   const fallbacks: PoolFallbackReason[] = [];
 
@@ -113,11 +137,44 @@ export function prepareSelectionPool(input: PrepareSelectionPoolInput): Prepared
     }
   }
 
-  // Local dependence: cap items per reading passage / listening recording.
+  // Local dependence: a recording / reading text already used is not reopened.
   // Same task template: at most MAX_ITEMS_PER_FAMILY per section (hard, lifted only in a thin pool).
   const familyCapped = capItemsPerFamily(selectionPool, administeredItems.filter((item) => item.skill === skill) as Array<Item & { tags?: string[] }>);
-  const pool = capItemsPerPassage(familyCapped, administeredItems);
-  return { pool, fallbacks };
+  const fresh = excludeUsedPassages(familyCapped, administeredItems);
+  if (fresh.reopened) fallbacks.push("passage_reopened");
+  return { pool: fresh.pool, fallbacks };
+}
+
+/**
+ * The second question of the recording / text just opened, fixed at the moment
+ * the first one is served so the candidate can read both while listening.
+ * No adaptation happens inside a set: the most informative remaining question
+ * at the current θ is taken. Null when the set has no further question or the
+ * section has no room left for it.
+ */
+export function planSetSibling(input: {
+  /** Operational candidates of the section, the chosen item excluded or not. */
+  itemPool: Item[];
+  /** Items administered so far, in order, without the chosen item. */
+  administeredItems: Item[];
+  /** The operational item being served now. */
+  chosen: Item;
+  theta: number;
+  /** Operational responses in this section before the chosen item. */
+  sectionCount: number;
+  sectionMaxItems: number;
+}): Item | null {
+  if (input.chosen.isPretest) return null;
+  if (input.sectionCount + 1 >= input.sectionMaxItems) return null;
+  const pool = input.itemPool.filter((item) => item.id !== input.chosen.id);
+  const { siblings } = setProgress(pool, [...input.administeredItems, input.chosen], input.chosen.skill);
+  let best: Item | null = null;
+  let bestInfo = -Infinity;
+  for (const item of [...siblings].sort((a, b) => a.id.localeCompare(b.id))) {
+    const info = information(input.theta, item.params);
+    if (Number.isFinite(info) && info > bestInfo) { best = item; bestInfo = info; }
+  }
+  return best;
 }
 
 /** Receptive-section SEM above which one extra item may be spent (budget flex). */
@@ -135,6 +192,8 @@ export interface EvaluateSectionStopInput {
   totalOperationalResponses: number;
   ability: SkillProfile;
   hasOutstandingItem?: boolean;
+  /** A question of the current recording / text is still promised (planSetSibling): finish the set first. */
+  setOpen?: boolean;
   /** Org-level CEFR cut overrides. */
   cefrThresholds?: StopRuleInput["cefrThresholds"];
   /** Section responses + items (SPRT only). */
@@ -165,6 +224,8 @@ export function evaluateSectionStop(input: EvaluateSectionStopInput): SectionSto
     ? { ...profile, sectionConfig: { ...profile.sectionConfig, [skill]: { ...config, maxItems: config.maxItems + 1 } } }
     : profile;
   const sectionMaxItems = sectionItemBudget(budgetProfile, sectionIndex, totalOperationalResponses, sectionCount);
+  // A set that was opened is finished: early-stop rules wait for its last question, the budget does not.
+  if (input.setOpen && sectionCount < sectionMaxItems) return { stop: false, reason: null, sectionMaxItems };
   const decision = evaluateSectionStopRules({
     rules: profile.stopRules,
     ability,
@@ -203,13 +264,18 @@ export interface PretestSlotInput {
   sectionMaxItems: number;
   /** A served-but-unanswered item means no new slot. */
   hasOutstandingItem?: boolean;
+  /** The current recording / text still has questions to serve (setProgress.siblings): never interrupt it. */
+  setOpen?: boolean;
+  /** Length of the set that just ended (setProgress.run); a slot that fell inside it is served now. */
+  closedSetLength?: number;
 }
 
 /**
  * Decide whether the next item of this section should be a pretest.
  *
  * Deterministic, position based (roadmap Faz 2 / F1): a pretest follows the
- * 4th, 8th, 12th … operational item of the exam, never during warm-up, never in
+ * 4th, 8th, 12th … operational item of the exam (moved to the end of the set
+ * when that position falls inside a recording / text), never during warm-up, never in
  * productive sections, never once the section has used its budget, and never
  * beyond round(pretestRatio × globalMaxItems) pretests per session. Pretest
  * responses are unscored, so the exam grows by at most that many items.
@@ -217,6 +283,7 @@ export interface PretestSlotInput {
 export function shouldAdministerPretest(input: PretestSlotInput): boolean {
   const { profile, skill, pretestRatio, totalOperationalResponses, pretestAdministered, sectionCount, sectionMaxItems } = input;
   if (input.hasOutstandingItem) return false;
+  if (input.setOpen) return false;
   if (!(pretestRatio > 0)) return false;
   if (PRETEST_EXCLUDED_SKILLS.has(skill)) return false;
   if (totalOperationalResponses < profile.warmupItems) return false;
@@ -224,7 +291,10 @@ export function shouldAdministerPretest(input: PretestSlotInput): boolean {
   const maxPretests = Math.round(pretestRatio * profile.globalMaxItems);
   if (pretestAdministered >= maxPretests) return false;
   // Slot after every PRETEST_SLOT_INTERVAL operational items; one pretest per slot.
-  if (totalOperationalResponses === 0 || totalOperationalResponses % PRETEST_SLOT_INTERVAL !== 0) return false;
+  // A slot is due when a multiple of the interval lies among the items served since the last set boundary.
+  const sinceBoundary = Math.min(totalOperationalResponses, Math.max(1, Math.floor(input.closedSetLength ?? 1)));
+  if (Math.floor(totalOperationalResponses / PRETEST_SLOT_INTERVAL) <=
+      Math.floor((totalOperationalResponses - sinceBoundary) / PRETEST_SLOT_INTERVAL)) return false;
   const slotsReached = Math.floor(totalOperationalResponses / PRETEST_SLOT_INTERVAL);
   return pretestAdministered < slotsReached;
 }

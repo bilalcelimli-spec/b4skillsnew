@@ -105,4 +105,65 @@ describe("AudioPlayer autoplay and recovery", () => {
     expect(audio.currentTime).toBe(0);
   });
 
+  describe("exam mode", () => {
+    const grant = (playsUsed: number, allowed = true) => vi.fn().mockResolvedValue({ allowed, playsUsed });
+
+    it("offers no speed, seek, pause or replay control and ignores a saved speed", async () => {
+      localStorage.setItem('linguadapt_audio_speed', '0.75');
+      const {container} = render(<AudioPlayer src="/audio.mp3" showWaveform={false} exam={{ onPlayStart: grant(1) }} />);
+      expect(container.querySelector('audio')!.playbackRate).toBe(1);
+      expect(screen.queryByRole('button', {name: /Speed/})).toBeNull();
+      expect(screen.queryByRole('slider')).toBeNull();
+      expect(screen.queryByRole('button', {name: 'Replay audio'})).toBeNull();
+      await act(async () => {fireEvent.click(screen.getByRole('button', {name: 'Play audio'}));});
+      expect(screen.queryByRole('button', {name: 'Pause audio'})).toBeNull();
+      expect((screen.getByRole('button', {name: 'Audio is playing'}) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it("counts a play when it starts and resumes an interrupted play for free", async () => {
+      const onPlayStart = grant(1);
+      const {container} = render(<AudioPlayer src="/audio.mp3" maxPlays={1} showWaveform={false} exam={{ onPlayStart }} />);
+      const audio = container.querySelector('audio')!;
+      await act(async () => {fireEvent.click(screen.getByRole('button', {name: 'Play audio'}));});
+      expect(onPlayStart).toHaveBeenCalledOnce();
+      expect(screen.getByText('No plays left')).toBeTruthy();
+      fireEvent.pause(audio); // e.g. headphones unplugged
+      await act(async () => {fireEvent.click(screen.getByRole('button', {name: 'Play audio'}));});
+      expect(onPlayStart).toHaveBeenCalledOnce();
+      fireEvent.ended(audio);
+      expect((screen.getByRole('button', {name: 'Play audio'}) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it("starts from the plays the server already counted", () => {
+      render(<AudioPlayer src="/audio.mp3" maxPlays={2} showWaveform={false} exam={{ playsUsed: 2, onPlayStart: grant(2) }} />);
+      expect(screen.getByText('No plays left')).toBeTruthy();
+      expect((screen.getByRole('button', {name: 'Play audio'}) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it("stops when the server refuses and returns the play when the server cannot be reached", async () => {
+      const pause = vi.spyOn(HTMLMediaElement.prototype, "pause");
+      const onPlayStart = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ allowed: false, playsUsed: 2 });
+      render(<AudioPlayer src="/audio.mp3" maxPlays={2} showWaveform={false} exam={{ onPlayStart }} />);
+      await act(async () => {fireEvent.click(screen.getByRole('button', {name: 'Play audio'}));});
+      expect(pause).toHaveBeenCalled();
+      expect(screen.getByRole('alert').textContent).toContain('no play was used');
+      expect(screen.getByText('2 plays left')).toBeTruthy();
+      await act(async () => {fireEvent.click(screen.getByRole('button', {name: 'Play audio'}));});
+      expect(screen.getByText('No plays left')).toBeTruthy();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it("undoes seeking and speed changes made outside the player", async () => {
+      const {container} = render(<AudioPlayer src="/audio.mp3" showWaveform={false} exam={{ onPlayStart: grant(1) }} />);
+      const audio = container.querySelector('audio')!;
+      await act(async () => {fireEvent.click(screen.getByRole('button', {name: 'Play audio'}));});
+      audio.currentTime = 12;
+      fireEvent.seeking(audio);
+      expect(audio.currentTime).toBe(0);
+      audio.playbackRate = 0.5;
+      fireEvent.rateChange(audio);
+      expect(audio.playbackRate).toBe(1);
+    });
+  });
+
 });

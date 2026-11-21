@@ -1,6 +1,8 @@
 import React, { useEffect } from "react";
 import { ArrowRight, CheckCircle2, Star, Zap, GraduationCap, Building2 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { SiteNav } from "./SiteNav";
+import { SiteFooter } from "./SiteFooter";
 
 export type SeoVariant =
   | "english-level-test"
@@ -94,7 +96,6 @@ const META: Record<SeoVariant, { title: string; description: string; h1: string;
       "b4skills assessment report and certificate",
       "Team-level skill gap dashboards",
       "Webhook & API integration with ATS/HRIS",
-      "Volume pricing from €6/assessment",
       "White-label branding option",
     ],
   },
@@ -132,8 +133,9 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] font-sans">
+      <SiteNav />
       {/* Hero */}
-      <section className="bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white py-20 px-6">
+      <section className="bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white pt-36 pb-20 px-6">
         <div className="max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest text-white/80 mb-6">
             {m.icon}
@@ -213,6 +215,7 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
           }),
         }}
       />
+      <SiteFooter />
     </div>
   );
 };

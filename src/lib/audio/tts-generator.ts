@@ -13,6 +13,7 @@ import { GoogleGenAI, Modality } from "@google/genai";
 import fs from "fs";
 import path from "path";
 import { normalizeSpeakerLabels, parseSpeakerTurn, speakerLabels, stripListeningWorksheet } from './speaker-labels.js';
+import { speechRateCheck } from "./wav-evidence.js";
 
 // ── WAV constants ─────────────────────────────────────────────────────────────
 
@@ -218,6 +219,13 @@ export async function generateListeningAudio(opts: {
 
   const pcmBuffer = Buffer.from(part.inlineData.data, "base64");
   const wavBuffer = buildWavHeader(pcmBuffer);
+
+  // A cut-off synthesis must not be saved: the candidate would hear a few
+  // seconds of a script the question depends on.
+  const rate = speechRateCheck(pcmBuffer.length / (WAV_SAMPLE_RATE * WAV_CHANNELS * (WAV_BITS / 8)), synthesisScript);
+  if (rate.verdict === "TOO_SHORT_FOR_SCRIPT") {
+    throw new Error(`Gemini TTS audio is too short for its script (${rate.words} words at ${rate.wordsPerMinute ?? 0} words per minute); nothing was saved`);
+  }
 
   const fileName     = `${opts.moduleId}.wav`;
   const absolutePath = path.join(outputDir, fileName);

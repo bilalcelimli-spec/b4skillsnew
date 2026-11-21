@@ -20,7 +20,7 @@ const CONTACT_EMAIL = "accessibility@b4skills.com";
 
 export const AccessibilityStatementPage: React.FC<Props> = ({ onStart, onCodeEntry }) => (
   <div className="min-h-screen bg-white flex flex-col">
-    <SiteNav onStart={onStart ?? (() => {})} onCodeEntry={onCodeEntry ?? (() => {})} />
+    <SiteNav />
 
     <main className="flex-grow max-w-3xl mx-auto px-6 py-24 w-full">
       <header className="mb-12">

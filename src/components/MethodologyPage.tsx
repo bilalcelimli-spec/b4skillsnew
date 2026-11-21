@@ -117,7 +117,7 @@ export const MethodologyPage: React.FC<Props> = ({ onBack, onStart }) => {
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] font-sans text-slate-800">
-      <SiteNav onStart={onStart ?? onBack ?? (() => window.location.assign("/"))} />
+      <SiteNav />
 
       {/* Hero */}
       <section className="bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white pt-32 pb-24 px-6 text-center">

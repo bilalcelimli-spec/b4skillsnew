@@ -1,4 +1,5 @@
-import { MarketingConsent, MeasurementPrivacyContext } from './components/MarketingConsent';
+import { FooterConsentContext, MarketingConsent, MeasurementPrivacyContext } from './components/MarketingConsent';
+import { PublicLayout } from './components/PublicLayout';
 import { GuardianDecisionPage, GuardianVerificationPage } from './components/GuardianConsent';
 import { AssessmentResumeCard } from './components/AssessmentContinuation';
 import { OZGUN_PRODUCT, assessmentDisplayName } from "./lib/fixed-forms/ozgun-kids";
@@ -64,7 +65,9 @@ function MarketingPage({ children, enabled }: { children: React.ReactNode; enabl
   const { i18n } = useTranslation();
   const { pathname } = useLocation();
   const [privateAssessmentOpen, setPrivateAssessmentOpen] = useState(false);
-  return <MeasurementPrivacyContext.Provider value={setPrivateAssessmentOpen}>{children}<div className="bg-white p-4 text-center text-sm"><MarketingConsent path={pathname} isTr={(i18n.language || 'en').startsWith('tr')} enabled={enabled && !privateAssessmentOpen} /></div></MeasurementPrivacyContext.Provider>;
+  // Every marketing page ends with SiteFooter, which renders this consent control.
+  const consent = <MarketingConsent path={pathname} isTr={(i18n.language || 'en').startsWith('tr')} enabled={enabled && !privateAssessmentOpen} />;
+  return <MeasurementPrivacyContext.Provider value={setPrivateAssessmentOpen}><FooterConsentContext.Provider value={consent}>{children}</FooterConsentContext.Provider></MeasurementPrivacyContext.Provider>;
 }
 
 const PageLoader = () => (
@@ -333,20 +336,20 @@ export default function App() {
     } catch {/* The report remains available if certificate issuance needs a retry. */}
   };
 
-  if (location.pathname === '/guardian-verification') return <GuardianVerificationPage />;
-  if (location.pathname === '/guardian-consent') return <GuardianDecisionPage />;
+  if (location.pathname === '/guardian-verification') return <PublicLayout><GuardianVerificationPage /></PublicLayout>;
+  if (location.pathname === '/guardian-consent') return <PublicLayout><GuardianDecisionPage /></PublicLayout>;
   const legalRoutes: Record<string, LegalPageKind> = { '/privacy': 'privacy', '/kvkk': 'kvkk', '/terms': 'terms', '/support': 'support', '/refund-policy': 'refund', '/sales-terms': 'sales' };
   if (legalRoutes[location.pathname]) return <LegalPage kind={legalRoutes[location.pathname]} />;
 
   // Public certificate verification page — accessible without authentication
   if (verifyMatch) {
-    return <VerificationPage certId={verifyMatch[1]} />;
+    return <PublicLayout><VerificationPage certId={verifyMatch[1]} /></PublicLayout>;
   }
 
   // Public shared score report page — no auth required
   const shareMatch = location.pathname.match(/^\/share\/([a-f0-9]{32})/);
   if (shareMatch) {
-    return <SharedReportPage token={shareMatch[1]} />;
+    return <PublicLayout><SharedReportPage token={shareMatch[1]} /></PublicLayout>;
   }
 
   if (loading) {
@@ -359,15 +362,16 @@ export default function App() {
 
   if (["/checkout", "/payment/success", "/payment/cancel"].includes(location.pathname)) {
     if (location.pathname === '/payment/success') {
-      if (!user) return <AuthPage initialMode="signin" onBack={() => navigate('/pricing')} />;
+      if (!user) return <PublicLayout><AuthPage initialMode="signin" onBack={() => navigate('/pricing')} /></PublicLayout>;
       return <PaymentResultPage orderId={new URLSearchParams(location.search).get('order')} />;
     }
     const selected = new URLSearchParams(location.search).get('plan');
     return <CheckoutPage initialPlan={selected && Object.hasOwn(PURCHASE_PLANS, selected) ? selected as PurchasePlanId : 'full-assessment'} />;
   }
 
-  if (showCodeEntry) {
-    return <CodeEntryPage
+  // /exam-code is the shared header's "Enter Exam Code" destination.
+  if (showCodeEntry || location.pathname === "/exam-code") {
+    const codeEntry = <CodeEntryPage
       onAccountSignIn={account => {
         setUser(account);
         setUserProfile({...account,organizationId:account.organizationId ?? null});
@@ -380,6 +384,7 @@ export default function App() {
         setShowCodeEntry(false);
         // If already logged in, return to dashboard; otherwise go to landing
         if (user) { /* stay in dashboard */ } else { setShowLanding(true); }
+        if (location.pathname === "/exam-code") navigate(user ? "/dashboard" : "/");
       }}
       onSuccess={(productLine, orgId, email, candidateId, name) => {
         // Code redemption may follow a sign-in to a different candidate account.
@@ -397,15 +402,16 @@ export default function App() {
         navigate('/exam/new',{replace:true});
       }}
     />;
+    return user ? codeEntry : <PublicLayout>{codeEntry}</PublicLayout>;
   }
 
   // Stable, directly addressable auth routes are required for password
   // managers, support links and browser-level end-to-end testing.
   if (!user && location.pathname === "/login") {
-    return <AuthPage initialMode="signin" onBack={() => navigate("/")} />;
+    return <PublicLayout><AuthPage initialMode="signin" onBack={() => navigate("/")} /></PublicLayout>;
   }
   if (!user && location.pathname === "/register") {
-    return <AuthPage initialMode="signup" onBack={() => navigate("/")} />;
+    return <PublicLayout><AuthPage initialMode="signup" onBack={() => navigate("/")} /></PublicLayout>;
   }
 
   if (!user && location.pathname === "/methodology") {
@@ -459,13 +465,13 @@ export default function App() {
   // Email verification link — /verify-email?token=...
   if (location.pathname === "/verify-email") {
     const token = new URLSearchParams(location.search).get("token");
-    return <EmailVerifyPage token={token} onDone={() => navigate("/")} />;
+    return <PublicLayout><EmailVerifyPage token={token} onDone={() => navigate("/")} /></PublicLayout>;
   }
 
   // Password reset link — /reset-password?token=...
   if (location.pathname === "/reset-password") {
     const token = new URLSearchParams(location.search).get("token");
-    return <AuthPage initialMode="reset" initialToken={token ?? ""} onBack={() => navigate("/")} />;
+    return <PublicLayout><AuthPage initialMode="reset" initialToken={token ?? ""} onBack={() => navigate("/")} /></PublicLayout>;
   }
 
   const seoVariant = SEO_PATHS[location.pathname] ?? null;
@@ -486,7 +492,7 @@ export default function App() {
     "/content", "/results", "/profile", "/settings", "/exam", "/report", "/print",
   ].some((prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`));
   if (!user && protectedPath) {
-    return <AuthPage initialMode="signin" onBack={() => navigate("/")} />;
+    return <PublicLayout><AuthPage initialMode="signin" onBack={() => navigate("/")} /></PublicLayout>;
   }
 
   if (!user && showLanding) {
@@ -499,7 +505,7 @@ export default function App() {
 
 
   if (!user) {
-    return <AuthPage onBack={() => setShowLanding(true)} />;
+    return <PublicLayout><AuthPage onBack={() => setShowLanding(true)} /></PublicLayout>;
   }
 
   // Printable A4 score report / certificate (no app chrome).

@@ -2,10 +2,10 @@ import React, { useState, useEffect } from "react";
 import { ChevronRight, Menu, X, Zap } from "lucide-react";
 import { cn } from "../lib/utils";
 
-interface SiteNavProps {
-  onStart: () => void;
-  onCodeEntry?: () => void;
-}
+/** Shared public header. Every button has one fixed destination so the
+ *  header behaves the same on every public page. */
+export const LOGIN_HREF = "/login";
+export const EXAM_CODE_HREF = "/exam-code";
 
 const SOLUTION_HREFS: Record<string, string> = {
   Academia: "/academia",
@@ -21,7 +21,7 @@ const MAIN_LINKS = [
   { label: "Pricing", href: "/pricing" },
 ] as const;
 
-export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
+export const SiteNav: React.FC = () => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -51,7 +51,9 @@ export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
     <nav
       className={cn(
         "fixed top-0 left-0 w-full z-50 transition-all duration-300",
-        scrolled ? "bg-white/95 backdrop-blur-md shadow-sm py-4" : "bg-transparent py-6"
+        // Always opaque: a transparent header disappears over dark page heroes.
+        "bg-white/95 backdrop-blur-md border-b border-slate-100",
+        scrolled ? "shadow-sm py-3" : "py-4"
       )}
       aria-label="Main navigation"
     >
@@ -171,22 +173,20 @@ export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
           ))}
 
           <div className="flex items-center gap-4 2xl:gap-6 h-16">
-            {onCodeEntry && (
-              <button
-                onClick={onCodeEntry}
-                className="text-slate-600 hover:text-slate-900 font-bold transition-colors"
-                aria-label="Enter your exam code"
-              >
-                Enter Exam Code
-              </button>
-            )}
-            <button
-              onClick={onStart}
+            <a
+              href={EXAM_CODE_HREF}
+              className="text-slate-600 hover:text-slate-900 font-bold transition-colors"
+              aria-label="Enter your exam code"
+            >
+              Enter Exam Code
+            </a>
+            <a
+              href={LOGIN_HREF}
               className="text-slate-900 font-bold border-b-2 border-[#9b276c] hover:bg-[#9b276c] hover:text-white px-2 py-1 transition-all rounded"
               aria-label="Sign in as test taker"
             >
               Test Taker Login
-            </button>
+            </a>
             <a
               href="/register"
               className="inline-flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-white rounded-full px-6 py-2 font-medium transition-all active:scale-[0.98]"
@@ -220,10 +220,8 @@ export const SiteNav: React.FC<SiteNavProps> = ({ onStart, onCodeEntry }) => {
               {link.label}
             </a>
           ))}
-          {onCodeEntry && (
-            <button onClick={() => { setMobileMenuOpen(false); onCodeEntry(); }} className="text-left font-bold text-slate-800">Enter Exam Code</button>
-          )}
-          <button onClick={() => { setMobileMenuOpen(false); onStart(); }} className="text-left font-bold text-[#9b276c]">Test Taker Login</button>
+          <a href={EXAM_CODE_HREF} onClick={() => setMobileMenuOpen(false)} className="font-bold text-slate-800">Enter Exam Code</a>
+          <a href={LOGIN_HREF} onClick={() => setMobileMenuOpen(false)} className="font-bold text-[#9b276c]">Test Taker Login</a>
           <a
             href="/register"
             onClick={() => setMobileMenuOpen(false)}

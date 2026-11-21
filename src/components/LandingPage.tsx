@@ -286,7 +286,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
         )}
       </AnimatePresence>
       {/* ─── NAVBAR ─── */}
-      <SiteNav onStart={onStart} onCodeEntry={onCodeEntry} />
+      <SiteNav />
 
       {/* ─── HERO ─── */}
       <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 px-6 max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-12">

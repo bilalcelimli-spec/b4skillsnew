@@ -20,7 +20,8 @@ import { AppError } from '../errors/app-error';
  */
 
 import { evaluateFreemiumResponse } from "../product-lines/freemium-productive-scoring.js";
-import { stripAnswerKeys } from "../security/answer-sanitizer.js";
+import { candidateItemContent } from "../security/answer-sanitizer.js";
+import { withSessionAudio } from "./listening-delivery.js";
 import { thetaToCefr, getCanDo } from "../cefr/cefr-framework.js";
 import { RatingQueueService } from "../scoring/rating-queue.js";
 import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence, scoringRequirements } from "../scoring/score-evidence.js";
@@ -157,7 +158,7 @@ export class DiagnosticService {
     const next=this._nextItem(state);
     if(!next)throw new Error('Diagnostic item missing');
     const row=await prisma.item.findUniqueOrThrow({where:{id:next.itemId},include:{assets:true}});
-    const content=stripAnswerKeys({...((row.content??{}) as Record<string,unknown>),audioUrl:(row.content as any)?.audioUrl??row.assets.find(asset=>asset.type==='AUDIO')?.url});
+    const content=withSessionAudio(candidateItemContent(row.skill,{...((row.content??{}) as Record<string,unknown>),audioUrl:(row.content as any)?.audioUrl??row.assets.find(asset=>asset.type==='AUDIO')?.url}),sessionId,next.itemId);
     return {stop:false,sectionTransition:false,item:{id:next.itemId,skill:next.skill,type:row.type,metadata:content},
       currentSection:next.skill,sectionIndex:SKILLS.indexOf(next.skill),totalSections:SKILLS.length,
       sectionProgress:state.skills[next.skill].answered,maxDurationMs:DIAGNOSTIC_WALL_CLOCK_MS,
@@ -220,7 +221,7 @@ export class DiagnosticService {
     if (!first) throw new Error("No items available for diagnostic");
 
     const itemRow = await prisma.item.findUnique({ where: { id: first.itemId }, include: { assets: true } });
-    return { sessionId: session.id, firstItem: { ...first, content: stripAnswerKeys({...((itemRow?.content ?? {}) as Record<string, unknown>),audioUrl:(itemRow?.content as any)?.audioUrl ?? itemRow?.assets.find(asset=>asset.type === "AUDIO")?.url}) }, totalItems: DIAGNOSTIC_TOTAL_ITEMS, expiresAt };
+    return { sessionId: session.id, firstItem: { ...first, content: withSessionAudio(candidateItemContent(itemRow?.skill, {...((itemRow?.content ?? {}) as Record<string, unknown>),audioUrl:(itemRow?.content as any)?.audioUrl ?? itemRow?.assets.find(asset=>asset.type === "AUDIO")?.url}), session.id, first.itemId) }, totalItems: DIAGNOSTIC_TOTAL_ITEMS, expiresAt };
   }
 
   /** Return the next unanswered item (cycles through skills in round-robin) */
@@ -369,7 +370,7 @@ export class DiagnosticService {
     let nextItem: (DiagnosticItemRecord & { content: any }) | undefined;
     if (nextRaw) {
       const nextRow = await prisma.item.findUnique({ where: { id: nextRaw.itemId }, include: { assets: true } });
-      nextItem = { ...nextRaw, content: stripAnswerKeys({...((nextRow?.content ?? {}) as Record<string, unknown>),audioUrl:(nextRow?.content as any)?.audioUrl ?? nextRow?.assets.find(asset=>asset.type === "AUDIO")?.url}) };
+      nextItem = { ...nextRaw, content: withSessionAudio(candidateItemContent(nextRow?.skill, {...((nextRow?.content ?? {}) as Record<string, unknown>),audioUrl:(nextRow?.content as any)?.audioUrl ?? nextRow?.assets.find(asset=>asset.type === "AUDIO")?.url}), sessionId, nextRaw.itemId) };
     }
 
     return {

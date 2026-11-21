@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { record } from '../src/lib/quality/item-evidence-audit.js';
-import { inspectWav } from '../src/lib/audio/wav-evidence.js';
+import { inspectWav, speechRateCheck } from '../src/lib/audio/wav-evidence.js';
 import { speakerLabels } from '../src/lib/audio/speaker-labels.js';
 
 config({ path: '.env.local', quiet: true }); config({ quiet: true });
@@ -53,6 +53,18 @@ async function main() {
         const bytes = readFileSync(resolved);
         evidence.audioHash = createHash('sha256').update(bytes).digest('hex');
         evidence.localContainer = path.extname(resolved).toLowerCase() === '.wav' ? inspectWav(bytes) : { valid: null, reason: 'Non-WAV decoding not performed' };
+        // Judged against every stored text of the recording: the audio may have been made
+        // from the transcript while ttsScript was rewritten later. Only a recording that
+        // fits none of them was cut off; one that fits another field has a stale script.
+        const seconds = record(evidence.localContainer).durationSeconds;
+        const checks = (['ttsScript', 'transcript', 'script', 'audioScript', 'passage'] as const)
+          .filter(field => typeof c[field] === 'string' && String(c[field]).trim())
+          .map(field => ({ field, ...speechRateCheck(Number(seconds), String(c[field])) }))
+          .filter(check => check.verdict !== 'NOT_JUDGED');
+        if (typeof seconds === 'number' && checks.length) {
+          const fit = checks.find(check => check.verdict === 'OK');
+          evidence.speechRate = { ...(fit ?? checks[0]), fitsOnlyAnotherField: Boolean(fit && fit !== checks[0]), checks };
+        }
       } else evidence.localContainer = { valid: null, reason: 'Exceeds inspection size limit' };
     } else evidence.localContainer = { valid: null, reason: safeLocal ? 'No local copy; this does not establish a live outage' : 'Remote or unsupported local reference' };
     // Sequential and capped: no credentials, arbitrary hosts or redirects are followed.
@@ -80,6 +92,10 @@ async function main() {
   const summary = { itemCount: items.length, recordingCount: recordings.length,
     invalidLocalWav: recordings.filter(r => record(r.localContainer).valid === false).length,
     validLocalWav: recordings.filter(r => record(r.localContainer).valid === true).length,
+    lengthDoesNotFitScript: recordings.filter(r => ['TOO_SHORT_FOR_SCRIPT', 'TOO_LONG_FOR_SCRIPT'].includes(String(record(r.speechRate).verdict)))
+      .map(r => ({ itemIds: r.itemIds, ...record(r.speechRate) })),
+    lengthFitsOnlyAnotherScriptField: recordings.filter(r => record(r.speechRate).fitsOnlyAnotherField === true)
+      .map(r => ({ itemIds: r.itemIds, ...record(r.speechRate) })),
     liveHeadSuccess: recordings.filter(r => record(r.liveHead).verdict === 'HTTP_ONLY_NOT_DECODED').length,
     liveHeadNeedsConfirmation: recordings.filter(r => record(r.liveHead).verdict === 'REQUIRES_GET_CONFIRMATION').length,
     editorialDrafts: editorialDrafts.length };
