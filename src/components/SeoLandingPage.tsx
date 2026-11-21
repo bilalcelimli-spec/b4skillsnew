@@ -197,24 +197,7 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
         </button>
       </section>
 
-      {/* JSON-LD structured data */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "WebPage",
-            name: m.h1,
-            description: m.description,
-            url: `https://b4skills.com/${variant}`,
-            publisher: {
-              "@type": "Organization",
-              name: "b4skills",
-              url: "https://b4skills.com",
-            },
-          }),
-        }}
-      />
+      {/* Structured data for this page is injected by the server (src/lib/site/seo-head.ts). */}
       <SiteFooter />
     </div>
   );

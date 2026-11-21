@@ -56,6 +56,7 @@ export const SiteNav: React.FC = () => {
         scrolled ? "shadow-sm py-3" : "py-4"
       )}
       aria-label="Main navigation"
+      lang="en"
     >
       <div className="max-w-7xl mx-auto px-6 flex items-center justify-between relative">
         {/* Logo */}

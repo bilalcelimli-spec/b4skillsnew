@@ -43,7 +43,7 @@ export function OzgunKidsReport({report,candidateName,completedAt,onClose}:{repo
 
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <p className="text-xs font-bold tracking-widest text-indigo-600 uppercase mb-2"><span lang="en">B4Skills</span> · Öğrenci değerlendirme raporu</p>
+        <p className="text-xs font-bold tracking-widest text-indigo-600 uppercase mb-2"><span lang="en">b4skills</span> · Öğrenci değerlendirme raporu</p>
         <h1 className="text-2xl sm:text-3xl font-black tracking-tight">{OZGUN_TITLE} sonuçları</h1>
         <p className="text-sm text-slate-500 mt-2">{candidateName || 'Öğrenci'}{date && Number.isFinite(date.getTime()) ? ` · ${date.toLocaleDateString('tr-TR',{day:'numeric',month:'long',year:'numeric'})}` : ''} · 96 soru · 4 bölüm</p>
       </div>

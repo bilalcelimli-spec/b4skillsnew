@@ -20,8 +20,8 @@ export async function generateAssessmentReportPdf(report: AssessmentReport, opti
   if (!fontDir) throw new Error('Report Unicode fonts are missing');
   const qr = report.verificationUrl ? await QRCode.toBuffer(report.verificationUrl, { width: 240, margin: 1, errorCorrectionLevel: 'M' }) : null;
   const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: {
-    Title: `B4Skills assessment report - ${report.candidateName}`,
-    Author: 'B4Skills', Subject: 'English assessment results and learning guide',
+    Title: `b4skills assessment report - ${report.candidateName}`,
+    Author: 'b4skills', Subject: 'English assessment results and learning guide',
   } });
   doc.registerFont('Regular', path.join(fontDir, 'NotoSans-Regular.ttf'));
   doc.registerFont('Bold', path.join(fontDir, 'NotoSans-Bold.ttf'));
@@ -52,7 +52,7 @@ export async function generateAssessmentReportPdf(report: AssessmentReport, opti
   };
   const footer = (page: number) => {
     doc.moveTo(M, 788).lineTo(W - M, 788).lineWidth(0.6).strokeColor(C.line).stroke();
-    text('B4Skills | Confidential candidate report', M, 799, WIDTH - 75, 8, false, C.muted);
+    text('b4skills | Confidential candidate report', M, 799, WIDTH - 75, 8, false, C.muted);
     text(`${page} / 3`, W - M - 55, 799, 55, 8, true, C.muted, { align: 'right' });
   };
 

@@ -40,14 +40,14 @@ export function GuardianDecisionPage() {
   const manage = params.get('manage') === '1';
   // Preselected by the email button; the decision is still recorded only by an explicit POST below.
   const action = params.get('action') === 'approve' ? 'approve' : params.get('action') === 'reject' ? 'reject' : null;
-  useEffect(() => { document.title = 'B4Skills — Veli kararı'; }, []);
+  useEffect(() => { document.title = 'b4skills — Veli kararı'; }, []);
   async function decide(approve: boolean) {
     setBusy(true); setError(''); try { setResult(await request(manage ? 'revoke' : 'decision', manage ? { token } : { token, approve, ...(approve ? { guardianName: name, relationship, acknowledged: ack } : {}) })); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   const withdrawalUrl = result?.manageToken ? `${window.location.origin}/guardian-consent?manage=1#${result.manageToken}` : '';
   return <main className="min-h-screen bg-slate-50 py-10 px-4"><section className={shell}>
-    <h1 className="text-2xl font-bold">B4Skills veli onayı</h1>
+    <h1 className="text-2xl font-bold">b4skills veli onayı</h1>
     <p>Bir aday hesabı sizin e-posta adresinizi veli olarak bildirdi. Talebi tanımıyorsanız onaylamayın. Veli onayı sınava katılma zorunluluğu oluşturmaz.</p>
     <p>Sınav sırasında yazılı yanıtlar ve ses kayıtları puanlama ve transkripsiyon amacıyla OpenAI hizmetlerine aktarılabilir. Sınav güvenliği için kamera fotoğrafları otomatik çekilip kuruma gönderilebilir. Sonuçları yetkili kurum görevlileri görebilir.</p>
     <p>Onay vermeden önce <a className="underline" href="/privacy" target="_blank" rel="noreferrer">gizlilik bilgilerini</a> ve <a className="underline" href="/terms" target="_blank" rel="noreferrer">kullanım koşullarını</a> okuyun. Onay verdiğinizde aday sınava hemen başlayabilir. Tam kimlik belgesini bu forma yüklemeyin.</p>
