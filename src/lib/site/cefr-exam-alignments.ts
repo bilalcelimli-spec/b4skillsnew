@@ -17,6 +17,8 @@ export interface ExamAlignment {
   scale: string;
   byLevel: Partial<Record<GuideLevel, string>>;
   note: string;
+  /** Turkish label, scale and note for /cefr-seviyeleri. */
+  tr: { exam: string; scale: string; note: string };
   sourceName: string;
   sourceUrl: string;
 }
@@ -29,6 +31,7 @@ export function alignmentFor(exam: ExamAlignment, level: GuideLevel): string {
 export const EXAM_ALIGNMENTS: readonly ExamAlignment[] = [
   {
     exam: "IELTS",
+    tr: { exam: "IELTS", scale: "Genel bant 0–9", note: "IELTS bu eşleşmeyi kesin bir denklik olarak değil, araştırmaya dayalı bir rehber olarak ve yalnızca genel bant için yayımlar. Bant 5, B1/B2 sınırında; bant 8, C1/C2 sınırındadır. IELTS A1 ve A2 seviyelerini raporlamaz." },
     owner: "IELTS partners (British Council, IDP, Cambridge)",
     scale: "Overall band 0–9",
     byLevel: { B1: "4.0–5.0", B2: "5.5–6.5", C1: "7.0–8.0", C2: "8.5–9.0" },
@@ -38,6 +41,7 @@ export const EXAM_ALIGNMENTS: readonly ExamAlignment[] = [
   },
   {
     exam: "TOEFL iBT (from Jan 2026)",
+    tr: { exam: "TOEFL iBT (Ocak 2026'dan itibaren)", scale: "Bant 1–6", note: "21 Ocak 2026'dan bu yana TOEFL iBT her bölümü ve genel puanı yarım bantlarla, CEFR ile hizalanmış 1–6 ölçeğinde raporlar. Aynı bant, her bölümde aynı CEFR seviyesini gösterir." },
     owner: "ETS",
     scale: "Band 1–6",
     byLevel: { A1: "1.0–1.5", A2: "2.0–2.5", B1: "3.0–3.5", B2: "4.0–4.5", C1: "5.0–5.5", C2: "6.0" },
@@ -47,6 +51,7 @@ export const EXAM_ALIGNMENTS: readonly ExamAlignment[] = [
   },
   {
     exam: "TOEFL iBT (before 2026)",
+    tr: { exam: "TOEFL iBT (2026 öncesi)", scale: "Toplam 0–120", note: "21 Ocak 2026'dan önce girilen sınavlar 0–120 ölçeğini kullanır ve bu puanlar iki yıl geçerlidir. ETS, B1–C2 için asgari toplam puanları yayımlar; en yüksek puanlar için muhtemel seviyeyi C2 olarak tanımlar." },
     owner: "ETS",
     scale: "Total 0–120",
     byLevel: { B1: "42–71", B2: "72–94", C1: "95–113", C2: "114–120" },
@@ -56,6 +61,7 @@ export const EXAM_ALIGNMENTS: readonly ExamAlignment[] = [
   },
   {
     exam: "Cambridge English",
+    tr: { exam: "Cambridge English", scale: "Cambridge English Scale", note: "Cambridge English sınavları sonuçları, Cambridge'in CEFR'yi tamamlayacak şekilde tasarladığı Cambridge English Scale üzerinde raporlar. A2 Key, B1 Preliminary, B2 First, C1 Advanced ve C2 Proficiency adlarındaki seviyeyi hedefler; güçlü sonuçlar bir üst seviyede raporlanabilir." },
     owner: "Cambridge University Press & Assessment",
     scale: "Cambridge English Scale",
     byLevel: { A1: "100–119", A2: "120–139", B1: "140–159", B2: "160–179", C1: "180–199", C2: "200–230" },
@@ -65,6 +71,7 @@ export const EXAM_ALIGNMENTS: readonly ExamAlignment[] = [
   },
   {
     exam: "Duolingo English Test",
+    tr: { exam: "Duolingo English Test", scale: "Puan 10–160", note: "Duolingo, B1–C2 için dış uzmanlarca incelenmiş bir hizalama çalışması yayımlar. A1 ve A2 için aralık yayımlamaz." },
     owner: "Duolingo",
     scale: "Score 10–160",
     byLevel: { B1: "60–95", B2: "100–125", C1: "130–150", C2: "155–160" },

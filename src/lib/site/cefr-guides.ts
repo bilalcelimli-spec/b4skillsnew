@@ -7,9 +7,13 @@
  * are not a b4skills concordance claim.
  */
 
+import { LEVEL_GUIDES_TR } from "./cefr-guides-tr";
+
 export type GuideLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
+export type GuideLang = "en" | "tr";
 
 export interface LevelGuide {
+  lang: GuideLang;
   level: GuideLevel;
   slug: string;
   /** "Basic user", "Independent user", "Proficient user" (CEFR bands). */
@@ -30,7 +34,7 @@ export interface LevelGuide {
   faq: { q: string; a: string }[];
 }
 
-export const LEVEL_GUIDES: readonly LevelGuide[] = [
+const LEVEL_GUIDES_EN: readonly Omit<LevelGuide, "lang">[] = [
   {
     level: "A1",
     slug: "a1",
@@ -217,16 +221,52 @@ export const LEVEL_GUIDES: readonly LevelGuide[] = [
   },
 ];
 
-export const CEFR_GUIDE_HUB_PATH = "/cefr-levels";
-export const CEFR_EXAM_COMPARISON_PATH = "/cefr-levels/exam-comparison";
-export const levelGuidePath = (guide: Pick<LevelGuide, "slug">) => `${CEFR_GUIDE_HUB_PATH}/${guide.slug}`;
-export const CEFR_GUIDE_PATHS: readonly string[] = [CEFR_GUIDE_HUB_PATH, ...LEVEL_GUIDES.map(levelGuidePath), CEFR_EXAM_COMPARISON_PATH];
+export const LEVEL_GUIDES: readonly LevelGuide[] = LEVEL_GUIDES_EN.map((guide) => ({ ...guide, lang: "en" as const }));
+export { LEVEL_GUIDES_TR };
+
+/** Hub and exam comparison paths for each language. */
+export const GUIDE_SECTION_PATHS: Record<GuideLang, { hub: string; comparison: string }> = {
+  en: { hub: "/cefr-levels", comparison: "/cefr-levels/exam-comparison" },
+  tr: { hub: "/cefr-seviyeleri", comparison: "/cefr-seviyeleri/sinav-karsilastirma" },
+};
+export const CEFR_GUIDE_HUB_PATH = GUIDE_SECTION_PATHS.en.hub;
+export const CEFR_EXAM_COMPARISON_PATH = GUIDE_SECTION_PATHS.en.comparison;
+
+export const guidesFor = (lang: GuideLang): readonly LevelGuide[] => (lang === "tr" ? LEVEL_GUIDES_TR : LEVEL_GUIDES);
+export const levelGuidePath = (guide: Pick<LevelGuide, "slug" | "lang">) => `${GUIDE_SECTION_PATHS[guide.lang].hub}/${guide.slug}`;
+
+/** The guide section a path belongs to, if any. */
+export function guideLangForPath(path: string): GuideLang | undefined {
+  return (Object.keys(GUIDE_SECTION_PATHS) as GuideLang[]).find((lang) => {
+    const hub = GUIDE_SECTION_PATHS[lang].hub;
+    return path === hub || path.startsWith(`${hub}/`);
+  });
+}
+export const isCefrGuidePath = (path: string) => guideLangForPath(path) !== undefined;
+
+export const CEFR_GUIDE_PATHS: readonly string[] = (Object.keys(GUIDE_SECTION_PATHS) as GuideLang[]).flatMap((lang) => [
+  GUIDE_SECTION_PATHS[lang].hub,
+  ...guidesFor(lang).map(levelGuidePath),
+  GUIDE_SECTION_PATHS[lang].comparison,
+]);
 
 export function guideForPath(path: string): LevelGuide | undefined {
-  return LEVEL_GUIDES.find((guide) => levelGuidePath(guide) === path);
+  return [...LEVEL_GUIDES, ...LEVEL_GUIDES_TR].find((guide) => levelGuidePath(guide) === path);
 }
 
 export function neighbours(guide: LevelGuide): { previous?: LevelGuide; next?: LevelGuide } {
-  const i = LEVEL_GUIDES.indexOf(guide);
-  return { previous: LEVEL_GUIDES[i - 1], next: LEVEL_GUIDES[i + 1] };
+  const list = guidesFor(guide.lang);
+  const i = list.findIndex((g) => g.level === guide.level);
+  return { previous: list[i - 1], next: list[i + 1] };
+}
+
+/** The same guide page in the other language (hreflang pairs). */
+export function guideAlternates(path: string): Record<GuideLang, string> | undefined {
+  const lang = guideLangForPath(path);
+  if (!lang) return undefined;
+  const sections = GUIDE_SECTION_PATHS;
+  if (path === sections[lang].hub) return { en: sections.en.hub, tr: sections.tr.hub };
+  if (path === sections[lang].comparison) return { en: sections.en.comparison, tr: sections.tr.comparison };
+  const guide = guideForPath(path);
+  return guide ? { en: `${sections.en.hub}/${guide.slug}`, tr: `${sections.tr.hub}/${guide.slug}` } : undefined;
 }

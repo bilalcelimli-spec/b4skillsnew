@@ -74,7 +74,7 @@ async function main() {
       file: p.ogImage!,
       heading: p.name === "Home" ? "Adaptive English Assessment Platform" : p.name,
       summary: shortSummary(p.summary ?? p.description),
-      kicker: p.lang === "tr" ? "CEFR A1–C2 · Adaptif" : KICKER[p.kind],
+      kicker: p.lang === "tr" ? (p.kind === "guide" ? "CEFR rehberi" : "CEFR A1–C2 · Adaptif") : KICKER[p.kind],
       lang: p.lang,
     })),
   ];

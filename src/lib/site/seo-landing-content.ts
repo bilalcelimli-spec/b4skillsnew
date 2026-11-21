@@ -136,7 +136,7 @@ export const LANDING_CONTENT: Record<SeoVariant, LandingContent> = {
       { q: "Testi tekrar çözebilir miyim?", a: "Evet. Sorular geniş bir soru bankasından adaptif olarak seçildiği için tekrar çözdüğünüzde büyük olasılıkla aynı sorularla karşılaşmazsınız." },
     ],
     levelsHeading: "CEFR seviyeleri ne anlama geliyor?",
-    levelsText: "Testten önce veya sonra her seviyede neler yapılabildiğini okuyun (İngilizce).",
+    levelsText: "Testten önce veya sonra her seviyede neler yapılabildiğini okuyun.",
   },
   "cefr-english-test": {
     lang: "en",
