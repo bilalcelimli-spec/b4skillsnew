@@ -52,3 +52,19 @@ export function stripAnswerKeys(value: unknown): unknown {
       .map(([key, nested]) => [key, stripAnswerKeys(nested)]),
   );
 }
+
+/**
+ * Item content as a candidate may receive it.
+ *
+ * On top of the answer keys, a listening item loses `passage`: in the live bank
+ * that field holds the spoken script (135 of 417 active items repeated it there,
+ * 2026-11-21), so sending it would let the candidate read what they should hear.
+ * The "[Audio: …]" placeholder is kept — the renderer uses it to place the player.
+ */
+export function candidateItemContent(skill: unknown, content: unknown): unknown {
+  const safe = stripAnswerKeys(content ?? {});
+  if (String(skill).toUpperCase() !== "LISTENING") return safe;
+  if (!safe || typeof safe !== "object" || Array.isArray(safe)) return safe;
+  const { passage, ...rest } = safe as Record<string, unknown>;
+  return typeof passage === "string" && passage.trim().startsWith("[Audio:") ? safe : rest;
+}

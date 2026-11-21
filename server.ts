@@ -22,6 +22,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "url";
 import cors from "cors";
 import * as crypto from "crypto";
@@ -40,7 +41,7 @@ import { BillingService } from "./src/lib/enterprise/billing-service.js";
 import { SecretsManager } from "./src/lib/secrets/secrets-manager.js";
 import { assertProductionSecrets, buildCorsMiddleware, buildHelmetMiddleware, buildOriginAllowlist } from "./src/lib/security/http-security.js";
 import { RegisterBody, LoginBody, ForgotPasswordBody, ResetPasswordBody } from "./src/lib/security/schemas/auth.js";
-import { SessionLaunchBody, SessionRespondBody, SessionCompleteBody, SessionFeedbackBody } from "./src/lib/security/schemas/sessions.js";
+import { SessionLaunchBody, SessionRespondBody, SessionAudioPlayBody, SessionCompleteBody, SessionFeedbackBody } from "./src/lib/security/schemas/sessions.js";
 import { CreateItemBody, UpdateItemBody, ItemPipelineBody, ItemReviewBody, ItemContentPatchBody } from "./src/lib/security/schemas/items.js";
 import { SystemConfigBody } from "./src/lib/security/schemas/calibration.js";
 import { CreateWebhookBody, BrandingPatchBody, UpdateSettingsBody, SsoConfigBody } from "./src/lib/security/schemas/organizations.js";
@@ -55,7 +56,8 @@ import { evaluateFreemiumResponse } from "./src/lib/product-lines/freemium-produ
 import { estimateTheta as estimatePlacementTheta } from "./src/lib/assessment-engine/estimator.js";
 import { thetaToCefr as placementThetaToCefr } from "./src/lib/cefr/cefr-framework.js";
 import { shouldExcludeResponseFromAbility } from "./src/lib/scoring/score-evidence.js";
-import { stripAnswerKeys } from "./src/lib/security/answer-sanitizer.js";
+import { candidateItemContent } from "./src/lib/security/answer-sanitizer.js";
+import { audioPlayKey, audioSource, registerAudioPlay } from "./src/lib/assessment-engine/listening-delivery.js";
 import { getSharedRedis, closeSharedRedis } from "./src/lib/redis/shared-redis.js";
 import { accessTokenUserId, clientIpKey, createLimiterStoreFactory, ipAndEmailKey, limitFromEnv, userOrIpKey } from "./src/lib/security/rate-limit-keys.js";
 import { createPlacementSessionStore, type PlacementSessionState } from "./src/lib/product-lines/placement-session-store.js";
@@ -1932,6 +1934,73 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
     } catch (error) {
       if(error instanceof AppError)return res.status(error.statusCode).json({error:error.message,code:error.code});
       res.status(500).json({ error: "Failed to submit response" });
+    }
+  });
+
+  // One play of the current listening recording. The server owns the count, so
+  // reloading the page or editing client state cannot buy extra plays.
+  app.post("/api/sessions/:id/audio-play", authMiddleware, async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!(await assertSessionOwnership(req, res, id))) return;
+      const body = validate(SessionAudioPlayBody, req.body, res);
+      if (!body) return;
+      try {
+        // Plays are counted per recording, so its questions share one budget.
+        const played = await prisma.item.findUnique({ where: { id: body.itemId }, select: { id: true, content: true } });
+        if (!played) return res.status(404).json({ error: "Item not found" });
+        res.json(await registerAudioPlay(id, audioPlayKey({ id: played.id, metadata: played.content })));
+      } catch (err: any) {
+        if (process.env.NODE_ENV !== "production" && (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-"))) {
+          return res.json({ allowed: true, playsUsed: null, maxPlays: null });
+        }
+        throw err;
+      }
+    } catch (error) {
+      if (error instanceof AppError) return res.status(error.statusCode).json({ error: error.message, code: error.code });
+      console.error("[sessions/audio-play] Failed to register play", error);
+      res.status(500).json({ error: "Failed to register audio play" });
+    }
+  });
+
+  // Recording of the question on screen. The stored address never reaches the
+  // browser; this route serves the bytes to the session owner only, and only
+  // while that question is the one being answered.
+  app.get("/api/sessions/:id/audio/:itemId", authMiddleware, async (req, res) => {
+    try {
+      const { id, itemId } = req.params;
+      if (!(await assertSessionOwnership(req, res, id))) return;
+      const session = await prisma.session.findUnique({ where: { id }, select: { status: true, metadata: true } });
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      if (session.status !== "IN_PROGRESS" || (session.metadata as Record<string, unknown> | null)?.currentItemId !== itemId) {
+        return res.status(403).json({ error: "Recording is not available" });
+      }
+      const item = await prisma.item.findUnique({ where: { id: itemId }, select: { content: true } });
+      const source = audioSource((item?.content as Record<string, unknown> | null)?.audioUrl);
+      if (!source) return res.status(404).json({ error: "Recording not found" });
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      if (source.kind === "local") {
+        const file = ["dist", "public"].map(root => path.join(process.cwd(), root, "audio", source.file)).find(candidate => fs.existsSync(candidate));
+        if (!file) return res.status(404).json({ error: "Recording not found" });
+        return res.sendFile(file, { cacheControl: false, lastModified: false, etag: false });
+      }
+      const upstream = await fetch(source.url, {
+        headers: typeof req.headers.range === "string" ? { Range: req.headers.range } : {},
+        redirect: "error",
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!upstream.ok || !upstream.body) return res.status(upstream.status === 416 ? 416 : 502).json({ error: "Recording is unavailable" });
+      res.status(upstream.status);
+      for (const header of ["content-type", "content-length", "content-range", "accept-ranges"]) {
+        const value = upstream.headers.get(header);
+        if (value) res.setHeader(header, value);
+      }
+      if (!upstream.headers.get("accept-ranges")) res.setHeader("Accept-Ranges", "bytes");
+      Readable.fromWeb(upstream.body as any).on("error", () => res.destroy()).pipe(res);
+    } catch (error) {
+      console.error("[sessions/audio] Failed to serve recording", error);
+      if (!res.headersSent) res.status(500).json({ error: "Failed to load recording" });
     }
   });
 
@@ -4480,7 +4549,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
               type: r.item.type,
               skill: r.item.skill,
               cefrLevel: r.item.cefrLevel,
-              content: stripAnswerKeys(r.item.content),
+              content: candidateItemContent(r.item.skill, r.item.content),
             };
             return { ...r, item: safeItem };
           })
@@ -5929,7 +5998,7 @@ ${codeSection}
   // Strip answer-revealing fields before sending an item to the client
   const stripAnswers = (item: any) => {
     if (!item) return item;
-    return { ...item, content: stripAnswerKeys(item.content ?? {}) };
+    return { ...item, content: candidateItemContent(item.skill, item.content ?? {}) };
   };
 
   const isPlacementEligible = (item: any) => {

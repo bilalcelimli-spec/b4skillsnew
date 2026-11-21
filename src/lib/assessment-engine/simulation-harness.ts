@@ -33,7 +33,8 @@ import { CATSelector, _resetDpStoreForTests, type ShadowItem, type ShadowStrateg
 import type { SequencingContext } from "../selection/sequencing-rules.js";
 import { crossSkillPriors, isAdaptiveEligible, isPretestEligible, profileAbilityPrior, profileThetaRange, sectionAbility } from "./adaptive-policy.js";
 import { selectPretestItem } from "./pretest-selection.js";
-import { prepareSelectionPool, evaluateSectionStop, shouldAdministerPretest } from "./section-flow.js";
+import { prepareSelectionPool, evaluateSectionStop, shouldAdministerPretest, planSetSibling } from "./section-flow.js";
+import { countSplitSets, pretestCandidates, setProgress } from "./passage-cap.js";
 import { taskFamilyKey } from "./task-family.js";
 import { AssessmentEngine } from "./engine.js";
 import { getExposureStore, resetExposureStoreForSimulation } from "./exposure-store.js";
@@ -220,10 +221,9 @@ export function defaultThetaSampler(profile: ProductLineProfile, cohortSd = 1): 
 function toEngineItem(row: BankSnapshotItem): Item & { tags: string[]; cefrLevel: string } {
   const metadata: Record<string, unknown> = {};
   // passage-cap derives its key from passage/ttsScript text; a stable surrogate keeps it active.
-  if (row.passageKey) {
-    metadata.passage = `passage:${row.passageKey}`;
-    metadata.setId = row.passageKey;
-  }
+  // No `setId`: live items do not carry one (14 of 869 reading/listening items, 2026-11-21),
+  // and setting it here hid split sets from every simulation.
+  if (row.passageKey) metadata.passage = `passage:${row.passageKey}`;
   if (row.productLine) metadata.productLine = row.productLine;
   const tags = [...(row.tags ?? [])];
   // Restore the field taskFamilyKey reads, so section-flow sees the same family as live.
@@ -423,6 +423,8 @@ export interface SimulationReport {
   minLength: number;
   maxLength: number;
   poolFallbacks: Record<string, number>;
+  /** Texts / recordings used for several questions, and how many had another item between their questions. */
+  setIntegrity: { sets: number; split: number };
   selectionLatencyMs: { p50: number; p95: number; max: number; calls: number };
   maxExposureRate: number;
   shareOverCeiling: number;
@@ -519,6 +521,7 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
   const exposures = new Map<string, number>();
   const latencies: number[] = [];
   const poolFallbacks: Record<string, number> = {};
+  const setIntegrity = { sets: 0, split: 0 };
   const simulees: SimuleeResult[] = [];
 
   for (let i = 0; i < n; i++) {
@@ -546,12 +549,15 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
       let sectionCount = 0;
       // Every exit from the loop below assigns the reason (stop rule or empty pool).
       let reason: string;
+      // Second question promised when a recording / text opens (same as the live flow).
+      let plannedItemId: string | null = null;
       for (;;) {
         const totalOperational = state.responses.filter((r) => !r.isPretest).length;
         const ability = sectionAbility(state, skill, totalOperational === 0 ? state.theta : priorMean, priorSd, { profile });
         const sectionDict: Record<string, Item> = {};
         for (const item of administered) if (item.skill === skill) sectionDict[item.id] = item;
         const stop = evaluateSectionStop({
+          setOpen: plannedItemId !== null && !state.usedItemIds.has(plannedItemId),
           profile, sectionIndex, sectionCount, totalOperationalResponses: totalOperational, ability,
           responses: state.responses.filter((r) => !r.isPretest && sectionDict[r.itemId]),
           items: sectionDict,
@@ -560,11 +566,14 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
 
         // Pretest slot (same policy as the live flow); unscored, outside the budget.
         const pretestsSoFar = state.responses.filter((r) => r.isPretest).length;
+        const itemPool = sectionItems.filter((item) => !state.usedItemIds.has(item.id));
+        const currentSet = setProgress(itemPool, administered, skill);
         if (shouldAdministerPretest({
+          setOpen: currentSet.siblings.length > 0, closedSetLength: currentSet.run,
           profile, skill, pretestRatio, totalOperationalResponses: totalOperational,
           pretestAdministered: pretestsSoFar, sectionCount, sectionMaxItems: stop.sectionMaxItems,
         })) {
-          const pool = (pretestBySkill.get(skill) ?? []).filter((item) => !state.usedItemIds.has(item.id));
+          const pool = pretestCandidates((pretestBySkill.get(skill) ?? []).filter((item) => !state.usedItemIds.has(item.id)), administered);
           const pretest = selectPretestItem(pool, ability.theta);
           if (pretest) {
             const score = simulateResponse(pretest, trueSkillTheta[skill]!, rng);
@@ -576,10 +585,9 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
           }
         }
 
-        const itemPool = sectionItems.filter((item) => !state.usedItemIds.has(item.id));
         const prepared = prepareSelectionPool({
           profile, skill, itemPool, administeredItems: administered, ability,
-          totalOperationalResponses: totalOperational, sectionCount, sessionId,
+          totalOperationalResponses: totalOperational, sectionCount, sessionId, plannedItemId,
         });
         for (const fb of prepared.fallbacks) poolFallbacks[fb] = (poolFallbacks[fb] ?? 0) + 1;
         const seqCtx: SequencingContext = {
@@ -591,7 +599,11 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
           sessionId,
         };
         const started = process.hrtime.bigint();
-        const result = await selector.selectNext(prepared.pool as ShadowItem[], { ...state, ...ability }, seqCtx, profile.blueprint);
+        let result = await selector.selectNext(prepared.pool as ShadowItem[], { ...state, ...ability }, seqCtx, profile.blueprint);
+        if (!result && prepared.retryPool) {
+          poolFallbacks.set_interrupted = (poolFallbacks.set_interrupted ?? 0) + 1;
+          result = await selector.selectNext(prepared.retryPool as ShadowItem[], { ...state, ...ability }, seqCtx, profile.blueprint);
+        }
         latencies.push(Number(process.hrtime.bigint() - started) / 1e6);
         if (!result) {
           poolFallbacks.pool_exhausted = (poolFallbacks.pool_exhausted ?? 0) + 1;
@@ -599,6 +611,8 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
           break;
         }
         const item = result.item;
+        plannedItemId = planSetSibling({ itemPool, administeredItems: administered, chosen: item, theta: ability.theta,
+          sectionCount, sectionMaxItems: stop.sectionMaxItems })?.id ?? null;
         const score = simulateResponse(item, trueSkillTheta[skill]!, rng);
         const skillPriors = crossSkillPriors(state, profile, prior);
         state = engine.processResponse(state, { itemId: item.id, score, latencyMs: 10_000 }, itemMap, { skillPriors });
@@ -608,6 +622,10 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
       }
       sectionStops.push({ skill, items: sectionCount, reason });
     }
+
+    const sets = countSplitSets(administered);
+    setIntegrity.sets += sets.sets;
+    setIntegrity.split += sets.split;
 
     const weighted = sectionStops.reduce((acc, stop) => {
       acc.sum += stop.items * (trueSkillTheta[stop.skill] ?? trueTheta);
@@ -733,6 +751,7 @@ export async function simulateProfile(bank: BankSnapshot, options: SimulationOpt
     minLength: lengths.length ? Math.min(...lengths) : 0,
     maxLength: lengths.length ? Math.max(...lengths) : 0,
     poolFallbacks,
+    setIntegrity,
     selectionLatencyMs: {
       p50: percentile(sortedLatency, 0.5),
       p95: percentile(sortedLatency, 0.95),

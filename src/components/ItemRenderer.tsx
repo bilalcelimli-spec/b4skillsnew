@@ -55,6 +55,33 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
   const activeMode = modes.includes(responseMode) ? responseMode : modes[0];
   const itemSkill = sourceSkill;
   const itemId = (item as any).id as string | undefined;
+  // Live sessions play listening audio under exam conditions; the server counts each play.
+  // Previews (content review) and offline demo sessions keep the free player.
+  const audioPolicy = (item as any).audio as { maxPlays?: number; playsUsed?: number } | undefined;
+  const inExam = sessionId !== "preview" && !sessionId.startsWith("demo-session-") && !!itemId;
+  const examAudio = inExam
+    ? {
+        maxPlays: audioPolicy?.maxPlays ?? 2,
+        exam: {
+          playsUsed: audioPolicy?.playsUsed ?? 0,
+          onPlayStart: async () => {
+            const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/audio-play`, {
+              method: "POST", credentials: "include", signal: AbortSignal.timeout(10000),
+              headers: { "Content-Type": "application/json" }, body: JSON.stringify({ itemId }),
+            });
+            if (!res.ok) throw new Error("audio-play failed");
+            return await res.json() as { allowed: boolean; playsUsed?: number | null };
+          },
+        },
+      }
+    : { maxPlays: 2 };
+  // A recording already heard for its previous question does not start by itself again.
+  const autoPlayAudio = !(inExam && (audioPolicy?.playsUsed ?? 0) > 0);
+  // Questions of one recording share the screen: the next one is shown read-only while listening.
+  const recordingSet = itemSkill === "LISTENING"
+    ? (item as any).set as { position?: number; size?: number; upcoming?: Array<{ id: string; type?: string; metadata?: Record<string, any> }> } | undefined
+    : undefined;
+  const upcomingQuestions = recordingSet?.upcoming ?? [];
   const gapChoices: Array<{ value: string; text: string }> = Array.isArray(content.wordBank)
     ? content.wordBank.filter((word: unknown) => typeof word === "string").map((word: string) => ({ value: word, text: word }))
     : item.type === "FILL_IN_BLANKS" && Array.isArray(content.options)
@@ -200,7 +227,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           <div key="audio-player" className="mb-6">
             <AudioPlayer
               src={audioSrc}
-              maxPlays={2}
+              {...examAudio}
               autoPlay={false}
               showWaveform={true}
               aria-label="Listening audio for this question"
@@ -274,7 +301,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     const source = content.passage || content.input || content.stimulus || "";
     return <div className="space-y-5" role="form" aria-labelledby="integrated-prompt">
       {renderPassage(source)}
-      {content.audioUrl && !source.startsWith("[Audio:") && <AudioPlayer key={itemId} src={content.audioUrl} maxPlays={2} showWaveform />}
+      {content.audioUrl && !source.startsWith("[Audio:") && <AudioPlayer key={itemId} src={content.audioUrl} {...examAudio} showWaveform />}
       <h3 id="integrated-prompt" className="text-lg font-bold whitespace-pre-line">{content.prompt.replace(/\[EXAMINER:[^\]]*\]/gi, "").trim()}</h3>
       {renderProductiveEditors(content.wordRange?.min ?? content.minWords ?? 50, content.wordRange?.max ?? content.maxWords)}
     </div>;
@@ -286,7 +313,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
       return (
         <div className="space-y-6">
           {content.audioUrl ? (
-            <AudioPlayer key={itemId} src={content.audioUrl} maxPlays={2} autoPlay={true} countdownSeconds={3} showWaveform={true} onAllPlaysUsed={() => {}} />
+            <AudioPlayer key={itemId} src={content.audioUrl} {...examAudio} autoPlay={autoPlayAudio} countdownSeconds={3} showWaveform={true} onAllPlaysUsed={() => {}} />
           ) : (
             <div className="p-6 bg-indigo-50 border border-indigo-200 rounded-2xl text-sm text-indigo-700" role="status">
               Listening Task — audio will be available in the live assessment.
@@ -558,8 +585,8 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
             <AudioPlayer
               key={itemId}
               src={content.audioUrl}
-              maxPlays={2}
-              autoPlay={true}
+              {...examAudio}
+              autoPlay={autoPlayAudio}
               countdownSeconds={3}
               showWaveform={true}
               onAllPlaysUsed={() => {}}
@@ -806,7 +833,7 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           {/* Stimulus material (reading input, chart description, etc.) */}
           {renderPassage(hasStimulus ? stimulus : undefined)}
           {content.audioUrl && !stimulus.startsWith("[Audio:") && (
-            <AudioPlayer key={itemId} src={content.audioUrl} maxPlays={2} showWaveform />
+            <AudioPlayer key={itemId} src={content.audioUrl} {...examAudio} showWaveform />
           )}
 
           {/* Task card */}
@@ -897,7 +924,32 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
           </div>
         </fieldset>
       )}
+      {recordingSet && (recordingSet.size ?? 0) > 1 && (
+        <p className="mb-4 text-sm font-semibold text-indigo-800" role="note">
+          This recording has {recordingSet.size} questions — question {recordingSet.position} of {recordingSet.size}.
+          {upcomingQuestions.length > 0 ? " Read the next question below before you listen." : " You may listen again only if you have plays left."}
+        </p>
+      )}
       {renderItem()}
+      {upcomingQuestions.map((next) => {
+        const nextContent = next.metadata ?? {};
+        const nextPrompt = String(nextContent.prompt || nextContent.stem || nextContent.question || "").replace(/\[EXAMINER:[^\]]*\]/gi, "").trim();
+        const nextOptions: unknown[] = Array.isArray(nextContent.options) ? nextContent.options : [];
+        return (
+          <section key={next.id} className="mt-8 p-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50" aria-label="Next question for this recording">
+            <h4 className="text-xs font-bold uppercase tracking-widest text-slate-500">Next question for this recording — you will answer it after this one</h4>
+            <p className="mt-3 text-base font-semibold text-slate-800 whitespace-pre-line">{nextPrompt}</p>
+            {nextOptions.length > 0 && (
+              <ul className="mt-3 space-y-1.5 text-sm text-slate-700">
+                {nextOptions.map((option, index) => {
+                  const text = typeof option === "string" ? option : String((option as any)?.text ?? "");
+                  return text ? <li key={index} className="pl-3 border-l-2 border-slate-300">{text}</li> : null;
+                })}
+              </ul>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 };

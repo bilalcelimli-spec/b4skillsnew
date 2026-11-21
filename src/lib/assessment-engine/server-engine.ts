@@ -12,7 +12,8 @@ import { shouldExcludeResponseFromAbility, hasCompleteScoringEvidence } from "..
 import { estimateTheta } from "./estimator.js";
 import { adaptiveItemWhere, pretestItemWhere, sectionAbility, profileAbilityPrior, crossSkillPriors } from "./adaptive-policy.js";
 import type { ProductLineProfile } from "../product-lines/profiles.js";
-import { prepareSelectionPool, evaluateSectionStop, shouldAdministerPretest } from "./section-flow.js";
+import { prepareSelectionPool, evaluateSectionStop, shouldAdministerPretest, planSetSibling } from "./section-flow.js";
+import { pretestCandidates, setProgress } from "./passage-cap.js";
 import { selectPretestItem } from "./pretest-selection.js";
 import { DEFAULT_SECTION_STOP_RULES } from "./stop-rules.js";
 import { AssessmentEngine } from "./engine";
@@ -22,7 +23,8 @@ import { getProfile } from "../product-lines/profiles.js";
 import { resolveMstPhase, buildMstTagFilter } from "../selection/mst-router.js";
 import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint, IrtParameters } from "./types";
 import { prisma } from "../prisma";
-import { stripAnswerKeys } from "../security/answer-sanitizer.js";
+import { candidateItemContent } from "../security/answer-sanitizer.js";
+import { audioPlayKey, audioPlaysUsed, audioPolicy, withSessionAudio } from "./listening-delivery.js";
 import { shuffleMcqOptions } from "./mcq-options.js";
 import { scoreObjectiveResponse } from "./objective-response.js";
 import { productiveScoringMode } from "./productive-response.js";
@@ -567,7 +569,11 @@ export const AssessmentService = {
     const sectionItemDict: Record<string, Item> = Object.fromEntries(
       session.responses.filter(r => r.item && r.item.skill === (currentSkill as string))
         .map(r => [r.itemId, dbItemToEngineItem(r.item)]));
+    // The second question of the recording / text on screen was promised with the first.
+    const plannedSetItemId = typeof meta.plannedSetItemId === "string" && meta.plannedSetItemId.length > 0 &&
+      !state.usedItemIds.has(meta.plannedSetItemId) ? meta.plannedSetItemId as string : null;
     const sectionStop = evaluateSectionStop({
+      setOpen: plannedSetItemId !== null && !hasOutstandingItem,
       profile, sectionIndex, sectionCount,
       totalOperationalResponses: session.responses.filter(response => !response.isPretest).length,
       ability, hasOutstandingItem,
@@ -699,8 +705,12 @@ export const AssessmentService = {
     // Pretest responses never enter θ, the section count or the budget; they
     // feed the calibration pipeline (pretest-calibration-pipeline.ts).
     const pretestAdministered = session.responses.filter((r) => r.isPretest).length;
+    const administeredItems: Item[] = session.responses.map(response => dbItemToEngineItem(response.item));
+    // A pretest never splits the questions of one recording / text.
+    const currentSet = setProgress(itemPool, administeredItems, currentSkill);
     let pretestItem: Item | null = null;
     if (!hasOutstandingItem && shouldAdministerPretest({
+      setOpen: currentSet.siblings.length > 0, closedSetLength: currentSet.run,
       profile, skill: currentSkill,
       pretestRatio: engine.getConfig().pretestRatio ?? 0,
       totalOperationalResponses: totalNonPretestResponses,
@@ -712,7 +722,7 @@ export const AssessmentService = {
           ...pretestItemWhere(profile, currentSkill),
           id: { notIn: Array.from(crossSessionUsedIds) },
         });
-        pretestItem = selectPretestItem(pretestRows.map((row) => dbItemToEngineItem(row)), ability.theta);
+        pretestItem = selectPretestItem(pretestCandidates(pretestRows.map((row) => dbItemToEngineItem(row)), administeredItems), ability.theta);
       } catch (err) {
         // A pretest slot is never allowed to interrupt an exam.
         logger.warn({ err, sessionId, skill: currentSkill }, "pretest slot: pool lookup failed; serving an operational item");
@@ -721,11 +731,12 @@ export const AssessmentService = {
 
     // ── POOL PREPARATION (pure; shared with the simulation harness) ───────────
     // Warm-up filter → seeded shuffle → content-tag diversity → item-type
-    // rotation → passage cap, in section-flow.ts so audits run the live path.
-    const administeredItems: Item[] = session.responses.map(response => dbItemToEngineItem(response.item));
+    // rotation → passage cap (or the open set's remaining questions), in
+    // section-flow.ts so audits run the live path.
     const prepared = prepareSelectionPool({
       profile, skill: currentSkill, itemPool, administeredItems, ability,
       totalOperationalResponses: totalNonPretestResponses, sectionCount, sessionId,
+      plannedItemId: plannedSetItemId,
     });
     for (const reason of prepared.fallbacks) recordCatPoolFallback(profile.name, currentSkill as string, reason);
 
@@ -751,13 +762,19 @@ export const AssessmentService = {
       outstandingItem = dbItemToEngineItem(served);
     }
     const selectionStartedAt = process.hrtime.bigint();
-    const catResult = outstandingItem ? { item: outstandingItem } : pretestItem ? { item: pretestItem } : await catSelector.selectNext(
-      catPool as ShadowItem[],
+    const select = (pool: Item[]) => catSelector.selectNext(
+      pool as ShadowItem[],
       selectionState,
       seqCtx,
       profile.blueprint,
       engine.getConfig().useRlSelector === true,
     );
+    let catResult = outstandingItem ? { item: outstandingItem } : pretestItem ? { item: pretestItem } : await select(catPool);
+    if (!catResult && prepared.retryPool) {
+      // None of the open set's remaining questions could be served: open a new set.
+      recordCatPoolFallback(profile.name, currentSkill as string, "set_interrupted");
+      catResult = await select(prepared.retryPool);
+    }
     if (!outstandingItem && !pretestItem) {
       recordCatSelection(profile.name, currentSkill as string, catPool.length,
         Number(process.hrtime.bigint() - selectionStartedAt) / 1e6);
@@ -784,6 +801,23 @@ export const AssessmentService = {
         recordCatItemExposure(profile.name, exposureStore.getExposureRateSync(nextItem.id));
       } catch { /* metrics are best-effort */ }
     }
+
+    // ── SET PLAN ──────────────────────────────────────────────────────────────
+    // When a recording / text opens, its second question is fixed now, so a
+    // listening candidate can read both questions while the recording plays.
+    const upcomingItem: Item | null = outstandingItem
+      ? (plannedSetItemId ? itemPool.find(item => item.id === plannedSetItemId) ?? null : null)
+      : pretestItem ? null
+      : planSetSibling({ itemPool, administeredItems, chosen: nextItem, theta: ability.theta,
+          sectionCount, sectionMaxItems: sectionStop.sectionMaxItems });
+    const continuesSet = !pretestItem && currentSet.siblings.some(item => item.id === nextItem.id);
+    const candidateView = (item: Item) => {
+      const content = { ...(item.metadata || {}) };
+      const shuffled = shuffleMcqOptions(content.options, content.correctAnswer, sessionId, item.id);
+      if (shuffled) content.options = shuffled.shuffledOptions;
+      // Same recording as the question on screen: it needs no address of its own.
+      return candidateItemContent(item.skill, { ...content, audioUrl: undefined });
+    };
 
     // ── ANSWER SECURITY ──────────────────────────────────────────────────────
     // Strip sensitive answer/rubric fields before sending to client.
@@ -814,6 +848,12 @@ export const AssessmentService = {
         AND COALESCE(metadata->>'currentItemId','') = ${typeof meta.currentItemId==='string'?meta.currentItemId:''}
     `;
     if (claimedItem === 0) return this.getNextItem(sessionId);
+    if (!outstandingItem && !pretestItem) {
+      await prisma.$executeRaw`
+        UPDATE "Session" SET metadata = jsonb_set(metadata, '{plannedSetItemId}', ${JSON.stringify(upcomingItem?.id ?? "")}::jsonb)
+        WHERE id = ${sessionId} AND metadata->>'currentItemId' = ${nextItem.id}
+      `;
+    }
     if (!outstandingItem && anchorIds.has(nextItem.id)) {
       await prisma.$executeRaw`
         UPDATE "Session" SET metadata = jsonb_set(metadata, '{anchorAdministered}',
@@ -821,7 +861,7 @@ export const AssessmentService = {
         WHERE id = ${sessionId} AND metadata->>'currentItemId' = ${nextItem.id}
       `;
     }
-    const candidateSafeContent = stripAnswerKeys(safeContent);
+    const candidateSafeContent = withSessionAudio(candidateItemContent(nextItem.skill, safeContent), sessionId, nextItem.id);
 
     // Compute elapsed time to send alongside the item so the UI can render
     // an accurate progress indicator without a separate status round-trip.
@@ -831,7 +871,17 @@ export const AssessmentService = {
       stop: false,
       sectionTransition: false,
       // The candidate never learns which items are unscored calibration items.
-      item: { ...nextItem, isPretest: undefined, status: undefined, metadata: candidateSafeContent },
+      item: {
+        ...nextItem, isPretest: undefined, status: undefined, metadata: candidateSafeContent,
+        // Plays are counted on the server; a reload resumes with what is left.
+        ...(String(nextItem.skill) === "LISTENING" && safeContent.audioUrl ? { audio: audioPolicy(meta, audioPlayKey(nextItem)) } : {}),
+        // Questions of one recording share the screen: the next one is shown read-only.
+        ...(String(nextItem.skill) === "LISTENING" && (upcomingItem || continuesSet) ? { set: {
+          position: continuesSet ? currentSet.run + 1 : 1,
+          size: continuesSet ? currentSet.run + 1 : 2,
+          upcoming: upcomingItem ? [{ id: upcomingItem.id, type: upcomingItem.type, metadata: candidateView(upcomingItem) }] : [],
+        } } : {}),
+      },
       currentSection: currentSkill as string,
       sectionIndex,
       totalSections: activeSectionOrder.length,
@@ -970,6 +1020,10 @@ export const AssessmentService = {
         logger.warn({ sessionId, itemId, rawTheta: newState.theta }, "Theta out of bounds — clamping to [-6, 6]");
         newState.theta = Math.max(-6, Math.min(6, Number.isFinite(newState.theta) ? newState.theta : 0));
       }
+      // Delivery condition of a listening item: how often its recording was started.
+      const listeningTelemetry = String(item.skill) === "LISTENING"
+        ? { audioPlayCount: audioPlaysUsed(latest.metadata, audioPlayKey(item)) }
+        : undefined;
               const saved = await tx.response.create({
                 data: {
                   sessionId,
@@ -985,6 +1039,7 @@ export const AssessmentService = {
           rtFlag: rtFlag,
           order: latest.responses.length + 1,
           metadata: aiResult ? {
+            ...listeningTelemetry,
             aiFeedback: (aiResult as any).feedback,
             confidence: (aiResult as any).confidence,
             speakingFeatures: (aiResult as any).speakingFeatures,
@@ -1001,7 +1056,7 @@ export const AssessmentService = {
             scoringPasses: scoringDecision?.scoringPasses,
             // Async scoring marker — updated by scoring-queue when AI returns
             pendingAsyncScore: (aiResult as any).pendingAsyncScore ?? false,
-          } : undefined
+          } : listeningTelemetry
         } as any
       });
       await tx.session.update({
@@ -1791,7 +1846,7 @@ export const AssessmentService = {
 
     // Pre-save validation
     if (itemData.skill && parsedContent) {
-      const validation = await validateItemBeforeSave(itemData.skill, parsedContent);
+      const validation = await validateItemBeforeSave(itemData.skill, parsedContent, itemData.type);
       if (!validation.success) {
         throw AppError.unprocessable(
           `Item validation failed: ${validation.error}`
@@ -1833,7 +1888,7 @@ export const AssessmentService = {
     const skill = itemData.skill || existingItem.skill;
     const contentToValidate = parsedContent ?? existingItem.content;
     if (skill && contentToValidate) {
-      const validation = await validateItemBeforeSave(skill, contentToValidate);
+      const validation = await validateItemBeforeSave(skill, contentToValidate, itemData.type ?? existingItem.type);
       if (!validation.success) {
         throw AppError.unprocessable(
           `Item validation failed: ${validation.error}`
