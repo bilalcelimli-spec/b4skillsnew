@@ -57,3 +57,20 @@ describe("exam alignments", () => {
     }
   });
 });
+
+describe("SEO landing page depth", () => {
+  it("server-renders each landing page with long-form content, level links and its FAQ as structured data", async () => {
+    const { LANDING_CONTENT } = await import("../src/lib/site/seo-landing-content");
+    for (const [variant, content] of Object.entries(LANDING_CONTENT)) {
+      const path = `/${variant}`;
+      const { html } = render(path);
+      const words = html.replace(/<[^>]+>/g, " ").split(/\s+/).filter(Boolean).length;
+      expect(words, path).toBeGreaterThan(700);
+      expect(html).toContain('href="/cefr-levels/b2"');
+      for (const item of content.faq) expect(html).toContain(item.q.replace(/'/g, "&#x27;"));
+      const head = applySeoToHtml(SHELL, seoPageFor(path)!, { baseUrl: BASE });
+      const faq = [...head.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/g)].map((m) => JSON.parse(m[1])).find((ld) => ld["@type"] === "FAQPage");
+      expect(faq.mainEntity.map((q: { name: string }) => q.name), path).toEqual(content.faq.map((f) => f.q));
+    }
+  });
+});
