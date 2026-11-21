@@ -74,7 +74,8 @@ it('starts with the server candidate identity after code redemption switches acc
     : url==='/api/codes/redeem' ? {success:true,candidateId:'new-candidate',organizationId:'new-org',productLine:'General English'} : []})));
   render(<MemoryRouter initialEntries={['/dashboard']}><App/><LocationProbe/></MemoryRouter>);
   fireEvent.click(await screen.findByRole('button',{name:'Enter Exam Code'}));
-  fireEvent.change(screen.getByLabelText('Exam code'),{target:{value:'ABC1234567'}});
+  // The code entry screen is loaded on demand, so wait for it.
+  fireEvent.change(await screen.findByLabelText('Exam code'),{target:{value:'ABC1234567'}});
   fireEvent.click(screen.getByRole('button',{name:'Verify Code'}));
   await screen.findByRole('heading',{name:'Candidate Details'});
   for(const [label,value] of [['First Name','Ada'],['Last Name','Yılmaz'],['Email Address','ada@example.test'],['School / Organization','School'],['Grade / Level','5']])fireEvent.change(screen.getByLabelText(label),{target:{value}});

@@ -12,13 +12,8 @@ import { useScoringStatus } from "./hooks/useScoringStatus";
 import { thetaToCefr, thetaToBeps, CEFR_META } from "./lib/cefr/cefr-framework";
 import { CefrLevelCard } from "./components/CefrLevelCard";
 
-import { AuthPage } from "./components/AuthPage";
-import { CodeEntryPage } from "./components/CodeEntryPage";
-import { CheckoutPage } from "./components/CheckoutPage";
 import { DeleteAccountButton } from "./components/DeleteAccountDialog";
-import { PaymentResultPage } from "./components/PaymentResultPage";
 import { PURCHASE_PLANS, type PurchasePlanId } from "./lib/payments/purchase-policy";
-import { SharedReportPage } from "./components/SharedReportPage";
 type User = { uid: string; email: string; displayName?: string; role?: string };
 
 import { Button } from "./components/ui/Button";
@@ -78,9 +73,15 @@ const EmailVerifyPage: React.FC<{ token: string | null; onDone: () => void }> = 
   );
 };
 import { LogIn, LogOut, GraduationCap, LayoutDashboard, FileText, Settings, ShieldCheck, User as UserIcon, ShieldAlert, CheckCircle2, ClipboardList, Building2, BarChart3, Award, Database, UserCircle, Sliders, BoxSelect, Menu, X, ChevronRight } from "lucide-react";
-import { motion } from "motion/react";
 import { cn } from "./lib/utils";
 import { getWorkspaceCapabilities, getWorkspaceNavigation, type WorkspaceTab } from "./lib/navigation/workspace-navigation";
+
+// Not server-rendered, so they load on demand and keep the marketing entry small.
+const AuthPage = lazy(() => import("./components/AuthPage").then(m => ({ default: m.AuthPage })));
+const CodeEntryPage = lazy(() => import("./components/CodeEntryPage").then(m => ({ default: m.CodeEntryPage })));
+const CheckoutPage = lazy(() => import("./components/CheckoutPage").then(m => ({ default: m.CheckoutPage })));
+const PaymentResultPage = lazy(() => import("./components/PaymentResultPage").then(m => ({ default: m.PaymentResultPage })));
+const SharedReportPage = lazy(() => import("./components/SharedReportPage").then(m => ({ default: m.SharedReportPage })));
 
 export default function App() {
   const { t, i18n } = useTranslation();
@@ -311,7 +312,7 @@ export default function App() {
   // Public shared score report page — no auth required
   const shareMatch = location.pathname.match(/^\/share\/([a-f0-9]{32})/);
   if (shareMatch) {
-    return <PublicLayout><SharedReportPage token={shareMatch[1]} /></PublicLayout>;
+    return <PublicLayout><Suspense fallback={<PageLoader />}><SharedReportPage token={shareMatch[1]} /></Suspense></PublicLayout>;
   }
 
   // Public marketing pages need no session answer. They render before the
@@ -340,11 +341,11 @@ export default function App() {
 
   if (["/checkout", "/payment/success", "/payment/cancel"].includes(location.pathname)) {
     if (location.pathname === '/payment/success') {
-      if (!user) return <PublicLayout><AuthPage initialMode="signin" onBack={() => navigate('/pricing')} /></PublicLayout>;
-      return <PaymentResultPage orderId={new URLSearchParams(location.search).get('order')} />;
+      if (!user) return <PublicLayout><Suspense fallback={<PageLoader />}><AuthPage initialMode="signin" onBack={() => navigate('/pricing')} /></Suspense></PublicLayout>;
+      return <Suspense fallback={<PageLoader />}><PaymentResultPage orderId={new URLSearchParams(location.search).get('order')} /></Suspense>;
     }
     const selected = new URLSearchParams(location.search).get('plan');
-    return <CheckoutPage initialPlan={selected && Object.hasOwn(PURCHASE_PLANS, selected) ? selected as PurchasePlanId : 'full-assessment'} />;
+    return <Suspense fallback={<PageLoader />}><CheckoutPage initialPlan={selected && Object.hasOwn(PURCHASE_PLANS, selected) ? selected as PurchasePlanId : 'full-assessment'} /></Suspense>;
   }
 
   // /exam-code is the shared header's "Enter Exam Code" destination.
@@ -380,16 +381,17 @@ export default function App() {
         navigate('/exam/new',{replace:true});
       }}
     />;
-    return user ? codeEntry : <PublicLayout>{codeEntry}</PublicLayout>;
+    const codeEntryLoaded = <Suspense fallback={<PageLoader />}>{codeEntry}</Suspense>;
+    return user ? codeEntryLoaded : <PublicLayout>{codeEntryLoaded}</PublicLayout>;
   }
 
   // Stable, directly addressable auth routes are required for password
   // managers, support links and browser-level end-to-end testing.
   if (!user && location.pathname === "/login") {
-    return <PublicLayout><AuthPage initialMode="signin" onBack={() => navigate("/")} /></PublicLayout>;
+    return <PublicLayout><Suspense fallback={<PageLoader />}><AuthPage initialMode="signin" onBack={() => navigate("/")} /></Suspense></PublicLayout>;
   }
   if (!user && location.pathname === "/register") {
-    return <PublicLayout><AuthPage initialMode="signup" onBack={() => navigate("/")} /></PublicLayout>;
+    return <PublicLayout><Suspense fallback={<PageLoader />}><AuthPage initialMode="signup" onBack={() => navigate("/")} /></Suspense></PublicLayout>;
   }
 
   // Email verification link — /verify-email?token=...
@@ -401,7 +403,7 @@ export default function App() {
   // Password reset link — /reset-password?token=...
   if (location.pathname === "/reset-password") {
     const token = new URLSearchParams(location.search).get("token");
-    return <PublicLayout><AuthPage initialMode="reset" initialToken={token ?? ""} onBack={() => navigate("/")} /></PublicLayout>;
+    return <PublicLayout><Suspense fallback={<PageLoader />}><AuthPage initialMode="reset" initialToken={token ?? ""} onBack={() => navigate("/")} /></Suspense></PublicLayout>;
   }
 
   const protectedPath = [
@@ -409,7 +411,7 @@ export default function App() {
     "/content", "/results", "/profile", "/settings", "/exam", "/report", "/print",
   ].some((prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`));
   if (!user && protectedPath) {
-    return <PublicLayout><AuthPage initialMode="signin" onBack={() => navigate("/")} /></PublicLayout>;
+    return <PublicLayout><Suspense fallback={<PageLoader />}><AuthPage initialMode="signin" onBack={() => navigate("/")} /></Suspense></PublicLayout>;
   }
 
   if (!user && showLanding) {
@@ -423,7 +425,7 @@ export default function App() {
 
 
   if (!user) {
-    return <PublicLayout><AuthPage onBack={() => setShowLanding(true)} /></PublicLayout>;
+    return <PublicLayout><Suspense fallback={<PageLoader />}><AuthPage onBack={() => setShowLanding(true)} /></Suspense></PublicLayout>;
   }
 
   // Printable A4 score report / certificate (no app chrome).

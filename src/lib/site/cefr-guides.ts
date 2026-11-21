@@ -10,7 +10,8 @@
 import { LEVEL_GUIDES_TR } from "./cefr-guides-tr";
 
 export type GuideLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
-export type GuideLang = "en" | "tr";
+import { GUIDE_SECTION_PATHS, guideLangForPath, type GuideLang } from "./cefr-guide-paths";
+export { CEFR_EXAM_COMPARISON_PATH, CEFR_GUIDE_HUB_PATH, CEFR_GUIDE_PATHS, GUIDE_SECTION_PATHS, guideLangForPath, isCefrGuidePath, type GuideLang } from "./cefr-guide-paths";
 
 export interface LevelGuide {
   lang: GuideLang;
@@ -224,31 +225,8 @@ const LEVEL_GUIDES_EN: readonly Omit<LevelGuide, "lang">[] = [
 export const LEVEL_GUIDES: readonly LevelGuide[] = LEVEL_GUIDES_EN.map((guide) => ({ ...guide, lang: "en" as const }));
 export { LEVEL_GUIDES_TR };
 
-/** Hub and exam comparison paths for each language. */
-export const GUIDE_SECTION_PATHS: Record<GuideLang, { hub: string; comparison: string }> = {
-  en: { hub: "/cefr-levels", comparison: "/cefr-levels/exam-comparison" },
-  tr: { hub: "/cefr-seviyeleri", comparison: "/cefr-seviyeleri/sinav-karsilastirma" },
-};
-export const CEFR_GUIDE_HUB_PATH = GUIDE_SECTION_PATHS.en.hub;
-export const CEFR_EXAM_COMPARISON_PATH = GUIDE_SECTION_PATHS.en.comparison;
-
 export const guidesFor = (lang: GuideLang): readonly LevelGuide[] => (lang === "tr" ? LEVEL_GUIDES_TR : LEVEL_GUIDES);
 export const levelGuidePath = (guide: Pick<LevelGuide, "slug" | "lang">) => `${GUIDE_SECTION_PATHS[guide.lang].hub}/${guide.slug}`;
-
-/** The guide section a path belongs to, if any. */
-export function guideLangForPath(path: string): GuideLang | undefined {
-  return (Object.keys(GUIDE_SECTION_PATHS) as GuideLang[]).find((lang) => {
-    const hub = GUIDE_SECTION_PATHS[lang].hub;
-    return path === hub || path.startsWith(`${hub}/`);
-  });
-}
-export const isCefrGuidePath = (path: string) => guideLangForPath(path) !== undefined;
-
-export const CEFR_GUIDE_PATHS: readonly string[] = (Object.keys(GUIDE_SECTION_PATHS) as GuideLang[]).flatMap((lang) => [
-  GUIDE_SECTION_PATHS[lang].hub,
-  ...guidesFor(lang).map(levelGuidePath),
-  GUIDE_SECTION_PATHS[lang].comparison,
-]);
 
 export function guideForPath(path: string): LevelGuide | undefined {
   return [...LEVEL_GUIDES, ...LEVEL_GUIDES_TR].find((guide) => levelGuidePath(guide) === path);

@@ -8,7 +8,6 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { motion } from "motion/react";
 import {
   ShieldCheck,
   ShieldX,
@@ -126,11 +125,7 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
       </div>
 
       {/* Search card */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-lg bg-white rounded-3xl shadow-xl border border-slate-100 p-8"
-      >
+      <div className="b4-enter-up w-full max-w-lg bg-white rounded-3xl shadow-xl border border-slate-100 p-8">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="certificate-id" className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
@@ -171,11 +166,7 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
 
         {/* Result */}
         {result && !loading && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="mt-6"
-          >
+          <div className="b4-enter-scale mt-6">
             {result.valid || (result.expired === true && !!result.certificateId) ? (
               <div className={cn(
                 "rounded-2xl border p-6 space-y-4",
@@ -231,9 +222,9 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
                 </div>
               </div>
             )}
-          </motion.div>
+          </div>
         )}
-      </motion.div>
+      </div>
 
       <a href="/" className="mt-6 text-sm font-semibold text-slate-600 hover:text-[#9b276c]">Back to home</a>
 
