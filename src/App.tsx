@@ -46,6 +46,7 @@ const AssessmentModeSelector  = lazy(() => import("./components/AssessmentModeSe
 const TestPlayer             = lazy(() => import("./components/TestPlayer").then(m => ({ default: m.TestPlayer })));
 const PreTestBriefing        = lazy(() => import("./components/PreTestBriefing").then(m => ({ default: m.PreTestBriefing })));
 const LandingPage            = lazy(() => import("./components/LandingPage").then(m => ({ default: m.LandingPage })));
+const CefrGuidePage          = lazy(() => import("./components/CefrGuidePage").then(m => ({ default: m.CefrGuidePage })));
 const SeoLandingPage         = lazy(() => import("./components/SeoLandingPage").then(m => ({ default: m.SeoLandingPage })));
 const ProgressTrendChart     = lazy(() => import("./components/ProgressTrendChart").then(m => ({ default: m.ProgressTrendChart })));
 const MethodologyPage        = lazy(() => import("./components/MethodologyPage").then(m => ({ default: m.MethodologyPage })));
@@ -472,6 +473,14 @@ export default function App() {
   if (location.pathname === "/reset-password") {
     const token = new URLSearchParams(location.search).get("token");
     return <PublicLayout><AuthPage initialMode="reset" initialToken={token ?? ""} onBack={() => navigate("/")} /></PublicLayout>;
+  }
+
+  if (location.pathname === "/cefr-levels" || location.pathname.startsWith("/cefr-levels/")) {
+    return (
+      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
+        <CefrGuidePage path={location.pathname} />
+      </Suspense></MarketingPage>
+    );
   }
 
   const seoVariant = SEO_PATHS[location.pathname] ?? null;

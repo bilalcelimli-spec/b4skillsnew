@@ -8448,6 +8448,7 @@ ${codeSection}
     "/language-schools", "/english-level-test", "/ingilizce-seviye-testi",
     "/cefr-english-test", "/english-assessment-for-universities",
     "/english-assessment-for-companies", "/accessibility-statement", "/research", "/verify", "/privacy", "/kvkk", "/terms", "/support", "/refund-policy", "/sales-terms",
+    ...(await import("./src/lib/site/cefr-guides.js")).CEFR_GUIDE_PATHS,
   ]);
 
     const { seoPageFor, isPrivatePublicPath } = await import("./src/lib/site/seo-pages.js");
