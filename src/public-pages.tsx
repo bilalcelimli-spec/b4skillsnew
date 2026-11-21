@@ -15,6 +15,7 @@ import { AppToastProvider } from "./hooks/useToast";
 import { LegalPage, type LegalPageKind } from "./components/LegalPage";
 import { VerificationPage } from "./components/VerificationPage";
 import type { SeoVariant } from "./components/SeoLandingPage";
+import { readPageData, type PublicPageData } from "./lib/research/public-bank-facts";
 import { isCefrGuidePath, isTurkishMarketingPath } from "./lib/site/cefr-guide-paths";
 
 type Page<K extends string> = ComponentType<Record<K, any>>;
@@ -25,7 +26,7 @@ export interface PublicPageComponents {
   PricingPage: Page<"onBack" | "onStart">;
   MethodologyPage: Page<"onBack" | "onStart">;
   AccessibilityStatementPage: Page<"onStart">;
-  ResearchPage: Page<"onStart">;
+  ResearchPage: Page<"onStart" | "initialBankFacts">;
   SchoolsPage: Page<"onBack" | "onStart">;
   AcademiaPage: Page<"onBack" | "onStart">;
   CorporatePage: Page<"onBack" | "onStart">;
@@ -46,7 +47,12 @@ export interface PublicPageContext {
   onPricing: () => void;
   onLandingStart: () => void;
   onCodeEntry: () => void;
+  /** Data the server rendered the page with (see server.ts pageDataFor). */
+  pageData?: PublicPageData;
 }
+
+/** The page data the server embedded in this document, read once. */
+export const INITIAL_PAGE_DATA: PublicPageData = readPageData();
 
 export const SEO_PATHS: Record<string, SeoVariant> = {
   "/english-level-test": "english-level-test",
@@ -113,7 +119,7 @@ export function publicMarketingElement(path: string, pages: PublicPageComponents
   switch (key) {
     case "LandingPage": page = <pages.LandingPage onStart={ctx.onLandingStart} onCodeEntry={ctx.onCodeEntry} />; break;
     case "AccessibilityStatementPage": page = <pages.AccessibilityStatementPage onStart={onStart} />; break;
-    case "ResearchPage": page = <pages.ResearchPage onStart={onStart} />; break;
+    case "ResearchPage": page = <pages.ResearchPage onStart={onStart} initialBankFacts={ctx.pageData?.researchBank ?? null} />; break;
     case "SeoLandingPage": page = <pages.SeoLandingPage variant={SEO_PATHS[path]} onStart={onStart} onPricing={ctx.onPricing} />; break;
     case "CefrGuidePage": page = <pages.CefrGuidePage path={path} />; break;
     default: {
