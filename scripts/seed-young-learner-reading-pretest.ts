@@ -1,16 +1,20 @@
 #!/usr/bin/env tsx
 /**
- * Curated ACTIVE Reading Question Pack (32 items) for:
+ * Curated Reading Question Pack (32 items) for:
  *   - Primary (7-10): 16 items (6 PRE_A1, 5 A1, 5 A2)
  *   - Secondary / Junior Suite (11-14): 16 items (2 A1, 5 A2, 4 B1, 5 B2)
  *
- * Designed to close the remaining live (ACTIVE) minimum capacity gaps documented in
+ * Designed to close, once calibrated, the remaining live (ACTIVE) minimum capacity gaps documented in
  * docs/quality/young-learner-expansion-plan-2026-11.md §16 and
  * docs/quality/young-learner-reading-items-2026-11.md.
  *
+ * Items are seeded as PRETEST (isPretest, pipeline stage PILOT): they are
+ * embedded unscored for calibration and become ACTIVE only when a calibrated
+ * parameter version is published (calibration-policy.ts gates).
+ *
  * Usage:
- *   npx tsx scripts/seed-young-learner-reading-active.ts            # dry-run + full structural/age-gate validation
- *   npx tsx scripts/seed-young-learner-reading-active.ts --apply    # upsert into database as ACTIVE / LIVE
+ *   npx tsx scripts/seed-young-learner-reading-pretest.ts            # dry-run + full structural/age-gate validation
+ *   npx tsx scripts/seed-young-learner-reading-pretest.ts --apply    # upsert into database as PRETEST (embedded unscored until calibrated)
  */
 
 import "dotenv/config";
@@ -1120,7 +1124,7 @@ async function main(): Promise<void> {
   }
 
   if (!apply) {
-    console.log("Dry run complete (0 errors). Pass --apply to upsert into database as ACTIVE / LIVE.");
+    console.log("Dry run complete (0 errors). Pass --apply to upsert into database as PRETEST (embedded unscored until calibrated).");
     return;
   }
 
@@ -1154,9 +1158,9 @@ async function main(): Promise<void> {
           guessing: item.guessing,
           content: item.content as any,
           tags,
-          status: "ACTIVE" as any,
-          isPretest: false,
-          pipelineStage: "LIVE" as any,
+          status: "PRETEST" as any,
+          isPretest: true,
+          pipelineStage: "PILOT" as any,
           subskill: item.subskill,
           genre: item.genre,
           topic: item.topic,
@@ -1177,9 +1181,9 @@ async function main(): Promise<void> {
           guessing: item.guessing,
           content: item.content as any,
           tags,
-          status: "ACTIVE" as any,
-          isPretest: false,
-          pipelineStage: "LIVE" as any,
+          status: "PRETEST" as any,
+          isPretest: true,
+          pipelineStage: "PILOT" as any,
           subskill: item.subskill,
           genre: item.genre,
           topic: item.topic,
@@ -1195,7 +1199,7 @@ async function main(): Promise<void> {
       });
       upserted++;
     }
-    console.log(`✅ Upserted ${upserted} ACTIVE reading items into database.`);
+    console.log(`✅ Upserted ${upserted} PRETEST reading items into database.`);
   } finally {
     await db.$disconnect();
   }

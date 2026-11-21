@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Curated ACTIVE Grammar Question Pack (70 items) for:
+ * Curated Grammar Question Pack (70 items) for:
  *   - Primary (7-10): 52 items
  *       • 20 PRE_A1 (all FILL_IN_BLANKS → lifts PRE_A1 from 46 to 66 [>= target 60] and non-MC from 0% to 30.3%)
  *       • 22 A1     (all FILL_IN_BLANKS → lifts A1 from 49 to 71 [>= target 60] and non-MC from 0% to 31.0%)
@@ -11,9 +11,13 @@
  *       • 6 B1      (4 FIB + 2 MC → lifts B1 from 51 to 57 and non-MC from 27% to 31.6%)
  *       • 4 B2      (2 FIB + 2 MC with 2-sentence discourse contexts)
  *
+ * Items are seeded as PRETEST (isPretest, pipeline stage PILOT): they are
+ * embedded unscored for calibration and become ACTIVE only when a calibrated
+ * parameter version is published (calibration-policy.ts gates).
+ *
  * Usage:
- *   npx tsx scripts/seed-young-learner-grammar-active.ts            # dry-run + full structural/editorial/age-gate validation
- *   npx tsx scripts/seed-young-learner-grammar-active.ts --apply    # upsert into database as ACTIVE / LIVE
+ *   npx tsx scripts/seed-young-learner-grammar-pretest.ts            # dry-run + full structural/editorial/age-gate validation
+ *   npx tsx scripts/seed-young-learner-grammar-pretest.ts --apply    # upsert into database as PRETEST (embedded unscored until calibrated)
  */
 
 import "dotenv/config";
@@ -1627,7 +1631,7 @@ async function main(): Promise<void> {
   }
 
   if (!apply) {
-    console.log("Dry run complete (0 errors). Pass --apply to upsert into database as ACTIVE / LIVE.");
+    console.log("Dry run complete (0 errors). Pass --apply to upsert into database as PRETEST (embedded unscored until calibrated).");
     return;
   }
 
@@ -1661,9 +1665,9 @@ async function main(): Promise<void> {
           guessing: item.guessing,
           content: item.content as any,
           tags,
-          status: "ACTIVE" as any,
-          isPretest: false,
-          pipelineStage: "LIVE" as any,
+          status: "PRETEST" as any,
+          isPretest: true,
+          pipelineStage: "PILOT" as any,
           subskill: item.subskill,
           genre: item.genre,
           topic: item.topic,
@@ -1684,9 +1688,9 @@ async function main(): Promise<void> {
           guessing: item.guessing,
           content: item.content as any,
           tags,
-          status: "ACTIVE" as any,
-          isPretest: false,
-          pipelineStage: "LIVE" as any,
+          status: "PRETEST" as any,
+          isPretest: true,
+          pipelineStage: "PILOT" as any,
           subskill: item.subskill,
           genre: item.genre,
           topic: item.topic,
@@ -1702,7 +1706,7 @@ async function main(): Promise<void> {
       });
       upserted++;
     }
-    console.log(`✅ Upserted ${upserted} ACTIVE grammar items into database.`);
+    console.log(`✅ Upserted ${upserted} PRETEST grammar items into database.`);
   } finally {
     await db.$disconnect();
   }
