@@ -1972,11 +1972,17 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (!(await assertSessionOwnership(req, res, id))) return;
       const session = await prisma.session.findUnique({ where: { id }, select: { status: true, metadata: true } });
       if (!session) return res.status(404).json({ error: "Session not found" });
-      if (session.status !== "IN_PROGRESS" || (session.metadata as Record<string, unknown> | null)?.currentItemId !== itemId) {
+      const meta = session.metadata as Record<string, any> | null;
+      // The fixed diagnostic keeps its own state; its current question is the first unanswered one.
+      const currentItemId = meta?.diagnosticState
+        ? (meta.diagnosticState.complete ? null
+          : (await import("./src/lib/assessment-engine/diagnostic-service.js")).DiagnosticService._nextItem(meta.diagnosticState)?.itemId)
+        : meta?.currentItemId;
+      if (session.status !== "IN_PROGRESS" || !currentItemId || currentItemId !== itemId) {
         return res.status(403).json({ error: "Recording is not available" });
       }
-      const item = await prisma.item.findUnique({ where: { id: itemId }, select: { content: true } });
-      const source = audioSource((item?.content as Record<string, unknown> | null)?.audioUrl);
+      const item = await prisma.item.findUnique({ where: { id: itemId }, select: { content: true, assets: { where: { type: "AUDIO" }, select: { url: true }, take: 1 } } });
+      const source = audioSource((item?.content as Record<string, unknown> | null)?.audioUrl ?? item?.assets[0]?.url);
       if (!source) return res.status(404).json({ error: "Recording not found" });
       res.setHeader("Cache-Control", "private, no-store");
       res.setHeader("X-Content-Type-Options", "nosniff");
