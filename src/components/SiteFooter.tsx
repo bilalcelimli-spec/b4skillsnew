@@ -36,6 +36,8 @@ export const SiteFooter: React.FC = () => {
             <li><a href="/#technology" className={linkClass}>Technology & Pedagogy</a></li>
             <li><a href="/methodology" className={linkClass}>Methodology</a></li>
             <li><a href="/research" className={linkClass}>Research</a></li>
+            <li><a href="/cefr-levels" className={linkClass}>CEFR Levels Explained</a></li>
+            <li><a href="/cefr-levels/exam-comparison" className={linkClass}>Exam Scores vs CEFR</a></li>
             <li><a href="/exam-code" className={linkClass}>Enter Exam Code</a></li>
             <li><a href="/login" className={linkClass}>Test Taker Login</a></li>
           </ul>

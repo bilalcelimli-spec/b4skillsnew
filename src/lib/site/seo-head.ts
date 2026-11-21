@@ -4,7 +4,7 @@
  * All of them read SEO_PAGES so the files can never disagree.
  */
 import { COMPANY } from "./company";
-import { SEO_PAGES, type SeoPage } from "./seo-pages";
+import { SEO_PAGES, seoPageFor, type SeoPage } from "./seo-pages";
 import { serializeJsonLd } from "./seo-serialization";
 
 export interface SeoEnv {
@@ -69,13 +69,27 @@ export function pageJsonLd(page: SeoPage, baseUrl: string): object[] {
     ...(page.kind !== "home" ? { breadcrumb: { "@id": `${url}#breadcrumb` } } : {}),
   });
   if (page.kind !== "home") {
+    const parent = page.parent ? seoPageFor(page.parent) : undefined;
+    const trail = [{ name: "b4skills", item: `${baseUrl}/` }, ...(parent ? [{ name: parent.name, item: `${baseUrl}${parent.path}` }] : []), { name: page.name, item: url }];
     graph.push({
       "@type": "BreadcrumbList",
       "@id": `${url}#breadcrumb`,
-      itemListElement: [
-        { "@type": "ListItem", position: 1, name: "b4skills", item: `${baseUrl}/` },
-        { "@type": "ListItem", position: 2, name: page.name, item: url },
-      ],
+      itemListElement: trail.map((step, i) => ({ "@type": "ListItem", position: i + 1, ...step })),
+    });
+  }
+  if (page.kind === "guide") {
+    graph.push({
+      "@type": "Article",
+      "@id": `${url}#article`,
+      headline: page.title.replace(/ \| b4skills$/, ""),
+      description: page.description,
+      inLanguage: page.lang,
+      dateModified: page.updated,
+      datePublished: page.updated,
+      image: `${baseUrl}/og/${page.ogImage ?? "default.png"}`,
+      author: org,
+      publisher: org,
+      mainEntityOfPage: { "@id": `${url}#webpage` },
     });
   }
   if (page.kind === "solution" || page.kind === "test") {
@@ -238,6 +252,7 @@ Key facts:
 
 ${section("Take a test", ["test"])}
 ${section("For institutions", ["solution"])}
+${section("CEFR level guides", ["guide"])}
 ${section("How it works", ["info", "home"])}
 ${section("Certificates and support", ["utility", "legal"])}`.replace(/\n{3,}/g, "\n\n");
 }

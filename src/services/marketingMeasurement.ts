@@ -1,6 +1,7 @@
+import { CEFR_GUIDE_PATHS } from '../lib/site/cefr-guides';
 const GTM = 'GTM-WVFFCWJM';
 const KEY = 'b4skills_analytics_consent_v1';
-const PUBLIC_PATHS = new Set(['/', '/pricing', '/methodology', '/research', '/accessibility-statement', '/schools', '/academia', '/corporate', '/language-schools', '/english-level-test', '/ingilizce-seviye-testi', '/cefr-english-test', '/english-assessment-for-universities', '/english-assessment-for-companies']);
+const PUBLIC_PATHS = new Set([...CEFR_GUIDE_PATHS, '/', '/pricing', '/methodology', '/research', '/accessibility-statement', '/schools', '/academia', '/corporate', '/language-schools', '/english-level-test', '/ingilizce-seviye-testi', '/cefr-english-test', '/english-assessment-for-universities', '/english-assessment-for-companies']);
 type Choice = 'accepted' | 'rejected' | null;
 type AnalyticsWindow = Window & { dataLayer?: unknown[]; 'ga-disable-G-MEQ1P6RNEH'?: boolean };
 let loaded = false;

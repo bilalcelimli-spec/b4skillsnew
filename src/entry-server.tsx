@@ -19,6 +19,8 @@ import { CorporatePage } from "./components/CorporatePage";
 import { AcademiaPage } from "./components/AcademiaPage";
 import { LanguageSchoolsPage } from "./components/LanguageSchoolsPage";
 import { SeoLandingPage, SeoVariant } from "./components/SeoLandingPage";
+import { CefrGuidePage } from "./components/CefrGuidePage";
+import { CEFR_GUIDE_PATHS } from "./lib/site/cefr-guides";
 
 export interface SSRResult {
   html: string;
@@ -52,6 +54,7 @@ const ROUTE_FACTORIES: Record<string, () => React.ReactElement> = {
   "/cefr-english-test": () => <SeoLandingPage variant={"cefr-english-test" as SeoVariant} onStart={NOOP} />,
   "/english-assessment-for-universities": () => <SeoLandingPage variant={"english-assessment-for-universities" as SeoVariant} onStart={NOOP} />,
   "/english-assessment-for-companies": () => <SeoLandingPage variant={"english-assessment-for-companies" as SeoVariant} onStart={NOOP} />,
+  ...Object.fromEntries(CEFR_GUIDE_PATHS.map((path) => [path, () => <CefrGuidePage path={path} />])),
 };
 
 export function render(url: string): SSRResult {

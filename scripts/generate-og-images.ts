@@ -21,6 +21,7 @@ const KICKER: Record<string, string> = {
   test: "CEFR A1–C2 · Adaptive",
   solution: "b4skills for institutions",
   info: "How b4skills works",
+  guide: "CEFR guide",
   utility: "b4skills",
   legal: "b4skills",
 };

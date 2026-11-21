@@ -9,7 +9,9 @@
  */
 
 export type SeoLang = "en" | "tr";
-export type SeoKind = "home" | "test" | "solution" | "info" | "legal" | "utility";
+import { CEFR_EXAM_COMPARISON_PATH, CEFR_GUIDE_HUB_PATH, LEVEL_GUIDES, levelGuidePath, neighbours } from "./cefr-guides";
+
+export type SeoKind = "home" | "test" | "solution" | "info" | "guide" | "legal" | "utility";
 
 export interface SeoPage {
   path: string;
@@ -23,6 +25,8 @@ export interface SeoPage {
   indexable: boolean;
   /** Short name for breadcrumbs and llms.txt. */
   name: string;
+  /** Parent page path for breadcrumbs (defaults to home). */
+  parent?: string;
   /** One plain sentence for llms.txt and the feed. */
   summary?: string;
   /** Same content in another language (hreflang). */
@@ -34,6 +38,48 @@ export interface SeoPage {
   /** Page-specific JSON-LD in addition to the generated entities. */
   jsonLd?: object[];
 }
+
+/** Visible FAQ on a page, as schema.org FAQPage (only for questions the page shows). */
+const faqLd = (items: readonly { q: string; a: string }[]) => ({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: items.map((item) => ({ "@type": "Question", name: item.q, acceptedAnswer: { "@type": "Answer", text: item.a } })),
+});
+
+const GUIDES_UPDATED = "2026-11-21";
+
+const CEFR_GUIDE_PAGES: SeoPage[] = [
+  {
+    path: CEFR_GUIDE_HUB_PATH,
+    name: "CEFR Levels Explained",
+    title: "CEFR Levels Explained: A1, A2, B1, B2, C1, C2 | b4skills",
+    description: "What each CEFR English level means, from A1 beginner to C2 proficiency: what learners can do, typical grammar and vocabulary, and how exams report each level.",
+    summary: "Plain-language guide to the six CEFR levels (A1–C2): what learners can do at each level and how the levels are grouped.",
+    lang: "en", kind: "guide", updated: GUIDES_UPDATED, indexable: true, priority: 0.8, changefreq: "monthly", ogImage: "cefr-levels.png",
+  },
+  ...LEVEL_GUIDES.map((guide): SeoPage => {
+    const { next } = neighbours(guide);
+    return {
+      path: levelGuidePath(guide),
+      parent: CEFR_GUIDE_HUB_PATH,
+      name: `${guide.level} level English`,
+      title: `What Is ${guide.level} Level English? CEFR ${guide.level} Explained | b4skills`,
+      description: `CEFR ${guide.level} (${guide.nickname.toLowerCase()}) explained: what learners can do in reading, listening, speaking and writing, typical grammar, exam score ranges${next ? ` and how to reach ${next.level}` : ""}.`,
+      summary: guide.answer,
+      lang: "en", kind: "guide", updated: GUIDES_UPDATED, indexable: true, priority: 0.7, changefreq: "monthly", ogImage: `cefr-${guide.slug}.png`,
+      jsonLd: [faqLd(guide.faq)],
+    };
+  }),
+  {
+    path: CEFR_EXAM_COMPARISON_PATH,
+    parent: CEFR_GUIDE_HUB_PATH,
+    name: "English exam scores and CEFR levels",
+    title: "IELTS, TOEFL and Cambridge Scores vs CEFR Levels | b4skills",
+    description: "How IELTS, TOEFL iBT (old and new score scales), Cambridge English and Duolingo scores relate to CEFR levels A1–C2, using each exam owner's own published alignment, with sources.",
+    summary: "Table of the CEFR score ranges that IELTS, TOEFL iBT, Cambridge English and Duolingo publish, with links to each owner's source.",
+    lang: "en", kind: "guide", updated: GUIDES_UPDATED, indexable: true, priority: 0.8, changefreq: "monthly", ogImage: "cefr-exam-comparison.png",
+  },
+];
 
 export const SEO_PAGES: readonly SeoPage[] = [
   {
@@ -187,6 +233,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
   { path: "/checkout", name: "Satın Alma", title: "Satın Alma — b4skills", description: "Sipariş özeti ve satın alma ön bilgilendirmesi.", lang: "tr", kind: "utility", updated: "2026-11-21", indexable: false },
   { path: "/payment/success", name: "Ödeme Durumu", title: "Ödeme Durumu — b4skills", description: "Siparişinizin ödeme durumunu kontrol edin.", lang: "tr", kind: "utility", updated: "2026-11-21", indexable: false },
   { path: "/payment/cancel", name: "Ödeme İptal Edildi", title: "Ödeme İptal Edildi — b4skills", description: "Ödemeniz tamamlanmadı.", lang: "tr", kind: "utility", updated: "2026-11-21", indexable: false },
+  ...CEFR_GUIDE_PAGES,
 ];
 
 const BY_PATH = new Map(SEO_PAGES.map((page) => [page.path, page]));
