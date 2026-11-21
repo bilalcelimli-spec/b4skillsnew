@@ -1846,7 +1846,7 @@ export const AssessmentService = {
 
     // Pre-save validation
     if (itemData.skill && parsedContent) {
-      const validation = await validateItemBeforeSave(itemData.skill, parsedContent);
+      const validation = await validateItemBeforeSave(itemData.skill, parsedContent, itemData.type);
       if (!validation.success) {
         throw AppError.unprocessable(
           `Item validation failed: ${validation.error}`
@@ -1888,7 +1888,7 @@ export const AssessmentService = {
     const skill = itemData.skill || existingItem.skill;
     const contentToValidate = parsedContent ?? existingItem.content;
     if (skill && contentToValidate) {
-      const validation = await validateItemBeforeSave(skill, contentToValidate);
+      const validation = await validateItemBeforeSave(skill, contentToValidate, itemData.type ?? existingItem.type);
       if (!validation.success) {
         throw AppError.unprocessable(
           `Item validation failed: ${validation.error}`
