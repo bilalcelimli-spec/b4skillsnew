@@ -9,11 +9,15 @@ export const FooterConsentContext = createContext<React.ReactNode>(null);
 export function MarketingConsent({ path, isTr, enabled }: { path: string; isTr: boolean; enabled: boolean }) {
   const [choice, setChoice] = useState(analyticsChoice);
   const [open, setOpen] = useState(false);
+  // The server cannot read the stored choice, so it renders no control. Show it
+  // only after mount, so the first browser render matches the server HTML.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   useEffect(() => {
     if (enabled) measureMarketingPage(path); else disableMarketingMeasurement();
     return disableMarketingMeasurement;
   }, [path, choice, enabled]);
-  if (!enabled || !isPublicMarketingPath(path)) return null;
+  if (!mounted || !enabled || !isPublicMarketingPath(path)) return null;
   const select = (value: 'accepted' | 'rejected') => { setAnalyticsChoice(value); setChoice(analyticsChoice()); setOpen(false); };
   return <>
     <button type="button" className="underline underline-offset-2" onClick={() => setOpen(true)}>{isTr ? 'Çerez tercihleri' : 'Cookie preferences'}</button>
