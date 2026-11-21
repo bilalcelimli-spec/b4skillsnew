@@ -1,4 +1,4 @@
-import { MarketingPage, PageLoader, publicLegalElement, publicMarketingElement } from './public-pages';
+import { INITIAL_PAGE_DATA, MarketingPage, PageLoader, publicLegalElement, publicMarketingElement } from './public-pages';
 import { LAZY_PUBLIC_PAGES } from './public-pages-lazy';
 import { PublicLayout } from './components/PublicLayout';
 import { GuardianDecisionPage, GuardianVerificationPage } from './components/GuardianConsent';
@@ -328,6 +328,7 @@ export default function App() {
     onPricing: () => navigate("/pricing"),
     onLandingStart: () => setShowLanding(false),
     onCodeEntry: () => { setShowLanding(false); setShowCodeEntry(true); },
+    pageData: INITIAL_PAGE_DATA,
   });
   if (marketingPage) return marketingPage;
 

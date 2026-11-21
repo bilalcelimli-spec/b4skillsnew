@@ -10,11 +10,17 @@ import React, { useEffect, useState } from "react";
 import { SiteNav } from "./SiteNav";
 import { SiteFooter } from "./SiteFooter";
 import { FlaskConical, BookOpen, TrendingUp, Users, CheckCircle2, ExternalLink, BarChart3, AlertCircle, Database } from "lucide-react";
+import type { PublicBankFacts } from "../lib/research/public-bank-facts";
 
 interface Props {
   onStart?: () => void;
   onCodeEntry?: () => void;
+  /** Item bank facts the server rendered the page with; usage figures load in the browser. */
+  initialBankFacts?: PublicBankFacts | null;
 }
+
+/** Shown to everyone, including crawlers, until figures meet the reporting thresholds. */
+const PUBLICATION_RULE = "Validity and reliability figures are published once enough data has been collected: at least 30 concurrent validity pairs per external test, and at least 30 fully scored candidates per assessment type for reliability.";
 
 interface BankHealthData {
   year: number;
@@ -77,9 +83,8 @@ const CEFR_BAR_COLOR: Record<string, string> = {
   C1: "bg-violet-500",C2: "bg-emerald-500",
 };
 
-export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
+export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry, initialBankFacts = null }) => {
   const [summary, setSummary] = useState<SummaryData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [bankHealth, setBankHealth] = useState<BankHealthData | null>(null);
@@ -89,8 +94,8 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
   useEffect(() => {
     fetch("/api/research/concurrent-validity/summary")
       .then((r) => { if (!r.ok) throw new Error("Unavailable"); return r.json(); })
-      .then((d) => { setSummary(d); setLoading(false); })
-      .catch(() => { setError("Data temporarily unavailable."); setLoading(false); });
+      .then((d) => setSummary(d))
+      .catch(() => setError("Data temporarily unavailable."));
 
     fetch("/api/research/item-bank-health")
       .then((r) => { if (!r.ok) throw new Error("Unavailable"); return r.json(); })
@@ -99,6 +104,8 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
   }, []);
 
   const hasSufficientData = summary && summary.tests.some((t) => t.n >= 30);
+  // Item counts render on the server; sessions, SEM and reliability arrive with the live fetch.
+  const bank: PublicBankFacts | null = bankHealth ?? initialBankFacts;
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -132,13 +139,6 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
             Industry benchmark for high-stakes certification: <strong>r ≥ 0.85</strong> (IELTS/TOEFL).
           </p>
 
-          {loading && (
-            <div className="flex items-center gap-3 text-slate-400 py-8">
-              <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-indigo-500 animate-spin" />
-              Loading validity data…
-            </div>
-          )}
-
           {error && (
             <div className="flex items-center gap-2 text-amber-600 bg-amber-50 rounded-xl px-4 py-3 text-sm">
               <AlertCircle size={16} />
@@ -146,16 +146,13 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
             </div>
           )}
 
-          {summary && !hasSufficientData && (
+          {!error && !hasSufficientData && (
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center">
               <FlaskConical size={32} className="mx-auto mb-3 text-slate-300" />
               <p className="font-semibold text-slate-700 mb-1">Data collection in progress</p>
-              <p className="text-sm text-slate-500 max-w-sm mx-auto">
-                We are currently collecting concurrent validity pairs with n ≥ 30 per external test.
-                Results will appear here once we reach the minimum threshold for reporting.
-              </p>
+              <p className="text-sm text-slate-500 max-w-md mx-auto">{PUBLICATION_RULE}</p>
               <p className="text-xs text-slate-400 mt-4">
-                {summary.totalPairs} pair{summary.totalPairs !== 1 ? "s" : ""} collected so far.
+                {summary && <>{summary.totalPairs} pair{summary.totalPairs !== 1 ? "s" : ""} collected so far. </>}
                 Are you a researcher? <a href="mailto:hello@b4skills.com" className="text-indigo-600 hover:underline">Contact us</a>.
               </p>
             </div>
@@ -208,27 +205,29 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
             Annual Item Bank Health Report
           </h2>
           <p className="text-slate-500 text-sm mb-6 max-w-2xl">
-            Aggregate item statistics for the {bankHealth?.year ?? new Date().getFullYear()} assessment year.
+            Aggregate item statistics for the {bank?.year ?? new Date().getFullYear()} assessment year.
             Only items currently marked <strong>ACTIVE</strong> are counted. Active status alone does not establish empirical calibration or a minimum response count. Session statistics cover completions in the last 12 months.
           </p>
 
-          {bankLoading && (
+          {!bank && bankLoading && (
             <div className="flex items-center gap-3 text-slate-400 py-6">
               <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-indigo-500 animate-spin" />
               Loading item bank statistics…
             </div>
           )}
 
-          {bankError && <p role="status" className="text-sm text-amber-700 py-4">Live item bank statistics are temporarily unavailable.</p>}
+          {!bank && bankError && <p role="status" className="text-sm text-amber-700 py-4">Live item bank statistics are temporarily unavailable.</p>}
 
-          {bankHealth && (
+          {bank && (
             <div className="space-y-6">
               {/* KPI row */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
-                  { label: "Active Items",       value: bankHealth.totalActive.toLocaleString(),     sub: "in scored bank" },
-                  { label: "Sessions (12 m)",    value: bankHealth.sessionsLast12m?.toLocaleString() ?? "—", sub: "completed assessments" },
-                  { label: "Mean SEM",           value: bankHealth.meanSEM != null ? bankHealth.meanSEM.toFixed(3) : "—", sub: "θ standard error" },
+                  { label: "Active Items",       value: bank.totalActive.toLocaleString("en-US"),     sub: "in scored bank" },
+                  ...(bankHealth ? [
+                    { label: "Sessions (12 m)",    value: bankHealth.sessionsLast12m?.toLocaleString("en-US") ?? "—", sub: "completed assessments" },
+                    { label: "Mean SEM",           value: bankHealth.meanSEM != null ? bankHealth.meanSEM.toFixed(3) : "—", sub: "θ standard error" },
+                  ] : []),
                   { label: "Cronbach α", value: "Not established", sub: "No common-item study published" },
                 ].map(({ label, value, sub }) => (
                   <div key={label} className="bg-slate-50 border border-slate-200 rounded-2xl p-5 text-center">
@@ -240,13 +239,13 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
               </div>
 
               {/* CEFR distribution */}
-              {Object.keys(bankHealth.cefr).length > 0 && (
+              {Object.keys(bank.cefr).length > 0 && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">CEFR Level Distribution — Active Items</p>
                   <div className="space-y-2">
-                    {CEFR_ORDER_RES.filter(l => bankHealth.cefr[l] != null).map((lvl) => {
-                      const count = bankHealth.cefr[lvl] ?? 0;
-                      const pct = bankHealth.totalActive > 0 ? (count / bankHealth.totalActive) * 100 : 0;
+                    {CEFR_ORDER_RES.filter(l => bank.cefr[l] != null).map((lvl) => {
+                      const count = bank.cefr[lvl] ?? 0;
+                      const pct = bank.totalActive > 0 ? (count / bank.totalActive) * 100 : 0;
                       return (
                         <div key={lvl} className="flex items-center gap-3">
                           <span className="text-xs font-black w-6 text-slate-500">{lvl}</span>
@@ -263,11 +262,11 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
               )}
 
               {/* Skill distribution */}
-              {Object.keys(bankHealth.skills).length > 0 && (
+              {Object.keys(bank.skills).length > 0 && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4">Skill Distribution — Active Items</p>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {Object.entries(bankHealth.skills).sort(([,a],[,b]) => b - a).map(([skill, count]) => (
+                    {Object.entries(bank.skills).sort(([a, x], [b, y]) => y - x || a.localeCompare(b)).map(([skill, count]) => (
                       <div key={skill} className="bg-white rounded-xl border border-slate-200 px-4 py-3 flex items-center justify-between">
                         <span className="text-sm font-semibold text-slate-700 capitalize">{skill.toLowerCase()}</span>
                         <span className="text-sm font-black text-slate-900 tabular-nums">{count}</span>
@@ -277,6 +276,13 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
                 </div>
               )}
 
+              {!bankHealth && (
+                <div className="rounded-2xl border border-slate-200 p-6 space-y-2">
+                  <h3 className="font-bold text-slate-900">IRT marginal reliability by assessment type</h3>
+                  <p className="text-sm text-slate-600">{PUBLICATION_RULE}</p>
+                </div>
+              )}
+              {bankHealth && (<>
               <div className="rounded-2xl border border-slate-200 p-6 space-y-4">
                 <h3 className="font-bold text-slate-900">IRT marginal reliability by assessment type</h3>
                 <p className="text-sm text-slate-600">
@@ -302,9 +308,10 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
                   </ul>
                 ) : <p className="text-sm text-amber-700">No eligible assessment group is available for a reliability estimate.</p>}
               </div>
+              </>)}
               <p className="text-xs text-slate-500">
-                Item counts reflect the live bank at page load; PILOT and CALIBRATION items are excluded.
-                Mean SEM above includes all completed sessions and is not itself a reliability coefficient.
+                Item counts reflect the live bank, refreshed at least hourly; PILOT and CALIBRATION items are excluded.
+                {bankHealth && " Mean SEM above includes all completed sessions and is not itself a reliability coefficient."}
               </p>
             </div>
           )}

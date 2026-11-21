@@ -7137,17 +7137,9 @@ ${codeSection}
           }),
         ]);
 
-        // Roll up CEFR distribution
-        const cefrDist: Record<string, number> = {};
-        const skillDist: Record<string, number> = {};
-        let totalActive = 0;
-        for (const row of activeItems) {
-          const lvl = row.cefrLevel ?? "Unknown";
-          const sk  = row.skill     ?? "Unknown";
-          cefrDist[lvl]  = (cefrDist[lvl]  ?? 0) + row._count.id;
-          skillDist[sk]  = (skillDist[sk]  ?? 0) + row._count.id;
-          totalActive   += row._count.id;
-        }
+        // Roll up CEFR and skill distribution (same helper as the server-rendered Research page)
+        const { rollUpBankFacts } = await import("./src/lib/research/public-bank-facts.js");
+        const { cefr: cefrDist, skills: skillDist, totalActive } = rollUpBankFacts(activeItems, new Date().getFullYear());
 
         const { summarizePublicReliability, MIN_RELIABILITY_CANDIDATES } = await import("./src/lib/research/public-reliability.js");
         const reliabilityByProduct = summarizePublicReliability(evidenceSessions);
@@ -8441,6 +8433,35 @@ ${codeSection}
     res.status(404).json({ error: "API endpoint not found" });
   });
 
+  // ── Server-rendered page data ─────────────────────────────────────────────
+  // Only public item bank facts go into HTML; usage figures stay client-side.
+  const { rollUpBankFacts, pageDataScript } = await import("./src/lib/research/public-bank-facts.js");
+  type PublicPageData = import("./src/lib/research/public-bank-facts.js").PublicPageData;
+  let bankFactsCache: { at: number; facts: import("./src/lib/research/public-bank-facts.js").PublicBankFacts } | null = null;
+  const BANK_FACTS_TTL_MS = 60 * 60 * 1000;
+  const loadPublicBankFacts = async () => {
+    if (bankFactsCache && Date.now() - bankFactsCache.at < BANK_FACTS_TTL_MS) return bankFactsCache.facts;
+    if (!dbAvailable) return bankFactsCache?.facts;
+    try {
+      const rows = await prisma.item.groupBy({ by: ["cefrLevel", "skill"], where: { status: "ACTIVE" }, _count: { id: true } });
+      bankFactsCache = { at: Date.now(), facts: rollUpBankFacts(rows, new Date().getFullYear()) };
+      return bankFactsCache.facts;
+    } catch {
+      return bankFactsCache?.facts;
+    }
+  };
+  /** Data a public page is rendered with on the server; the browser hydrates with the same object. */
+  const pageDataFor = async (reqPath: string): Promise<PublicPageData> => {
+    if (reqPath !== "/research") return {};
+    const researchBank = await loadPublicBankFacts();
+    return researchBank ? { researchBank } : {};
+  };
+  /** Puts the rendered page and its data into the HTML shell. */
+  const withSsrBody = (html: string, appHtml: string, data: PublicPageData): string => {
+    const script = Object.keys(data).length ? pageDataScript(data) : "";
+    return html.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>${script}`);
+  };
+
   // ── SSR render helper (marketing routes only) ────────────────────────────
   // Marketing paths that get server-rendered HTML for crawlers.
   const SSR_PATHS = new Set([
@@ -8488,10 +8509,9 @@ ${codeSection}
         if (SSR_PATHS.has(req.path)) {
           try {
             const { render } = await vite.ssrLoadModule("/src/entry-server.tsx");
-            const { html: appHtml, didSSR } = render(req.path);
-            if (didSSR && appHtml) {
-              indexHtml = indexHtml.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`);
-            }
+            const data = await pageDataFor(req.path);
+            const { html: appHtml, didSSR } = render(req.path, data);
+            if (didSSR && appHtml) indexHtml = withSsrBody(indexHtml, appHtml, data);
           } catch (ssrErr) {
             vite.ssrFixStacktrace(ssrErr as Error);
             // SSR failure non-fatal — serve plain shell
@@ -8516,7 +8536,7 @@ ${codeSection}
     app.use(noStoreMissingAsset);
 
     // Load the pre-built SSR module at startup (non-fatal if missing)
-    let ssrRender: ((url: string) => { html: string; didSSR: boolean }) | null = null;
+    let ssrRender: ((url: string, data?: PublicPageData) => { html: string; didSSR: boolean }) | null = null;
     try {
       const ssrModule = await import(path.join(distPath, "ssr/entry-server.js"));
       ssrRender = ssrModule.render ?? null;
@@ -8531,7 +8551,7 @@ ${codeSection}
       return _cachedIndexHtml;
     };
 
-    app.get("*", (req, res) => {
+    app.get("*", async (req, res) => {
       const ext = path.extname(req.path);
       if (ext && ext !== ".html") return res.status(404).end();
       res.setHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
@@ -8541,10 +8561,9 @@ ${codeSection}
       // Attempt SSR for marketing paths
       if (ssrRender && SSR_PATHS.has(req.path)) {
         try {
-          const { html: appHtml, didSSR } = ssrRender(req.path);
-          if (didSSR && appHtml) {
-            baseHtml = baseHtml.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`);
-          }
+          const data = await pageDataFor(req.path);
+          const { html: appHtml, didSSR } = ssrRender(req.path, data);
+          if (didSSR && appHtml) baseHtml = withSsrBody(baseHtml, appHtml, data);
         } catch {
           // SSR failure is non-fatal — continue with CSR shell
         }

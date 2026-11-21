@@ -23,6 +23,7 @@ import { SeoLandingPage } from "./components/SeoLandingPage";
 import { CefrGuidePage } from "./components/CefrGuidePage";
 import { CEFR_GUIDE_PATHS } from "./lib/site/cefr-guides";
 import { DomProviders, LEGAL_ROUTES, SEO_PATHS, publicLegalElement, publicMarketingElement, type PublicPageComponents } from "./public-pages";
+import type { PublicPageData } from "./lib/research/public-bank-facts";
 
 export interface SSRResult {
   html: string;
@@ -51,14 +52,15 @@ const SERVER_CONTEXT = {
 };
 
 /** The element for `url`, wrapped as main.tsx wraps <App />. */
-export function publicPageTree(url: string): React.ReactElement | null {
+export function publicPageTree(url: string, pageData: PublicPageData = {}): React.ReactElement | null {
   if (!SSR_RENDERED_PATHS.includes(url)) return null;
-  const page = publicLegalElement(url) ?? publicMarketingElement(url, EAGER_PUBLIC_PAGES, SERVER_CONTEXT);
+  const page = publicLegalElement(url) ?? publicMarketingElement(url, EAGER_PUBLIC_PAGES, { ...SERVER_CONTEXT, pageData });
   return page && <DomProviders>{page}</DomProviders>;
 }
 
-export function render(url: string): SSRResult {
-  const tree = publicPageTree(url);
+/** `pageData` must also be embedded in the HTML (server.ts) so the browser hydrates with it. */
+export function render(url: string, pageData: PublicPageData = {}): SSRResult {
+  const tree = publicPageTree(url, pageData);
   if (!tree) return { html: "", didSSR: false };
 
   try {
