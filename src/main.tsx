@@ -1,12 +1,12 @@
 import { createAuthenticatedFetch } from "./lib/http/api-fetch";
 import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, hydrateRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import * as Sentry from '@sentry/react';
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { ToastProvider } from './design-system/components';
-import { AppToastProvider } from './hooks/useToast';
+import { DomProviders } from './public-pages';
+import { preloadPublicPage } from './public-pages-lazy';
 import './index.css';
 
 // Initialize Sentry for frontend error tracking.
@@ -36,17 +36,24 @@ const app = (
   <StrictMode>
     <BrowserRouter>
       <ErrorBoundary>
-        <ToastProvider>
-          <AppToastProvider>
-            <App />
-          </AppToastProvider>
-        </ToastProvider>
+        <DomProviders>
+          <App />
+        </DomProviders>
       </ErrorBoundary>
     </BrowserRouter>
   </StrictMode>
 );
 
-createRoot(rootEl).render(app);
+// Public pages arrive server-rendered (entry-server.tsx). Hydrate them in place
+// once the page chunk is loaded, so the HTML is never replaced. Every other
+// route gets an empty #root and a normal client render.
+if (rootEl.firstElementChild) {
+  preloadPublicPage(window.location.pathname)
+    .catch(() => {})
+    .then(() => { hydrateRoot(rootEl, app); });
+} else {
+  createRoot(rootEl).render(app);
+}
 
 // PWA Service Worker registration
 if ('serviceWorker' in navigator && (import.meta as any).env?.PROD) {

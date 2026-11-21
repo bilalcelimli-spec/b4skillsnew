@@ -1,4 +1,5 @@
-import { FooterConsentContext, MarketingConsent, MeasurementPrivacyContext } from './components/MarketingConsent';
+import { MarketingPage, PageLoader, publicLegalElement, publicMarketingElement } from './public-pages';
+import { LAZY_PUBLIC_PAGES } from './public-pages-lazy';
 import { PublicLayout } from './components/PublicLayout';
 import { GuardianDecisionPage, GuardianVerificationPage } from './components/GuardianConsent';
 import { AssessmentResumeCard } from './components/AssessmentContinuation';
@@ -17,19 +18,8 @@ import { CheckoutPage } from "./components/CheckoutPage";
 import { DeleteAccountButton } from "./components/DeleteAccountDialog";
 import { PaymentResultPage } from "./components/PaymentResultPage";
 import { PURCHASE_PLANS, type PurchasePlanId } from "./lib/payments/purchase-policy";
-import { LegalPage, type LegalPageKind } from "./components/LegalPage";
-import { VerificationPage } from "./components/VerificationPage";
 import { SharedReportPage } from "./components/SharedReportPage";
-import type { SeoVariant } from "./components/SeoLandingPage";
 type User = { uid: string; email: string; displayName?: string; role?: string };
-
-const SEO_PATHS: Record<string, SeoVariant> = {
-  "/english-level-test": "english-level-test",
-  "/ingilizce-seviye-testi": "ingilizce-seviye-testi",
-  "/cefr-english-test": "cefr-english-test",
-  "/english-assessment-for-universities": "english-assessment-for-universities",
-  "/english-assessment-for-companies": "english-assessment-for-companies",
-};
 
 import { Button } from "./components/ui/Button";
 import { Card, CardContent, CardHeader } from "./components/ui/Card";
@@ -45,37 +35,11 @@ const CandidateAdaptiveReport = lazy(() => import("./components/CandidateAdaptiv
 const AssessmentModeSelector  = lazy(() => import("./components/AssessmentModeSelector").then(m => ({ default: m.AssessmentModeSelector })));
 const TestPlayer             = lazy(() => import("./components/TestPlayer").then(m => ({ default: m.TestPlayer })));
 const PreTestBriefing        = lazy(() => import("./components/PreTestBriefing").then(m => ({ default: m.PreTestBriefing })));
-const LandingPage            = lazy(() => import("./components/LandingPage").then(m => ({ default: m.LandingPage })));
-const CefrGuidePage          = lazy(() => import("./components/CefrGuidePage").then(m => ({ default: m.CefrGuidePage })));
-const SeoLandingPage         = lazy(() => import("./components/SeoLandingPage").then(m => ({ default: m.SeoLandingPage })));
 const ProgressTrendChart     = lazy(() => import("./components/ProgressTrendChart").then(m => ({ default: m.ProgressTrendChart })));
-const MethodologyPage        = lazy(() => import("./components/MethodologyPage").then(m => ({ default: m.MethodologyPage })));
-const PricingPage            = lazy(() => import("./components/PricingPage").then(m => ({ default: m.PricingPage })));
-const AccessibilityStatementPage = lazy(() => import("./components/AccessibilityStatementPage").then(m => ({ default: m.AccessibilityStatementPage })));
-const ResearchPage               = lazy(() => import("./components/ResearchPage").then(m => ({ default: m.ResearchPage })));
-const SchoolsPage            = lazy(() => import("./components/SchoolsPage").then(m => ({ default: m.SchoolsPage })));
-const AcademiaPage           = lazy(() => import("./components/AcademiaPage").then(m => ({ default: m.AcademiaPage })));
-const CorporatePage          = lazy(() => import("./components/CorporatePage").then(m => ({ default: m.CorporatePage })));
-const LanguageSchoolsPage    = lazy(() => import("./components/LanguageSchoolsPage").then(m => ({ default: m.LanguageSchoolsPage })));
 const ItemBankManager        = lazy(() => import("./components/ItemBankManager").then(m => ({ default: m.ItemBankManager })));
 const CandidateProfile       = lazy(() => import("./components/CandidateProfile").then(m => ({ default: m.CandidateProfile })));
 const ContentFactoryReviewQueue = lazy(() => import("./components/admin/ContentFactoryReviewQueue").then(m => ({ default: m.ContentFactoryReviewQueue })));
 
-// Shared loading fallback
-function MarketingPage({ children, enabled }: { children: React.ReactNode; enabled: boolean }) {
-  const { i18n } = useTranslation();
-  const { pathname } = useLocation();
-  const [privateAssessmentOpen, setPrivateAssessmentOpen] = useState(false);
-  // Every marketing page ends with SiteFooter, which renders this consent control.
-  const consent = <MarketingConsent path={pathname} isTr={(i18n.language || 'en').startsWith('tr')} enabled={enabled && !privateAssessmentOpen} />;
-  return <MeasurementPrivacyContext.Provider value={setPrivateAssessmentOpen}><FooterConsentContext.Provider value={consent}>{children}</FooterConsentContext.Provider></MeasurementPrivacyContext.Provider>;
-}
-
-const PageLoader = () => (
-  <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600" />
-  </div>
-);
 
 const EmailVerifyPage: React.FC<{ token: string | null; onDone: () => void }> = ({ token, onDone }) => {
   const [status, setStatus] = React.useState<"loading" | "ok" | "error">("loading");
@@ -339,19 +303,32 @@ export default function App() {
 
   if (location.pathname === '/guardian-verification') return <PublicLayout><GuardianVerificationPage /></PublicLayout>;
   if (location.pathname === '/guardian-consent') return <PublicLayout><GuardianDecisionPage /></PublicLayout>;
-  const legalRoutes: Record<string, LegalPageKind> = { '/privacy': 'privacy', '/kvkk': 'kvkk', '/terms': 'terms', '/support': 'support', '/refund-policy': 'refund', '/sales-terms': 'sales' };
-  if (legalRoutes[location.pathname]) return <LegalPage kind={legalRoutes[location.pathname]} />;
-
-  // Public certificate verification page — accessible without authentication
-  if (verifyMatch) {
-    return <PublicLayout><VerificationPage certId={verifyMatch[1]} /></PublicLayout>;
-  }
+  // Legal pages and certificate verification — accessible without authentication.
+  // The server renders these too (entry-server.tsx), from the same builder.
+  const legalPage = publicLegalElement(location.pathname);
+  if (legalPage) return legalPage;
 
   // Public shared score report page — no auth required
   const shareMatch = location.pathname.match(/^\/share\/([a-f0-9]{32})/);
   if (shareMatch) {
     return <PublicLayout><SharedReportPage token={shareMatch[1]} /></PublicLayout>;
   }
+
+  // Public marketing pages need no session answer. They render before the
+  // session check ends so the browser hydrates the server HTML as it is,
+  // instead of swapping it for a spinner. Pages for signed-out visitors only
+  // return null once a signed-in user is known, and the app takes over.
+  const marketingPage = showCodeEntry ? null : publicMarketingElement(location.pathname, LAZY_PUBLIC_PAGES, {
+    signedIn: user !== null,
+    showLanding,
+    measurementEnabled: !user && !loading,
+    onHome: () => navigate("/"),
+    onStart: () => { setShowLanding(false); navigate("/"); },
+    onPricing: () => navigate("/pricing"),
+    onLandingStart: () => setShowLanding(false),
+    onCodeEntry: () => { setShowLanding(false); setShowCodeEntry(true); },
+  });
+  if (marketingPage) return marketingPage;
 
   if (loading) {
     return (
@@ -415,54 +392,6 @@ export default function App() {
     return <PublicLayout><AuthPage initialMode="signup" onBack={() => navigate("/")} /></PublicLayout>;
   }
 
-  if (!user && location.pathname === "/methodology") {
-    return (
-      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
-        <MethodologyPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} />
-      </Suspense></MarketingPage>
-    );
-  }
-
-  if (location.pathname === "/pricing") {
-    return (
-      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
-        <PricingPage
-          onBack={() => navigate("/")}
-          onStart={() => { setShowLanding(false); navigate("/"); }}
-        />
-      </Suspense></MarketingPage>
-    );
-  }
-
-  if (location.pathname === "/accessibility-statement") {
-    return (
-      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
-        <AccessibilityStatementPage onStart={() => { setShowLanding(false); navigate("/"); }} />
-      </Suspense></MarketingPage>
-    );
-  }
-
-  if (location.pathname === "/research") {
-    return (
-      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
-        <ResearchPage onStart={() => { setShowLanding(false); navigate("/"); }} />
-      </Suspense></MarketingPage>
-    );
-  }
-
-  if (!user && location.pathname === "/schools") {
-    return <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}><SchoolsPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense></MarketingPage>;
-  }
-  if (!user && location.pathname === "/academia") {
-    return <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}><AcademiaPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense></MarketingPage>;
-  }
-  if (!user && location.pathname === "/corporate") {
-    return <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}><CorporatePage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense></MarketingPage>;
-  }
-  if (!user && location.pathname === "/language-schools") {
-    return <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}><LanguageSchoolsPage onBack={() => navigate("/")} onStart={() => { setShowLanding(false); navigate("/"); }} /></Suspense></MarketingPage>;
-  }
-
   // Email verification link — /verify-email?token=...
   if (location.pathname === "/verify-email") {
     const token = new URLSearchParams(location.search).get("token");
@@ -475,27 +404,6 @@ export default function App() {
     return <PublicLayout><AuthPage initialMode="reset" initialToken={token ?? ""} onBack={() => navigate("/")} /></PublicLayout>;
   }
 
-  if (location.pathname === "/cefr-levels" || location.pathname.startsWith("/cefr-levels/")) {
-    return (
-      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
-        <CefrGuidePage path={location.pathname} />
-      </Suspense></MarketingPage>
-    );
-  }
-
-  const seoVariant = SEO_PATHS[location.pathname] ?? null;
-  if (!user && seoVariant) {
-    return (
-      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
-        <SeoLandingPage
-          variant={seoVariant}
-          onStart={() => { setShowLanding(false); navigate("/"); }}
-          onPricing={() => navigate("/pricing")}
-        />
-      </Suspense></MarketingPage>
-    );
-  }
-
   const protectedPath = [
     "/dashboard", "/admin", "/rating", "/institutional", "/teacher",
     "/content", "/results", "/profile", "/settings", "/exam", "/report", "/print",
@@ -505,8 +413,9 @@ export default function App() {
   }
 
   if (!user && showLanding) {
+    const LandingPage = LAZY_PUBLIC_PAGES.LandingPage;
     return (
-      <MarketingPage enabled={!user}><Suspense fallback={<PageLoader />}>
+      <MarketingPage path={location.pathname} enabled={!user}><Suspense fallback={<PageLoader />}>
         <LandingPage onStart={() => setShowLanding(false)} onCodeEntry={() => { setShowLanding(false); setShowCodeEntry(true); }} />
       </Suspense></MarketingPage>
     );
