@@ -8275,7 +8275,7 @@ ${codeSection}
       { title: "CEFR English Test — Adaptive Assessment", url: "/cefr-english-test", summary: "CEFR-aligned adaptive English test with QR-verifiable certificate." },
       { title: "English Assessment for Universities", url: "/english-assessment-for-universities", summary: "Adaptive CEFR placement testing for language centres and admissions teams." },
       { title: "English Assessment for Companies", url: "/english-assessment-for-companies", summary: "Screen and develop English skills across your workforce with CEFR-aligned assessments." },
-      { title: "Pricing — B4Skills", url: "/pricing", summary: "Transparent pricing for adaptive CEFR English testing. Free Quick Check to institutional plans." },
+      { title: "Pricing — B4Skills", url: "/pricing", summary: "Plans for adaptive CEFR English testing, from the free Quick Check to institutional plans." },
     ];
     const entries = pages.map(p => `  <entry>
     <title>${p.title}</title>

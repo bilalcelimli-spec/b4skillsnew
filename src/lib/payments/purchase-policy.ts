@@ -1,6 +1,6 @@
 import { COMPANY } from '../site/company';
 
-export const PURCHASE_POLICY_VERSION = '2026-11-04.2';
+export const PURCHASE_POLICY_VERSION = '2026-11-21.1';
 export const DAY_MS = 86_400_000;
 export const PURCHASE_PLANS = {
   'full-assessment': { id: 'full-assessment', name: 'Full Assessment', amount: 1900, currency: 'EUR', credits: 1 },
@@ -11,7 +11,7 @@ export const PURCHASE_SCOPE = 'Full Assessment: Reading, Listening, Writing ve S
 export const REFUND_SECTIONS: ReadonlyArray<readonly [string, string]> = [
   ['Kapsam ve satın alma kanalı', 'Bu politika, b4skills tarafından doğrudan tahsil edilen ödemeler için geçerlidir. Bu sitede ücretli bireysel satış şu anda kapalıdır. Apple üzerinden yapılan satın almalarda ödeme ve iade işlemleri Apple’ın kanalları üzerinden yürütülür; bu politika Apple adına iade taahhüdü oluşturmaz. Apple uygulama içi satın alma henüz etkin değildir. Zorunlu tüketici hakları saklıdır.'],
   ['Başlatılmamış sınav', 'Satın alma tarihinden itibaren 14 gün içinde gerekçesiz tam iade talep edebilirsiniz.'],
-  ['Sınav paketleri', 'Aynı süre içinde kullanılmamış haklar, ödenen paket bedeline orantılı olarak iade edilir. 49 € tutarındaki üçlü pakette bir sınav kullanılmışsa kalan iki hak için 32,67 € iade edilir. Kullanılan sınava ilişkin zorunlu haklar ayrıca saklıdır.'],
+  ['Sınav paketleri', 'Aynı süre içinde kullanılmamış haklar, ödenen paket bedeline orantılı olarak iade edilir. Kullanılan sınava ilişkin zorunlu haklar ayrıca saklıdır.'],
   ['Başlatılmış sınav', 'Cayma hakkının sona ermesine ilişkin istisna ancak gerekli ön bilgilendirme ve geçerli onay koşulları sağlanmışsa uygulanır. Sınava giriş tek başına otomatik hak kaybı sayılmaz. Erken ifa onayı yalnız başlatılan sınava ilişkindir; paketinizdeki kullanılmamış hakları kapsamaz.'],
   ['Platform kaynaklı arıza', 'Hizmet platform kaynaklı arıza nedeniyle tamamlanamıyorsa ücretsiz tekrar veya ilgili sınav bedelinin iadesini seçebilirsiniz.'],
   ['İade yöntemi', 'İade, bildirimden itibaren en geç 14 gün içinde aynı ödeme yöntemiyle, işlem ücreti kesilmeden yapılır.'],

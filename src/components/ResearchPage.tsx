@@ -102,7 +102,7 @@ export const ResearchPage: React.FC<Props> = ({ onStart, onCodeEntry }) => {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <SiteNav onStart={onStart ?? (() => {})} onCodeEntry={onCodeEntry ?? (() => {})} />
+      <SiteNav />
 
       <main className="flex-grow">
         {/* Hero */}

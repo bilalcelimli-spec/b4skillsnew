@@ -56,7 +56,7 @@ const CONTENT: Record<LegalPageKind, { title: string; sections: ReadonlyArray<re
 export function LegalPage({ kind }: { kind: LegalPageKind }) {
   const content = CONTENT[kind];
   return <div className="min-h-screen bg-slate-50 text-slate-800">
-    <SiteNav onStart={() => { window.location.href = '/assessment'; }} />
+    <SiteNav />
     <main lang="tr" className="max-w-4xl mx-auto px-6 pt-32 pb-20">
       <h1 className="text-3xl font-bold mb-4">{content.title}</h1>
       {['privacy', 'kvkk', 'terms'].includes(kind) && <p className="rounded-xl bg-amber-50 border border-amber-200 p-4 mb-6 text-sm" role="note">İnceleme taslağı · 4 Kasım 2026. Şirket bilgileri sağlanan vergi belgesinden alınmıştır. Veri işleme ve aktarım ayrıntıları ile ticari koşulların incelemesi tamamlanmadan nihai hukuki metin olarak yayımlanmamalıdır.</p>}
@@ -67,7 +67,6 @@ export function LegalPage({ kind }: { kind: LegalPageKind }) {
       </div>
       {kind === 'refund' && <p className="mb-8 text-sm"><a href="https://support.apple.com/tr-tr/118223" className="underline" target="_blank" rel="noopener noreferrer">Apple üzerinden yapılan satın almalarda iade başvurusu</a></p>}
       <div className="space-y-8">{content.sections.map(([heading, body]) => <section key={heading}><h2 className="text-xl font-bold mb-3">{heading}</h2><p className="leading-7 whitespace-pre-line">{body}</p></section>)}</div>
-      <nav aria-label="Hukuki ve iletişim sayfaları" className="flex flex-wrap gap-5 mt-12 underline text-sm"><a href="/privacy">Gizlilik</a><a href="/kvkk">KVKK</a><a href="/terms">Kullanım koşulları</a><a href="/refund-policy">İade ve cayma</a><a href="/sales-terms">Satış koşulları</a><a href="/support">Destek</a></nav>
     </main><SiteFooter />
   </div>;
 }

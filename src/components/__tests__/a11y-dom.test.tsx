@@ -57,7 +57,7 @@ vi.mock("motion/react", () => {
   };
 });
 
-/** framer-motion alias (DynamicPage imports it directly). */
+/** framer-motion alias for components that import it directly. */
 vi.mock("framer-motion", () => {
   const createEl =
     (tag: string) =>
@@ -71,11 +71,6 @@ vi.mock("framer-motion", () => {
     AnimatePresence: ({ children }: React.PropsWithChildren) => children,
   };
 });
-
-/** DynamicPage is a large marketing page — irrelevant to auth form a11y. */
-vi.mock("../DynamicPage", () => ({
-  DynamicPage: () => React.createElement("div", { "data-testid": "dynamic-page-mock" }),
-}));
 
 /** SpeakingRecorder / WritingEditor — not under test here. */
 vi.mock("../SpeakingRecorder", () => ({

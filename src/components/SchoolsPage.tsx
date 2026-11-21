@@ -150,7 +150,7 @@ export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => 
         <div className="absolute bottom-[20%] left-[-10%] w-[40vw] h-[40vw] bg-purple-100/40 rounded-full blur-[120px]" />
       </div>
 
-      <SiteNav onStart={onStart ?? onBack} />
+      <SiteNav />
 
       {/* ── HERO ────────────────────────────────────────────────────────────── */}
       <section className="pt-32 pb-16 lg:py-32 relative z-10">

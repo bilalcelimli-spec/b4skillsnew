@@ -14,8 +14,6 @@ interface PricingPageProps {
 interface Plan {
   name: string;
   badge?: string;
-  price: string;
-  period: string;
   description: string;
   features: string[];
   cta: string;
@@ -26,8 +24,6 @@ interface Plan {
 const B2C_PLANS: Plan[] = [
   {
     name: "Quick Check",
-    price: "Free",
-    period: "",
     description: "Get a provisional CEFR estimate in about 20–30 minutes. No account required.",
     features: [
       "20–30 minute adaptive placement",
@@ -43,8 +39,6 @@ const B2C_PLANS: Plan[] = [
 const B2B_PLANS: Plan[] = [
   {
     name: "Team Starter",
-    price: "€9",
-    period: "per learner / test",
     description: "For small teams and language schools testing up to 50 people.",
     features: [
       "Full adaptive four-skills assessment",
@@ -59,8 +53,6 @@ const B2B_PLANS: Plan[] = [
   {
     name: "Institution",
     badge: "Best Value",
-    price: "€6",
-    period: "per learner / test",
     description: "For universities, language schools, and mid-size corporates.",
     features: [
       "Everything in Team Starter",
@@ -77,8 +69,6 @@ const B2B_PLANS: Plan[] = [
   },
   {
     name: "Enterprise",
-    price: "Custom",
-    period: "",
     description: "Unlimited scale with white-labelling and dedicated psychometric support.",
     features: [
       "Everything in Institution",
@@ -125,9 +115,9 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
   const plans = tab === "individual" ? B2C_PLANS : B2B_PLANS;
 
   const handleCta = (plan: Plan) => {
-    if (plan.cta === "Contact Sales" || plan.price === "Custom") {
+    if (plan.cta === "Contact Sales" || plan.cta === "Talk to Us") {
       window.location.href = `mailto:hello@b4skills.com?subject=${encodeURIComponent(`${plan.name} Plan Enquiry`)}`;
-    } else if (plan.price === "Free") {
+    } else if (plan.cta === "Start Free") {
       setShowFreeTest(true);
     } else if (plan.name === "Full Assessment" || plan.name === "Pro Bundle") {
       window.location.href = `/checkout?plan=${plan.name === "Pro Bundle" ? "pro-bundle" : "full-assessment"}`;
@@ -142,18 +132,17 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
       {showFreeTest && <FreemiumTestWidget onClose={() => setShowFreeTest(false)} onSignup={() => { setShowFreeTest(false); onStart?.(); }} />}
 
       {/* ── Shared Nav ─── */}
-      <SiteNav onStart={onStart ?? (() => {})} />
+      <SiteNav />
 
       {/* ── Hero ───────────────────────────────────────────────────────── */}
       <section className="relative bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white pt-36 pb-24 px-6 text-center overflow-hidden">
         <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: "radial-gradient(circle at 30% 50%, #6366f1 0%, transparent 60%), radial-gradient(circle at 70% 50%, #9b276c 0%, transparent 60%)" }} />
         <div className="relative max-w-3xl mx-auto">
-          <p className="text-xs font-black tracking-[0.25em] uppercase text-indigo-300 mb-4">Transparent Pricing</p>
           <h1 className="text-4xl md:text-5xl font-black leading-tight mb-6">
             Know your level.<br />Understand your skills.
           </h1>
           <p className="text-lg text-white/70 mb-10 max-w-xl mx-auto">
-            Adaptive, psychometrically rigorous English assessment. Pay per test or unlock cohort intelligence at scale.
+            Adaptive, psychometrically rigorous English assessment.
           </p>
 
           {/* Tab switcher */}
@@ -206,11 +195,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
                 </span>
               )}
               <div>
-                <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-1">{plan.name}</p>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-black text-slate-900">{plan.price}</span>
-                  {plan.period && <span className="text-sm text-slate-500">{plan.period}</span>}
-                </div>
+                <p className="text-2xl font-black text-slate-900">{plan.name}</p>
                 <p className="text-sm text-slate-500 mt-2">{plan.description}</p>
               </div>
               <ul className="flex-1 space-y-2" aria-label={`${plan.name} features`}>

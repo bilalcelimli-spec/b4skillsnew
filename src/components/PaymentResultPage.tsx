@@ -14,7 +14,7 @@ export function PaymentResultPage({ orderId }: { orderId: string | null }) {
     return () => abort.abort();
   }, [orderId, revision]);
   const paid = order?.status === 'COMPLETED';
-  return <div className="min-h-screen bg-slate-50"><SiteNav onStart={() => { window.location.href = '/dashboard'; }} /><main lang="tr" className="max-w-2xl mx-auto px-6 pt-32 pb-20 space-y-6">
+  return <div className="min-h-screen bg-slate-50"><SiteNav /><main lang="tr" className="max-w-2xl mx-auto px-6 pt-32 pb-20 space-y-6">
     <h1 className="text-3xl font-bold">{paid ? 'Ödemeniz doğrulandı' : 'Ödeme durumu'}</h1>
     {error && <p role="alert" className="text-red-700">{error}</p>}
     {order && <><p>{paid ? `${order.creditsRemaining} sınav hakkı hesabınıza tanımlandı.` : 'Ödeme henüz sunucuda doğrulanmadı. Bu sayfaya dönüş tek başına ödemenin başarılı olduğunu göstermez.'}</p>

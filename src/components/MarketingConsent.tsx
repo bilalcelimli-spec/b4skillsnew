@@ -2,6 +2,9 @@ import React, { createContext, useEffect, useState } from 'react';
 import { analyticsChoice, disableMarketingMeasurement, isPublicMarketingPath, measureMarketingPage, setAnalyticsChoice } from '../services/marketingMeasurement';
 
 export const MeasurementPrivacyContext = createContext<(active: boolean) => void>(() => {});
+/** The consent control for the current marketing page. SiteFooter renders it in
+ *  its bottom row so the footer ends the same way on every public page. */
+export const FooterConsentContext = createContext<React.ReactNode>(null);
 
 export function MarketingConsent({ path, isTr, enabled }: { path: string; isTr: boolean; enabled: boolean }) {
   const [choice, setChoice] = useState(analyticsChoice);
