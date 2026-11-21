@@ -66,11 +66,58 @@ describe("SEO landing page depth", () => {
       const { html } = render(path);
       const words = html.replace(/<[^>]+>/g, " ").split(/\s+/).filter(Boolean).length;
       expect(words, path).toBeGreaterThan(700);
-      expect(html).toContain('href="/cefr-levels/b2"');
+      expect(html).toContain(content.lang === "tr" ? 'href="/cefr-seviyeleri/b2"' : 'href="/cefr-levels/b2"');
       for (const item of content.faq) expect(html).toContain(item.q.replace(/'/g, "&#x27;"));
       const head = applySeoToHtml(SHELL, seoPageFor(path)!, { baseUrl: BASE });
       const faq = [...head.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/g)].map((m) => JSON.parse(m[1])).find((ld) => ld["@type"] === "FAQPage");
       expect(faq.mainEntity.map((q: { name: string }) => q.name), path).toEqual(content.faq.map((f) => f.q));
     }
+  });
+});
+
+describe("Turkish CEFR guides", () => {
+  it("mirror the English guides level by level with complete Turkish content", async () => {
+    const { LEVEL_GUIDES_TR } = await import("../src/lib/site/cefr-guides");
+    expect(LEVEL_GUIDES_TR.map((g) => [g.level, g.slug, g.lang])).toEqual(LEVEL_GUIDES.map((g) => [g.level, g.slug, "tr"]));
+    for (const [i, guide] of LEVEL_GUIDES_TR.entries()) {
+      expect(guide.canDo.map((c) => c.skill)).toEqual(LEVEL_GUIDES[i].canDo.map((c) => c.skill));
+      expect(guide.faq.length).toBeGreaterThanOrEqual(2);
+      expect(guide.answer).toMatch(/[ığüşöçİ]/);
+    }
+  });
+
+  it("server-renders Turkish pages in Turkish, linking Turkish neighbours, the Turkish test and the Turkish comparison", () => {
+    const html = render("/cefr-seviyeleri/b2").html;
+    expect(html).toContain('lang="tr"');
+    expect(html).toContain("B2 seviyesi nedir?");
+    expect(html).toContain('href="/cefr-seviyeleri/c1"');
+    expect(html).toContain('href="/cefr-seviyeleri/sinav-karsilastirma"');
+    expect(html).toContain('href="/ingilizce-seviye-testi"');
+    expect(render("/cefr-seviyeleri/sinav-karsilastirma").html).toContain("TOEFL iBT (Ocak 2026&#x27;dan itibaren)");
+    expect(render("/cefr-seviyeleri").html).toContain("CEFR seviyeleri: A1&#x27;den C2&#x27;ye");
+  });
+
+  it("pairs every English and Turkish guide page with hreflang and serves Turkish pages as lang=tr", () => {
+    const pairs: [string, string][] = [
+      ["/cefr-levels", "/cefr-seviyeleri"],
+      ["/cefr-levels/a1", "/cefr-seviyeleri/a1"],
+      ["/cefr-levels/c2", "/cefr-seviyeleri/c2"],
+      ["/cefr-levels/exam-comparison", "/cefr-seviyeleri/sinav-karsilastirma"],
+    ];
+    for (const [en, tr] of pairs) {
+      expect(seoPageFor(en)?.alternates).toEqual({ en, tr });
+      expect(seoPageFor(tr)?.alternates).toEqual({ en, tr });
+    }
+    const head = applySeoToHtml(SHELL, seoPageFor("/cefr-seviyeleri/b1")!, { baseUrl: BASE });
+    expect(head).toContain('<html lang="tr"');
+    expect(head).toContain('hreflang="en" href="https://b4skills.com/cefr-levels/b1"');
+    const crumbs = graphOf(head).find((n: { "@type": string }) => n["@type"] === "BreadcrumbList").itemListElement;
+    expect(crumbs.map((c: { name: string }) => c.name)).toEqual(["b4skills", "CEFR Seviyeleri", "B1 seviyesi"]);
+  });
+
+  it("links the Turkish landing page to the Turkish guides", () => {
+    const html = render("/ingilizce-seviye-testi").html;
+    expect(html).toContain('href="/cefr-seviyeleri/b2"');
+    expect(html).not.toContain('href="/cefr-levels/b2"');
   });
 });

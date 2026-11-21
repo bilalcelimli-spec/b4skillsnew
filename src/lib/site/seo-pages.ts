@@ -10,7 +10,7 @@
 
 export type SeoLang = "en" | "tr";
 import { LANDING_CONTENT } from "./seo-landing-content";
-import { CEFR_EXAM_COMPARISON_PATH, CEFR_GUIDE_HUB_PATH, LEVEL_GUIDES, levelGuidePath, neighbours } from "./cefr-guides";
+import { CEFR_EXAM_COMPARISON_PATH, CEFR_GUIDE_HUB_PATH, GUIDE_SECTION_PATHS, LEVEL_GUIDES, LEVEL_GUIDES_TR, guideAlternates, levelGuidePath, neighbours } from "./cefr-guides";
 
 export type SeoKind = "home" | "test" | "solution" | "info" | "guide" | "legal" | "utility";
 
@@ -49,7 +49,7 @@ const faqLd = (items: readonly { q: string; a: string }[]) => ({
 
 const GUIDES_UPDATED = "2026-11-21";
 
-const CEFR_GUIDE_PAGES: SeoPage[] = [
+const CEFR_GUIDE_PAGES_EN: SeoPage[] = [
   {
     path: CEFR_GUIDE_HUB_PATH,
     name: "CEFR Levels Explained",
@@ -81,6 +81,44 @@ const CEFR_GUIDE_PAGES: SeoPage[] = [
     lang: "en", kind: "guide", updated: GUIDES_UPDATED, indexable: true, priority: 0.8, changefreq: "monthly", ogImage: "cefr-exam-comparison.png",
   },
 ];
+
+const TR = GUIDE_SECTION_PATHS.tr;
+
+const CEFR_GUIDE_PAGES_TR: SeoPage[] = [
+  {
+    path: TR.hub,
+    name: "CEFR Seviyeleri",
+    title: "CEFR Seviyeleri Nedir? A1, A2, B1, B2, C1, C2 Açıklaması | b4skills",
+    description: "A1 başlangıçtan C2 üst düzey yeterliliğe kadar her CEFR İngilizce seviyesinin anlamı: öğrencilerin neler yapabildiği, tipik dilbilgisi ve kelime bilgisi, sınavların her seviyeyi nasıl raporladığı.",
+    summary: "Altı CEFR seviyesine (A1–C2) Türkçe rehber: her seviyede neler yapılabildiği ve seviyelerin nasıl gruplandığı.",
+    lang: "tr", kind: "guide", updated: GUIDES_UPDATED, indexable: true, priority: 0.8, changefreq: "monthly", ogImage: "cefr-seviyeleri.png",
+  },
+  ...LEVEL_GUIDES_TR.map((guide): SeoPage => {
+    const { next } = neighbours(guide);
+    return {
+      path: levelGuidePath(guide),
+      parent: TR.hub,
+      name: `${guide.level} seviyesi`,
+      title: `${guide.level} Seviyesi Nedir? CEFR ${guide.level} İngilizce Seviyesi | b4skills`,
+      description: `CEFR ${guide.level} (${guide.nickname.toLocaleLowerCase("tr")}) İngilizce seviyesi: okuma, dinleme, konuşma ve yazmada neler yapılabildiği, tipik dilbilgisi, sınav puan aralıkları${next ? ` ve ${next.level} seviyesine nasıl geçileceği` : ""}.`,
+      summary: guide.answer,
+      lang: "tr", kind: "guide", updated: GUIDES_UPDATED, indexable: true, priority: 0.7, changefreq: "monthly", ogImage: `cefr-seviyesi-${guide.slug}.png`,
+      jsonLd: [faqLd(guide.faq)],
+    };
+  }),
+  {
+    path: TR.comparison,
+    parent: TR.hub,
+    name: "Sınav puanları ve CEFR",
+    title: "IELTS, TOEFL ve Cambridge Puanlarının CEFR Karşılığı | b4skills",
+    description: "IELTS, TOEFL iBT (eski ve yeni puan ölçeği), Cambridge English ve Duolingo puanlarının A1–C2 CEFR seviyelerine karşılığı; her sınav sahibinin kendi yayımladığı eşleştirme ve kaynakları.",
+    summary: "IELTS, TOEFL iBT, Cambridge English ve Duolingo'nun yayımladığı CEFR puan aralıkları tablosu, kaynak bağlantılarıyla.",
+    lang: "tr", kind: "guide", updated: GUIDES_UPDATED, indexable: true, priority: 0.8, changefreq: "monthly", ogImage: "cefr-sinav-karsilastirma.png",
+  },
+];
+
+/** Every guide page, each paired with its other-language version for hreflang. */
+const CEFR_GUIDE_PAGES: SeoPage[] = [...CEFR_GUIDE_PAGES_EN, ...CEFR_GUIDE_PAGES_TR].map((page) => ({ ...page, alternates: guideAlternates(page.path) }));
 
 export const SEO_PAGES: readonly SeoPage[] = [
   {

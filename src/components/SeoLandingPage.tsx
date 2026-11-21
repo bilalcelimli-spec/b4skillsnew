@@ -3,7 +3,7 @@ import { ArrowRight, CheckCircle2, Star, Zap, GraduationCap, Building2 } from "l
 import { cn } from "../lib/utils";
 import { SiteNav } from "./SiteNav";
 import { LANDING_CONTENT } from "../lib/site/seo-landing-content";
-import { CEFR_EXAM_COMPARISON_PATH, CEFR_GUIDE_HUB_PATH, LEVEL_GUIDES, levelGuidePath } from "../lib/site/cefr-guides";
+import { GUIDE_SECTION_PATHS, guidesFor, levelGuidePath } from "../lib/site/cefr-guides";
 import { SiteFooter } from "./SiteFooter";
 
 export type SeoVariant =
@@ -213,17 +213,17 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
         <section>
           <h2 className="text-2xl font-black text-slate-900 mb-2">{c.levelsHeading}</h2>
           <p className="text-slate-600 mb-5">{c.levelsText}</p>
-          <div lang="en" className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-            {LEVEL_GUIDES.map((guide) => (
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+            {guidesFor(c.lang).map((guide) => (
               <a key={guide.level} href={levelGuidePath(guide)} className="bg-white rounded-xl border border-slate-100 hover:border-[#9b276c] p-4 text-center">
                 <span className="block text-xl font-black text-[#9b276c]">{guide.level}</span>
                 <span className="block text-xs text-slate-500 mt-1">{guide.nickname}</span>
               </a>
             ))}
           </div>
-          <p lang="en" className="text-sm mt-4 space-x-4">
-            <a href={CEFR_GUIDE_HUB_PATH} className="text-[#9b276c] underline">CEFR levels explained</a>
-            <a href={CEFR_EXAM_COMPARISON_PATH} className="text-[#9b276c] underline">Exam scores vs CEFR</a>
+          <p className="text-sm mt-4 space-x-4">
+            <a href={GUIDE_SECTION_PATHS[c.lang].hub} className="text-[#9b276c] underline">{c.lang === "tr" ? "CEFR seviyeleri rehberi" : "CEFR levels explained"}</a>
+            <a href={GUIDE_SECTION_PATHS[c.lang].comparison} className="text-[#9b276c] underline">{c.lang === "tr" ? "Sınav puanları ve CEFR" : "Exam scores vs CEFR"}</a>
           </p>
         </section>
       </div>
