@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { SEO_PAGES, isPrivatePublicPath, seoPageFor } from "../src/lib/site/seo-pages";
+import { SSR_RENDERED_PATHS } from "../src/entry-server";
 import { NAMED_CRAWLERS, applyNoindexToHtml, applySeoToHtml, atomFeed, headTags, llmsTxt, robotsTxt, sitemapXml } from "../src/lib/site/seo-head";
 
 const BASE = "https://b4skills.com";
@@ -28,10 +29,8 @@ describe("SEO page list", () => {
   });
 
   it("covers every server-rendered marketing route", () => {
-    const entry = fs.readFileSync("src/entry-server.tsx", "utf8");
-    const ssrPaths = [...entry.matchAll(/^\s+"(\/[^"]*)": \(\) =>/gm)].map((m) => m[1]);
-    expect(ssrPaths.length).toBeGreaterThan(10);
-    for (const ssrPath of ssrPaths) expect(seoPageFor(ssrPath), ssrPath).toBeDefined();
+    expect(SSR_RENDERED_PATHS.length).toBeGreaterThan(10);
+    for (const ssrPath of SSR_RENDERED_PATHS) expect(seoPageFor(ssrPath), ssrPath).toBeDefined();
   });
 
   it("keeps personal and sign-in pages out of search", () => {

@@ -1,14 +1,15 @@
 /**
- * SSR entry point — marketing pages only.
- * Auth-required routes stay CSR; only public marketing routes get renderToString.
+ * SSR entry point — public pages only.
+ * Auth-required routes stay CSR; public marketing and legal routes get renderToString.
  * Called from server.ts in both dev (vite.ssrLoadModule) and prod (dynamic import).
+ *
+ * The tree comes from the same builder App.tsx uses (src/public-pages.tsx), so
+ * the browser can hydrate this HTML without changing it.
  */
 import React from "react";
 import { renderToString } from "react-dom/server";
 
 // Marketing page imports — all SSR-safe (browser APIs wrapped in useEffect/callbacks)
-import { LegalPage } from "./components/LegalPage";
-import { VerificationPage } from "./components/VerificationPage";
 import { LandingPage } from "./components/LandingPage";
 import { PricingPage } from "./components/PricingPage";
 import { MethodologyPage } from "./components/MethodologyPage";
@@ -18,9 +19,10 @@ import { SchoolsPage } from "./components/SchoolsPage";
 import { CorporatePage } from "./components/CorporatePage";
 import { AcademiaPage } from "./components/AcademiaPage";
 import { LanguageSchoolsPage } from "./components/LanguageSchoolsPage";
-import { SeoLandingPage, SeoVariant } from "./components/SeoLandingPage";
+import { SeoLandingPage } from "./components/SeoLandingPage";
 import { CefrGuidePage } from "./components/CefrGuidePage";
 import { CEFR_GUIDE_PATHS } from "./lib/site/cefr-guides";
+import { DomProviders, LEGAL_ROUTES, SEO_PATHS, publicLegalElement, publicMarketingElement, type PublicPageComponents } from "./public-pages";
 
 export interface SSRResult {
   html: string;
@@ -29,40 +31,38 @@ export interface SSRResult {
 
 const NOOP = () => {};
 
-// Map URL paths → React element factories.
-// Props that are navigation callbacks get NOOP — they're inert during SSR.
-// Only initial render state matters; useEffect never fires during renderToString.
-const ROUTE_FACTORIES: Record<string, () => React.ReactElement> = {
-  "/refund-policy": () => <LegalPage kind="refund" />,
-  "/sales-terms": () => <LegalPage kind="sales" />,
-  "/privacy": () => <LegalPage kind="privacy" />,
-  "/kvkk": () => <LegalPage kind="kvkk" />,
-  "/terms": () => <LegalPage kind="terms" />,
-  "/support": () => <LegalPage kind="support" />,
-  "/verify": () => <VerificationPage />,
-  "/": () => <LandingPage onStart={NOOP} onCodeEntry={NOOP} />,
-  "/pricing": () => <PricingPage onBack={NOOP} onStart={NOOP} />,
-  "/methodology": () => <MethodologyPage onBack={NOOP} />,
-  "/accessibility-statement": () => <AccessibilityStatementPage />,
-  "/research": () => <ResearchPage />,
-  "/schools": () => <SchoolsPage onBack={NOOP} />,
-  "/corporate": () => <CorporatePage onBack={NOOP} />,
-  "/academia": () => <AcademiaPage onBack={NOOP} />,
-  "/language-schools": () => <LanguageSchoolsPage onBack={NOOP} />,
-  "/english-level-test": () => <SeoLandingPage variant={"english-level-test" as SeoVariant} onStart={NOOP} />,
-  "/ingilizce-seviye-testi": () => <SeoLandingPage variant={"ingilizce-seviye-testi" as SeoVariant} onStart={NOOP} />,
-  "/cefr-english-test": () => <SeoLandingPage variant={"cefr-english-test" as SeoVariant} onStart={NOOP} />,
-  "/english-assessment-for-universities": () => <SeoLandingPage variant={"english-assessment-for-universities" as SeoVariant} onStart={NOOP} />,
-  "/english-assessment-for-companies": () => <SeoLandingPage variant={"english-assessment-for-companies" as SeoVariant} onStart={NOOP} />,
-  ...Object.fromEntries(CEFR_GUIDE_PATHS.map((path) => [path, () => <CefrGuidePage path={path} />])),
+export const EAGER_PUBLIC_PAGES: PublicPageComponents = {
+  LandingPage, PricingPage, MethodologyPage, AccessibilityStatementPage, ResearchPage,
+  SchoolsPage, AcademiaPage, CorporatePage, LanguageSchoolsPage, SeoLandingPage, CefrGuidePage,
 };
 
+/** Paths the server renders. Each must also be in server.ts SSR_PATHS. */
+export const SSR_RENDERED_PATHS: readonly string[] = [
+  ...Object.keys(LEGAL_ROUTES), "/verify",
+  "/", "/pricing", "/methodology", "/accessibility-statement", "/research",
+  "/schools", "/corporate", "/academia", "/language-schools",
+  ...Object.keys(SEO_PATHS), ...CEFR_GUIDE_PATHS,
+];
+
+/** The first browser render of a signed-out visitor: no user known yet, analytics off. */
+const SERVER_CONTEXT = {
+  signedIn: false, showLanding: true, measurementEnabled: false,
+  onHome: NOOP, onStart: NOOP, onPricing: NOOP, onLandingStart: NOOP, onCodeEntry: NOOP,
+};
+
+/** The element for `url`, wrapped as main.tsx wraps <App />. */
+export function publicPageTree(url: string): React.ReactElement | null {
+  if (!SSR_RENDERED_PATHS.includes(url)) return null;
+  const page = publicLegalElement(url) ?? publicMarketingElement(url, EAGER_PUBLIC_PAGES, SERVER_CONTEXT);
+  return page && <DomProviders>{page}</DomProviders>;
+}
+
 export function render(url: string): SSRResult {
-  const factory = ROUTE_FACTORIES[url];
-  if (!factory) return { html: "", didSSR: false };
+  const tree = publicPageTree(url);
+  if (!tree) return { html: "", didSSR: false };
 
   try {
-    const html = renderToString(factory());
+    const html = renderToString(tree);
     return { html, didSSR: true };
   } catch (err) {
     // SSR failure is non-fatal — server falls back to CSR shell
