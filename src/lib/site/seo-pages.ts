@@ -9,6 +9,7 @@
  */
 
 export type SeoLang = "en" | "tr";
+import { LANDING_CONTENT } from "./seo-landing-content";
 import { CEFR_EXAM_COMPARISON_PATH, CEFR_GUIDE_HUB_PATH, LEVEL_GUIDES, levelGuidePath, neighbours } from "./cefr-guides";
 
 export type SeoKind = "home" | "test" | "solution" | "info" | "guide" | "legal" | "utility";
@@ -97,6 +98,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
     description: "Take a free adaptive English level test and get your provisional CEFR estimate in about 20–30 minutes. Instant results, no account required.",
     summary: "Free adaptive English placement test (Quick Check) that gives a provisional CEFR estimate (A1–C2) in about 20–30 minutes, without an account.",
     lang: "en", kind: "test", updated: "2026-11-21", indexable: true, priority: 0.9, changefreq: "monthly", ogImage: "english-level-test.png",
+    jsonLd: [faqLd(LANDING_CONTENT["english-level-test"].faq)],
     alternates: { en: "/english-level-test", tr: "/ingilizce-seviye-testi" },
   },
   {
@@ -106,6 +108,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
     description: "Ücretsiz adaptif İngilizce seviye testiyle CEFR seviyenizi (A1–C2) yaklaşık 20–30 dakikada öğrenin. Anında sonuç, kayıt gerektirmez.",
     summary: "Ücretsiz adaptif İngilizce seviye testi: yaklaşık 20–30 dakikada, hesap açmadan geçici bir CEFR (A1–C2) tahmini verir.",
     lang: "tr", kind: "test", updated: "2026-11-21", indexable: true, priority: 0.9, changefreq: "monthly", ogImage: "ingilizce-seviye-testi.png",
+    jsonLd: [faqLd(LANDING_CONTENT["ingilizce-seviye-testi"].faq)],
     alternates: { en: "/english-level-test", tr: "/ingilizce-seviye-testi" },
   },
   {
@@ -115,6 +118,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
     description: "CEFR-aligned adaptive English test with a QR-verifiable b4skills certificate. Acceptance is decided by each receiving institution.",
     summary: "Full adaptive four-skills English assessment aligned to the CEFR, with a QR-verifiable certificate; acceptance is decided by each receiving institution.",
     lang: "en", kind: "test", updated: "2026-11-21", indexable: true, priority: 0.8, changefreq: "monthly", ogImage: "cefr-english-test.png",
+    jsonLd: [faqLd(LANDING_CONTENT["cefr-english-test"].faq)],
   },
   {
     path: "/english-assessment-for-universities",
@@ -123,6 +127,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
     description: "Adaptive CEFR placement for universities: bulk import, LMS integration and cohort analytics. 14-day free pilot.",
     summary: "Adaptive CEFR placement and proficiency testing for university language centres and admissions teams.",
     lang: "en", kind: "solution", updated: "2026-11-21", indexable: true, priority: 0.8, changefreq: "monthly", ogImage: "universities.png",
+    jsonLd: [faqLd(LANDING_CONTENT["english-assessment-for-universities"].faq)],
   },
   {
     path: "/english-assessment-for-companies",
@@ -131,6 +136,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
     description: "Fast, reliable English proficiency testing for HR teams. CEFR-aligned, bulk testing and workforce skill analytics.",
     summary: "CEFR-aligned English screening and workforce skill analytics for HR and L&D teams.",
     lang: "en", kind: "solution", updated: "2026-11-21", indexable: true, priority: 0.8, changefreq: "monthly", ogImage: "companies.png",
+    jsonLd: [faqLd(LANDING_CONTENT["english-assessment-for-companies"].faq)],
   },
   {
     path: "/schools",

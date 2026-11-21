@@ -2,6 +2,8 @@ import React, { useEffect } from "react";
 import { ArrowRight, CheckCircle2, Star, Zap, GraduationCap, Building2 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { SiteNav } from "./SiteNav";
+import { LANDING_CONTENT } from "../lib/site/seo-landing-content";
+import { CEFR_EXAM_COMPARISON_PATH, CEFR_GUIDE_HUB_PATH, LEVEL_GUIDES, levelGuidePath } from "../lib/site/cefr-guides";
 import { SiteFooter } from "./SiteFooter";
 
 export type SeoVariant =
@@ -80,6 +82,7 @@ const META: Record<SeoVariant, { title: string; description: string; h1: string;
       "LMS grade passback (Moodle, Canvas, Blackboard)",
       "Cohort CEFR heatmaps and skill gap reports",
       "SSO via Google, Microsoft, or SAML",
+      "Methodology and research documentation for quality assurance",
       "14-day free pilot — up to 20 assessments",
     ],
   },
@@ -110,6 +113,7 @@ const SOCIAL_PROOF = [
 
 export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing }) => {
   const m = META[variant];
+  const c = LANDING_CONTENT[variant];
   const contentLanguage = variant === "ingilizce-seviye-testi" ? "tr" : "en";
 
   useEffect(() => {
@@ -122,13 +126,6 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
     }
     desc.content = m.description;
 
-    let kw = document.querySelector<HTMLMetaElement>('meta[name="keywords"]');
-    if (!kw) {
-      kw = document.createElement("meta");
-      kw.name = "keywords";
-      document.head.appendChild(kw);
-    }
-    kw.content = m.keywords;
   }, [variant]);
 
   return (
@@ -172,6 +169,65 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
         </div>
       </section>
 
+      {/* Direct answer and long-form sections */}
+      <div lang={contentLanguage} className="max-w-3xl mx-auto px-6 pt-16 space-y-14">
+        <p className="text-xl leading-relaxed text-slate-800 font-medium">{c.intro}</p>
+        {c.sections.map((section) => (
+          <section key={section.heading}>
+            <h2 className="text-2xl font-black text-slate-900 mb-5">{section.heading}</h2>
+            {section.paragraphs?.map((p) => <p key={p} className="text-slate-700 leading-relaxed mb-4">{p}</p>)}
+            {section.steps && (
+              <ol className="space-y-4">
+                {section.steps.map((step, i) => (
+                  <li key={step.title} className="flex gap-4 bg-white rounded-2xl border border-slate-100 p-5">
+                    <span className="shrink-0 w-8 h-8 rounded-full bg-[#9b276c] text-white font-black flex items-center justify-center" aria-hidden="true">{i + 1}</span>
+                    <div><h3 className="font-bold text-slate-900 mb-1">{step.title}</h3><p className="text-sm text-slate-600 leading-relaxed">{step.text}</p></div>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {section.bullets && (
+              <ul className="list-disc pl-6 space-y-2 text-slate-700 leading-relaxed">{section.bullets.map((b) => <li key={b}>{b}</li>)}</ul>
+            )}
+          </section>
+        ))}
+        {c.table && (
+          <section>
+            <h2 className="text-2xl font-black text-slate-900 mb-5">{c.table.caption}</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm bg-white rounded-2xl border border-slate-100">
+                <caption className="sr-only">{c.table.caption}</caption>
+                <thead><tr className="text-left text-slate-500">{c.table.head.map((h, i) => <th key={i} className="p-4">{h}</th>)}</tr></thead>
+                <tbody>
+                  {c.table.rows.map((row) => (
+                    <tr key={row[0]} className="border-t border-slate-100">
+                      <th scope="row" className="p-4 text-left font-bold text-slate-900">{row[0]}</th>
+                      {row.slice(1).map((cell, i) => <td key={i} className="p-4 text-slate-700">{cell}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+        <section>
+          <h2 className="text-2xl font-black text-slate-900 mb-2">{c.levelsHeading}</h2>
+          <p className="text-slate-600 mb-5">{c.levelsText}</p>
+          <div lang="en" className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+            {LEVEL_GUIDES.map((guide) => (
+              <a key={guide.level} href={levelGuidePath(guide)} className="bg-white rounded-xl border border-slate-100 hover:border-[#9b276c] p-4 text-center">
+                <span className="block text-xl font-black text-[#9b276c]">{guide.level}</span>
+                <span className="block text-xs text-slate-500 mt-1">{guide.nickname}</span>
+              </a>
+            ))}
+          </div>
+          <p lang="en" className="text-sm mt-4 space-x-4">
+            <a href={CEFR_GUIDE_HUB_PATH} className="text-[#9b276c] underline">CEFR levels explained</a>
+            <a href={CEFR_EXAM_COMPARISON_PATH} className="text-[#9b276c] underline">Exam scores vs CEFR</a>
+          </p>
+        </section>
+      </div>
+
       {/* Feature bullets */}
       <section className="max-w-4xl mx-auto px-6 py-16">
         <h2 className="text-2xl font-black text-slate-900 mb-8 text-center">What You Get</h2>
@@ -180,6 +236,19 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
             <div key={b} className="flex items-start gap-3 p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
               <CheckCircle2 size={18} className="shrink-0 mt-0.5 text-emerald-500" />
               <span lang={contentLanguage} className="text-sm font-medium text-slate-700">{b}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* FAQ (also published as FAQPage structured data by the server) */}
+      <section lang={contentLanguage} aria-labelledby="landing-faq" className="max-w-3xl mx-auto px-6 pb-16">
+        <h2 id="landing-faq" className="text-2xl font-black text-slate-900 mb-5">{c.lang === "tr" ? "Sıkça sorulan sorular" : "Frequently asked questions"}</h2>
+        <div className="space-y-4">
+          {c.faq.map((item) => (
+            <div key={item.q} className="bg-white rounded-2xl border border-slate-100 p-6">
+              <h3 className="font-bold text-slate-900 mb-2">{item.q}</h3>
+              <p className="text-slate-600 leading-relaxed">{item.a}</p>
             </div>
           ))}
         </div>
