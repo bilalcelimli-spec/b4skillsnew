@@ -271,9 +271,9 @@ export const SEO_PAGES: readonly SeoPage[] = [
     lang: "tr", kind: "legal", updated: "2026-11-21", indexable: true, priority: 0.3, changefreq: "yearly",
   },
   // Kept out of search results: drafts under review and transactional pages.
-  { path: "/privacy", name: "Gizlilik Politikası", title: "Gizlilik Politikası — b4skills", description: "b4skills veri işleme bilgileri ve gizlilik politikası inceleme taslağı.", lang: "tr", kind: "legal", updated: "2026-11-21", indexable: false },
-  { path: "/kvkk", name: "KVKK Aydınlatma Metni", title: "KVKK Aydınlatma Metni — b4skills", description: "Veri sorumlusu bilgileri, ilgili kişi hakları ve KVKK aydınlatma metni inceleme taslağı.", lang: "tr", kind: "legal", updated: "2026-11-21", indexable: false },
-  { path: "/terms", name: "Kullanım Koşulları", title: "Kullanım Koşulları — b4skills", description: "b4skills kullanım koşulları inceleme taslağı.", lang: "tr", kind: "legal", updated: "2026-11-21", indexable: false },
+  { path: "/privacy", name: "Gizlilik Politikası", title: "Gizlilik Politikası — b4skills", description: "b4skills veri işleme bilgileri ve gizlilik politikası.", lang: "tr", kind: "legal", updated: "2026-11-21", indexable: false },
+  { path: "/kvkk", name: "KVKK Aydınlatma Metni", title: "KVKK Aydınlatma Metni — b4skills", description: "Veri sorumlusu bilgileri, ilgili kişi hakları ve KVKK aydınlatma metni.", lang: "tr", kind: "legal", updated: "2026-11-21", indexable: false },
+  { path: "/terms", name: "Kullanım Koşulları", title: "Kullanım Koşulları — b4skills", description: "b4skills kullanım koşulları.", lang: "tr", kind: "legal", updated: "2026-11-21", indexable: false },
   { path: "/checkout", name: "Satın Alma", title: "Satın Alma — b4skills", description: "Sipariş özeti ve satın alma ön bilgilendirmesi.", lang: "tr", kind: "utility", updated: "2026-11-21", indexable: false },
   { path: "/payment/success", name: "Ödeme Durumu", title: "Ödeme Durumu — b4skills", description: "Siparişinizin ödeme durumunu kontrol edin.", lang: "tr", kind: "utility", updated: "2026-11-21", indexable: false },
   { path: "/payment/cancel", name: "Ödeme İptal Edildi", title: "Ödeme İptal Edildi — b4skills", description: "Ödemeniz tamamlanmadı.", lang: "tr", kind: "utility", updated: "2026-11-21", indexable: false },

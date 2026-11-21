@@ -1,6 +1,6 @@
 import { COMPANY } from '../site/company';
 
-export const PURCHASE_POLICY_VERSION = '2026-11-21.1';
+export const PURCHASE_POLICY_VERSION = '2026-11-21.2';
 export const DAY_MS = 86_400_000;
 export const PURCHASE_PLANS = {
   'full-assessment': { id: 'full-assessment', name: 'Full Assessment', amount: 1900, currency: 'EUR', credits: 1 },
@@ -21,7 +21,7 @@ export const EARLY_START_REQUEST = 'Satın aldığım bu sınav hizmetinin 14 g�
 export const EARLY_START_ACKNOWLEDGEMENT = 'Gerekli ön bilgilendirme ve geçerli onay koşulları sağlanmışsa, bu talebim üzerine ifasına başlanan sınav için cayma hakkı istisnasının uygulanabileceğini anladım. Kullanılmamış paket haklarım ve ayıplı hizmetten doğan haklarım saklıdır.';
 export const PURCHASE_ACKNOWLEDGEMENT = 'Sipariş özetini, ön bilgilendirmeyi, mesafeli satış koşullarını ve iade/cayma politikasını okudum ve kabul ediyorum. Ödemenin seçtiğim tutarda ödeme yükümlülüğü doğurduğunu biliyorum.';
 export const SALES_SECTIONS: ReadonlyArray<readonly [string, string]> = [
-  ['Sağlayıcı ve iletişim', `${COMPANY.legalName} · ${COMPANY.brand}. ${COMPANY.address}. ${COMPANY.taxOffice}, vergi no ${COMPANY.taxNumber}. E-posta: ${COMPANY.contactEmail}. Telefon: ${COMPANY.phone}.`],
+  ['Sağlayıcı ve iletişim', `${COMPANY.brand}. ${COMPANY.address}. ${COMPANY.taxOffice}, vergi no ${COMPANY.taxNumber}. E-posta: ${COMPANY.contactEmail}. Telefon: ${COMPANY.phone}.`],
   ['Hizmet kapsamı', PURCHASE_SCOPE],
   ['Fiyat ve ödeme', 'Bu web sitesinde ücretli bireysel satın alma ve kartla ödeme sunulmamaktadır. Burada bir ödeme yükümlülüğü doğuran sipariş oluşturulmaz. Kurumsal değerlendirmeler için hizmet kapsamı ve bedel ayrı teklif ve sözleşmeyle belirlenir. Apple uygulama içi satın alma henüz etkin değildir; bu sayfa App Store ürün veya fiyat teklifi oluşturmaz.'],
   ['Sunum ve geçerlilik', 'Ödeme doğrulandıktan sonra sınav hakları hesabınıza tanımlanır ve ödeme tarihinden itibaren 12 ay kullanılabilir. Satın alma sınavı kendiliğinden başlatmaz. 14 günlük süre dolmadan başlamak isterseniz ayrı, önceden seçili olmayan onaylar alınır; onay vermeden süre sonunu bekleyebilirsiniz.'],
