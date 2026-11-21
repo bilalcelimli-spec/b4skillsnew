@@ -1,8 +1,7 @@
 #!/usr/bin/env tsx
 
 /**
- * TTS audio for the Primary (7-10) listening DRAFTs made by
- * generate-primary-expansion.ts. Dry-run by default.
+ * TTS audio for listening DRAFTs. Defaults to the Primary expansion batch.
  *
  *   npx tsx scripts/jobs/generate-primary-listening-audio.ts            # plan: speakers, voices, script
  *   npx tsx scripts/jobs/generate-primary-listening-audio.ts --apply    # synthesise, upload, set audioUrl
@@ -16,7 +15,7 @@
  * is listed as "shared voices" for the human listening check.
  *
  * Files go to the public Supabase bucket question-audio under
- * primary/<run>/<itemId>.wav (immutable, upsert off). Only DRAFT items of
+ * <audience>/<run>/<itemId>.wav (immutable, upsert off). Only DRAFT items of
  * this job without audio are touched; every item stays DRAFT with
  * audioMetadata.humanListeningVerdict = "PENDING".
  */
@@ -41,7 +40,6 @@ const TRIGGER = argOf("--trigger") ?? "claude-code:primary-expansion";
 const PER_TURN = process.argv.includes("--per-turn");
 const CODES = argOf("--codes")?.split(",").map((s) => s.trim()).filter(Boolean);
 const ADULT = argOf("--audience") === "adult";
-const KEY_PREFIX = ADULT ? "general" : "primary";
 const li = process.argv.indexOf("--limit");
 const LIMIT = li >= 0 ? Number(process.argv[li + 1]) : Infinity;
 const BUCKET = "question-audio";
@@ -89,18 +87,25 @@ const VOICE_POOL: Record<Kind, string[]> = {
   adultM: ["Charon", "Iapetus", "Orus", "Fenrir"], childM: ["Puck", "Fenrir", "Orus", "Iapetus"],
 };
 
-function plan(script: string): Plan {
+type Audience = "general" | "junior" | "primary";
+
+function plan(script: string, audience: Audience, cefr: string): Plan {
   const turns = script.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => parseSpeakerTurn(l) ?? { speaker: "", utterance: l });
   const speakers = [...new Set(turns.map((t) => t.speaker).filter(Boolean))];
-  const pre = ADULT
-    ? "Read this conversation for adult beginners learning English (CEFR A1). Speak naturally but slowly and clearly, with a short pause between turns.\n\n"
-    : "Read this conversation for children aged 7 to 10 who are learning English. Speak slowly and clearly, in a warm, friendly way, with a short pause between turns.\n\n";
+  const pre = audience === "junior"
+    ? `Read for teenagers aged 11–14 learning English (CEFR ${cefr}). ${cefr === "A1"
+      ? "Use clear, unhurried speech with a short pause between turns."
+      : "Use a natural conversational pace. Keep natural contrastive stress and brief pauses."} Read only the spoken words.\n\n`
+    : audience === "general"
+      ? "Read this conversation for adult beginners learning English (CEFR A1). Speak naturally but slowly and clearly, with a short pause between turns.\n\n"
+      : "Read this conversation for children aged 7 to 10 who are learning English. Speak slowly and clearly, in a warm, friendly way, with a short pause between turns.\n\n";
 
   if (speakers.length < 2) {
     const kind = kindOf(speakers[0] ?? "");
     const voice = VOICE[kind][0];
     const text = turns.map((t) => clean(t.utterance)).join("\n");
-    return { prompt: (ADULT ? buildTtsPrompt("general-item", text, "A1") : buildTtsPrompt("primary-item", text, "A1", "primary")), speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }, voices: voice, speakers, sharedVoices: false };
+    const prompt = audience === "junior" ? pre + text : buildTtsPrompt(`${audience}-item`, text, "A1", audience);
+    return { prompt, speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }, voices: voice, speakers, sharedVoices: false };
   }
 
   if (speakers.length > 2 && PER_TURN) {
@@ -111,7 +116,7 @@ function plan(script: string): Plan {
       const v = pool.find((x) => !used.has(x)) ?? pool[0]!;
       used.add(v); voiceOf.set(sp, v);
     }
-    const lead = ADULT
+    const lead = audience === "junior" ? pre : ADULT
       ? "Read this line for adult learners of English. Speak naturally but slowly and clearly:\n\n"
       : "Read this line for young learners of English. Speak slowly and clearly, in a warm, friendly way:\n\n";
     return {
@@ -217,8 +222,9 @@ async function main() {
 
   for (const it of targets) {
     const c = it.content as Record<string, any>;
-    const p = plan(String(c.ttsScript));
-    const words = String(c.ttsScript).split(/\s+/).length;
+    const audience = ADULT ? "general" : c.productLine === "junior" ? "junior" : "primary";
+    const p = plan(String(c.ttsScript), audience, it.cefrLevel);
+    const words = String(c.ttsScript).split(/\r?\n/).map((line) => parseSpeakerTurn(line)?.utterance ?? line).join(" ").trim().split(/\s+/).length;
     console.log(`${it.itemCode}  [${p.voices}]${p.sharedVoices ? "  SHARED VOICES" : ""}`);
     if (!APPLY) { report.push({ code: it.itemCode, voices: p.voices, sharedVoices: p.sharedVoices, prompt: p.prompt }); continue; }
 
@@ -250,8 +256,9 @@ async function main() {
           const candidate = buildWavHeader(pcm);
           const ev = inspectWav(candidate);
           secs = ev.durationSeconds ?? 0;
-          // ~1.0–3.5 words per second for slow child-directed speech.
-          if (!ev.valid || secs < words / 3.5 || secs > words / 1.0 + 8) throw new Error(`implausible audio: ${ev.reason ?? ""} ${secs}s for ${words} words`);
+          // Technical plausibility only. Natural pacing is checked by a listener.
+          const maxWordsPerSecond = audience === "junior" && it.cefrLevel === "B2" ? 4 : 3.5;
+          if (!ev.valid || secs < words / maxWordsPerSecond || secs > words + 8) throw new Error(`implausible audio: ${ev.reason ?? ""} ${secs}s for ${words} words`);
           const lost = await missingTurns(ai, candidate, String(c.ttsScript));
           if (lost.length) throw new Error(`turn(s) not heard: ${lost.map((u) => `"${u.slice(0, 40)}"`).join("; ")}`);
           wav = candidate;
@@ -262,14 +269,14 @@ async function main() {
         }
       }
 
-      const key = `${KEY_PREFIX}/${run}/${it.id}.wav`;
+      const key = `${audience}/${run}/${it.id}.wav`;
       const up = await storage!.storage.from(BUCKET).upload(key, wav!, { contentType: "audio/wav", upsert: false, cacheControl: "31536000" });
       if (up.error) throw new Error(`upload failed: ${up.error.message}`);
       const audioUrl = storage!.storage.from(BUCKET).getPublicUrl(key).data.publicUrl;
       const sourceHash = createHash("sha256").update(String(c.ttsScript)).digest("hex");
 
       await prisma.item.update({ where: { id: it.id }, data: { content: { ...c, audioUrl,
-        audioMetadata: { speakers: p.speakers, voices: p.voices, sharedVoices: p.sharedVoices, durationSeconds: secs, model: MODEL,
+        audioMetadata: { speakers: p.speakers, speakerCount: p.sharedVoices ? 2 : Math.max(1, p.speakers.length), voices: p.voices, sharedVoices: p.sharedVoices, durationSeconds: secs, model: MODEL,
           generatedAt: new Date().toISOString(), sourceHash, storageProvider: "supabase", turnCheck: "passed", humanListeningVerdict: "PENDING",
           ...(c.audioUrl ? { previousAudioUrl: c.audioUrl } : {}) } } } });
       ok++;
