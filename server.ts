@@ -1654,7 +1654,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
                 OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
               },
             }) : Promise.resolve(null),
-            // (c) individual Stripe purchase completed
+            // (c) individual purchase completed (historical web orders)
             prisma.paymentTransaction.findFirst({
               where: { userId: req.user.id, status: "COMPLETED" },
             }),

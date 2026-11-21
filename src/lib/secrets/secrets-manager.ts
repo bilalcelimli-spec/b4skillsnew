@@ -29,8 +29,6 @@ export type SecretKey =
   | "ANTHROPIC_API_KEY"
   | "GEMINI_API_KEY"
   | "RESEND_API_KEY"
-  | "STRIPE_SECRET_KEY"
-  | "STRIPE_WEBHOOK_SECRET"
   | "SENTRY_DSN"
   | "REDIS_URL"
   | "DATA_WAREHOUSE_BUCKET"
@@ -124,8 +122,6 @@ function loadFromEnv(): Record<string, string> {
     "ANTHROPIC_API_KEY",
     "GEMINI_API_KEY",
     "RESEND_API_KEY",
-    "STRIPE_SECRET_KEY",
-    "STRIPE_WEBHOOK_SECRET",
     "SENTRY_DSN",
     "REDIS_URL",
     "DATA_WAREHOUSE_BUCKET",

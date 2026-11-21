@@ -38,7 +38,7 @@ Kurumunuz gözetimi kapatmadıkça kamera ve cihaz olayları kaydedilir (Gizlili
 ## 5 Ücretler ve iade
 
 - Kurumunuzun sağladığı sınavlar için size ücret yansıtılmaz; kurumla aramızdaki sözleşme geçerlidir.
-- Web'de bireysel satın alımlar Stripe üzerinden yapılır. Cayma ve iade: [[DOLDUR: Mesafeli Sözleşmeler Yönetmeliği kapsamında cayma hakkı; sınav başladıktan sonra iade olup olmadığı]].
+- Web üzerinden kartla bireysel satın alma sunulmaz. Önceden yapılmış bireysel satın alımlar için cayma ve iade: [[DOLDUR: Mesafeli Sözleşmeler Yönetmeliği kapsamında cayma hakkı; sınav başladıktan sonra iade olup olmadığı]].
 - iPad ve Mac uygulamalarında satın alma yoktur.
 
 ## 6 Fikri mülkiyet

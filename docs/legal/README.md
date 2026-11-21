@@ -18,7 +18,7 @@ Arapça çeviriler, uygulama Arapça arayüz sunduğu için onaydan sonra eklenm
 3. Barındırma bölgeleri: Render, Supabase, AWS S3 (Avrupa mı, ABD mi?).
 4. AI sağlayıcıları (Gemini, OpenAI, Anthropic): veri işleme sözleşmesi, eğitimde kullanmama ayarı, sağlayıcı tarafında saklama süresi.
 5. Yurt dışı aktarım dayanağı: KVKK standart sözleşmeleri ve Kurul'a bildirim; AB için SCC.
-6. Stripe, Resend, Sentry için bölge ve Sentry saklama süresi.
+6. Resend, Sentry için bölge ve Sentry saklama süresi.
 7. Vergi kayıtları için saklama süresinin doğrulanması.
 8. Bireysel satın alımlarda cayma hakkı ve iade kuralı; itiraz yolu ve süresi; yetkili mahkeme.
 9. Web'de hesap silme yolu (web arayüzünde düğme henüz yok; sunucu ucu PR #78'de hazır).
@@ -57,7 +57,7 @@ Canlıya almadan önce:
 
 - Kamera: yüz sayımı cihazda; tek yüz görününce başlangıç fotoğrafı otomatik çekilip gönderiliyor (`native/react-native/src/proctoring/useExamMonitor.ts`); web'de olay anında kamera karesi (`/api/proctoring/screenshot`); gözetim kurum kapatmadıkça açık (`src/lib/proctoring/native-evidence.ts`, varsayılan `enabled: true, retentionDays: 7`).
 - Ses: konuşma yanıtı yanıt kaydının içinde base64 olarak tutuluyor; puanlama için AI sağlayıcısına gidiyor.
-- Hizmet sağlayıcılar: ortam değişkenlerinden (Render, Supabase, AWS, Gemini, OpenAI, Anthropic, Stripe, Resend, Sentry, Redis).
+- Hizmet sağlayıcılar: ortam değişkenlerinden (Render, Supabase, AWS, Gemini, OpenAI, Anthropic, Resend, Sentry, Redis).
 - Sentry: `sendDefaultPii: false`; web'de yalnız hata anında, metin ve medya maskeli oturum kaydı (`src/main.tsx`).
 - Hesap silme kapsamı: `src/lib/compliance/account-deletion.ts` (PR #78).
 - Çerezler: `accessToken`, `refreshToken` (httpOnly). Başka çerez veya analitik **taranmadı**.

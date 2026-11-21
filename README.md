@@ -23,7 +23,7 @@
 | **Proctoring** | Camera-based anomaly detection, audit logs, session reviews |
 | **Certifications** | Auto-generated CEFR certificates (A1–C2) with PDF export |
 | **Analytics** | Cohort reporting, psychometric dashboards, calibration studies |
-| **Payments** | Stripe-integrated billing with webhook support |
+| **Billing** | Institution licences and exam codes (no online card payments) |
 | **i18n** | Multi-language UI via react-i18next |
 
 ---
@@ -86,7 +86,7 @@ docker compose up --build
 
 ```bash
 fly launch           # first time
-fly secrets set GEMINI_API_KEY=... STRIPE_SECRET_KEY=...
+fly secrets set GEMINI_API_KEY=... RESEND_API_KEY=...
 fly deploy
 ```
 
@@ -131,8 +131,6 @@ Copy `.env.production.example` and fill in all values.
 |---|---|---|
 | `DATABASE_URL` | ✅ | PostgreSQL connection string |
 | `GEMINI_API_KEY` | ✅ | Google Gemini AI API key |
-| `STRIPE_SECRET_KEY` | ✅ | Stripe secret key |
-| `STRIPE_WEBHOOK_SECRET` | ✅ | Stripe webhook signing secret |
 | `APP_URL` | ✅ | Public URL of the deployed app |
 
 ---
@@ -150,7 +148,7 @@ Express.js Server (Node 20)
        ├─ IRT adaptive engine
        ├─ Gemini AI scoring
        ├─ Proctoring & audit
-       └─ Stripe billing
+       └─ Licences & exam codes
          │
          ▼ Prisma ORM
     PostgreSQL

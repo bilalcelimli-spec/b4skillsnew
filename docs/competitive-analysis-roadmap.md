@@ -140,7 +140,7 @@
 | LTI 1.3 (LMS entegrasyon standardı) | ❌ | ✅ | ❌ | ❌ | ❌ |
 | SCORM / xAPI | ❌ | ✅ | ❌ | ❌ | ❌ |
 | REST API (kurumsal) | ✅ | ✅ | ✅ | ✅ | 🟡 Dahili API var |
-| Webhook desteği | ✅ | ✅ | ✅ | ✅ | ✅ Stripe |
+| Webhook desteği | ✅ | ✅ | ✅ | ✅ | ✅ Kurum webhook'ları |
 | iOS / Android native uygulama | ✅ | ❌ | ✅ | ✅ | ❌ (PWA) |
 | Çevrimdışı mod | ❌ | ❌ | ❌ | ❌ | 🟡 PWA cache |
 | WCAG 2.1 AA erişilebilirlik | ✅ | ✅ | ✅ | ✅ | ❌ |
