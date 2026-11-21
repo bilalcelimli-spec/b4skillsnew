@@ -258,7 +258,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
       </section>
 
       {/* ── Footer ─── */}
-      <p className="px-6 py-6 text-center text-sm text-slate-600">Individual paid checkout is not available on this website. Apple In-App Purchase is not enabled. Review our <a href="/refund-policy" className="underline">refund and withdrawal policy</a> and <a href="/sales-terms" className="underline">purchase information</a>.</p>
+      <p className="px-6 py-6 text-center text-sm text-slate-600">Individual paid checkout is not available on this website. Apple In-App Purchase is not enabled. Assessments are accessed through your institution or an exam code.</p>
       <SiteFooter />
     </div>
   );

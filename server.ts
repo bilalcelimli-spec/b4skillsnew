@@ -1,5 +1,6 @@
 import { guardianConsentRouter, requiresConsentGate } from './src/routes/guardian-consent.js';
-import { requireCandidateConsent, ConsentError } from './src/lib/compliance/guardian-consent.js';
+import { requireCandidateConsent, candidateConsent, ConsentError } from './src/lib/compliance/guardian-consent.js';
+import { fallbackHint, streamTutorReply, tutorClient } from './src/lib/ai/openai-tutor.js';
 import { serializeJsonLd } from "./src/lib/site/seo-serialization.js";
 import { storeNativeEvent } from "./src/lib/proctoring/native-events.js";
 import { cookieRequestProtection } from './src/lib/security/cookie-request-protection.js';
@@ -1657,7 +1658,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
                 OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
               },
             }) : Promise.resolve(null),
-            // (c) individual Stripe purchase completed
+            // (c) individual purchase completed (historical web orders)
             prisma.paymentTransaction.findFirst({
               where: { userId: req.user.id, status: "COMPLETED" },
             }),
@@ -5667,7 +5668,9 @@ ${codeSection}
   });
 
   // Mock AI Scoring Endpoint (Simulation)
-  // POST /api/ai-tutor — streaming AI tutor using Gemini; falls back to a static hint if key absent
+  // POST /api/ai-tutor — streaming tutor through OpenAI (same provider the privacy notice names).
+  // Static hint when the key is absent, the provider fails, or the candidate has no valid
+  // age/guardian consent (minors stay offline until MINOR_PROCESSING_READY).
   app.post("/api/ai-tutor", authMiddleware, async (req: any, res) => {
     const body = validate(AITutorBody, req.body, res);
     if (!body) return;
@@ -5678,66 +5681,23 @@ ${codeSection}
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    const send = (delta: string) => res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+    let sent = false;
+    const send = (delta: string) => { sent = true; res.write(`data: ${JSON.stringify({ delta })}\n\n`); };
     const done = () => { res.write("data: [DONE]\n\n"); res.end(); };
+    const hint = () => { for (const word of fallbackHint().split(" ")) send(word + " "); };
 
+    const client = tutorClient();
+    const consented = client && dbAvailable
+      ? await candidateConsent(prisma, req.user.id).then(state => state.allowed, () => false)
+      : false;
+    if (!client || !consented) { hint(); return done(); }
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        // Graceful fallback: send a static helpful hint
-        const hints = [
-          "Focus on the key vocabulary in the question stem.",
-          "Consider all answer options carefully before choosing.",
-          "Try to understand the context around unfamiliar words.",
-          "Break the sentence into smaller parts to analyse its structure.",
-        ];
-        const hint = hints[Math.floor(Math.random() * hints.length)];
-        for (const word of hint.split(" ")) { send(word + " "); }
-        return done();
-      }
-
-      const systemPrompt = [
-        "You are an expert English language tutor helping a student practise for a CEFR-aligned assessment.",
-        "Be concise (1-3 sentences), encouraging, and pedagogically precise.",
-        context.cefrLevel ? `The student is currently at ${context.cefrLevel} level.` : "",
-        context.skill ? `The current skill focus is ${context.skill}.` : "",
-      ].filter(Boolean).join(" ");
-
-      const contents = [
-        ...history.map((h) => ({ role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.content }] })),
-        { role: "user", parts: [{ text: message }] },
-      ];
-
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?key=${apiKey}&alt=sse`;
-      const body = JSON.stringify({ system_instruction: { parts: [{ text: systemPrompt }] }, contents, generationConfig: { maxOutputTokens: 256, temperature: 0.7 } });
-
-      const https = await import("https");
-      const urlObj = new URL(url);
-      const options = { hostname: urlObj.hostname, path: urlObj.pathname + urlObj.search, method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } };
-
-      const apiReq = https.request(options, (apiRes) => {
-        apiRes.on("data", (chunk: Buffer) => {
-          const text = chunk.toString();
-          for (const line of text.split("\n")) {
-            if (!line.startsWith("data: ")) continue;
-            const payload = line.slice(6).trim();
-            if (!payload || payload === "[DONE]") continue;
-            try {
-              const parsed = JSON.parse(payload);
-              const delta = parsed?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-              if (delta) send(delta);
-            } catch { /* partial chunk, skip */ }
-          }
-        });
-        apiRes.on("end", done);
-        apiRes.on("error", () => done());
-      });
-      apiReq.on("error", () => done());
-      apiReq.write(body);
-      apiReq.end();
-    } catch {
-      done();
+      await streamTutorReply(client, { message, history, context }, send);
+    } catch (err) {
+      console.error("[ai-tutor] provider error", (err as Error)?.name);
+      if (!sent) hint();
     }
+    done();
   });
 
   app.post("/api/score/ai", authMiddleware, async (req, res) => {

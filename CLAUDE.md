@@ -122,7 +122,7 @@ Custom JWT auth (no Firebase at runtime). `server.ts` issues `accessToken` (15 m
 ### Key Environment Variables
 
 Required at startup: `JWT_SECRET`, `REFRESH_SECRET`, `DATABASE_URL`.
-Optional but needed for full functionality: `GEMINI_API_KEY` (AI scoring), `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` (payments), `REDIS_URL` (rate-limit backing store, falls back to memory), `SENTRY_DSN`, `AWS_*` (S3 audio storage).
+Optional but needed for full functionality: `GEMINI_API_KEY` (AI scoring), `SECRET_ENCRYPTION_KEY` (webhook signing secrets at rest), `REDIS_URL` (rate-limit backing store, falls back to memory), `SENTRY_DSN`, `AWS_*` (S3 audio storage).
 
 Copy `.env.example` to `.env` and fill in at minimum `DATABASE_URL`, `JWT_SECRET`, `REFRESH_SECRET`.
 

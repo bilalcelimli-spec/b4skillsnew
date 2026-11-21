@@ -45,8 +45,6 @@ export const SiteFooter: React.FC = () => {
           <ul className="space-y-3 text-sm text-slate-600">
             <li><a href="/support" className={linkClass}>Contact & Support</a></li>
             <li><a href="/kvkk" className={linkClass}>KVKK Notice</a></li>
-            <li><a href="/refund-policy" className={linkClass}>Refund & Withdrawal</a></li>
-            <li><a href="/sales-terms" className={linkClass}>Purchase Information</a></li>
             <li><a href="/privacy" className={linkClass}>Privacy Policy</a></li>
             <li><a href="/terms" className={linkClass}>Terms of Service</a></li>
             <li><a href="/accessibility-statement" className={linkClass}>Accessibility</a></li>

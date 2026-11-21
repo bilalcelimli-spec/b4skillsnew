@@ -14,6 +14,7 @@ import { CefrLevelCard } from "./components/CefrLevelCard";
 import { AuthPage } from "./components/AuthPage";
 import { CodeEntryPage } from "./components/CodeEntryPage";
 import { CheckoutPage } from "./components/CheckoutPage";
+import { DeleteAccountButton } from "./components/DeleteAccountDialog";
 import { PaymentResultPage } from "./components/PaymentResultPage";
 import { PURCHASE_PLANS, type PurchasePlanId } from "./lib/payments/purchase-policy";
 import { LegalPage, type LegalPageKind } from "./components/LegalPage";
@@ -298,17 +299,22 @@ export default function App() {
       }).catch(()=>{});
   };
 
+  // Shared by sign-out and account deletion (the server clears the cookies in both cases).
+  const clearSignedInState = () => {
+    ++navigationGeneration.current;
+    setUser(null);setUserProfile(null);setActiveSession(null);setPreTestReady(false);setTestCompleted(null);
+    setSelectedHistorySessionId(null);setCertificate(null);setRecentSessions([]);setBranding(null);
+    setShowCodeEntry(false);setShowLanding(false);setMobileMenuOpen(false);
+    navigate('/login',{replace:true});
+  };
+
   const signOut = async () => {
     if(logoutPending.current)return;
     logoutPending.current=true;setSigningOut(true);setLogoutError(null);
     try {
       const response=await fetch('/api/auth/logout',{method:'POST',credentials:'include',signal:AbortSignal.timeout(10000)});
       if(!response.ok)throw new Error('Sign out could not be completed. Please try again.');
-      ++navigationGeneration.current;
-      setUser(null);setUserProfile(null);setActiveSession(null);setPreTestReady(false);setTestCompleted(null);
-      setSelectedHistorySessionId(null);setCertificate(null);setRecentSessions([]);setBranding(null);
-      setShowCodeEntry(false);setShowLanding(false);setMobileMenuOpen(false);
-      navigate('/login',{replace:true});
+      clearSignedInState();
     } catch(error) {
       setLogoutError(error instanceof Error?error.message:'Sign out failed. Please try again.');
     } finally {logoutPending.current=false;setSigningOut(false);}
@@ -632,6 +638,7 @@ export default function App() {
               <button onClick={() => signOut()} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest w-full">
                 <LogOut size={18} /> Sign Out
               </button>
+              {profRole === "CANDIDATE" && <DeleteAccountButton onDeleted={clearSignedInState} />}
             </div>
           </aside>
         </div>
@@ -677,6 +684,7 @@ export default function App() {
           >
             <LogOut size={18} /> Sign Out
           </button>
+          {profRole === "CANDIDATE" && <DeleteAccountButton onDeleted={clearSignedInState} />}
         </div>
       </aside>
 

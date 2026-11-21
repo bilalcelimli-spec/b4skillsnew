@@ -1,5 +1,7 @@
 # B4Skills Kullanım Koşulları
 
+> **ESKİ SÜRÜM — kullanmayın (21 Kasım 2026).** Yayındaki metin [`src/components/LegalPage.tsx`](../../src/components/LegalPage.tsx) içindedir; şirket bilgileri `src/lib/site/company.ts`. Bu dosyadaki Gemini, Anthropic, Whisper ve Stripe ifadeleri artık geçerli değildir: puanlama ve AI tutor yalnız OpenAI kullanır, çevrim içi ödeme yoktur. Yeni madde eklenecekse `LegalPage.tsx` güncellenir.
+
 > **TASLAK — hukuki inceleme yapılmadı, yayımlanmadı.** İngilizce sürüm hukuki onaydan sonra çevrilecek. `[[DOLDUR]]` / `[[KARAR]]` listesi: [README.md](README.md).
 
 Son güncelleme: [[DOLDUR: yayın tarihi]]
@@ -38,7 +40,7 @@ Kurumunuz gözetimi kapatmadıkça kamera ve cihaz olayları kaydedilir (Gizlili
 ## 5 Ücretler ve iade
 
 - Kurumunuzun sağladığı sınavlar için size ücret yansıtılmaz; kurumla aramızdaki sözleşme geçerlidir.
-- Web'de bireysel satın alımlar Stripe üzerinden yapılır. Cayma ve iade: [[DOLDUR: Mesafeli Sözleşmeler Yönetmeliği kapsamında cayma hakkı; sınav başladıktan sonra iade olup olmadığı]].
+- Web üzerinden kartla bireysel satın alma sunulmaz. Önceden yapılmış bireysel satın alımlar için cayma ve iade: [[DOLDUR: Mesafeli Sözleşmeler Yönetmeliği kapsamında cayma hakkı; sınav başladıktan sonra iade olup olmadığı]].
 - iPad ve Mac uygulamalarında satın alma yoktur.
 
 ## 6 Fikri mülkiyet

@@ -1,5 +1,7 @@
 # B4Skills Privacy Policy
 
+> **SUPERSEDED — do not use (21 Nov 2026).** The published text lives in [`src/components/LegalPage.tsx`](../../src/components/LegalPage.tsx); company details in `src/lib/site/company.ts`. Statements here about Gemini, Anthropic, Whisper and Stripe are no longer accurate: scoring and the AI tutor use OpenAI only, and there is no online payment.
+
 > **DRAFT — not legally reviewed, not published.** `[[FILL: …]]` marks facts only the product owner knows; `[[DECIDE: …]]` marks product or legal decisions. The Turkish version ([PRIVACY_POLICY.tr.md](PRIVACY_POLICY.tr.md)) also serves as the KVKK notice; keep both in sync. Open items: [README.md](README.md).
 
 Last updated: [[FILL: publication date]]
@@ -26,7 +28,7 @@ B4Skills: [[FILL: legal entity name]], [[FILL: registered address]], [[FILL: com
 | Monitoring observations | No face / more than one face, leaving the app, screen recording or mirroring started, tab switches | Your device |
 | Results | Skill scores, CEFR level, report and certificate | Assessment engine and raters |
 | Technical data | Device and app version, IP address, error logs | Your device and our servers |
-| Payments | Amount and status (card details go to Stripe, not to us) | Stripe |
+| Past purchases | Amount and status of orders placed before online payments were discontinued (no card details) | Our records |
 | Optional demographics | First language, age group, education, gender — only if you choose to give them | You |
 
 **About the camera, plainly:** faces are counted on your device; no video stream is sent or recorded and no live proctor watches you. No face recognition or identity matching is performed. Only the baseline photo and (on the web) event frames reach our servers. Monitoring observations never invalidate an assessment on their own; a person reviews them when needed. [[DECIDE: if the baseline photo is used to verify identity, assess it as biometric data (GDPR Art. 9 / KVKK Art. 6) and obtain explicit consent]]
@@ -61,7 +63,6 @@ When the AI's confidence is low, a human rater scores your answer. Decisions bas
 | Supabase | Database and file storage | [[FILL: region]] |
 | Amazon Web Services | File storage (some older records) | [[FILL: region]] |
 | Google (Gemini), OpenAI, Anthropic | Scoring of writing/speaking and transcription | USA [[FILL: confirm]] |
-| Stripe | Payments | [[FILL]] |
 | Resend | Email delivery | [[FILL]] |
 | Sentry | Error logs (on the web, a session replay with all text and media masked, only when an error occurs) | [[FILL]] |
 | Apple | App distribution; crash reports only if you allowed sharing on your device | — |

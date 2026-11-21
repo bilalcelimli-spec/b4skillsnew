@@ -138,10 +138,6 @@ export function assertProductionSecrets(): void {
   if (!localHttp && !corsOrigins.includes(appUrl)) {
     throw new Error("CORS_ORIGINS must include APP_URL in production.");
   }
-  // Stripe: warn but don't hard-fail — some deployments may not use payments
-  if (!process.env.STRIPE_SECRET_KEY) {
-    console.warn("[startup] WARNING: STRIPE_SECRET_KEY is not set — payment endpoints will fail.");
-  }
   // Webhook signing secrets are encrypted at rest; without a key, registration is refused.
   // A malformed key would make every signed delivery fail, so it stops the start.
   const encryptionKey = process.env.SECRET_ENCRYPTION_KEY?.trim();

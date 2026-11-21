@@ -8,7 +8,7 @@ LinguAdapt is a full-stack Node.js application consisting of:
 - **Backend** — Express.js HTTP server running on Node.js 20.
 - **Database** — PostgreSQL accessed via Prisma ORM.
 - **AI** — Google Gemini API for Speaking & Writing evaluation.
-- **Payments** — Stripe (checkout sessions + webhooks).
+- **Billing** — institution licences and exam codes; no online payment provider.
 - **Auth** — Firebase Authentication (client-side), RBAC enforced server-side via `x-user-email` header.
 
 ---
@@ -35,7 +35,7 @@ linguadapt/
 │   │   ├── ecosystem/           # Webhook delivery
 │   │   ├── onboarding/          # Bulk candidate import
 │   │   ├── tenant/              # Per-org branding
-│   │   ├── payments/            # Stripe integration
+│   │   ├── payments/            # Purchase policy, licences, historical orders
 │   │   ├── i18n/                # react-i18next config
 │   │   └── utils/               # PDF export
 │   └── services/
@@ -121,6 +121,5 @@ The server enforces tenant boundaries via RBAC middleware that reads the user's 
 ## Security Considerations
 
 - All API routes requiring elevated privileges are guarded by `checkRole()` middleware.
-- Stripe webhook payloads are verified with `stripe.webhooks.constructEvent()`.
 - Secrets are loaded from environment variables only — never hardcoded.
 - Production Dockerfile runs the application as a non-root user (`appuser`).

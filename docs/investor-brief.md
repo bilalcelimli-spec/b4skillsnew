@@ -309,7 +309,7 @@ Yatırımcıların değerlendirmesi için kritik nokta: b4skills'in psikometrik 
 |---|---|
 | AI API (Gemini) | %6 |
 | Sunucu & Altyapı | %4 |
-| Ödeme işlem komisyonu (Stripe) | %2.5 |
+| Ödeme işlem komisyonu | %2.5 |
 | **Brüt Kar** | **%87.5** |
 | Satış & Pazarlama | %22 |
 | Ar-Ge | %18 |

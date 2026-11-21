@@ -1,5 +1,7 @@
 # B4Skills Gizlilik Politikası ve KVKK Aydınlatma Metni
 
+> **ESKİ SÜRÜM — kullanmayın (21 Kasım 2026).** Yayındaki metin [`src/components/LegalPage.tsx`](../../src/components/LegalPage.tsx) içindedir; şirket bilgileri `src/lib/site/company.ts`. Bu dosyadaki Gemini, Anthropic, Whisper ve Stripe ifadeleri artık geçerli değildir: puanlama ve AI tutor yalnız OpenAI kullanır, çevrim içi ödeme yoktur. Yeni madde eklenecekse `LegalPage.tsx` güncellenir.
+
 > **TASLAK — hukuki inceleme yapılmadı, yayımlanmadı.** `[[DOLDUR: …]]` ile işaretli yerler yalnız ürün sahibinin bilebileceği bilgilerdir. `[[KARAR: …]]` işaretli yerler ürün veya hukuk kararı ister. Liste: [README.md](README.md).
 
 Son güncelleme: [[DOLDUR: yayın tarihi]]
@@ -26,7 +28,7 @@ B4Skills: [[DOLDUR: şirketin tam ticari unvanı]], [[DOLDUR: açık adres]], [[
 | Gözetim gözlemleri | Yüz görünmedi / birden fazla yüz, uygulamadan çıkma, ekran kaydı veya yansıtma başladı, sekme değiştirme gibi olaylar | Cihazınız |
 | Sonuçlar | Beceri puanları, CEFR düzeyi, rapor ve sertifika | Sınav motoru ve puanlayıcılar |
 | Teknik veriler | Cihaz ve uygulama sürümü, IP adresi, hata kayıtları | Cihazınız ve sunucularımız |
-| Ödeme | Ödeme tutarı ve durumu (kart bilgileriniz bize gelmez, Stripe işler) | Stripe |
+| Geçmiş satın alımlar | Çevrim içi ödeme kaldırılmadan önce verilen siparişlerin tutarı ve durumu (kart bilgisi yok) | Kayıtlarımız |
 | İsteğe bağlı demografik bilgi | Ana dil, yaş grubu, eğitim düzeyi, cinsiyet | Siz, yalnız isterseniz |
 
 **Kamera hakkında açıkça:** Yüz sayımı cihazınızda yapılır; görüntü akışı sunucuya gönderilmez, video kaydedilmez, canlı bir gözetmen sizi izlemez. Yüz tanıma veya kimlik eşleştirme yapılmaz. Sunucuya yalnız başlangıç fotoğrafı ve (web'de) olay anındaki kareler gider. Gözetim gözlemleri tek başına sınavınızı geçersiz saymaz; gerektiğinde bir insan inceler. [[KARAR: başlangıç fotoğrafı kimlik doğrulamada kullanılacaksa KVKK md. 6 / GDPR md. 9 kapsamında biyometrik veri değerlendirmesi ve açık rıza]]
@@ -61,7 +63,6 @@ Yapay zekânın güven düzeyi düşük olduğunda yanıtınız insan puanlayıc
 | Supabase | Veritabanı ve dosya depolama | [[DOLDUR: bölge]] |
 | Amazon Web Services | Dosya depolama (bazı eski kayıtlar) | [[DOLDUR: bölge]] |
 | Google (Gemini), OpenAI, Anthropic | Yazma/konuşma puanlaması ve ses dökümü | ABD [[DOLDUR: doğrula]] |
-| Stripe | Ödeme | [[DOLDUR]] |
 | Resend | E-posta gönderimi | [[DOLDUR]] |
 | Sentry | Hata kayıtları (web'de hata anında metin ve görseller maskelenmiş oturum kaydı) | [[DOLDUR]] |
 | Apple | Uygulamanın dağıtımı; çökme raporları yalnız cihazınızda paylaşıma izin verdiyseniz | — |
