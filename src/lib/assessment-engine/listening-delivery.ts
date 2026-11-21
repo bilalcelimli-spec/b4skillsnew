@@ -20,8 +20,25 @@ export function audioPlayKey(item: { id: string; metadata?: unknown }): string {
   return key ? `rec:${key}` : item.id;
 }
 
-/** Plays allowed per recording, shared by its questions. Changing this changes item difficulty — recalibrate. */
-export const LISTENING_MAX_PLAYS = 2;
+/**
+ * Plays allowed per recording, shared by its questions: two up to A2 and for
+ * young learners (as in Cambridge A2 Key and YLE), one from B1 (as in IELTS,
+ * TOEFL and PTE). A question with no level keeps two.
+ * Changing this changes item difficulty — recalibrate the levels it touches.
+ */
+export const LISTENING_PLAYS = { lower: 2, upper: 1 } as const;
+const TWO_PLAY_LEVELS = new Set(["PRE_A1", "A1", "A2"]);
+
+/** Play limit for a question of this level; `youngLearners` (profile for ages up to 10) always gets two. */
+export function listeningMaxPlays(cefrLevel: unknown, youngLearners = false): number {
+  const level = typeof cefrLevel === "string" ? cefrLevel.trim().toUpperCase().replace(/[\s-]+/g, "_") : "";
+  return youngLearners || !level || TWO_PLAY_LEVELS.has(level) ? LISTENING_PLAYS.lower : LISTENING_PLAYS.upper;
+}
+
+/** Whether a product line is for young learners (ages up to 10). */
+export function isYoungLearnerProfile(profile: { ageRange?: [number, number] } | null | undefined): boolean {
+  return !!profile?.ageRange && profile.ageRange[1] <= 10;
+}
 
 export interface AudioPlayGrant {
   allowed: boolean;
@@ -37,7 +54,7 @@ export function audioPlaysUsed(metadata: unknown, key: string): number {
 }
 
 /** Candidate-facing playback policy sent with a listening item. */
-export function audioPolicy(metadata: unknown, key: string, maxPlays = LISTENING_MAX_PLAYS) {
+export function audioPolicy(metadata: unknown, key: string, maxPlays: number) {
   return { maxPlays, playsUsed: Math.min(maxPlays, audioPlaysUsed(metadata, key)) };
 }
 
@@ -48,7 +65,7 @@ export function audioPolicy(metadata: unknown, key: string, maxPlays = LISTENING
 export async function registerAudioPlay(
   sessionId: string,
   key: string,
-  maxPlays = LISTENING_MAX_PLAYS,
+  maxPlays: number,
   db: Pick<typeof prisma, "$queryRaw" | "session"> = prisma,
 ): Promise<AudioPlayGrant> {
   const rows = await db.$queryRaw<Array<{ used: number }>>`

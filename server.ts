@@ -57,7 +57,8 @@ import { estimateTheta as estimatePlacementTheta } from "./src/lib/assessment-en
 import { thetaToCefr as placementThetaToCefr } from "./src/lib/cefr/cefr-framework.js";
 import { shouldExcludeResponseFromAbility } from "./src/lib/scoring/score-evidence.js";
 import { candidateItemContent } from "./src/lib/security/answer-sanitizer.js";
-import { audioPlayKey, audioSource, registerAudioPlay } from "./src/lib/assessment-engine/listening-delivery.js";
+import { getProfile } from "./src/lib/product-lines/profiles.js";
+import { audioPlayKey, audioSource, isYoungLearnerProfile, listeningMaxPlays, registerAudioPlay } from "./src/lib/assessment-engine/listening-delivery.js";
 import { getSharedRedis, closeSharedRedis } from "./src/lib/redis/shared-redis.js";
 import { accessTokenUserId, clientIpKey, createLimiterStoreFactory, ipAndEmailKey, limitFromEnv, userOrIpKey } from "./src/lib/security/rate-limit-keys.js";
 import { createPlacementSessionStore, type PlacementSessionState } from "./src/lib/product-lines/placement-session-store.js";
@@ -1939,6 +1940,14 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
 
   // One play of the current listening recording. The server owns the count, so
   // reloading the page or editing client state cannot buy extra plays.
+  /** The question a session is waiting on. The fixed diagnostic keeps its own state: its first unanswered one. */
+  const currentSessionItemId = async (meta: Record<string, any> | null): Promise<string | null> => {
+    if (!meta?.diagnosticState) return typeof meta?.currentItemId === "string" && meta.currentItemId ? meta.currentItemId : null;
+    if (meta.diagnosticState.complete) return null;
+    const { DiagnosticService } = await import("./src/lib/assessment-engine/diagnostic-service.js");
+    return DiagnosticService._nextItem(meta.diagnosticState)?.itemId ?? null;
+  };
+
   app.post("/api/sessions/:id/audio-play", authMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
@@ -1947,9 +1956,16 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       if (!body) return;
       try {
         // Plays are counted per recording, so its questions share one budget.
-        const played = await prisma.item.findUnique({ where: { id: body.itemId }, select: { id: true, content: true } });
-        if (!played) return res.status(404).json({ error: "Item not found" });
-        res.json(await registerAudioPlay(id, audioPlayKey({ id: played.id, metadata: played.content })));
+        const [session, played] = await Promise.all([
+          prisma.session.findUnique({ where: { id }, select: { metadata: true } }),
+          prisma.item.findUnique({ where: { id: body.itemId }, select: { id: true, content: true, cefrLevel: true } }),
+        ]);
+        if (!session || !played) return res.status(404).json({ error: "Item not found" });
+        const meta = session.metadata as Record<string, any> | null;
+        // Only the question on screen can use a play: its level sets the limit.
+        if ((await currentSessionItemId(meta)) !== played.id) return res.status(409).json({ error: "Not the current question" });
+        const maxPlays = listeningMaxPlays(played.cefrLevel, isYoungLearnerProfile(getProfile(meta?.productLine)));
+        res.json(await registerAudioPlay(id, audioPlayKey({ id: played.id, metadata: played.content }), maxPlays));
       } catch (err: any) {
         if (process.env.NODE_ENV !== "production" && (isDBError(err) || err.name === "PrismaClientInitializationError" || id.startsWith("demo-session-"))) {
           return res.json({ allowed: true, playsUsed: null, maxPlays: null });
@@ -1973,11 +1989,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const session = await prisma.session.findUnique({ where: { id }, select: { status: true, metadata: true } });
       if (!session) return res.status(404).json({ error: "Session not found" });
       const meta = session.metadata as Record<string, any> | null;
-      // The fixed diagnostic keeps its own state; its current question is the first unanswered one.
-      const currentItemId = meta?.diagnosticState
-        ? (meta.diagnosticState.complete ? null
-          : (await import("./src/lib/assessment-engine/diagnostic-service.js")).DiagnosticService._nextItem(meta.diagnosticState)?.itemId)
-        : meta?.currentItemId;
+      const currentItemId = await currentSessionItemId(meta);
       if (session.status !== "IN_PROGRESS" || !currentItemId || currentItemId !== itemId) {
         return res.status(403).json({ error: "Recording is not available" });
       }

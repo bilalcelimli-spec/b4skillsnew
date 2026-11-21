@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../prisma", () => ({ prisma: {} }));
 
-import { audioPlayKey, audioPlaysUsed, audioPolicy, audioSource, LISTENING_MAX_PLAYS, withSessionAudio } from "../listening-delivery";
+import { audioPlayKey, audioPlaysUsed, audioPolicy, audioSource, isYoungLearnerProfile, listeningMaxPlays, withSessionAudio } from "../listening-delivery";
 
 describe("listening play policy", () => {
   it("reads the plays counted for an item and ignores malformed metadata", () => {
@@ -13,8 +13,21 @@ describe("listening play policy", () => {
   });
 
   it("sends the candidate the limit and what is already used, never more than the limit", () => {
-    expect(audioPolicy({ audioPlays: { a: 1 } }, "a")).toEqual({ maxPlays: LISTENING_MAX_PLAYS, playsUsed: 1 });
-    expect(audioPolicy({ audioPlays: { a: 9 } }, "a").playsUsed).toBe(LISTENING_MAX_PLAYS);
+    expect(audioPolicy({ audioPlays: { a: 1 } }, "a", 2)).toEqual({ maxPlays: 2, playsUsed: 1 });
+    expect(audioPolicy({ audioPlays: { a: 9 } }, "a", 2).playsUsed).toBe(2);
+    expect(audioPolicy({ audioPlays: { a: 2 } }, "a", 1)).toEqual({ maxPlays: 1, playsUsed: 1 });
+  });
+
+  it("allows two plays up to A2 and one from B1", () => {
+    expect(["PRE_A1", "A1", "A2", "pre-a1"].map(level => listeningMaxPlays(level))).toEqual([2, 2, 2, 2]);
+    expect(["B1", "B2", "C1", "C2"].map(level => listeningMaxPlays(level))).toEqual([1, 1, 1, 1]);
+    expect(listeningMaxPlays(undefined)).toBe(2);
+  });
+
+  it("always allows two plays in a young-learner product", () => {
+    expect(isYoungLearnerProfile({ ageRange: [7, 10] })).toBe(true);
+    expect(isYoungLearnerProfile({ ageRange: [11, 14] })).toBe(false);
+    expect(listeningMaxPlays("B1", true)).toBe(2);
   });
 
   it("counts plays per recording, so its questions share one budget", () => {

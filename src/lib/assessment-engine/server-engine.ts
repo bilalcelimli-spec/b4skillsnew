@@ -24,7 +24,7 @@ import { resolveMstPhase, buildMstTagFilter } from "../selection/mst-router.js";
 import { SessionState, Item, Response, EngineConfig, SkillType, BlueprintConstraint, IrtParameters } from "./types";
 import { prisma } from "../prisma";
 import { candidateItemContent } from "../security/answer-sanitizer.js";
-import { audioPlayKey, audioPlaysUsed, audioPolicy, withSessionAudio } from "./listening-delivery.js";
+import { audioPlayKey, audioPlaysUsed, audioPolicy, isYoungLearnerProfile, listeningMaxPlays, withSessionAudio } from "./listening-delivery.js";
 import { shuffleMcqOptions } from "./mcq-options.js";
 import { scoreObjectiveResponse } from "./objective-response.js";
 import { productiveScoringMode } from "./productive-response.js";
@@ -874,7 +874,7 @@ export const AssessmentService = {
       item: {
         ...nextItem, isPretest: undefined, status: undefined, metadata: candidateSafeContent,
         // Plays are counted on the server; a reload resumes with what is left.
-        ...(String(nextItem.skill) === "LISTENING" && safeContent.audioUrl ? { audio: audioPolicy(meta, audioPlayKey(nextItem)) } : {}),
+        ...(String(nextItem.skill) === "LISTENING" && safeContent.audioUrl ? { audio: audioPolicy(meta, audioPlayKey(nextItem), listeningMaxPlays((nextItem as { cefrLevel?: string }).cefrLevel, isYoungLearnerProfile(profile))) } : {}),
         // Questions of one recording share the screen: the next one is shown read-only.
         ...(String(nextItem.skill) === "LISTENING" && (upcomingItem || continuesSet) ? { set: {
           position: continuesSet ? currentSet.run + 1 : 1,
@@ -1022,7 +1022,7 @@ export const AssessmentService = {
       }
       // Delivery condition of a listening item: how often its recording was started.
       const listeningTelemetry = String(item.skill) === "LISTENING"
-        ? { audioPlayCount: audioPlaysUsed(latest.metadata, audioPlayKey(item)) }
+        ? { audioPlayCount: audioPlaysUsed(latest.metadata, audioPlayKey(item)), audioMaxPlays: listeningMaxPlays((item as { cefrLevel?: string }).cefrLevel, isYoungLearnerProfile(sessionProfile)) }
         : undefined;
               const saved = await tx.response.create({
                 data: {
