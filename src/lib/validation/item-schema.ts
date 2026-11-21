@@ -6,6 +6,7 @@
  */
 
 import z from "zod";
+import { normalizeBlankScaffold } from "../assessment-engine/blank-response.js";
 
 // ── Option Schema ────────────────────────────────────────────────────────────
 
@@ -134,9 +135,14 @@ export type ItemCreateInput = z.infer<typeof itemCreateSchema>;
  */
 export async function validateItemBeforeSave(
   skill: string,
-  content: any
+  content: any,
+  type?: string,
 ): Promise<{ success: boolean; error?: string; data?: any }> {
   try {
+    if (type === "FILL_IN_BLANKS" && isOpenBlankContent(skill, content)) {
+      const issues = validateItemStructure(skill, content);
+      return issues.length ? { success: false, error: issues.join("; ") } : { success: true, data: content };
+    }
     // Route to skill-specific schema
     let schema: z.ZodSchema;
 
@@ -245,6 +251,11 @@ export function isPictureTask(content: any): boolean {
   return young && hasPicture;
 }
 
+function isOpenBlankContent(skill: string, content: any): boolean {
+  return ["GRAMMAR", "VOCABULARY", "READING"].includes(skill) &&
+    Array.isArray(content?.blanks) && !content.options?.length && !content.wordBank?.length;
+}
+
 export function validateItemStructure(skill: string, content: any): string[] {
   const errors: string[] = [];
 
@@ -259,6 +270,15 @@ export function validateItemStructure(skill: string, content: any): string[] {
     (content.correctMapping || content.correctOrder || content.correctSequence || content.correctAnswers);
   if (structured) {
     errors.push(...validateStructuredKey(content));
+  } else if (isOpenBlankContent(skill, content)) {
+    const scaffold = content.scaffold ?? [content.prompt, content.passage]
+      .find((value) => typeof value === "string" && /_{3,}/.test(value));
+    const gapCount = typeof scaffold === "string" ? normalizeBlankScaffold(scaffold).match(/___/g)?.length ?? 0 : 0;
+    if (gapCount === 0 || gapCount !== content.blanks.length) errors.push("Open blank count must match the visible gaps");
+    if (content.blanks.some((blank: { acceptableAnswers?: unknown } | null) =>
+      !Array.isArray(blank?.acceptableAnswers) || !blank.acceptableAnswers.length ||
+      blank.acceptableAnswers.some((answer: unknown) => typeof answer !== "string" || !answer.trim() || answer.includes("|")),
+    )) errors.push("Each open blank needs non-empty, individual accepted answers");
   } else if (["GRAMMAR", "VOCABULARY", "READING"].includes(skill)) {
     const opts = Array.isArray(content.options) ? content.options : [];
     // Young-learner picture tasks use three options, as in Cambridge YLE, TOEFL Primary

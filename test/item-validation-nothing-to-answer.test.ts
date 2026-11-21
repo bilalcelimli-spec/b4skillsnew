@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasNothingToAnswer, validateItemStructure } from "../src/lib/validation/item-schema";
+import { hasNothingToAnswer, validateItemBeforeSave, validateItemStructure } from "../src/lib/validation/item-schema";
 
 const opts = (texts: string[], key = 0) => texts.map((text, i) => ({ text, isCorrect: i === key }));
 
@@ -36,5 +36,23 @@ describe("hasNothingToAnswer (bank review 2026-11-01)", () => {
   it("does not apply to reading (the passage rule covers it)", () => {
     const content = { prompt: "Choose the best answer.", passage: "A".repeat(40), options: opts(["a", "b", "c", "d"]) };
     expect(validateItemStructure("READING", content)).toEqual([]);
+  });
+});
+
+describe("open blanks", () => {
+  const content = {
+    prompt: "Complete the sentence using the verb bring.",
+    scaffold: "Yesterday we ___ our own cups.",
+    blanks: [{ acceptableAnswers: ["brought"] }],
+  };
+
+  it("accepts a typed blank at creation or update and still requires options for MCQ", async () => {
+    expect(await validateItemBeforeSave("GRAMMAR", content, "FILL_IN_BLANKS")).toMatchObject({ success: true });
+    expect(await validateItemBeforeSave("GRAMMAR", content, "MULTIPLE_CHOICE")).toMatchObject({ success: false });
+  });
+
+  it("checks that each visible gap has a usable scoring key", () => {
+    expect(validateItemStructure("GRAMMAR", { ...content, scaffold: "Yesterday we brought our own cups." })).toContain("Open blank count must match the visible gaps");
+    expect(validateItemStructure("GRAMMAR", { ...content, blanks: [{ acceptableAnswers: [" ", "wrong|shape"] }] })).toContain("Each open blank needs non-empty, individual accepted answers");
   });
 });
