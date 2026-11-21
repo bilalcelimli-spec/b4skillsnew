@@ -1,7 +1,6 @@
 import { guardianConsentRouter, requiresConsentGate } from './src/routes/guardian-consent.js';
 import { requireCandidateConsent, candidateConsent, ConsentError } from './src/lib/compliance/guardian-consent.js';
 import { fallbackHint, streamTutorReply, tutorClient } from './src/lib/ai/openai-tutor.js';
-import { serializeJsonLd } from "./src/lib/site/seo-serialization.js";
 import { storeNativeEvent } from "./src/lib/proctoring/native-events.js";
 import { cookieRequestProtection } from './src/lib/security/cookie-request-protection.js';
 import { examPolicy, admitExam } from "./src/lib/proctoring/exam-policy.js";
@@ -708,7 +707,7 @@ async function startServer() {
     ? new Resend(process.env.RESEND_API_KEY)
     : null;
 
-  const FROM_ADDRESS = process.env.EMAIL_FROM ?? "B4Skills <noreply@b4skills.com>";
+  const FROM_ADDRESS = process.env.EMAIL_FROM ?? "b4skills <noreply@b4skills.com>";
   const APP_BASE_URL = process.env.APP_URL ?? "http://localhost:3001";
 
   const sendEmail = async (to: string, subject: string, html: string) => {
@@ -1495,9 +1494,9 @@ async function startServer() {
     const link = (action: 'approve' | 'reject') => { const u = new URL('/guardian-consent', base); u.searchParams.set('action', action); u.hash = token; return u.toString(); };
     const btn = (href: string, label: string, bg: string) => `<td style="padding:0 8px 0 0"><a href="${href}" style="display:inline-block;padding:14px 26px;border-radius:10px;background:${bg};color:#ffffff;font-weight:700;font-size:16px;text-decoration:none;font-family:Arial,sans-serif">${label}</a></td>`;
     const { error } = await resendClient.emails.send({ from: FROM_ADDRESS, to: email,
-      subject: 'B4Skills — veli onayı talebi',
+      subject: 'b4skills — veli onayı talebi',
       html: `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#0f172a;max-width:560px">
-<p>Bir aday B4Skills İngilizce sınavı için bu adrese veli onayı talebi gönderdi.</p>
+<p>Bir aday b4skills İngilizce sınavı için bu adrese veli onayı talebi gönderdi.</p>
 <p>Sınav sırasında yazılı yanıtlar ve ses kayıtları puanlama için OpenAI hizmetlerine aktarılabilir; sınav güvenliği için kamera fotoğrafları çekilip kuruma gönderilebilir. Onay verdiğinizde aday sınava hemen başlayabilir.</p>
 <table role="presentation" cellspacing="0" cellpadding="0" style="margin:20px 0"><tr>${btn(link('approve'), 'Onaylıyorum', '#15803d')}${btn(link('reject'), 'Reddediyorum', '#b91c1c')}</tr></table>
 <p style="font-size:13px;color:#475569">Butona bastığınızda açılan sayfada kararınızı tek adımda tamamlarsınız. Bağlantı 48 saat geçerlidir. Onay vermek zorunda değilsiniz; talebi tanımıyorsanız onaylamayın.</p>
@@ -3844,7 +3843,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       (async () => {
         try {
           if (!user.email) return;
-          await sendEmail(user.email, "Your B4Skills password has been reset",
+          await sendEmail(user.email, "Your b4skills password has been reset",
             emailTemplate({
               heading: "Your password has been reset",
               body: `<p style="font-size:15px;color:#334155;line-height:1.6">Your account password has been reset by your organisation administrator.</p>
@@ -4109,9 +4108,9 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
       const testUrl = `${APP_BASE_URL}/?code=${encodeURIComponent(code)}`;
       await sendEmail(
         email,
-        `Your B4Skills Assessment Invitation — ${assessmentDisplayName(productLine)}`,
+        `Your b4skills Assessment Invitation — ${assessmentDisplayName(productLine)}`,
         emailTemplate({
-          heading: `You've been invited to take the B4Skills ${assessmentDisplayName(productLine)} assessment`,
+          heading: `You've been invited to take the b4skills ${assessmentDisplayName(productLine)} assessment`,
           body: `<p style="font-size:15px;color:#334155;line-height:1.6">Hello ${candidateName},</p>
                  <p style="font-size:15px;color:#334155;line-height:1.6">Your unique access code is:</p>
                  <p style="font-size:28px;font-weight:800;color:#4f46e5;text-align:center;letter-spacing:0.12em;margin:24px 0;font-family:monospace">${code}</p>
@@ -6202,11 +6201,11 @@ ${codeSection}
       const { thetaToCefr } = await import("./src/lib/cefr/cefr-framework.js");
       await sendEmail(
         guestEmail,
-        "Your Free B4Skills English Level Result",
+        "Your Free b4skills English Level Result",
         emailTemplate({
           heading: "You've taken the free placement test!",
           body: `<p style="font-size:16px;color:#334155;line-height:1.6">
-            Thanks for trying the <strong>B4Skills</strong> free English placement test.
+            Thanks for trying the <strong>b4skills</strong> free English placement test.
           </p>
           <p style="font-size:14px;color:#64748b;line-height:1.6;margin-top:12px">
             To get your full CEFR certificate, personalised skill report, and study plan — complete the full adaptive assessment.
@@ -8092,10 +8091,10 @@ ${codeSection}
 
       await sendEmail(
         session.candidate.email,
-        `Your B4Skills Results — ${cefr}`,
+        `Your b4skills Results — ${cefr}`,
         emailTemplate({
           heading: `Your results are ready, ${name}!`,
-          body: `<p style="font-size:16px;color:#334155;line-height:1.6">Your teacher has shared your <strong>B4Skills</strong> adaptive English assessment results.</p>
+          body: `<p style="font-size:16px;color:#334155;line-height:1.6">Your teacher has shared your <strong>b4skills</strong> adaptive English assessment results.</p>
                  <div style="text-align:center;margin:28px 0">
                    <div style="display:inline-block;background:#f0f4ff;border:2px solid #c7d2fe;border-radius:16px;padding:20px 40px">
                      <div style="font-size:40px;font-weight:900;color:#4f46e5;letter-spacing:-1px">${cefr}</div>
@@ -8178,85 +8177,30 @@ ${codeSection}
     }
   });
 
-  // ── SEO: robots.txt + sitemap.xml ───────────────────────────────────────
-  app.get("/robots.txt", (_req, res) => {
-    res.set("Content-Type", "text/plain; charset=utf-8").send(
-      [
-        "User-agent: *",
-        "Allow: /",
-        "Disallow: /api/",
-        "Disallow: /admin",
-        "Disallow: /assessment",
-        "Disallow: /dashboard",
-        "Disallow: /verify-email",
-        "Disallow: /reset-password",
-        "",
-        `Sitemap: ${APP_BASE_URL}/sitemap.xml`,
-        `Sitemap: ${APP_BASE_URL}/atom.xml`,
-      ].join("\n")
-    );
-  });
-
-  app.get("/sitemap.xml", (_req, res) => {
-    const now = new Date().toISOString().split("T")[0];
-    const urls: Array<{ loc: string; priority: string; changefreq: string }> = [
-      { loc: "/", priority: "1.0", changefreq: "weekly" },
-      { loc: "/pricing", priority: "0.9", changefreq: "monthly" },
-      { loc: "/english-level-test", priority: "0.9", changefreq: "monthly" },
-      { loc: "/ingilizce-seviye-testi", priority: "0.9", changefreq: "monthly" },
-      { loc: "/cefr-english-test", priority: "0.8", changefreq: "monthly" },
-      { loc: "/english-assessment-for-universities", priority: "0.8", changefreq: "monthly" },
-      { loc: "/english-assessment-for-companies", priority: "0.8", changefreq: "monthly" },
-      { loc: "/schools", priority: "0.7", changefreq: "monthly" },
-      { loc: "/corporate", priority: "0.7", changefreq: "monthly" },
-      { loc: "/academia", priority: "0.7", changefreq: "monthly" },
-      { loc: "/language-schools", priority: "0.7", changefreq: "monthly" },
-      { loc: "/methodology", priority: "0.6", changefreq: "monthly" },
-      { loc: "/accessibility-statement", priority: "0.4", changefreq: "yearly" },
-      { loc: "/research", priority: "0.7", changefreq: "monthly" },
-    ];
-    const urlTags = urls
-      .map(
-        (u) =>
-          `  <url>\n    <loc>${APP_BASE_URL}${u.loc}</loc>\n    <lastmod>${now}</lastmod>\n    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
-      )
-      .join("\n");
-    res
-      .set("Content-Type", "application/xml; charset=utf-8")
-      .send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urlTags}\n</urlset>`);
-  });
-
-  // ── Atom feed (for Bing / feed readers) ─────────────────────────────────
-  app.get(["/atom.xml", "/feed.xml", "/rss.xml"], (_req, res) => {
-    const now = new Date().toISOString();
-    const pages = [
-      { title: "B4Skills — Adaptive CEFR English Assessment", url: "/", summary: "AI-powered adaptive English assessment. Get a CEFR-aligned estimate with adaptive assessment." },
-      { title: "English Level Test — Free CEFR Placement", url: "/english-level-test", summary: "Take a free adaptive English level test and get your CEFR level in about 20–30 minutes." },
-      { title: "CEFR English Test — Adaptive Assessment", url: "/cefr-english-test", summary: "CEFR-aligned adaptive English test with QR-verifiable certificate." },
-      { title: "English Assessment for Universities", url: "/english-assessment-for-universities", summary: "Adaptive CEFR placement testing for language centres and admissions teams." },
-      { title: "English Assessment for Companies", url: "/english-assessment-for-companies", summary: "Screen and develop English skills across your workforce with CEFR-aligned assessments." },
-      { title: "Pricing — B4Skills", url: "/pricing", summary: "Plans for adaptive CEFR English testing, from the free Quick Check to institutional plans." },
-    ];
-    const entries = pages.map(p => `  <entry>
-    <title>${p.title}</title>
-    <link href="${APP_BASE_URL}${p.url}" />
-    <id>${APP_BASE_URL}${p.url}</id>
-    <updated>${now}</updated>
-    <summary>${p.summary}</summary>
-  </entry>`).join("\n");
-    res.set("Content-Type", "application/atom+xml; charset=utf-8").send(
-      `<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>B4Skills — Adaptive CEFR English Assessment</title>
-  <link href="${APP_BASE_URL}/atom.xml" rel="self" />
-  <link href="${APP_BASE_URL}/" />
-  <id>${APP_BASE_URL}/</id>
-  <updated>${now}</updated>
-  <author><name>B4Skills</name></author>
-${entries}
-</feed>`
-    );
-  });
+  // ── SEO and AI crawler files (built from src/lib/site/seo-pages.ts) ─────
+  {
+    const { robotsTxt, sitemapXml, atomFeed, llmsTxt } = await import("./src/lib/site/seo-head.js");
+    const crawlerCache = "public, max-age=3600";
+    app.get("/robots.txt", (_req, res) => {
+      res.set({ "Content-Type": "text/plain; charset=utf-8", "Cache-Control": crawlerCache }).send(robotsTxt(APP_BASE_URL));
+    });
+    app.get("/sitemap.xml", (_req, res) => {
+      res.set({ "Content-Type": "application/xml; charset=utf-8", "Cache-Control": crawlerCache }).send(sitemapXml(APP_BASE_URL));
+    });
+    app.get(["/atom.xml", "/feed.xml", "/rss.xml"], (_req, res) => {
+      res.set({ "Content-Type": "application/atom+xml; charset=utf-8", "Cache-Control": crawlerCache }).send(atomFeed(APP_BASE_URL));
+    });
+    app.get("/llms.txt", (_req, res) => {
+      res.set({ "Content-Type": "text/plain; charset=utf-8", "Cache-Control": crawlerCache }).send(llmsTxt(APP_BASE_URL));
+    });
+    // IndexNow ownership file (https://www.indexnow.org); see scripts/jobs/submit-indexnow.ts.
+    const indexNowKey = process.env.INDEXNOW_KEY?.trim();
+    if (indexNowKey && /^[a-zA-Z0-9-]{8,128}$/.test(indexNowKey)) {
+      app.get(`/${indexNowKey}.txt`, (_req, res) => {
+        res.set("Content-Type", "text/plain; charset=utf-8").send(indexNowKey);
+      });
+    }
+  }
 
   // ── LTI 1.3 Tool Provider ────────────────────────────────────────────────
   {
@@ -8506,148 +8450,19 @@ ${entries}
     "/english-assessment-for-companies", "/accessibility-statement", "/research", "/verify", "/privacy", "/kvkk", "/terms", "/support", "/refund-policy", "/sales-terms",
   ]);
 
-    interface RouteMeta {
-      title: string;
-      description: string;
-      keywords?: string;
-      jsonLd?: object;
-    }
-
-    const WEBSITE_LD = {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      name: "b4skills",
-      url: APP_BASE_URL,
-      potentialAction: {
-        "@type": "SearchAction",
-        target: `${APP_BASE_URL}/english-level-test`,
-        "query-input": "required name=search_term_string",
-      },
+    const { seoPageFor, isPrivatePublicPath } = await import("./src/lib/site/seo-pages.js");
+    const { applySeoToHtml, applyNoindexToHtml } = await import("./src/lib/site/seo-head.js");
+    const seoEnv = {
+      baseUrl: APP_BASE_URL,
+      googleVerification: process.env.GOOGLE_SITE_VERIFICATION?.trim() || undefined,
+      bingVerification: process.env.BING_SITE_VERIFICATION?.trim() || undefined,
+      yandexVerification: process.env.YANDEX_SITE_VERIFICATION?.trim() || undefined,
     };
-
-    const ROUTE_META: Record<string, RouteMeta> = {
-      "/checkout": { title: "Satın Alma — b4skills", description: "Sipariş özeti ve satın alma ön bilgilendirmesi." },
-      "/payment/success": { title: "Ödeme Durumu — b4skills", description: "Siparişinizin ödeme durumunu kontrol edin." },
-      "/payment/cancel": { title: "Ödeme İptal Edildi — b4skills", description: "Ödemeniz tamamlanmadı." },
-      "/refund-policy": { title: "İade ve Cayma Politikası — b4skills", description: "14 günlük cayma, paket iadeleri ve teknik sorunlarda iade koşulları." },
-      "/sales-terms": { title: "Ön Bilgilendirme ve Mesafeli Satış Koşulları — b4skills", description: "İşletme bilgileri, hizmet kapsamı, fiyatlar, ödeme ve cayma koşulları." },
-      "/privacy": { title: "Gizlilik Politikası — b4skills", description: "b4skills veri işleme bilgileri ve gizlilik politikası inceleme taslağı." },
-      "/kvkk": { title: "KVKK Aydınlatma Metni — b4skills", description: "Veri sorumlusu bilgileri, ilgili kişi hakları ve KVKK aydınlatma metni inceleme taslağı." },
-      "/terms": { title: "Kullanım Koşulları — b4skills", description: "b4skills kullanım koşulları inceleme taslağı." },
-      "/support": { title: "İletişim ve Destek — b4skills", description: "b4skills işletme bilgileri, teknik destek ve başvuru kanalı." },
-      "/verify": {
-        title: "Verify a Certificate — b4skills",
-        description: "Check the status and details of a certificate issued by b4skills using its certificate ID.",
-      },
-      "/": {
-        title: "b4skills — Adaptive English Assessment Platform",
-        description: "AI-powered adaptive CEFR English assessment for individuals, schools, universities, and corporates. Get a CEFR-aligned estimate with adaptive assessment.",
-        keywords: "english assessment, cefr test, adaptive english test, english proficiency, b4skills",
-        // Organization JSON-LD is present in index.html for both development
-        // and production; inject only the route-specific WebSite entity here.
-        jsonLd: WEBSITE_LD,
-      },
-      "/pricing": {
-        title: "Pricing — b4skills English Assessment",
-        description: "Free Quick Check and institutional assessment enquiries. Individual paid checkout is not available on this website.",
-        keywords: "english test price, cefr test cost, english assessment pricing, b4skills pricing",
-        jsonLd: { "@context": "https://schema.org", "@type": "WebPage", name: "b4skills Pricing", description: "Pricing plans for adaptive CEFR English assessment.", url: `${APP_BASE_URL}/pricing` },
-      },
-      "/methodology": {
-        title: "Assessment Methodology — b4skills",
-        description: "How b4skills works: adaptive CAT engine, IRT 3PL, CEFR alignment, AI multi-model scoring, DIF fairness monitoring, and certificate validation.",
-        keywords: "cefr methodology, adaptive testing methodology, irt 3pl, cat engine, english assessment methodology",
-        jsonLd: {
-          "@context": "https://schema.org",
-          "@type": "FAQPage",
-          mainEntity: [
-            { "@type": "Question", name: "Why does my result differ from IELTS?", acceptedAnswer: { "@type": "Answer", text: "Different assessments measure proficiency through different tasks and stakes conditions." } },
-            { "@type": "Question", name: "What is theta (θ)?", acceptedAnswer: { "@type": "Answer", text: "Theta is the latent ability estimate from IRT with a known measurement error, making it more informative than a percentage score." } },
-          ],
-        },
-      },
-      "/schools": {
-        title: "English Assessment for Schools — b4skills",
-        description: "Adaptive CEFR English testing for primary and secondary schools. Class management, teacher dashboards, and cohort analytics.",
-        keywords: "english assessment schools, school english test, cefr schools, teacher english dashboard",
-      },
-      "/corporate": {
-        title: "Corporate English Assessment — b4skills",
-        description: "Screen, place, and develop English skills across your workforce. CEFR-aligned assessment with ATS/HRIS integration and volume pricing.",
-        keywords: "corporate english test, workforce english assessment, hr english screening, cefr corporate",
-      },
-      "/academia": {
-        title: "English Assessment for Academia — b4skills",
-        description: "EAP placement and proficiency testing for universities and research institutions. CEFR-aligned with LMS integration.",
-        keywords: "academia english test, university english assessment, eap placement, cefr academia",
-      },
-      "/language-schools": {
-        title: "English Assessment for Language Schools — b4skills",
-        description: "Adaptive CEFR placement and progress testing for language schools. Group analysis and institutional dashboard.",
-        keywords: "language school english test, language center placement, cefr language school",
-      },
-      "/english-level-test": {
-        title: "Free English Level Test — CEFR A1 to C2 | b4skills",
-        description: "Take a free adaptive English level test and get your provisional CEFR estimate in about 20–30 minutes. Instant results, no account required.",
-        keywords: "english level test, free english test, cefr test online, english proficiency test",
-      },
-      "/ingilizce-seviye-testi": {
-        title: "İngilizce Seviye Testi — CEFR A1-C2 | b4skills",
-        description: "Ücretsiz adaptif İngilizce seviye testiyle CEFR seviyenizi yaklaşık 20–30 dakikada öğrenin. Anında sonuç, kayıt gerektirmez.",
-        keywords: "ingilizce seviye testi, ingilizce sınav, cefr testi türkçe, ingilizce test",
-      },
-      "/cefr-english-test": {
-        title: "CEFR English Test — Adaptive Assessment | b4skills",
-        description: "CEFR-aligned adaptive English test with QR-verifiable certificate. Acceptance is determined by each receiving institution.",
-        keywords: "cefr english test, cefr assessment online, cefr certificate, cefr level test",
-      },
-      "/english-assessment-for-universities": {
-        title: "English Assessment for Universities — b4skills",
-        description: "Adaptive CEFR placement for universities: bulk import, LMS integration, cohort analytics. 14-day free pilot.",
-        keywords: "english assessment universities, english placement test university, cefr university test",
-      },
-      "/english-assessment-for-companies": {
-        title: "English Assessment for Companies — b4skills",
-        description: "Fast, reliable English proficiency testing for HR teams. CEFR-aligned, bulk testing, workforce skill analytics.",
-        keywords: "english assessment companies, corporate english proficiency, hr english test, workforce english",
-      },
-      "/accessibility-statement": {
-        title: "Accessibility Statement — b4skills",
-        description: "b4skills WCAG 2.1 AA accessibility commitment, known limitations, accommodation requests, and contact information.",
-        keywords: "accessibility, wcag, b4skills accessibility, screen reader, disability accommodation",
-      },
-      "/research": {
-        title: "Validity Research — b4skills",
-        description: "Psychometric validity evidence: concurrent validity with IELTS, TOEFL, Cambridge. IRT, CAT, DIF, and AI scoring methodology.",
-        keywords: "english test validity, cefr concurrent validity, irt psychometrics, cat adaptive testing research, ielts correlation",
-      },
-    };
-
-    const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-    const injectSeoMeta = (html: string, meta: RouteMeta, reqPath: string): string => {
-      const ldJson = Array.isArray(meta.jsonLd) ? meta.jsonLd : meta.jsonLd ? [meta.jsonLd] : [
-        { "@context": "https://schema.org", "@type": "WebPage", name: meta.title, description: meta.description, url: `${APP_BASE_URL}${reqPath}` },
-      ];
-      const extraTags = [
-        ["/privacy", "/kvkk", "/terms", "/checkout", "/payment/success", "/payment/cancel"].includes(reqPath) ? `<meta name="robots" content="noindex, follow" />` : "",
-        meta.keywords ? `<meta name="keywords" content="${escHtml(meta.keywords)}" />` : "",
-        `<link rel="canonical" href="${escHtml(APP_BASE_URL + reqPath)}" />`,
-        `<meta property="og:url" content="${escHtml(APP_BASE_URL + reqPath)}" />`,
-        `<meta property="og:type" content="website" />`,
-        `<meta property="og:image" content="${APP_BASE_URL}/icons/pwa-192.png" />`,
-        `<meta name="twitter:card" content="summary_large_image" />`,
-        `<meta name="twitter:title" content="${escHtml(meta.title)}" />`,
-        `<meta name="twitter:description" content="${escHtml(meta.description)}" />`,
-        ...ldJson.map((ld) => `<script type="application/ld+json">${serializeJsonLd(ld)}</script>`),
-      ].filter(Boolean).join("\n    ");
-
-      return html
-        .replace(/<title>[^<]*<\/title>/, `<title>${escHtml(meta.title)}</title>`)
-        .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${escHtml(meta.description)}" />`)
-        .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escHtml(meta.title)}" />`)
-        .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escHtml(meta.description)}" />`)
-        .replace("</head>", `  ${extraTags}\n  </head>`);
+    /** Title, language, canonical, hreflang, share image and JSON-LD for known pages; noindex for personal ones. */
+    const withSeo = (html: string, reqPath: string): string => {
+      const page = seoPageFor(reqPath);
+      if (page) return applySeoToHtml(html, page, seoEnv);
+      return isPrivatePublicPath(reqPath) ? applyNoindexToHtml(html) : html;
     };
 
   // Vite middleware for development
@@ -8682,9 +8497,7 @@ ${entries}
           }
         }
 
-        const seoPath = Object.keys(ROUTE_META).find(knownPath => knownPath === req.path);
-        const meta = seoPath ? ROUTE_META[seoPath] : null;
-        res.set("Content-Type", "text/html").send(meta ? injectSeoMeta(indexHtml, meta, seoPath!) : indexHtml);
+        res.set("Content-Type", "text/html").send(withSeo(indexHtml, req.path));
       } catch (e) {
         next(e);
       }
@@ -8722,8 +8535,6 @@ ${entries}
       if (ext && ext !== ".html") return res.status(404).end();
       res.setHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
 
-      const seoPath = Object.keys(ROUTE_META).find(knownPath => knownPath === req.path);
-      const meta = seoPath ? ROUTE_META[seoPath] : null;
       let baseHtml = getIndexHtml();
 
       // Attempt SSR for marketing paths
@@ -8738,11 +8549,7 @@ ${entries}
         }
       }
 
-      if (meta) {
-        const injected = injectSeoMeta(baseHtml, meta, seoPath!);
-        return res.set("Content-Type", "text/html; charset=utf-8").send(injected);
-      }
-      res.set("Content-Type", "text/html; charset=utf-8").send(baseHtml);
+      res.set("Content-Type", "text/html; charset=utf-8").send(withSeo(baseHtml, req.path));
     });
   }
 

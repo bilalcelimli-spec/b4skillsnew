@@ -68,7 +68,7 @@ export const PreTestBriefing: React.FC<PreTestBriefingProps> = ({ productLine, o
         <div className="flex-shrink-0 bg-gradient-to-r from-indigo-600 to-indigo-500 px-5 sm:px-6 py-4 sm:py-5 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-indigo-200 mb-1">B4Skills Assessment</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-indigo-200 mb-1">b4skills Assessment</p>
               <h1 id="pre-test-briefing-title" className="text-xl font-black">{title}</h1>
             </div>
             <button onClick={onCancel} className="text-indigo-200 hover:text-white transition-colors" aria-label="Cancel">

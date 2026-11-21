@@ -78,7 +78,7 @@ export function SharedReportPage({ token }: Props) {
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
         {/* Header band */}
         <div className="px-8 py-6 text-white" style={{ backgroundColor: cefrColor }}>
-          <p className="text-xs font-semibold uppercase tracking-widest opacity-80 mb-1">B4Skills Assessment</p>
+          <p className="text-xs font-semibold uppercase tracking-widest opacity-80 mb-1">b4skills Assessment</p>
           <h1 className="text-3xl font-bold mb-0.5">{report.cefr.replace("_", " ")}</h1>
           <p className="text-sm opacity-90">CEFR English Level</p>
         </div>
@@ -120,7 +120,7 @@ export function SharedReportPage({ token }: Props) {
         <div className="px-8 pb-6 text-center">
           <p className="text-xs text-slate-400">
             Shared result from{" "}
-            <a href="/" className="text-indigo-500 hover:underline font-medium">B4Skills</a>
+            <a href="/" className="text-indigo-500 hover:underline font-medium">b4skills</a>
             {" "}· Adaptive English Assessment Platform
           </p>
         </div>
