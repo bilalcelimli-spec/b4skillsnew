@@ -36,8 +36,6 @@ export const SiteFooter: React.FC = () => (
         <ul className="space-y-3 text-sm text-slate-600">
           <li><a href="/support" className="hover:text-[#9b276c] transition-colors">Contact Us</a></li>
           <li><a href="/kvkk" className="hover:text-[#9b276c] transition-colors">KVKK Notice</a></li>
-          <li><a href="/refund-policy" className="hover:text-[#9b276c] transition-colors">Refund & Withdrawal</a></li>
-          <li><a href="/sales-terms" className="hover:text-[#9b276c] transition-colors">Purchase Information</a></li>
           <li><a href="/privacy" className="hover:text-[#9b276c] transition-colors">Privacy Policy</a></li>
           <li><a href="/terms" className="hover:text-[#9b276c] transition-colors">Terms of Service</a></li>
           <li><a href="/accessibility-statement" className="hover:text-[#9b276c] transition-colors">Accessibility</a></li>

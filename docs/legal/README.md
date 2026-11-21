@@ -1,5 +1,7 @@
 # Hukuki metin taslakları (E2)
 
+> **ESKİ SÜRÜM — kullanmayın (21 Kasım 2026).** Yayındaki metin [`src/components/LegalPage.tsx`](../../src/components/LegalPage.tsx) içindedir; şirket bilgileri `src/lib/site/company.ts`. Bu dosyadaki Gemini, Anthropic, Whisper ve Stripe ifadeleri artık geçerli değildir: puanlama ve AI tutor yalnız OpenAI kullanır, çevrim içi ödeme yoktur. Yeni madde eklenecekse `LegalPage.tsx` güncellenir.
+
 2 Kasım 2026. App Store yayın engeli **E2** için ([APP_STORE_RELEASE_ROADMAP.md](../../native/react-native/APP_STORE_RELEASE_ROADMAP.md)). **Hiçbiri yayımlanmadı ve hukuki inceleme görmedi.** Metinler koddaki gerçek davranıştan yazıldı; bilinmeyenler işaretli.
 
 | Dosya | İçerik | Yayın adresi (hedef) |

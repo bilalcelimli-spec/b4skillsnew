@@ -11,6 +11,6 @@ export function CheckoutPage(_props: { initialPlan?: PurchasePlanId }) {
       <p className="rounded-2xl border bg-white p-6 leading-7">Bu sitede ücretli bireysel satın alma şu anda sunulmuyor. Kart bilgisi veya ödeme onayı alınmaz. Apple uygulama içi satın alma da henüz etkin değildir.</p>
       <p>Ücretsiz seviye testini kullanabilir veya kurumunuzun verdiği sınav koduyla değerlendirmenize erişebilirsiniz.</p>
       <a className="inline-block rounded-xl bg-indigo-600 text-white px-6 py-3 font-semibold" href="/pricing">Ücretsiz seviye testine git</a>
-      <p className="text-sm space-x-4"><a href="/refund-policy" className="underline">İade ve cayma politikası</a><a href="/support" className="underline">Destek</a></p>
+      <p className="text-sm space-x-4"><a href="/support" className="underline">Destek</a></p>
     </main><SiteFooter /></div>;
 }

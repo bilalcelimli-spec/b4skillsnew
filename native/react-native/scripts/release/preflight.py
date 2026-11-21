@@ -32,6 +32,9 @@ check(origin.scheme == 'https' and bool(origin.hostname) and not origin.path and
 check(bool(re.fullmatch(r'\d+\.\d+\.\d+', config['version'])), 'Marketing version has three numeric components')
 build = os.getenv('B4_BUILD_NUMBER', config['buildNumber'])
 check(bool(re.fullmatch(r'[1-9]\d{0,3}(?:\.\d{1,2}){0,2}', build)), 'Apple build number: ' + build)
+store_meta = json.loads((ROOT / 'app-store-metadata.json').read_text())
+check(store_meta.get('version') == config['version'] and store_meta.get('buildNumber') == config['buildNumber'],
+      f"App Store metadata version/build {store_meta.get('version')} ({store_meta.get('buildNumber')}) match release.json")
 expected_data = {'Name', 'EmailAddress', 'UserID', 'AudioData', 'PhotosorVideos', 'OtherUserContent', 'ProductInteraction', 'OtherUsageData', 'OtherDataTypes'}
 for platform, info_file, privacy_file, project_file in [
     ('ipad', 'ios/B4Skills/Info.plist', 'ios/B4Skills/PrivacyInfo.xcprivacy', 'ios/B4Skills.xcodeproj/project.pbxproj'),

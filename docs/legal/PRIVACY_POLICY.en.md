@@ -1,5 +1,7 @@
 # B4Skills Privacy Policy
 
+> **SUPERSEDED — do not use (21 Nov 2026).** The published text lives in [`src/components/LegalPage.tsx`](../../src/components/LegalPage.tsx); company details in `src/lib/site/company.ts`. Statements here about Gemini, Anthropic, Whisper and Stripe are no longer accurate: scoring and the AI tutor use OpenAI only, and there is no online payment.
+
 > **DRAFT — not legally reviewed, not published.** `[[FILL: …]]` marks facts only the product owner knows; `[[DECIDE: …]]` marks product or legal decisions. The Turkish version ([PRIVACY_POLICY.tr.md](PRIVACY_POLICY.tr.md)) also serves as the KVKK notice; keep both in sync. Open items: [README.md](README.md).
 
 Last updated: [[FILL: publication date]]
