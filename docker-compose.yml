@@ -53,8 +53,6 @@ services:
       DATABASE_URL: postgresql://linguadapt:localpassword@db:5432/linguadapt_dev
       REDIS_URL: redis://redis:6379
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
       APP_URL: http://localhost:3000
     env_file:
       - .env.local

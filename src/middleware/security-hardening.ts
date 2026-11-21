@@ -55,13 +55,13 @@ function buildCSP(config: SecurityConfig, nonce?: string): string {
   const nonceDirective = nonce ? `'nonce-${nonce}'` : "";
   const directives = [
     `default-src 'self'`,
-    `script-src 'self' ${nonceDirective} 'strict-dynamic' https://js.stripe.com`,
+    `script-src 'self' ${nonceDirective} 'strict-dynamic'`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
     `font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net`,
     `img-src 'self' data: blob: https: ${origins}`,
-    `connect-src 'self' https://api.stripe.com https://sentry.io wss: ${origins}`,
+    `connect-src 'self' https://sentry.io wss: ${origins}`,
     `worker-src 'self' blob:`,
-    `frame-src https://js.stripe.com`,
+    `frame-src 'none'`,
     `object-src 'none'`,
     `base-uri 'self'`,
     `form-action 'self'`,

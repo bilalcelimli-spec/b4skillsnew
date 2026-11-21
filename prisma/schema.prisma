@@ -155,6 +155,8 @@ model PaymentTransaction {
   completedAt     DateTime?
   licenseId       String?    @unique
   license         License?   @relation(fields: [licenseId], references: [id])
+  /// Legacy: Stripe Checkout session of an order paid before online payments were removed.
+  /// Kept for refunds/reconciliation of historical orders; nothing writes it any more.
   stripeSessionId String?   @unique
   creditsAdded    Int       @default(0)
   

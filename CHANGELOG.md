@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **Stripe** — online card payments are not offered. The unused Stripe Checkout/webhook service, the `stripe` dependency, `STRIPE_*` settings, Stripe CSP sources and documentation references are removed. Historical orders, receipts, licences and early-start consent are unaffected; `PaymentTransaction.stripeSessionId` stays as a read-only legacy column.
+
 ### Changed
 - **Measurement model (Faz 4)** — RT-IRT is on by default as a flag-only diagnostic (`Response.rtFlag`/`rtZScore`; scores are never adjusted, `adjustedScore` is no longer written); MIRT is off by default and reported as `mirtStatus: "EXPLORATORY"`; the per-skill report re-estimates each skill under the profile prior; reports gain `compositeProfile` (equal-weight skill mean, SEM lower bound, dispersion χ² and an `uneven` flag). A cross-skill informative prior (`profile.crossSkillPrior`, harness `--cross-skill`) is implemented but off: it saves 6–10 items when the assumed correlation is right and degrades skill profiles when it is too high.
 - **Evidence-backed section stop rules (Faz 3)** — every profile now stops a section on `SEM_THRESHOLD` or `CLASSIFICATION_CONFIDENCE` (P(band) ≥ 0.90); Rapid Diagnostic adds Wald SPRT (35 → 27 items in simulation with unchanged accuracy). `BOUNDARY_SEM` and section budget flex were measured and left off. The harness takes `--stop-rules`, `--confidence`, `--sprt`, `--budget-flex` for A/B runs.

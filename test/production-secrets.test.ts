@@ -12,7 +12,6 @@ const valid = {
   RESEND_API_KEY: 'test-resend-key-value',
   SECRET_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64'),
   REDIS_URL: 'redis://cache.example.invalid:6379',
-  STRIPE_SECRET_KEY: 'test-stripe-value',
 };
 function withEnv(overrides: Record<string, string>) {
   for (const [key, value] of Object.entries({ ...valid, ...overrides })) vi.stubEnv(key, value);
@@ -50,7 +49,7 @@ describe('production start-up configuration check', () => {
 
   it('only warns when optional settings are absent', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    withEnv({ SECRET_ENCRYPTION_KEY: '', REDIS_URL: '', STRIPE_SECRET_KEY: '' });
+    withEnv({ SECRET_ENCRYPTION_KEY: '', REDIS_URL: '' });
     expect(() => assertProductionSecrets()).not.toThrow();
     const messages = warn.mock.calls.map((call) => String(call[0])).join('\n');
     expect(messages).toMatch(/SECRET_ENCRYPTION_KEY/);

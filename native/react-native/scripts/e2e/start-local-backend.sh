@@ -30,7 +30,7 @@ import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 const file = `${process.env.B4SKILLS_E2E_ROOT}/backend.env`;
 if (!fs.existsSync(file)) {
- const vars={DATABASE_URL:`postgresql://${process.env.USER}@127.0.0.1:55432/b4skills_apple_e2e`,NODE_ENV:'test',PORT:'3001',APP_URL:'http://localhost:3001',JWT_SECRET:crypto.randomBytes(32).toString('hex'),REFRESH_SECRET:crypto.randomBytes(32).toString('hex'),LOG_LEVEL:'warn',GEMINI_API_KEY:'',GOOGLE_API_KEY:'',STRIPE_SECRET_KEY:'',REDIS_URL:'',ADMIN_SEED_EMAIL:'',ADMIN_SEED_PASSWORD:'',SENTRY_DSN:'',OTEL_SDK_DISABLED:'true'};
+ const vars={DATABASE_URL:`postgresql://${process.env.USER}@127.0.0.1:55432/b4skills_apple_e2e`,NODE_ENV:'test',PORT:'3001',APP_URL:'http://localhost:3001',JWT_SECRET:crypto.randomBytes(32).toString('hex'),REFRESH_SECRET:crypto.randomBytes(32).toString('hex'),LOG_LEVEL:'warn',GEMINI_API_KEY:'',GOOGLE_API_KEY:'',REDIS_URL:'',ADMIN_SEED_EMAIL:'',ADMIN_SEED_PASSWORD:'',SENTRY_DSN:'',OTEL_SDK_DISABLED:'true'};
  fs.writeFileSync(file,Object.entries(vars).map(([k,v])=>`${k}=${v}`).join('\n')+'\n',{mode:0o600});
 }
 const vars=dotenv.parse(fs.readFileSync(file));

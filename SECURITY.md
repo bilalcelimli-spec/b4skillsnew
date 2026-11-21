@@ -27,7 +27,7 @@ Items in scope for responsible disclosure:
 - Insecure direct object references (IDOR)
 - API key or secret exposure
 - Proctoring data leakage
-- Payment / Stripe integration issues
+- Licence, exam-code or billing record issues
 
 ## Out of Scope
 
@@ -38,7 +38,7 @@ Items in scope for responsible disclosure:
 ## Security Best Practices for Operators
 
 - Store all secrets in environment variables; never commit them to source control.
-- Rotate `STRIPE_WEBHOOK_SECRET` whenever a webhook endpoint is changed.
+- Rotate `SECRET_ENCRYPTION_KEY` via `SECRET_ENCRYPTION_KEY_PREVIOUS` if it may have been exposed.
 - Run database migrations in a network-isolated environment before deploying.
 - Enable Prisma query logging only in development; never in production.
 - Use HTTPS exclusively in production (enforced automatically on Render and Fly.io).

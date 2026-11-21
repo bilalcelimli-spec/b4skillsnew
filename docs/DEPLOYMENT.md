@@ -20,8 +20,6 @@ Render auto-provisions the Node.js service **and** PostgreSQL using `render.yaml
 3. Connect your GitHub repo. Render detects `render.yaml` automatically.
 4. In **Environment > Secret Files**, set:
    - `GEMINI_API_KEY`
-   - `STRIPE_SECRET_KEY`
-   - `STRIPE_WEBHOOK_SECRET`
 5. Click **Apply**. Render will:
    - Create a PostgreSQL database.
    - Run `npm ci && npm run build:all && npx prisma generate`.
@@ -50,8 +48,6 @@ fly launch
 fly secrets set \
   GEMINI_API_KEY=<key> \
   DATABASE_URL=<pg-connection-string> \
-  STRIPE_SECRET_KEY=<key> \
-  STRIPE_WEBHOOK_SECRET=<secret> \
   APP_URL=https://<your-app>.fly.dev
 
 # Create a managed Postgres cluster (optional)
@@ -77,8 +73,6 @@ docker run -d \
   -e NODE_ENV=production \
   -e DATABASE_URL="postgresql://..." \
   -e GEMINI_API_KEY="..." \
-  -e STRIPE_SECRET_KEY="..." \
-  -e STRIPE_WEBHOOK_SECRET="..." \
   -e APP_URL="https://your-domain.com" \
   linguadapt:latest
 ```

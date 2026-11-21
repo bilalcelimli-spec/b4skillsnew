@@ -24,7 +24,7 @@ Bu belge, B4Skills adaptif İngilizce değerlendirme platformunda işlenen kişi
 | **Davranışsal** | Yanıt süresi (latencyMs), oturum meta-verisi | Öğrenci | RT-IRT modeli; hile/kopya tespiti | Meşru menfaat (KVKK m.5/2(f)) |
 | **Teknik** | IP adresi, tarayıcı parmak izi, User-Agent | Kullanıcı | Güvenlik, hile önleme | Meşru menfaat |
 | **Kurumsal** | Organizasyon adı, faturalandırma bilgisi | Kurum Admini | Sözleşme yönetimi | Sözleşmenin ifası |
-| **Finansal** | Stripe ödeme meta-verisi (kart son 4 hane) | Kullanıcı | Abonelik yönetimi | Yasal yükümlülük |
+| **Finansal** | Geçmiş sipariş kayıtları (tutar, para birimi, durum; kart bilgisi yok) | Sistem | Sipariş ve lisans kaydı | Yasal yükümlülük |
 
 > **Not:** Ses kayıtları ve davranışsal veriler KVKK m.6 kapsamında özel nitelikli kişisel veri sayılabilir; bu veriler için açık, bilgilendirici ve tek amaçlı rıza alınır.
 
@@ -39,7 +39,7 @@ Bu belge, B4Skills adaptif İngilizce değerlendirme platformunda işlenen kişi
 | Ses kayıtları | 90 gün (puanlama sonrası) | Puanlama tamamlandıktan 90 gün sonra |
 | Yanıt süresi verileri | 2 yıl | Saklama süresi sonu otomatik silme |
 | IP adresi / teknik günlükler | 1 yıl | Rolling log rotation |
-| Stripe ödeme meta-verisi | 7 yıl | Vergi mevzuatı zorunluluğu |
+| Geçmiş sipariş kayıtları | 7 yıl | Vergi mevzuatı zorunluluğu |
 | IRT kalibrasyonu için anonimleştirilmiş test verisi | Süresiz | Geri bağlanamaz anonimleştirme sonrası |
 
 ---
@@ -91,7 +91,6 @@ Platform, aşağıdaki hakları desteklemektedir:
 |---|---|---|---|
 | **Google Cloud (Gemini API)** | Yapay zeka puanlama | Öğrenci yanıt metni | Google DPA + SCCs |
 | **Google Cloud (Text-to-Speech)** | Soru sesi üretme | Yalnızca soru metni (kişisel veri yok) | Google DPA |
-| **Stripe** | Ödeme işleme | Finansal meta-veri | Stripe DPA |
 | **Sentry** | Hata izleme | Hata yığın izleri, IP | Sentry DPA |
 | **Fly.io / Render** | Barındırma | Tüm kategoriler | SOC2 Type II + DPA |
 | **Redis (ioredis)** | Oturum önbelleği | JWT payload, oturum durumu | Self-hosted veya barındırma DPA |
