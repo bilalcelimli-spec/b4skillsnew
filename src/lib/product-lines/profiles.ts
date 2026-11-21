@@ -611,6 +611,13 @@ const ACADEMIA: ProductLineProfile = {
   globalSemThreshold: 0.30,
   maxExposureRate: 0.20,
   examSources: ["academia", "general"],
+  // Stopgap (2026-11-21, DB snapshot, n=400 × 3–4 seeds). Academia's own listening pool is
+  // 19 items (B1: 0, B2: 1) for a 16-item section: every candidate got the same items and a
+  // recording's questions could not be kept together (770 split sets per 400 candidates).
+  // With the general core: pool 54, split sets 0, exposure max 1.00 → 0.85, overall RMSE and
+  // CEFR accuracy unchanged. Known cost, as found on 2026-11-14: C2 listening RMSE 0.82 → 0.95.
+  // Turn off again once Academia's own listening pool reaches ~100 items (≥20 per level).
+  generalCoreAccess: true,
   mst: {
     enabled: true,
     stages: 3,
@@ -686,8 +693,8 @@ const CORPORATE: ProductLineProfile = {
   maxExposureRate: 0.28,
   examSources: ["corporate", "general"],
   // Faz 1 (2026-11-14, DB snapshot, n=400 × 2 seeds): shared general-core items cut the share of
-  // items over the exposure ceiling 0.54 → 0.17 with no loss of precision (RMSE +0.006 / −0.013). Academia and
-  // Specialized stay off: listening SEM and CEFR accuracy worsened there. See
+  // items over the exposure ceiling 0.54 → 0.17 with no loss of precision (RMSE +0.006 / −0.013). Specialized
+  // stays off: CEFR accuracy worsened there (Academia: on as a stopgap, see its profile). See
   // docs/quality/phase1-gap-triage-2026-11.md.
   generalCoreAccess: true,
   reportTemplate: "corporate",
@@ -756,8 +763,8 @@ const LANGUAGE_SCHOOLS: ProductLineProfile = {
   maxExposureRate: 0.28,
   examSources: ["language-schools", "general"],
   // Faz 1 (2026-11-14, DB snapshot, n=400 × 2 seeds): shared general-core items cut the share of
-  // items over the exposure ceiling 0.36 → 0.12 with no loss of precision (RMSE −0.010 / −0.024). Academia and
-  // Specialized stay off: listening SEM and CEFR accuracy worsened there. See
+  // items over the exposure ceiling 0.36 → 0.12 with no loss of precision (RMSE −0.010 / −0.024). Specialized
+  // stays off: CEFR accuracy worsened there (Academia: on as a stopgap, see its profile). See
   // docs/quality/phase1-gap-triage-2026-11.md.
   generalCoreAccess: true,
   reportTemplate: "cefr_band",

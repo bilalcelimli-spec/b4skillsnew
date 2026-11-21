@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { record } from '../src/lib/quality/item-evidence-audit.js';
-import { inspectWav } from '../src/lib/audio/wav-evidence.js';
+import { inspectWav, speechRateCheck } from '../src/lib/audio/wav-evidence.js';
 import { speakerLabels } from '../src/lib/audio/speaker-labels.js';
 
 config({ path: '.env.local', quiet: true }); config({ quiet: true });
@@ -53,6 +53,10 @@ async function main() {
         const bytes = readFileSync(resolved);
         evidence.audioHash = createHash('sha256').update(bytes).digest('hex');
         evidence.localContainer = path.extname(resolved).toLowerCase() === '.wav' ? inspectWav(bytes) : { valid: null, reason: 'Non-WAV decoding not performed' };
+        // The spoken script, not the shown text: a recording far too short for it was cut off.
+        const spoken = [c.ttsScript, c.transcript, c.script, c.passage].find(v => typeof v === 'string' && v.trim()) || '';
+        const seconds = record(evidence.localContainer).durationSeconds;
+        if (typeof seconds === 'number') evidence.speechRate = speechRateCheck(seconds, String(spoken));
       } else evidence.localContainer = { valid: null, reason: 'Exceeds inspection size limit' };
     } else evidence.localContainer = { valid: null, reason: safeLocal ? 'No local copy; this does not establish a live outage' : 'Remote or unsupported local reference' };
     // Sequential and capped: no credentials, arbitrary hosts or redirects are followed.
@@ -80,6 +84,8 @@ async function main() {
   const summary = { itemCount: items.length, recordingCount: recordings.length,
     invalidLocalWav: recordings.filter(r => record(r.localContainer).valid === false).length,
     validLocalWav: recordings.filter(r => record(r.localContainer).valid === true).length,
+    lengthDoesNotFitScript: recordings.filter(r => ['TOO_SHORT_FOR_SCRIPT', 'TOO_LONG_FOR_SCRIPT'].includes(String(record(r.speechRate).verdict)))
+      .map(r => ({ itemIds: r.itemIds, ...record(r.speechRate) })),
     liveHeadSuccess: recordings.filter(r => record(r.liveHead).verdict === 'HTTP_ONLY_NOT_DECODED').length,
     liveHeadNeedsConfirmation: recordings.filter(r => record(r.liveHead).verdict === 'REQUIRES_GET_CONFIRMATION').length,
     editorialDrafts: editorialDrafts.length };

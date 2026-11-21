@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stripAnswerKeys } from "../answer-sanitizer";
+import { stripAnswerKeys, candidateItemContent } from "../answer-sanitizer";
 
 describe("stripAnswerKeys", () => {
   it("removes top-level and nested scoring secrets", () => {
@@ -49,5 +49,17 @@ describe("stripAnswerKeys", () => {
     const source = { prompt: "Question", correctIndex: 1 };
     stripAnswerKeys(source);
     expect(source).toEqual({ prompt: "Question", correctIndex: 1 });
+  });
+});
+
+describe("candidateItemContent", () => {
+  it("drops the spoken script a listening item keeps in passage", () => {
+    const safe = candidateItemContent("LISTENING", { prompt: "What does Tom want?", passage: "Tom: I would like a coffee.", ttsScript: "Tom: I would like a coffee.", audioUrl: "/audio/a.mp3", correctAnswer: "A" }) as Record<string, unknown>;
+    expect(safe).toEqual({ prompt: "What does Tom want?", audioUrl: "/audio/a.mp3" });
+  });
+
+  it("keeps the audio placeholder and leaves reading passages alone", () => {
+    expect(candidateItemContent("LISTENING", { passage: "[Audio: a short dialogue]" })).toEqual({ passage: "[Audio: a short dialogue]" });
+    expect(candidateItemContent("READING", { passage: "A long text.", correctAnswer: "B" })).toEqual({ passage: "A long text." });
   });
 });

@@ -170,11 +170,11 @@ describe("generalCoreAccess", () => {
     skill: "GRAMMAR", status: "ACTIVE", isPretest: false, cefrLevel: "B2", discrimination: 1.2, guessing: 0.25, tags, content: {}, ...extra,
   });
   it("is off by default: a source profile ignores general-tagged items", () => {
-    expect(isAdaptiveEligible(item(["general"]), getProfile("Academia"), SkillType.GRAMMAR)).toBe(false);
+    expect(isAdaptiveEligible(item(["general"]), getProfile("Specialized / Integrated Skills"), SkillType.GRAMMAR)).toBe(false);
   });
-  it("is on for Language Schools and Corporate only (Faz 1 simulation)", () => {
+  it("is on for Language Schools and Corporate (Faz 1 simulation) and, as a stopgap, Academia (19-item listening pool)", () => {
     const on = Object.values(PRODUCT_LINE_PROFILES).filter((p) => p.generalCoreAccess).map((p) => p.name).sort();
-    expect(on).toEqual(["Corporate", "Language Schools"]);
+    expect(on).toEqual(["Academia", "Corporate", "Language Schools"]);
   });
   it("lets a profile take general-core items but never another product's items", () => {
     const profile = { ...getProfile("Language Schools"), generalCoreAccess: true };

@@ -164,4 +164,26 @@ describe("ItemRenderer response recovery", () => {
 
     expect((screen.getByPlaceholderText("···") as HTMLInputElement).value).toBe("");
   });
+  it("shows the next question of the same recording read-only and does not restart a recording already heard", () => {
+    const first = { ...baseItem, id: "q1", skill: "LISTENING", type: "MULTIPLE_CHOICE",
+      content: { prompt: "What does Maria want?", options: ["Tea", "Coffee"], audioUrl: "/a.mp3" },
+      audio: { maxPlays: 2, playsUsed: 0 },
+      set: { position: 1, size: 2, upcoming: [{ id: "q2", type: "MULTIPLE_CHOICE", metadata: { prompt: "Where are they?", options: [{ id: "A", text: "In a cafe" }, { id: "B", text: "At home" }] } }] } };
+    const { rerender } = render(<ItemRenderer sessionId="s1" item={first as any} onResponse={vi.fn()} />);
+    expect(screen.getByRole("note").textContent).toContain("question 1 of 2");
+    const preview = screen.getByRole("region", { name: "Next question for this recording" });
+    expect(preview.textContent).toContain("Where are they?");
+    expect(preview.textContent).toContain("In a cafe");
+    expect(preview.querySelector("input, button")).toBeNull();
+    expect(screen.getByText("Audio will play in")).toBeTruthy();
+
+    const second = { ...baseItem, id: "q2", skill: "LISTENING", type: "MULTIPLE_CHOICE",
+      content: { prompt: "Where are they?", options: ["In a cafe", "At home"], audioUrl: "/a.mp3" },
+      audio: { maxPlays: 2, playsUsed: 1 }, set: { position: 2, size: 2, upcoming: [] } };
+    rerender(<ItemRenderer sessionId="s1" item={second as any} onResponse={vi.fn()} />);
+    expect(screen.getByRole("note").textContent).toContain("question 2 of 2");
+    expect(screen.queryByRole("region", { name: "Next question for this recording" })).toBeNull();
+    expect(screen.queryByText("Audio will play in")).toBeNull();
+    expect(screen.getByText("1 play left")).toBeTruthy();
+  });
 });
