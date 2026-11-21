@@ -38,3 +38,6 @@ reports/item-evidence/
 *.swp
 Thumbs.db
 scripts/jobs/.out/
+
+# Claude Code session worktrees (local only)
+.claude/worktrees/
