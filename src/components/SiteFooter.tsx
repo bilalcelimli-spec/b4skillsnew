@@ -54,7 +54,7 @@ export const SiteFooter: React.FC = () => {
         </div>
       </div>
       <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between text-xs text-slate-500 border-t border-slate-100 pt-8">
-        <div className="space-y-2"><p>&copy; {new Date().getFullYear()} {COMPANY.brand} · {COMPANY.legalName}</p><p>{COMPANY.address}</p><p>{COMPANY.taxOffice} · {COMPANY.taxNumber}</p></div>
+        <div className="space-y-2"><p>&copy; {new Date().getFullYear()} {COMPANY.brand}</p><p>{COMPANY.address}</p><p>{COMPANY.taxOffice} · {COMPANY.taxNumber}</p></div>
         <div className="flex items-center gap-4 mt-4 md:mt-0">
           {consent}
           <span>IRT & AI-assisted scoring</span>

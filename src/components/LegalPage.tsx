@@ -11,7 +11,7 @@ const CONTENT: Record<LegalPageKind, { title: string; sections: ReadonlyArray<re
   privacy: {
     title: 'Gizlilik Politikası / Privacy Policy',
     sections: [
-      ['Kapsam / Scope', 'Bu metin b4skills web sitesi ve değerlendirme uygulamalarındaki veri işleme faaliyetlerini açıklar. Bireysel hesap ve hizmet işlemlerinde veri sorumlusu Bilal Çelimli’dir. Kurumun belirlediği amaçlarla yapılan sınavlarda kurumun aydınlatma metni de geçerlidir; veri sorumlusu ve veri işleyen rolleri ilgili hizmete göre belirlenir.'],
+      ['Kapsam / Scope', 'Bu metin b4skills web sitesi ve değerlendirme uygulamalarındaki veri işleme faaliyetlerini açıklar. Bireysel hesap ve hizmet işlemlerinde veri sorumlusu b4skills’tir. Kurumun belirlediği amaçlarla yapılan sınavlarda kurumun aydınlatma metni de geçerlidir; veri sorumlusu ve veri işleyen rolleri ilgili hizmete göre belirlenir.'],
       ['İşlenen veriler / Data processed', 'Kimlik ve iletişim bilgileri, hesap bilgileri, kurum/sınıf bilgileri, sınav yanıtları, yanıt süreleri, sonuçlar ve teknik günlükler işlenebilir. Konuşma sorularında ses yanıtı, gözetimli sınavlarda başlangıç fotoğrafı, web kamera olay kareleri ve uygulamadan ayrılma gibi gözetim olayları toplanabilir. Kapsam sınavın yapılandırmasına bağlıdır.'],
       ['Amaçlar / Purposes', 'Veriler hesabı ve sınavı sunmak, yanıtları puanlamak, sonuçları katılımcıya ve yetkili kurumuna ulaştırmak, destek sağlamak, hizmet güvenliğini ve ölçme kalitesini değerlendirmek için işlenir. Web sitesinde ve uygulamalarda ücretli bireysel satın alma sunulmaz; kart veya ödeme bilgisi toplanmaz.'],
       ['AI destekli puanlama / AI-assisted scoring', 'Tam değerlendirmede yazılı ve sesli yanıtlar, görev metni ve değerlendirme ölçütleri puanlama için OpenAI’a gönderilir. Adınız ve e-posta adresiniz puanlama isteğine eklenmez; ancak yanıtınızda bu bilgileri söylerseniz veya yazarsanız yanıtla birlikte aktarılabilir. Ses, puanlama için metne dönüştürülebilir. Sonuçlara itiraz edebilir ve insan incelemesi isteyebilirsiniz. Serbest metninize gereksiz kişisel veya hassas bilgi eklemeyin. Ücretsiz Quick Check’te açık yazma ve konuşma yanıtları değerlendirilmez.'],
@@ -27,7 +27,7 @@ const CONTENT: Record<LegalPageKind, { title: string; sections: ReadonlyArray<re
   kvkk: {
     title: 'KVKK Aydınlatma Metni',
     sections: [
-      ['Veri sorumlusu', 'Bireysel hizmetlerde veri sorumlusu Bilal Çelimli’dir. Kurum tarafından düzenlenen sınavlarda ilgili kurumun veri sorumlusu olarak yaptığı bilgilendirme de dikkate alınmalıdır. İletişim ve adres bilgileri aşağıdadır.'],
+      ['Veri sorumlusu', 'Bireysel hizmetlerde veri sorumlusu b4skills’tir. Kurum tarafından düzenlenen sınavlarda ilgili kurumun veri sorumlusu olarak yaptığı bilgilendirme de dikkate alınmalıdır. İletişim ve adres bilgileri aşağıdadır.'],
       ['Toplama yöntemi ve amaçlar', 'Veriler web/uygulama formları, kurumun ilettiği kayıtlar, sınav yanıtları, izin verilmiş mikrofon/kamera kullanımı ve teknik günlükler yoluyla elektronik ortamda toplanır. Hesap açılması, sınavın sunulması, puanlama, raporlama, destek, güvenlik ve faturalama amaçlarıyla işlenir. Veri kategorileri /privacy sayfasında açıklanmıştır.'],
       ['Hukuki sebepler', 'İlgili işleme için gerekli olduğu ölçüde KVKK madde 5/2-c kapsamında sözleşmenin kurulması veya ifası, 5/2-ç kapsamında hukuki yükümlülükler, 5/2-e kapsamında bir hakkın tesisi, kullanılması veya korunması ve temel haklara zarar vermemek koşuluyla 5/2-f kapsamında meşru menfaat değerlendirilir. Açık rızaya dayanan ek işlemler için ayrı bilgilendirme ve rıza gerekir. Bu taslakta işlem bazındaki hukuki sebep envanteri ve gözetim kapsamı henüz nihai olarak doğrulanmamıştır.'],
       ['Aktarım', 'Veriler sınavı düzenleyen kurumun yetkili kullanıcılarına, hizmetin sunulması için gerekli altyapı ve içerik dağıtımı, AI puanlama ve iletişim sağlayıcılarına ve kanunen yetkili makamlara ilgili amaçlarla aktarılabilir. Yurt dışı bölgeleri ve KVKK madde 9 kapsamındaki aktarım dayanakları doğrulanmadan bu taslak nihai aktarım aydınlatması sayılmaz.'],
@@ -38,7 +38,7 @@ const CONTENT: Record<LegalPageKind, { title: string; sections: ReadonlyArray<re
   terms: {
     title: 'Kullanım Koşulları / Terms of Service',
     sections: [
-      ['Hizmet sağlayıcı', 'b4skills, aşağıda bilgileri bulunan Bilal Çelimli tarafından sunulan bir İngilizce değerlendirme hizmetidir. Bu koşullar hizmetin kullanımını açıklar; kurumsal sözleşme varsa ayrıca uygulanır.'],
+      ['Hizmet sağlayıcı', 'b4skills, iletişim ve vergi bilgileri aşağıda bulunan bir İngilizce değerlendirme hizmetidir. Bu koşullar hizmetin kullanımını açıklar; kurumsal sözleşme varsa ayrıca uygulanır.'],
       ['Sonuçların anlamı', 'Sonuçlar CEFR-aligned seviye tahminleridir. CEFR adına verilmiş resmî bir yeterlilik veya akreditasyon iddiası taşımaz. Bir sertifikanın doğrulanması b4skills kaydının durumunu gösterir; başka bir kurumun kabulünü garanti etmez. Ücretsiz testin açık yazma ve konuşma yanıtları değerlendirilmez.'],
       ['Hesap ve sınav kuralları', 'Hesabınıza ve sınav kodunuza ilişkin bilgileri koruyun, size tahsis edilmeyen hesabı veya kodu kullanmayın. Yetkisiz yardım, soru paylaşımı ve hizmet güvenliğini aşmaya yönelik işlemler yasaktır. Gözetim sinyalleri tek başına usulsüzlüğün kanıtı sayılmaz; itiraz ve insan incelemesi talebi iletişim kanalından iletilebilir.'],
       ['Ücretler', 'Web sitesinde ve iPad/Mac uygulamalarında ücretli bireysel satın alma veya uygulama içi satın alma yoktur. Ücretsiz seviye testi dışındaki değerlendirmelere kurumunuzun verdiği hesap veya sınav koduyla erişilir; kurumsal hizmetler kurumla yapılan ayrı sözleşmeye göre ücretlendirilir. Daha önce yapılmış bir bireysel sipariş varsa sipariş belgesindeki koşullar ile /refund-policy ve /sales-terms sayfaları geçerlidir; emredici tüketici hakları saklıdır.'],
@@ -60,9 +60,8 @@ export function LegalPage({ kind }: { kind: LegalPageKind }) {
     <SiteNav />
     <main lang="tr" className="max-w-4xl mx-auto px-6 pt-32 pb-20">
       <h1 className="text-3xl font-bold mb-4">{content.title}</h1>
-      {['privacy', 'kvkk', 'terms'].includes(kind) && <p className="rounded-xl bg-amber-50 border border-amber-200 p-4 mb-6 text-sm" role="note">İnceleme taslağı · 4 Kasım 2026. Şirket bilgileri sağlanan vergi belgesinden alınmıştır. Veri işleme ve aktarım ayrıntıları ile ticari koşulların incelemesi tamamlanmadan nihai hukuki metin olarak yayımlanmamalıdır.</p>}
       <div className="rounded-2xl bg-white border border-slate-200 p-6 mb-8 space-y-2">
-        <p className="font-semibold">{COMPANY.legalName} · {COMPANY.brand}</p>
+        <p className="font-semibold">{COMPANY.brand}</p>
         <p>{COMPANY.address}</p><p>Telefon: <a href="tel:+905465411417" className="underline">{COMPANY.phone}</a></p><p>{COMPANY.taxOffice} · Vergi no: {COMPANY.taxNumber}</p>
         <a className="underline text-[#9b276c]" href={`mailto:${COMPANY.contactEmail}`}>{COMPANY.contactEmail}</a>
       </div>

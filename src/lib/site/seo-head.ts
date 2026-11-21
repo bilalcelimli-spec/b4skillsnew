@@ -38,7 +38,6 @@ export function organizationLd(baseUrl: string) {
     "@type": "Organization",
     "@id": `${baseUrl}/#organization`,
     name: COMPANY.brand,
-    legalName: COMPANY.legalName,
     url: `${baseUrl}/`,
     logo: { "@type": "ImageObject", url: `${baseUrl}/b4skillslogo.png`, width: 1774, height: 887 },
     email: COMPANY.contactEmail,
@@ -248,7 +247,7 @@ Key facts:
 - Status of results: the CEFR level is a standardised estimate, not an official qualification such as IELTS or Cambridge. Each receiving institution decides whether to accept it.
 - Institutions: teacher and institutional dashboards, bulk candidate import, LMS integration (LTI 1.3), single sign-on and cohort analytics. Institutional terms are agreed per contract; individual paid checkout is not offered on the website.
 - Languages: English interface; Turkish pages for Turkish-speaking candidates.
-- Operator: ${COMPANY.brand} (${COMPANY.legalName}), Bursa, Türkiye. Contact: ${COMPANY.contactEmail}.
+- Operator: ${COMPANY.brand}, Bursa, Türkiye. Contact: ${COMPANY.contactEmail}.
 
 ${section("Take a test", ["test"])}
 ${section("For institutions", ["solution"])}
