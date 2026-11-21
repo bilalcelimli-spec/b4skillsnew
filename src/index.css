@@ -80,3 +80,13 @@
   /* Hide navigation bars, sidebars, etc. */
   header, nav, aside, footer:not(.report-footer) { display: none !important; }
 }
+
+/* Light entrance animations for server-rendered public pages (no JS library,
+   and the content stays visible in the server HTML). */
+@keyframes b4-enter-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+@keyframes b4-enter-scale { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
+.b4-enter-up { animation: b4-enter-up 0.4s ease-out both; }
+.b4-enter-scale { animation: b4-enter-scale 0.25s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .b4-enter-up, .b4-enter-scale { animation: none; }
+}

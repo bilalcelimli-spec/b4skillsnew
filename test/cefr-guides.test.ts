@@ -121,3 +121,17 @@ describe("Turkish CEFR guides", () => {
     expect(html).not.toContain('href="/cefr-levels/b2"');
   });
 });
+
+describe("content-free guide paths", () => {
+  it("list exactly the guide pages and agree with the SEO list on page language", async () => {
+    const paths = await import("../src/lib/site/cefr-guide-paths");
+    const guides = await import("../src/lib/site/cefr-guides");
+    expect(paths.LEVEL_SLUGS).toEqual(LEVEL_GUIDES.map((g) => g.slug));
+    expect(paths.LEVEL_SLUGS).toEqual(guides.LEVEL_GUIDES_TR.map((g) => g.slug));
+    for (const path of paths.CEFR_GUIDE_PATHS) expect(seoPageFor(path), path).toBeDefined();
+    const { SEO_PAGES } = await import("../src/lib/site/seo-pages");
+    for (const page of SEO_PAGES.filter((p) => p.kind !== "legal" && p.kind !== "utility")) {
+      expect(paths.isTurkishMarketingPath(page.path), page.path).toBe(page.lang === "tr");
+    }
+  });
+});

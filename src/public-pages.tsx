@@ -15,8 +15,7 @@ import { AppToastProvider } from "./hooks/useToast";
 import { LegalPage, type LegalPageKind } from "./components/LegalPage";
 import { VerificationPage } from "./components/VerificationPage";
 import type { SeoVariant } from "./components/SeoLandingPage";
-import { isCefrGuidePath } from "./lib/site/cefr-guides";
-import { seoPageFor } from "./lib/site/seo-pages";
+import { isCefrGuidePath, isTurkishMarketingPath } from "./lib/site/cefr-guide-paths";
 
 type Page<K extends string> = ComponentType<Record<K, any>>;
 
@@ -87,7 +86,7 @@ export function MarketingPage({ children, path, enabled }: { children: React.Rea
   const [privateAssessmentOpen, setPrivateAssessmentOpen] = useState(false);
   // Every marketing page ends with SiteFooter, which renders this consent control.
   // Turkish pages always show Turkish consent text; elsewhere follow the interface language.
-  const isTr = seoPageFor(path)?.lang === "tr" || (i18n?.language || "en").startsWith("tr");
+  const isTr = isTurkishMarketingPath(path) || (i18n?.language || "en").startsWith("tr");
   const consent = <MarketingConsent path={path} isTr={isTr} enabled={enabled && !privateAssessmentOpen} />;
   return <MeasurementPrivacyContext.Provider value={setPrivateAssessmentOpen}><FooterConsentContext.Provider value={consent}>{children}</FooterConsentContext.Provider></MeasurementPrivacyContext.Provider>;
 }
