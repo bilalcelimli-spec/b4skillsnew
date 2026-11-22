@@ -12,20 +12,44 @@ on:
         required: false
         default: "manual"
 
+permissions:
+  contents: read
+  issues: write   # failure notification below
+
 jobs:
   backup:
     name: PostgreSQL Backup
     runs-on: ubuntu-latest
+    # DATABASE_URL and BACKUP_GPG_PASSPHRASE live in the production environment, like the other
+    # production jobs. Without this the job saw no DATABASE_URL and pg_dump fell back to a local socket.
+    environment: production
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check required secrets
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+        run: |
+          missing=""
+          [ -n "$DATABASE_URL" ] || missing="$missing DATABASE_URL"
+          [ -n "$BACKUP_GPG_PASSPHRASE" ] || missing="$missing BACKUP_GPG_PASSPHRASE"
+          if [ -n "$missing" ]; then
+            echo "::error::Add these secrets to the GitHub production environment:$missing. No backup was taken; an unencrypted dump is never uploaded."
+            exit 1
+          fi
+
       - name: Install PostgreSQL client
         run: |
+          # PGDG client: newest major, so pg_dump is never older than the server.
           sudo apt-get update -qq
-          sudo apt-get install -y postgresql-client gnupg
+          sudo apt-get install -y postgresql-common gnupg
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client
+          pg_dump --version
 
       - name: Create backup
         id: backup
@@ -43,16 +67,16 @@ jobs:
 
           # Extract connection details from DATABASE_URL
           # Format: postgresql://user:pass@host:port/dbname
-          pg_dump "$DATABASE_URL" \
+          # The step runs with `bash -e`: test pg_dump directly so the reason is printed before exit.
+          if ! pg_dump "$DATABASE_URL" \
             --no-password \
             --format=plain \
             --exclude-table="_prisma_migrations" \
             --verbose \
-            > "$BACKUP_FILE" 2>backup-log.txt
-
-          if [ $? -ne 0 ]; then
-            echo "pg_dump failed:"
-            cat backup-log.txt
+            > "$BACKUP_FILE" 2>backup-log.txt; then
+            echo "::error::pg_dump failed:"
+            grep -v '^pg_dump: \(reading\|dumping\|saving\|creating\|finding\|flagging\|identifying\)' backup-log.txt \
+              | sed -E 's#(postgres(ql)?://)[^@ ]*@#\1***@#g' | tail -20
             exit 1
           fi
 
@@ -60,21 +84,15 @@ jobs:
           gzip -9 "$BACKUP_FILE"
           echo "Compressed: $(du -sh $COMPRESSED_FILE | cut -f1)"
 
-          # Encrypt with GPG symmetric passphrase (simpler than key-based for CI)
-          if [ -n "$BACKUP_GPG_PASSPHRASE" ]; then
-            echo "$BACKUP_GPG_PASSPHRASE" | \
-              gpg --batch --yes --passphrase-fd 0 \
-              --symmetric --cipher-algo AES256 \
-              --output "$ENCRYPTED_FILE" \
-              "$COMPRESSED_FILE"
-            rm -f "$COMPRESSED_FILE"
-            echo "backup_file=$ENCRYPTED_FILE" >> $GITHUB_OUTPUT
-            echo "encrypted=true" >> $GITHUB_OUTPUT
-          else
-            echo "backup_file=$COMPRESSED_FILE" >> $GITHUB_OUTPUT
-            echo "encrypted=false" >> $GITHUB_OUTPUT
-            echo "⚠️ No GPG passphrase set — backup is NOT encrypted!"
-          fi
+          # Encrypt with GPG symmetric passphrase (required; checked in the first step)
+          echo "$BACKUP_GPG_PASSPHRASE" | \
+            gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 \
+            --output "$ENCRYPTED_FILE" \
+            "$COMPRESSED_FILE"
+          rm -f "$COMPRESSED_FILE"
+          echo "backup_file=$ENCRYPTED_FILE" >> $GITHUB_OUTPUT
+          echo "encrypted=true" >> $GITHUB_OUTPUT
 
           echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
 
