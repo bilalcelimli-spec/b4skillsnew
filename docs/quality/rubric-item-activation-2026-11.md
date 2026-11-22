@@ -55,3 +55,11 @@ Fark editoryal güvencededir: bu sorular canlıya iki inceleyicinin dört onayı
 - **`SPK-C2-0009` ve `WRT-C2-0010`.** Bu ikisi `language-schools` etiketliydi, ancak o ürün C2'yi kapsamıyor. 22 Kasım kararıyla Academia'ya taşınıyorlar: `scripts/jobs/apply-c2-academia-retag.ts` (`--apply` ile yazar). Script yalnızca etiketi ve `content.productLine` alanını değiştirir; durum ve aşama aynı kalır, sorular yine dört onay bekler. İnceleyiciler için iki not `metadata.retag.reviewNote` alanına yazılır:
   - `SPK-C2-0009` adaydan "sınav görevlisiyle tartışmasını" istiyor. Oysa konuşma, karşısında biri olmadan kaydedilen bir monolog. Onaydan önce monolog olarak yeniden yazılmalı.
   - `WRT-C2-0010` yaratıcı mektup öyküsü istiyor (280–380 kelime). Bu, Academia'nın akademik yazma görevlerinin (uzun yanıt, 220–280 kelime) dışında. Onaydan önce yapının Academia'ya uyduğu doğrulanmalı ya da görev akademik hâle getirilmeli.
+
+  Bu iki sorun `scripts/jobs/apply-c2-academia-rewrite.ts` ile giderildi. Script etiket değişikliğinden sonra çalıştırılır:
+  - `SPK-C2-0009` aynı önerme üzerine tek kişilik bir konuşmaya (monolog) çevrildi: 90 saniye hazırlık, 210 saniye konuşma.
+  - `WRT-C2-0010` akademik bir tartışma yazısına çevrildi: hakem değerlendirmesinin (peer review) uyumu ödüllendirdiği iddiası, 280–380 kelime. Bu uzunluk Academia'daki diğer C2 yazılarıyla aynı aralıkta. Yeni bir örnek cevap eklendi.
+
+  Eski içerik `metadata.revision.previousContent` alanında saklanır. Sorular yine dört inceleme onayı bekler.
+
+  Aynı sorun başka sorularda da var. 22 Kasım'da 490 konuşma sorusundan 75'inin metni karşıda bir görevli ya da partner varsayıyordu ("examiner", "discuss with" gibi); bunların 46'sı canlıdaydı.
