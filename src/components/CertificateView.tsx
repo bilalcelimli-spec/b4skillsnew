@@ -66,7 +66,7 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Your Certificate</h1>
           <p className="text-slate-500 mt-1">Official English Proficiency Certification</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" className="gap-2 rounded-xl h-11 px-6 font-bold text-slate-600" onClick={handleShare}>
             <Share2 size={18} /> Share
           </Button>
