@@ -92,6 +92,6 @@ Her revizyon şu kontrollerden geçti:
 
 Ön deneme yuvaları yazma ve konuşmayı kapsamaz (`section-flow.ts`, `PRETEST_EXCLUDED_SKILLS`). Canlı havuz ise yalnızca ACTIVE soruları kullanır. Bu yüzden PRETEST durumundaki bir konuşma ya da yazma sorusu hiçbir sınavda görünmez, yanıt toplamaz ve kalibrasyon yoluyla ACTIVE'e geçemez.
 
-22 Kasım 2026 itibarıyla bu durumda 217 soru var: 192 konuşma, 25 yazma. Yeniden yazılan 11 konuşma sorusu da bu gruba katılır.
+22 Kasım 2026 itibarıyla bu durumda 301 soru var: 240 konuşma, 61 yazma. Bunların 228'i PRETEST (yeniden yazılan 11 konuşma sorusu dahil), 73'ü ACTIVE + `isPretest`. İkinci grup da sunulmaz, çünkü canlı havuz ön deneme işaretli soruları almaz. Bu bölümün ilk sürümünde verilen 217, yalnızca PRETEST durumunu sayıyordu.
 
-Bu sorular IRT ile değil, ölçütle (rubric) puanlanıyor. Bu yüzden ACTIVE'e geçişleri için ayrı bir yol tanımlanmalı; örneğin insan incelemesi ve ölçüt uyumu kontrolünden sonra etkinleştirme. `npm run report:pretest-progress` bu soruları artık "No pretest slot" olarak ayrı gösteriyor.
+Bu sorular IRT ile değil, ölçütle (rubric) puanlanıyor. ACTIVE'e geçiş yolu [rubric-item-activation-2026-11.md](rubric-item-activation-2026-11.md) belgesinde tanımlandı: editoryal inceleme, ardından pilot yükseltme. `npm run report:pretest-progress` bu soruları artık "No pretest slot" olarak ayrı gösteriyor.

@@ -3258,6 +3258,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
   // ── PILOT PIPELINE ────────────────────────────────────────────────────────────
 
   // POST /api/content/pilot/promote — APPROVED_FOR_PILOT → isPretest=true + status=PRETEST
+  // (writing and speaking → ACTIVE on priors, RUBRIC_ACTIVATION_POLICY: they never get pretest slots)
   // ?dryRun=true  returns candidate list without committing.
   // ?gapCells=true  below-minimum cells are filled with ACTIVE items instead (calibration pending).
   app.post("/api/content/pilot/promote",

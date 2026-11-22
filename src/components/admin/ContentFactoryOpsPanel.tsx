@@ -112,7 +112,7 @@ function JobCard({ job, stats }: { job: Job; stats: OpsStats | null }) {
 
 function PilotDryRunCard() {
   const [loading, setLoading] = useState(false);
-  const [candidates, setCandidates] = useState<Array<{ id: string; itemCode: string | null; skill: string; cefrLevel: string; iqScore: number | null }> | null>(null);
+  const [candidates, setCandidates] = useState<Array<{ id: string; itemCode: string | null; skill: string; cefrLevel: string; iqScore: number | null; target?: "ACTIVE" | "PRETEST" }> | null>(null);
 
   const [blocked, setBlocked] = useState<Array<{ id: string; itemCode: string | null; reasons: string[] }>>([]);
   const [error, setError] = useState<string | null>(null);
@@ -142,7 +142,7 @@ function PilotDryRunCard() {
         </div>
         <div className="flex-1 min-w-0">
           <h4 className="text-sm font-semibold text-[var(--foreground)]">Pilot Promotion — Dry Run</h4>
-          <p className="text-xs text-[var(--muted)] mt-0.5">Preview which APPROVED_FOR_PILOT items would be promoted to PRETEST without committing.</p>
+          <p className="text-xs text-[var(--muted)] mt-0.5">Preview which APPROVED_FOR_PILOT items would be promoted without committing. Writing and speaking go to ACTIVE on prior parameters (they never get pretest slots); the rest go to PRETEST.</p>
         </div>
       </div>
 
@@ -176,6 +176,7 @@ function PilotDryRunCard() {
                   <span className="font-mono text-[var(--foreground)]">{c.itemCode ?? c.id.slice(0, 10)}</span>
                   <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 text-[10px] font-medium">{c.cefrLevel}</span>
                   <span className="text-[var(--muted)]">{c.skill}</span>
+                  {c.target && <span className="text-[10px] text-[var(--muted)]">→ {c.target}</span>}
                   {c.iqScore != null && <span className={`ml-auto text-[10px] font-bold ${c.iqScore >= 65 ? "text-emerald-500" : "text-amber-500"}`}>IQS {Math.round(c.iqScore)}</span>}
                 </div>
               ))}

@@ -128,7 +128,7 @@ Copy `.env.example` to `.env` and fill in at minimum `DATABASE_URL`, `JWT_SECRET
 
 ### Item Lifecycle
 
-Items in Postgres flow through: `DRAFT → REVIEW → PRETEST → ACTIVE → RETIRED` (`REVIEW` also pulls a live item from service). Only `ACTIVE` items are scored. `PRETEST` items are embedded unscored after every 4th operational item (bounded by `SystemConfig.pretestRatio`, never in writing/speaking). IRT parameters are versioned (`ItemParameterVersion`): calibration jobs write DRAFT versions only; publishing a draft (admin API or `npm run db:job:calibrate -- --publish-eligible --yes`) refreshes `Item.a/b/c` and promotes `PRETEST → ACTIVE`. All thresholds live in `src/lib/psychometrics/calibration-policy.ts` (estimate n ≥ 80; publish n ≥ 200, SE(b) ≤ 0.25, IQS ≥ 65, |Δb| ≤ 0.30).
+Items in Postgres flow through: `DRAFT → REVIEW → PRETEST → ACTIVE → RETIRED` (`REVIEW` also pulls a live item from service). Only `ACTIVE` items are scored. `PRETEST` items are embedded unscored after every 4th operational item (bounded by `SystemConfig.pretestRatio`, never in writing/speaking). IRT parameters are versioned (`ItemParameterVersion`): calibration jobs write DRAFT versions only; publishing a draft (admin API or `npm run db:job:calibrate -- --publish-eligible --yes`) refreshes `Item.a/b/c` and promotes `PRETEST → ACTIVE`. All thresholds live in `src/lib/psychometrics/calibration-policy.ts` (estimate n ≥ 80; publish n ≥ 200, SE(b) ≤ 0.25, IQS ≥ 65, |Δb| ≤ 0.30). Writing and speaking never get pretest slots, so pilot promotion makes reviewed writing/speaking items ACTIVE on prior parameters (`RUBRIC_ACTIVATION_POLICY` in `pilot-promotion.ts`); `npm run report:rubric-queue` lists the ones parked in the pretest pool.
 
 ### Scripts
 
