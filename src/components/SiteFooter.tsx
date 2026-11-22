@@ -2,7 +2,7 @@ import React, { useContext } from "react";
 import { COMPANY } from "../lib/site/company";
 import { FooterConsentContext } from "./MarketingConsent";
 
-const linkClass = "hover:text-[#9b276c] transition-colors";
+const linkClass = "hover:text-[#ad024c] transition-colors";
 
 /** Shared public footer. Its links mirror SiteNav so both name the same pages. */
 export const SiteFooter: React.FC = () => {
@@ -11,7 +11,7 @@ export const SiteFooter: React.FC = () => {
     <footer lang="en" className="bg-white border-t border-slate-200 py-16">
       <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-12 pb-12">
         <div className="md:col-span-1">
-          <a href="/" aria-label="b4skills home" className="bg-[#9b276c] text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight w-fit flex items-center mb-6">
+          <a href="/" aria-label="b4skills home" className="bg-[#ad024c] text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight w-fit flex items-center mb-6">
             <span style={{ textShadow: "0 0 8px rgba(253, 224, 71, 0.8), 0 0 15px rgba(253, 224, 71, 0.4)" }}>
               b4skills
             </span>

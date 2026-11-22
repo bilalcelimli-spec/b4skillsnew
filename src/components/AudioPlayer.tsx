@@ -156,7 +156,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
     // Draw waveform
     ctx.lineWidth = 2;
-    ctx.strokeStyle = isPlaying ? "#6366f1" : "#94a3b8";
+    ctx.strokeStyle = isPlaying ? "#c81e66" : "#b89aa8";
     ctx.beginPath();
 
     const sliceWidth = canvas.width / bufferLength;

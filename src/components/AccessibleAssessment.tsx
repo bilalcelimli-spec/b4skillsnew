@@ -82,7 +82,7 @@ const MCQOption: React.FC<MCQOptionProps> = ({
     correct:   { background: "#f0fdf4", border: "2px solid #22c55e" },
     incorrect: { background: "#fef2f2", border: "2px solid #ef4444" },
     selected:  { background: "#eff6ff", border: "2px solid #3b82f6" },
-    "":        { background: "#fff",    border: "2px solid #e2e8f0" },
+    "":        { background: "#fff",    border: "2px solid #f0dfe6" },
   };
 
   return (
@@ -111,8 +111,8 @@ const MCQOption: React.FC<MCQOptionProps> = ({
         style={{ marginTop: "2px", accentColor: "#3b82f6", width: "18px", height: "18px", flexShrink: 0 }}
         aria-describedby={isSubmitted || isReview ? `${inputId}-status` : undefined}
       />
-      <span style={{ flex: 1, fontSize: "15px", color: "#0f172a", lineHeight: "1.5" }}>
-        <span style={{ fontWeight: 600, marginRight: "8px", color: "#64748b" }}>{option.id}.</span>
+      <span style={{ flex: 1, fontSize: "15px", color: "#24101a", lineHeight: "1.5" }}>
+        <span style={{ fontWeight: 600, marginRight: "8px", color: "#806571" }}>{option.id}.</span>
         {option.text}
       </span>
       {(isSubmitted || isReview) && (
@@ -244,7 +244,7 @@ export const AccessibleAssessment: React.FC<AccessibleAssessmentProps> = ({
         <div>
           <div
             aria-label={`Question ${questionNumber} of ${totalQuestions}`}
-            style={{ fontSize: "13px", color: "#64748b", marginBottom: "6px" }}
+            style={{ fontSize: "13px", color: "#806571", marginBottom: "6px" }}
           >
             Question <strong>{questionNumber}</strong> of {totalQuestions}
           </div>
@@ -257,7 +257,7 @@ export const AccessibleAssessment: React.FC<AccessibleAssessmentProps> = ({
             style={{
               width: "200px",
               height: "6px",
-              background: "#e2e8f0",
+              background: "#f0dfe6",
               borderRadius: "999px",
               overflow: "hidden",
             }}
@@ -283,7 +283,7 @@ export const AccessibleAssessment: React.FC<AccessibleAssessmentProps> = ({
             style={{
               fontSize: "20px",
               fontWeight: 700,
-              color: timeRemainingSeconds < 60 ? "#ef4444" : "#0f172a",
+              color: timeRemainingSeconds < 60 ? "#ef4444" : "#24101a",
               fontVariantNumeric: "tabular-nums",
               display: "flex",
               alignItems: "center",
@@ -304,7 +304,7 @@ export const AccessibleAssessment: React.FC<AccessibleAssessmentProps> = ({
           <img
             src={question.imageUrl}
             alt="Question context image"
-            style={{ maxWidth: "100%", borderRadius: "8px", border: "1px solid #e2e8f0" }}
+            style={{ maxWidth: "100%", borderRadius: "8px", border: "1px solid #f0dfe6" }}
           />
         </figure>
       )}
@@ -339,7 +339,7 @@ export const AccessibleAssessment: React.FC<AccessibleAssessmentProps> = ({
           style={{
             fontSize: "18px",
             fontWeight: 600,
-            color: "#0f172a",
+            color: "#24101a",
             lineHeight: "1.6",
             marginBottom: "20px",
             display: "block",
@@ -415,20 +415,20 @@ export const AccessibleAssessment: React.FC<AccessibleAssessmentProps> = ({
                 width: "100%",
                 padding: "12px",
                 fontSize: "15px",
-                border: "2px solid #e2e8f0",
+                border: "2px solid #f0dfe6",
                 borderRadius: "8px",
                 resize: "vertical",
                 fontFamily: "inherit",
-                color: "#0f172a",
+                color: "#24101a",
                 outline: "none",
                 boxSizing: "border-box",
               }}
               onFocus={(e) => { e.currentTarget.style.borderColor = "#3b82f6"; }}
-              onBlur={(e)  => { e.currentTarget.style.borderColor = "#e2e8f0"; }}
+              onBlur={(e)  => { e.currentTarget.style.borderColor = "#f0dfe6"; }}
             />
             <div
               aria-live="polite"
-              style={{ fontSize: "12px", color: "#94a3b8", textAlign: "right", marginTop: "4px" }}
+              style={{ fontSize: "12px", color: "#b89aa8", textAlign: "right", marginTop: "4px" }}
             >
               {selectedAnswer.length} / {question.maxLength ?? 500} characters
             </div>
@@ -451,14 +451,14 @@ export const AccessibleAssessment: React.FC<AccessibleAssessmentProps> = ({
                 width: "100%",
                 padding: "12px 16px",
                 fontSize: "16px",
-                border: "2px solid #e2e8f0",
+                border: "2px solid #f0dfe6",
                 borderRadius: "8px",
                 fontFamily: "inherit",
-                color: "#0f172a",
+                color: "#24101a",
                 boxSizing: "border-box",
               }}
               onFocus={(e) => { e.currentTarget.style.borderColor = "#3b82f6"; }}
-              onBlur={(e)  => { e.currentTarget.style.borderColor = "#e2e8f0"; }}
+              onBlur={(e)  => { e.currentTarget.style.borderColor = "#f0dfe6"; }}
             />
           </div>
         )}
@@ -529,13 +529,13 @@ export const AccessibleAssessment: React.FC<AccessibleAssessmentProps> = ({
       {/* Keyboard shortcut legend */}
       {!isLocked && question.type === "MCQ" && (
         <details style={{ marginTop: "20px" }}>
-          <summary style={{ fontSize: "12px", color: "#94a3b8", cursor: "pointer", userSelect: "none" }}>
+          <summary style={{ fontSize: "12px", color: "#b89aa8", cursor: "pointer", userSelect: "none" }}>
             Keyboard shortcuts
           </summary>
           <div
             role="table"
             aria-label="Keyboard shortcuts"
-            style={{ marginTop: "8px", fontSize: "12px", color: "#64748b", display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 16px" }}
+            style={{ marginTop: "8px", fontSize: "12px", color: "#806571", display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 16px" }}
           >
             <span role="cell"><kbd style={kbdStyle}>1</kbd>–<kbd style={kbdStyle}>4</kbd></span><span role="cell">Select option A–D</span>
             <span role="cell"><kbd style={kbdStyle}>N</kbd></span><span role="cell">Next question</span>
@@ -564,8 +564,8 @@ function navButtonStyle(variant: "primary" | "secondary" | "outline" | "flagged"
     gap: "6px",
   };
   if (variant === "primary")   return { ...base, background: "#3b82f6", color: "#fff", borderColor: "#3b82f6" };
-  if (variant === "secondary") return { ...base, background: "#f8fafc", color: "#334155", borderColor: "#e2e8f0" };
-  if (variant === "outline")   return { ...base, background: "#fff", color: "#64748b", borderColor: "#e2e8f0" };
+  if (variant === "secondary") return { ...base, background: "#fcf8fa", color: "#4f3a45", borderColor: "#f0dfe6" };
+  if (variant === "outline")   return { ...base, background: "#fff", color: "#806571", borderColor: "#f0dfe6" };
   if (variant === "flagged")   return { ...base, background: "#fef3c7", color: "#92400e", borderColor: "#fcd34d" };
   return base;
 }

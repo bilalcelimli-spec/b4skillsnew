@@ -47,7 +47,7 @@ const ROUTE_COLORS: Record<RouteKey, string> = {
   low: "#3b82f6",
   mid: "#10b981",
   high: "#f59e0b",
-  unknown: "#475569",
+  unknown: "#6b5560",
 };
 const ROUTE_BG: Record<RouteKey, string> = {
   low: "bg-blue-900/60 text-blue-300",
@@ -56,7 +56,7 @@ const ROUTE_BG: Record<RouteKey, string> = {
   unknown: "bg-slate-700 text-slate-400",
 };
 const CEFR_BG: Record<string, string> = {
-  PRE_A1: "#475569", A1: "#3b82f6", A2: "#06b6d4",
+  PRE_A1: "#6b5560", A1: "#3b82f6", A2: "#06b6d4",
   B1: "#10b981", B2: "#f59e0b", C1: "#f97316", C2: "#ef4444",
 };
 
@@ -140,10 +140,10 @@ const ThetaByStage: React.FC<{ stages: StageTheta[] }> = ({ stages }) => {
         const yDown = H - ((s.meanTheta - sd - minT) / range) * H;
         return (
           <g key={s.stage}>
-            <line x1={x} y1={yDown} x2={x} y2={yUp} stroke="#475569" strokeWidth={1} />
+            <line x1={x} y1={yDown} x2={x} y2={yUp} stroke="#6b5560" strokeWidth={1} />
             <circle cx={x} cy={y} r={4} fill="#14b8a6" />
-            <text x={x} y={H + 20} textAnchor="middle" fill="#94a3b8" fontSize={10}>S{s.stage}</text>
-            <text x={x} y={y - 8} textAnchor="middle" fill="#e2e8f0" fontSize={9}>{s.meanTheta.toFixed(2)}</text>
+            <text x={x} y={H + 20} textAnchor="middle" fill="#b89aa8" fontSize={10}>S{s.stage}</text>
+            <text x={x} y={y - 8} textAnchor="middle" fill="#f0dfe6" fontSize={9}>{s.meanTheta.toFixed(2)}</text>
           </g>
         );
       })}
@@ -286,7 +286,7 @@ export const MSTRoutingPanel: React.FC = () => {
                         key={c.cefrLevel}
                         className="rounded-sm flex items-center justify-center text-[8px] text-white font-bold overflow-hidden"
                         style={{
-                          backgroundColor: CEFR_BG[c.cefrLevel] ?? "#475569",
+                          backgroundColor: CEFR_BG[c.cefrLevel] ?? "#6b5560",
                           flex: c.count,
                           minWidth: c.count > 0 ? "20px" : "0px",
                         }}

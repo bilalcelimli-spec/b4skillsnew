@@ -42,7 +42,7 @@ const SKILL_COLORS: Record<string, string> = {
   LISTENING: "#8b5cf6", WRITING: "#ef4444", SPEAKING: "#f97316",
 };
 const CEFR_BG: Record<string, string> = {
-  PRE_A1: "#475569", A1: "#3b82f6", A2: "#06b6d4",
+  PRE_A1: "#6b5560", A1: "#3b82f6", A2: "#06b6d4",
   B1: "#10b981", B2: "#f59e0b", C1: "#f97316", C2: "#ef4444",
 };
 
@@ -197,10 +197,10 @@ export const DifferentialBundleFunctioningPanel: React.FC = () => {
                   {displayBundles.map((b, idx) => (
                     <tr key={idx} className="border-t border-slate-700 hover:bg-slate-700/30">
                       <td className="px-2 py-1.5 text-slate-400 text-xs font-mono">{b.bundleId}</td>
-                      <td className="px-2 py-1.5 font-medium text-xs" style={{ color: SKILL_COLORS[b.skill] ?? "#94a3b8" }}>{b.skill}</td>
+                      <td className="px-2 py-1.5 font-medium text-xs" style={{ color: SKILL_COLORS[b.skill] ?? "#b89aa8" }}>{b.skill}</td>
                       <td className="px-2 py-1.5">
                         <span className="px-1 py-0.5 rounded text-[10px] text-white font-semibold"
-                          style={{ backgroundColor: CEFR_BG[b.cefrLevel] ?? "#475569" }}>
+                          style={{ backgroundColor: CEFR_BG[b.cefrLevel] ?? "#6b5560" }}>
                           {b.cefrLevel.replace("_", "")}
                         </span>
                       </td>
@@ -230,11 +230,11 @@ export const DifferentialBundleFunctioningPanel: React.FC = () => {
             <div className="space-y-3">
               {data.bySkill.map((s) => (
                 <div key={s.skill} className="flex items-center gap-3">
-                  <span className="text-xs w-24 font-medium" style={{ color: SKILL_COLORS[s.skill] ?? "#94a3b8" }}>{s.skill}</span>
+                  <span className="text-xs w-24 font-medium" style={{ color: SKILL_COLORS[s.skill] ?? "#b89aa8" }}>{s.skill}</span>
                   <div className="flex-1 h-4 bg-slate-700 rounded-full overflow-hidden">
                     <div className="h-full rounded-full" style={{
                       width: `${s.total > 0 ? (s.flagged / s.total) * 100 : 0}%`,
-                      backgroundColor: s.flagged > 0 ? "#ef4444" : "#334155",
+                      backgroundColor: s.flagged > 0 ? "#ef4444" : "#4f3a45",
                     }} />
                   </div>
                   <span className={`text-xs font-semibold w-20 text-right ${s.flagged > 0 ? "text-red-400" : "text-emerald-400"}`}>
@@ -251,13 +251,13 @@ export const DifferentialBundleFunctioningPanel: React.FC = () => {
               {data.byCefr.map((c) => (
                 <div key={c.cefrLevel} className="flex items-center gap-3">
                   <span className="px-1.5 py-0.5 rounded text-[10px] text-white font-semibold w-14 text-center"
-                    style={{ backgroundColor: CEFR_BG[c.cefrLevel] ?? "#475569" }}>
+                    style={{ backgroundColor: CEFR_BG[c.cefrLevel] ?? "#6b5560" }}>
                     {c.cefrLevel.replace("_", "")}
                   </span>
                   <div className="flex-1 h-4 bg-slate-700 rounded-full overflow-hidden">
                     <div className="h-full rounded-full" style={{
                       width: `${c.total > 0 ? (c.flagged / c.total) * 100 : 0}%`,
-                      backgroundColor: c.flagged > 0 ? "#ef4444" : "#334155",
+                      backgroundColor: c.flagged > 0 ? "#ef4444" : "#4f3a45",
                     }} />
                   </div>
                   <span className={`text-xs font-semibold w-20 text-right ${c.flagged > 0 ? "text-red-400" : "text-emerald-400"}`}>

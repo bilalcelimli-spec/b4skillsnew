@@ -51,9 +51,9 @@ export const SiteNav: React.FC = () => {
     <nav
       className={cn(
         "fixed top-0 left-0 w-full z-50 transition-all duration-300",
-        // Always opaque: a transparent header disappears over dark page heroes.
-        "bg-white/95 backdrop-blur-md border-b border-slate-100",
-        scrolled ? "shadow-sm py-3" : "py-4"
+        // Solid magenta band, as on babilspeak: always opaque so it never disappears over a page hero.
+        "bg-[#ad024c] text-white",
+        scrolled ? "shadow-[0_6px_20px_rgb(42_10_25/0.25)] py-2" : "py-3"
       )}
       aria-label="Main navigation"
       lang="en"
@@ -61,7 +61,8 @@ export const SiteNav: React.FC = () => {
       <div className="max-w-7xl mx-auto px-6 flex items-center justify-between relative">
         {/* Logo */}
         <a href="/" className="flex items-center gap-2">
-          <div className="bg-[#9b276c] justify-center text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight flex items-center">
+          {/* Wordmark in the logo's own gradient, lifted off the magenta band by a light ring. */}
+          <div className="bg-[linear-gradient(100deg,#e0337a_0%,#f4532d_38%,#d81a5c_68%,#8a0f6e_100%)] ring-1 ring-white/35 shadow-[0_3px_0_rgb(110_3_49/0.6)] justify-center text-white font-extrabold text-xl px-3 py-1 -skew-x-6 rounded-md tracking-tight flex items-center">
             <span style={{ textShadow: "0 0 8px rgba(253, 224, 71, 0.8), 0 0 15px rgba(253, 224, 71, 0.4)" }}>
               b4skills
             </span>
@@ -69,12 +70,12 @@ export const SiteNav: React.FC = () => {
         </a>
 
         {/* Desktop Nav */}
-        <div className="hidden xl:flex items-center gap-5 2xl:gap-8 font-medium text-sm text-slate-700">
+        <div className="hidden xl:flex items-center gap-1 2xl:gap-3 font-bold text-[15px] text-white">
           {/* Mega Menu - Solutions */}
           <div className="group h-16 flex items-center">
             <a
               href="/#solutions"
-              className="hover:text-[#9b276c] focus-visible:text-[#9b276c] focus-visible:outline-none transition-colors flex items-center gap-1 group-hover:text-[#9b276c] py-4"
+              className="hover:bg-white/15 group-hover:bg-white/15 focus-visible:bg-white/15 rounded-lg px-3 transition-colors flex items-center gap-1 min-h-11"
               aria-haspopup="menu"
             >
               Solutions
@@ -87,17 +88,17 @@ export const SiteNav: React.FC = () => {
                 {/* Left */}
                 <div className="md:w-[70%] p-10 bg-white">
                   <div className="mb-10">
-                    <div className="uppercase tracking-[0.2em] text-[#9b276c] text-[10px] font-black border-b-2 border-[#9b276c] inline-block pb-1 mb-8">
+                    <div className="uppercase tracking-[0.2em] text-[#ad024c] text-[10px] font-black border-b-2 border-[#ad024c] inline-block pb-1 mb-8">
                       Distributions
                     </div>
                     <div className="grid grid-cols-4 gap-8">
                       {["Academia", "Schools", "Corporates", "Language Schools"].map((type) => (
                         <a key={type} href={SOLUTION_HREFS[type]} className="group/item">
                           <h4 className="text-slate-400 font-bold mb-1 text-[11px] uppercase tracking-wider">b4skills for</h4>
-                          <span className="flex flex-col font-black text-[22px] leading-tight text-slate-800 group-hover/item:text-[#9b276c] transition-colors">
+                          <span className="flex flex-col font-black text-[22px] leading-tight text-slate-800 group-hover/item:text-[#ad024c] transition-colors">
                             {type}
                           </span>
-                          <div className="h-0.5 w-0 bg-[#9b276c] mt-2 group-hover/item:w-full transition-all duration-300 opacity-50" />
+                          <div className="h-0.5 w-0 bg-[#ad024c] mt-2 group-hover/item:w-full transition-all duration-300 opacity-50" />
                         </a>
                       ))}
                     </div>
@@ -117,12 +118,12 @@ export const SiteNav: React.FC = () => {
                         <a
                           href={href}
                           key={item}
-                          className="flex items-center justify-between text-slate-600 font-bold text-[14px] hover:text-[#9b276c] group/link transition-colors border-b border-transparent hover:border-slate-100 pb-1"
+                          className="flex items-center justify-between text-slate-600 font-bold text-[14px] hover:text-[#ad024c] group/link transition-colors border-b border-transparent hover:border-slate-100 pb-1"
                         >
                           {item}
                           <ChevronRight
                             size={14}
-                            className="opacity-0 -translate-x-2 group-hover/link:opacity-100 group-hover/link:translate-x-0 transition-all text-[#9b276c]"
+                            className="opacity-0 -translate-x-2 group-hover/link:opacity-100 group-hover/link:translate-x-0 transition-all text-[#ad024c]"
                           />
                         </a>
                       ))}
@@ -131,7 +132,7 @@ export const SiteNav: React.FC = () => {
                 </div>
 
                 {/* Right */}
-                <div className="md:w-[30%] bg-[#FAFAFA] p-10 border-l border-slate-100 flex flex-col">
+                <div className="md:w-[30%] bg-[#fcf8fa] p-10 border-l border-slate-100 flex flex-col">
                   <div className="uppercase tracking-[0.2em] text-slate-900 text-[10px] font-black mb-8 border-b-2 border-slate-300 inline-block pb-1 w-fit">
                     Services
                   </div>
@@ -144,15 +145,15 @@ export const SiteNav: React.FC = () => {
                       <a
                         key={svc}
                         href={href}
-                        className="text-slate-700 font-bold text-[15px] hover:text-[#9b276c] transition-colors flex items-center gap-3"
+                        className="text-slate-700 font-bold text-[15px] hover:text-[#ad024c] transition-colors flex items-center gap-3"
                       >
                         <div className="w-1.5 h-1.5 rounded-full bg-slate-300" /> {svc}
                       </a>
                     ))}
                   </div>
-                  <div className="mt-8 bg-slate-900 rounded-2xl p-6 relative overflow-hidden group/callout hover:bg-slate-800 transition-colors cursor-pointer border border-[#9b276c]/30 hover:border-[#9b276c] duration-300">
-                    <div className="absolute right-0 top-0 w-24 h-24 bg-[#9b276c] rounded-bl-full blur-2xl opacity-20 group-hover/callout:opacity-50 transition-opacity duration-500" />
-                    <Zap size={20} className="text-[#9b276c] mb-3" />
+                  <div className="mt-8 bg-slate-900 rounded-2xl p-6 relative overflow-hidden group/callout hover:bg-slate-800 transition-colors cursor-pointer border border-[#ad024c]/30 hover:border-[#ad024c] duration-300">
+                    <div className="absolute right-0 top-0 w-24 h-24 bg-[#ad024c] rounded-bl-full blur-2xl opacity-20 group-hover/callout:opacity-50 transition-opacity duration-500" />
+                    <Zap size={20} className="text-[#ad024c] mb-3" />
                     <h4 className="text-white font-bold text-[15px] mb-1.5 line-clamp-1">Scale Instantly</h4>
                     <p className="text-slate-400 text-xs font-medium leading-relaxed">
                       Connect LMS systems to our scalable IRT engine via API.
@@ -167,30 +168,30 @@ export const SiteNav: React.FC = () => {
             <a
               key={link.href}
               href={link.href}
-              className="hover:text-[#9b276c] transition-colors h-16 flex items-center"
+              className="hover:bg-white/15 rounded-lg px-3 transition-colors min-h-11 flex items-center"
             >
               {link.label}
             </a>
           ))}
 
-          <div className="flex items-center gap-4 2xl:gap-6 h-16">
+          <div className="flex items-center gap-1 2xl:gap-2 h-16 ml-2">
             <a
               href={EXAM_CODE_HREF}
-              className="text-slate-600 hover:text-slate-900 font-bold transition-colors"
+              className="hover:bg-white/15 rounded-lg px-3 min-h-11 flex items-center transition-colors"
               aria-label="Enter your exam code"
             >
               Enter Exam Code
             </a>
             <a
               href={LOGIN_HREF}
-              className="text-slate-900 font-bold border-b-2 border-[#9b276c] hover:bg-[#9b276c] hover:text-white px-2 py-1 transition-all rounded"
+              className="hover:bg-white/15 rounded-lg px-3 min-h-11 flex items-center transition-colors"
               aria-label="Sign in as test taker"
             >
               Test Taker Login
             </a>
             <a
               href="/register"
-              className="inline-flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-white rounded-full px-6 py-2 font-medium transition-all active:scale-[0.98]"
+              className="button-depth ml-2 rounded-xl px-5 min-h-11"
             >
               Get Started
             </a>
@@ -199,7 +200,7 @@ export const SiteNav: React.FC = () => {
 
         {/* Mobile Menu Button */}
         <button
-          className="xl:hidden p-2 text-slate-900 rounded-lg hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9b276c]"
+          className="xl:hidden p-2 text-white rounded-lg hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
           aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
           aria-expanded={mobileMenuOpen}
           aria-controls="site-mobile-menu"
@@ -222,11 +223,11 @@ export const SiteNav: React.FC = () => {
             </a>
           ))}
           <a href={EXAM_CODE_HREF} onClick={() => setMobileMenuOpen(false)} className="font-bold text-slate-800">Enter Exam Code</a>
-          <a href={LOGIN_HREF} onClick={() => setMobileMenuOpen(false)} className="font-bold text-[#9b276c]">Test Taker Login</a>
+          <a href={LOGIN_HREF} onClick={() => setMobileMenuOpen(false)} className="font-bold text-[#ad024c]">Test Taker Login</a>
           <a
             href="/register"
             onClick={() => setMobileMenuOpen(false)}
-            className="inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-2 font-medium text-white transition-all active:scale-[0.98]"
+            className="button-depth w-full rounded-xl px-4 py-3"
           >
             Get Started
           </a>

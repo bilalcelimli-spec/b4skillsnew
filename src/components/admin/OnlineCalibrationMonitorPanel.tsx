@@ -44,7 +44,7 @@ interface OnlineCalibPayload {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const SKILL_COLORS: Record<string, string> = {
-  GRAMMAR: "#6366f1", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
+  GRAMMAR: "#c81e66", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
   LISTENING: "#06b6d4", WRITING: "#10b981", SPEAKING: "#f59e0b",
 };
 
@@ -70,7 +70,7 @@ function CusumChart({ items }: { items: ItemDriftRecord[] }) {
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 120 }}>
       {/* zero line */}
-      <line x1={PAD} y1={H / 2} x2={W - PAD} y2={H / 2} stroke="#334155" strokeWidth={1} />
+      <line x1={PAD} y1={H / 2} x2={W - PAD} y2={H / 2} stroke="#4f3a45" strokeWidth={1} />
       {/* threshold lines */}
       <line x1={PAD} y1={ys(threshold)} x2={W - PAD} y2={ys(threshold)} stroke="#f59e0b" strokeWidth={1} strokeDasharray="4 3" />
       <line x1={PAD} y1={ys(-threshold)} x2={W - PAD} y2={ys(-threshold)} stroke="#f59e0b" strokeWidth={1} strokeDasharray="4 3" />
@@ -78,7 +78,7 @@ function CusumChart({ items }: { items: ItemDriftRecord[] }) {
       {items.length > 1 && (
         <polyline
           fill="none"
-          stroke="#6366f1"
+          stroke="#c81e66"
           strokeWidth={1.5}
           points={items.map((d, i) => `${xs(i)},${ys(d.cusumUp)}`).join(" ")}
         />
@@ -98,7 +98,7 @@ function CusumChart({ items }: { items: ItemDriftRecord[] }) {
           <circle key={d.itemId} cx={xs(i)} cy={ys(d.cusumUp)} r={3} fill="#f59e0b" />
         ) : null
       )}
-      <text x={PAD} y={H - 4} fontSize={9} fill="#64748b">Items by drift magnitude</text>
+      <text x={PAD} y={H - 4} fontSize={9} fill="#806571">Items by drift magnitude</text>
     </svg>
   );
 }
@@ -116,23 +116,23 @@ function EpochTrendChart({ data }: { data: EpochPoint[] }) {
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 120 }}>
       <polyline
         fill="none"
-        stroke="#6366f1"
+        stroke="#c81e66"
         strokeWidth={2}
         points={data.map((d, i) => `${xs(i)},${ys(d.meanDifficulty)}`).join(" ")}
       />
       {data.map((d, i) => (
-        <circle key={i} cx={xs(i)} cy={ys(d.meanDifficulty)} r={3} fill="#6366f1">
+        <circle key={i} cx={xs(i)} cy={ys(d.meanDifficulty)} r={3} fill="#c81e66">
           <title>{`${d.epoch}: b̄=${d.meanDifficulty.toFixed(2)}`}</title>
         </circle>
       ))}
       {data.map((d, i) => (
         i % Math.max(1, Math.floor(data.length / 5)) === 0 ? (
-          <text key={`lbl-${i}`} x={xs(i)} y={H - 4} fontSize={8} fill="#64748b" textAnchor="middle">
+          <text key={`lbl-${i}`} x={xs(i)} y={H - 4} fontSize={8} fill="#806571" textAnchor="middle">
             {d.epoch}
           </text>
         ) : null
       ))}
-      <text x={4} y={PAD} fontSize={8} fill="#6366f1">b̄</text>
+      <text x={4} y={PAD} fontSize={8} fill="#c81e66">b̄</text>
     </svg>
   );
 }
@@ -163,7 +163,7 @@ export function OnlineCalibrationMonitorPanel() {
   useEffect(() => { load(); }, [load]);
 
   const kpis = data ? [
-    { label: "Items Monitored", value: data.totalItems, icon: <Activity size={16} />, color: "#6366f1", fmt: String },
+    { label: "Items Monitored", value: data.totalItems, icon: <Activity size={16} />, color: "#c81e66", fmt: String },
     { label: "Drift Flagged", value: data.flaggedItems, icon: <AlertTriangle size={16} />, color: data.flaggedItems > 0 ? "#ef4444" : "#10b981", fmt: String },
     { label: "Mean |Δb|", value: data.meanDrift, icon: <TrendingUp size={16} />, color: Math.abs(data.meanDrift) > 0.15 ? "#f59e0b" : "#10b981", fmt: (v: number) => v.toFixed(3) },
     { label: "Max |Δb|", value: data.maxAbsDrift, icon: <CheckCircle2 size={16} />, color: data.maxAbsDrift > 0.3 ? "#ef4444" : "#10b981", fmt: (v: number) => v.toFixed(3) },
@@ -286,7 +286,7 @@ export function OnlineCalibrationMonitorPanel() {
                       <tr key={d.itemId} className={`border-t border-slate-700/30 hover:bg-slate-800/40 ${d.flagged ? "bg-red-950/20" : ""}`}>
                         <td className="px-3 py-2 font-mono text-white">{d.itemLabel}</td>
                         <td className="px-3 py-2">
-                          <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ background: SKILL_COLORS[d.skill] ?? "#6366f1" }}>
+                          <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ background: SKILL_COLORS[d.skill] ?? "#c81e66" }}>
                             {d.skill.slice(0, 3)}
                           </span>
                         </td>
@@ -369,7 +369,7 @@ export function OnlineCalibrationMonitorPanel() {
                         <div className="flex-1 bg-slate-800 rounded-full h-4 overflow-hidden">
                           <div
                             className="h-full rounded-full transition-all"
-                            style={{ width: `${(b.count / max) * 100}%`, background: flagged ? "#ef4444" : "#6366f1" }}
+                            style={{ width: `${(b.count / max) * 100}%`, background: flagged ? "#ef4444" : "#c81e66" }}
                           />
                         </div>
                         <span className="w-8 text-slate-300">{b.count}</span>

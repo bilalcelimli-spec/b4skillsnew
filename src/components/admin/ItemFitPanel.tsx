@@ -34,7 +34,7 @@ interface ItemFitPayload {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const SKILL_COLORS: Record<string, string> = {
-  GRAMMAR: "#6366f1", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
+  GRAMMAR: "#c81e66", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
   LISTENING: "#06b6d4", WRITING: "#10b981", SPEAKING: "#f59e0b",
 };
 
@@ -68,7 +68,7 @@ function DistChart({ bins, title }: { bins: { bin: string; count: number }[]; ti
           const flagged = val < 0.7 || val > 1.3;
           return (
             <div key={b.bin} className="flex-1 flex flex-col items-center gap-0.5">
-              <div className="w-full rounded-t transition-all" style={{ height: `${h}%`, minHeight: b.count > 0 ? 2 : 0, background: flagged ? "#ef4444" : "#6366f1" }} />
+              <div className="w-full rounded-t transition-all" style={{ height: `${h}%`, minHeight: b.count > 0 ? 2 : 0, background: flagged ? "#ef4444" : "#c81e66" }} />
             </div>
           );
         })}
@@ -124,7 +124,7 @@ export function ItemFitPanel() {
 
   const kpiCards = data
     ? [
-        { label: "Items Analysed", value: data.totalItems, icon: <FlaskConical size={16} />, color: "#6366f1", fmt: String },
+        { label: "Items Analysed", value: data.totalItems, icon: <FlaskConical size={16} />, color: "#c81e66", fmt: String },
         { label: "Flagged", value: data.flaggedItems, icon: <AlertTriangle size={16} />, color: data.flaggedItems > 0 ? "#ef4444" : "#10b981", fmt: String },
         { label: "Mean Infit", value: data.meanInfit, icon: <Activity size={16} />, color: Math.abs(data.meanInfit - 1) < 0.1 ? "#10b981" : "#f59e0b", fmt: (v: number) => v.toFixed(3) },
         { label: "Mean Outfit", value: data.meanOutfit, icon: <CheckCircle2 size={16} />, color: Math.abs(data.meanOutfit - 1) < 0.1 ? "#10b981" : "#f59e0b", fmt: (v: number) => v.toFixed(3) },
@@ -228,7 +228,7 @@ export function ItemFitPanel() {
                         <tr key={it.itemId} className={`border-b border-slate-800 hover:bg-slate-800/50 ${it.flagged ? "bg-red-900/10" : ""}`}>
                           <td className="py-2 pr-3 font-mono text-slate-400 text-xs">{it.itemLabel}</td>
                           <td className="py-2 pr-3">
-                            <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: (SKILL_COLORS[it.skill] ?? "#64748b") + "22", color: SKILL_COLORS[it.skill] ?? "#94a3b8" }}>
+                            <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: (SKILL_COLORS[it.skill] ?? "#806571") + "22", color: SKILL_COLORS[it.skill] ?? "#b89aa8" }}>
                               {it.skill}
                             </span>
                           </td>

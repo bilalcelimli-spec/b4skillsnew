@@ -12,7 +12,7 @@ import { SiteFooter } from './SiteFooter';
 // ─── Main Component ────────────────────────────────────────────────────────────
 export const LanguageSchoolsPage: React.FC<{ onBack: () => void; onStart?: () => void }> = ({ onBack, onStart }) => {
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 overflow-x-hidden selection:bg-[#9b276c]/20 flex flex-col">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 overflow-x-hidden selection:bg-[#ad024c]/20 flex flex-col">
       
       {/* Background base gradients */}
       <div className="fixed inset-0 pointer-events-none z-0">

@@ -50,7 +50,7 @@ interface GrowthPayload {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const CEFR_COLORS: Record<string, string> = {
-  PRE_A1: "#64748b", A1: "#ef4444", A2: "#f97316",
+  PRE_A1: "#806571", A1: "#ef4444", A2: "#f97316",
   B1: "#eab308", B2: "#22c55e", C1: "#3b82f6", C2: "#8b5cf6",
 };
 
@@ -74,7 +74,7 @@ function SparkLine({ sessions, width = 120, height = 32 }: { sessions: ThetaPoin
         strokeLinejoin="round"
       />
       {sessions.map((s, i) => (
-        <circle key={i} cx={xs(i)} cy={ys(s.theta)} r={2} fill={CEFR_COLORS[s.cefrLevel] ?? "#6366f1"}>
+        <circle key={i} cx={xs(i)} cy={ys(s.theta)} r={2} fill={CEFR_COLORS[s.cefrLevel] ?? "#c81e66"}>
           <title>{`${s.sessionDate}: θ=${s.theta.toFixed(2)} ${s.cefrLevel}`}</title>
         </circle>
       ))}
@@ -88,7 +88,7 @@ function GainDist({ bins }: { bins: { bin: string; count: number }[] }) {
     <div className="space-y-1">
       {bins.map((b) => {
         const g = parseFloat(b.bin);
-        const color = g > 0.2 ? "#22c55e" : g < -0.2 ? "#ef4444" : "#6366f1";
+        const color = g > 0.2 ? "#22c55e" : g < -0.2 ? "#ef4444" : "#c81e66";
         return (
           <div key={b.bin} className="flex items-center gap-2 text-xs">
             <span className="w-14 text-right font-mono text-slate-400">{b.bin}</span>
@@ -129,7 +129,7 @@ export function PersonFitGrowthPanel() {
   useEffect(() => { load(); }, [load]);
 
   const kpis = data ? [
-    { label: "Active Candidates", value: data.activeCandidates, icon: <Users size={16} />, color: "#6366f1", fmt: String },
+    { label: "Active Candidates", value: data.activeCandidates, icon: <Users size={16} />, color: "#c81e66", fmt: String },
     { label: "Mean Gain (θ)", value: data.meanGain, icon: <TrendingUp size={16} />, color: data.meanGain > 0 ? "#22c55e" : "#ef4444", fmt: (v: number) => (v > 0 ? "+" : "") + v.toFixed(3) },
     { label: "SD Gain", value: data.sdGain, icon: <CheckCircle2 size={16} />, color: "#8b5cf6", fmt: (v: number) => v.toFixed(3) },
     { label: "Significant Gain", value: data.pSignificantGain, icon: <AlertTriangle size={16} />, color: data.pSignificantGain > 0.5 ? "#22c55e" : "#f59e0b", fmt: (v: number) => `${(v * 100).toFixed(1)}%` },
@@ -217,7 +217,7 @@ export function PersonFitGrowthPanel() {
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div><div className="text-slate-500">N candidates</div><div className="text-white font-bold">{c.nCandidates}</div></div>
                       <div><div className="text-slate-500">Mean gain</div>
-                        <div className="font-mono font-bold" style={{ color: c.meanGain > 0.1 ? "#22c55e" : c.meanGain < -0.1 ? "#ef4444" : "#94a3b8" }}>
+                        <div className="font-mono font-bold" style={{ color: c.meanGain > 0.1 ? "#22c55e" : c.meanGain < -0.1 ? "#ef4444" : "#b89aa8" }}>
                           {c.meanGain > 0 ? "+" : ""}{c.meanGain.toFixed(3)}
                         </div>
                       </div>
@@ -292,10 +292,10 @@ export function PersonFitGrowthPanel() {
                         <td className="px-3 py-2 text-right">{c.nSessions}</td>
                         <td className="px-3 py-2 text-right font-mono">{c.firstTheta.toFixed(3)}</td>
                         <td className="px-3 py-2 text-right font-mono">{c.lastTheta.toFixed(3)}</td>
-                        <td className="px-3 py-2 text-right font-mono" style={{ color: c.thetaGain > 0.1 ? "#22c55e" : c.thetaGain < -0.1 ? "#ef4444" : "#94a3b8" }}>
+                        <td className="px-3 py-2 text-right font-mono" style={{ color: c.thetaGain > 0.1 ? "#22c55e" : c.thetaGain < -0.1 ? "#ef4444" : "#b89aa8" }}>
                           {c.thetaGain > 0 ? "+" : ""}{c.thetaGain.toFixed(3)}
                         </td>
-                        <td className="px-3 py-2 text-right font-mono" style={{ color: c.fitFlag ? "#f59e0b" : "#94a3b8" }}>
+                        <td className="px-3 py-2 text-right font-mono" style={{ color: c.fitFlag ? "#f59e0b" : "#b89aa8" }}>
                           {c.personFitLz.toFixed(2)}
                         </td>
                         <td className="px-3 py-2">

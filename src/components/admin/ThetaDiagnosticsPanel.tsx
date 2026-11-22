@@ -37,7 +37,7 @@ interface DiagnosticsPayload {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const CEFR_COLORS: Record<string, string> = {
-  PRE_A1: "#64748b", A1: "#3b82f6", A2: "#06b6d4",
+  PRE_A1: "#806571", A1: "#3b82f6", A2: "#06b6d4",
   B1: "#10b981", B2: "#f59e0b", C1: "#f97316", C2: "#ef4444",
 };
 
@@ -84,8 +84,8 @@ export const ThetaDiagnosticsPanel: React.FC = () => {
         {/* Grid lines */}
         {[0.2, 0.4, 0.6].map((v) => (
           <g key={v}>
-            <line x1={pad} y1={yScale(v)} x2={W - pad} y2={yScale(v)} stroke="#334155" strokeWidth={1} strokeDasharray="4,2" />
-            <text x={pad - 4} y={yScale(v) + 3} fill="#64748b" fontSize={9} textAnchor="end">{v.toFixed(1)}</text>
+            <line x1={pad} y1={yScale(v)} x2={W - pad} y2={yScale(v)} stroke="#4f3a45" strokeWidth={1} strokeDasharray="4,2" />
+            <text x={pad - 4} y={yScale(v) + 3} fill="#806571" fontSize={9} textAnchor="end">{v.toFixed(1)}</text>
           </g>
         ))}
         {/* SEM curve */}
@@ -94,15 +94,15 @@ export const ThetaDiagnosticsPanel: React.FC = () => {
         {stages.map((s, i) => (
           <g key={i}>
             <circle cx={xScale(i)} cy={yScale(s.meanSem)} r={4} fill="#f59e0b" />
-            <text x={xScale(i)} y={H - 8} fill="#94a3b8" fontSize={9} textAnchor="middle">S{s.stage}</text>
+            <text x={xScale(i)} y={H - 8} fill="#b89aa8" fontSize={9} textAnchor="middle">S{s.stage}</text>
           </g>
         ))}
         {/* Threshold line at 0.30 */}
         <line x1={pad} y1={yScale(0.30)} x2={W - pad} y2={yScale(0.30)} stroke="#10b981" strokeWidth={1} strokeDasharray="6,3" />
         <text x={W - pad + 2} y={yScale(0.30) + 3} fill="#10b981" fontSize={8}>SEM=0.30</text>
         {/* Axis labels */}
-        <text x={W / 2} y={H - 1} fill="#94a3b8" fontSize={9} textAnchor="middle">Adaptive Stage</text>
-        <text x={9} y={H / 2} fill="#94a3b8" fontSize={9} textAnchor="middle" transform={`rotate(-90, 9, ${H / 2})`}>Mean SEM</text>
+        <text x={W / 2} y={H - 1} fill="#b89aa8" fontSize={9} textAnchor="middle">Adaptive Stage</text>
+        <text x={9} y={H / 2} fill="#b89aa8" fontSize={9} textAnchor="middle" transform={`rotate(-90, 9, ${H / 2})`}>Mean SEM</text>
       </svg>
     );
   };
@@ -280,7 +280,7 @@ export const ThetaDiagnosticsPanel: React.FC = () => {
                         <td className="px-3 py-2">
                           <span
                             className="px-2 py-0.5 rounded text-xs font-semibold text-white"
-                            style={{ backgroundColor: CEFR_COLORS[s.cefrLevel] ?? "#475569" }}
+                            style={{ backgroundColor: CEFR_COLORS[s.cefrLevel] ?? "#6b5560" }}
                           >
                             {s.cefrLevel.replace("_", "")}
                           </span>

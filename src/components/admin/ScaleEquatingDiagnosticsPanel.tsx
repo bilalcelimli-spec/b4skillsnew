@@ -50,7 +50,7 @@ interface EquatingPayload {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const SKILL_COLORS: Record<string, string> = {
-  GRAMMAR: "#6366f1", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
+  GRAMMAR: "#c81e66", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
   LISTENING: "#06b6d4", WRITING: "#10b981", SPEAKING: "#f59e0b",
 };
 
@@ -66,10 +66,10 @@ function ResidualPlot({ anchors }: { anchors: AnchorItem[] }) {
   const zeroY = ys(0);
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 140 }}>
-      <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="#334155" strokeWidth={1} />
-      <line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} stroke="#334155" strokeWidth={1} />
+      <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="#4f3a45" strokeWidth={1} />
+      <line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} stroke="#4f3a45" strokeWidth={1} />
       {/* zero line */}
-      <line x1={PAD} y1={zeroY} x2={W - PAD} y2={zeroY} stroke="#64748b" strokeWidth={1} strokeDasharray="4 3" />
+      <line x1={PAD} y1={zeroY} x2={W - PAD} y2={zeroY} stroke="#806571" strokeWidth={1} strokeDasharray="4 3" />
       {/* ±0.3 bands */}
       {[0.3, -0.3].map((v) => (
         <line key={v} x1={PAD} y1={ys(v)} x2={W - PAD} y2={ys(v)} stroke="#f59e0b" strokeWidth={1} strokeDasharray="3 4" opacity={0.5} />
@@ -80,14 +80,14 @@ function ResidualPlot({ anchors }: { anchors: AnchorItem[] }) {
           cx={xs(a.difficulty)}
           cy={ys(a.residualB)}
           r={3}
-          fill={a.driftFlag ? "#ef4444" : "#6366f1"}
+          fill={a.driftFlag ? "#ef4444" : "#c81e66"}
           opacity={0.8}
         >
           <title>{`${a.itemLabel}: residual=${a.residualB.toFixed(3)}`}</title>
         </circle>
       ))}
-      <text x={W / 2} y={H - 4} fontSize={8} fill="#64748b" textAnchor="middle">b (difficulty)</text>
-      <text x={8} y={H / 2} fontSize={8} fill="#64748b" textAnchor="middle" transform={`rotate(-90, 8, ${H / 2})`}>residual</text>
+      <text x={W / 2} y={H - 4} fontSize={8} fill="#806571" textAnchor="middle">b (difficulty)</text>
+      <text x={8} y={H / 2} fontSize={8} fill="#806571" textAnchor="middle" transform={`rotate(-90, 8, ${H / 2})`}>residual</text>
     </svg>
   );
 }
@@ -105,7 +105,7 @@ function MethodCard({ result }: { result: EquatingResult }) {
           </div>
         </div>
         <div><div className="text-slate-500">Max |residual|</div>
-          <div className="font-mono" style={{ color: result.maxResidual > 0.5 ? "#ef4444" : "#94a3b8" }}>
+          <div className="font-mono" style={{ color: result.maxResidual > 0.5 ? "#ef4444" : "#b89aa8" }}>
             {result.maxResidual.toFixed(4)}
           </div>
         </div>
@@ -143,7 +143,7 @@ export function ScaleEquatingDiagnosticsPanel() {
   const comp = data?.comparisons?.[compIdx] ?? null;
 
   const kpis = comp ? [
-    { label: "Anchor Items", value: comp.nAnchorItems, icon: <Link2 size={16} />, color: "#6366f1", fmt: String },
+    { label: "Anchor Items", value: comp.nAnchorItems, icon: <Link2 size={16} />, color: "#c81e66", fmt: String },
     { label: "SL RMSE", value: comp.stockingLord.rmse, icon: <TrendingUp size={16} />, color: comp.stockingLord.rmse > 0.3 ? "#ef4444" : "#10b981", fmt: (v: number) => v.toFixed(4) },
     { label: "Haebara RMSE", value: comp.haebara.rmse, icon: <CheckCircle2 size={16} />, color: comp.haebara.rmse > 0.3 ? "#ef4444" : "#10b981", fmt: (v: number) => v.toFixed(4) },
     { label: "Drift Items", value: comp.anchors.filter((a) => a.driftFlag).length, icon: <AlertTriangle size={16} />, color: comp.anchors.filter((a) => a.driftFlag).length > 0 ? "#ef4444" : "#10b981", fmt: String },
@@ -282,7 +282,7 @@ export function ScaleEquatingDiagnosticsPanel() {
                       <tr key={a.itemId} className={`border-t border-slate-700/30 hover:bg-slate-800/40 ${a.driftFlag ? "bg-red-950/20" : ""}`}>
                         <td className="px-3 py-2 font-mono text-white">{a.itemLabel}</td>
                         <td className="px-3 py-2">
-                          <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ background: SKILL_COLORS[a.skill] ?? "#6366f1" }}>
+                          <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ background: SKILL_COLORS[a.skill] ?? "#c81e66" }}>
                             {a.skill.slice(0, 3)}
                           </span>
                         </td>
@@ -341,7 +341,7 @@ export function ScaleEquatingDiagnosticsPanel() {
                         <div className="flex-1 bg-slate-800 rounded-full h-4 overflow-hidden">
                           <div
                             className="h-full rounded-full"
-                            style={{ width: `${(b.count / max) * 100}%`, background: flag ? "#ef4444" : "#6366f1" }}
+                            style={{ width: `${(b.count / max) * 100}%`, background: flag ? "#ef4444" : "#c81e66" }}
                           />
                         </div>
                         <span className="w-8 text-slate-300">{b.count}</span>

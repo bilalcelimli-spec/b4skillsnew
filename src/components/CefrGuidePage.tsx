@@ -106,7 +106,7 @@ type Strings = (typeof UI)[GuideLang];
 const examLabel = (exam: ExamAlignment, lang: GuideLang) => (lang === "tr" ? exam.tr.exam : exam.exam);
 
 const Hero: React.FC<{ t: Strings; hub: string; kicker: string; title: string; children?: React.ReactNode }> = ({ t, hub, kicker, title, children }) => (
-  <section className="bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white pt-32 pb-16 px-6">
+  <section className="bg-gradient-to-br from-[#24101a] via-[#1e1b4b] to-[#ad024c] text-white pt-32 pb-16 px-6">
     <div className="max-w-3xl mx-auto">
       <nav aria-label="Breadcrumb" className="text-sm text-white/60 mb-6">
         <a href="/" className="hover:text-white">b4skills</a>
@@ -126,7 +126,7 @@ const QuickCheckCta: React.FC<{ t: Strings }> = ({ t }) => (
       <h2 className="text-xl font-black mb-2">{t.ctaTitle}</h2>
       <p className="text-sm text-white/70 max-w-md">{t.ctaText}</p>
     </div>
-    <a href={t.quickCheckHref} className="inline-flex items-center gap-2 bg-[#9b276c] hover:bg-[#7d1f57] text-white font-bold rounded-full px-6 py-3 whitespace-nowrap">
+    <a href={t.quickCheckHref} className="inline-flex items-center gap-2 bg-[#ad024c] hover:bg-[#8a003b] text-white font-bold rounded-full px-6 py-3 whitespace-nowrap">
       {t.ctaButton} <ArrowRight size={16} aria-hidden="true" />
     </a>
   </aside>
@@ -197,7 +197,7 @@ const LevelGuideView: React.FC<{ guide: LevelGuide }> = ({ guide }) => {
               const Icon = SKILL_ICON[skill];
               return (
                 <div key={skill} className="bg-white rounded-2xl border border-slate-100 p-6">
-                  <h3 className="flex items-center gap-2 font-bold text-slate-900 mb-3"><Icon size={18} className="text-[#9b276c]" aria-hidden="true" />{t.skill[skill]}</h3>
+                  <h3 className="flex items-center gap-2 font-bold text-slate-900 mb-3"><Icon size={18} className="text-[#ad024c]" aria-hidden="true" />{t.skill[skill]}</h3>
                   <ul className="list-disc pl-5 space-y-2 text-sm text-slate-700 leading-relaxed">{points.map((p) => <li key={p}>{p}</li>)}</ul>
                 </div>
               );
@@ -211,7 +211,7 @@ const LevelGuideView: React.FC<{ guide: LevelGuide }> = ({ guide }) => {
           <h2 className="text-2xl font-black text-slate-900 mb-2">{t.examsTitle(guide.level)}</h2>
           <p className="text-slate-600 mb-4 leading-relaxed">
             {t.examsText(guide.level)}{" "}
-            <a href={sections.comparison} className="text-[#9b276c] underline">{t.examsLink}</a>.
+            <a href={sections.comparison} className="text-[#ad024c] underline">{t.examsLink}</a>.
           </p>
           <ExamRows t={t} lang={lang} level={guide.level} />
         </section>
@@ -219,15 +219,15 @@ const LevelGuideView: React.FC<{ guide: LevelGuide }> = ({ guide }) => {
           <h2 className="text-2xl font-black text-slate-900 mb-2">{t.hoursTitle(guide.level)}</h2>
           <p className="text-slate-700 leading-relaxed">
             {t.hours(guide.level, GUIDED_LEARNING_HOURS[guide.level])}{" "}
-            <a href={GUIDED_LEARNING_HOURS_SOURCE} className="text-[#9b276c] underline" rel="noopener" target="_blank">{t.hoursSource}</a>
+            <a href={GUIDED_LEARNING_HOURS_SOURCE} className="text-[#ad024c] underline" rel="noopener" target="_blank">{t.hoursSource}</a>
           </p>
         </section>
         <List title={t.nextTitle(guide.level, next?.level)} items={guide.nextSteps} />
         <Faq t={t} items={guide.faq} />
         <QuickCheckCta t={t} />
         <nav aria-label={t.otherLevels} className="flex justify-between gap-4 text-sm font-bold">
-          {previous ? <a href={levelGuidePath(previous)} className="inline-flex items-center gap-2 text-[#9b276c]"><ArrowLeft size={16} aria-hidden="true" />{t.levelLink(previous.level)}</a> : <span />}
-          {next ? <a href={levelGuidePath(next)} className="inline-flex items-center gap-2 text-[#9b276c]">{t.levelLink(next.level)}<ArrowRight size={16} aria-hidden="true" /></a> : <span />}
+          {previous ? <a href={levelGuidePath(previous)} className="inline-flex items-center gap-2 text-[#ad024c]"><ArrowLeft size={16} aria-hidden="true" />{t.levelLink(previous.level)}</a> : <span />}
+          {next ? <a href={levelGuidePath(next)} className="inline-flex items-center gap-2 text-[#ad024c]">{t.levelLink(next.level)}<ArrowRight size={16} aria-hidden="true" /></a> : <span />}
         </nav>
       </main>
     </>
@@ -248,14 +248,14 @@ const HubView: React.FC<{ lang: GuideLang }> = ({ lang }) => {
           <h2 className="text-2xl font-black text-slate-900 mb-4">{t.glance}</h2>
           <div className="space-y-3">
             {guidesFor(lang).map((guide) => (
-              <a key={guide.level} href={levelGuidePath(guide)} className="group block bg-white rounded-2xl border border-slate-100 p-6 hover:border-[#9b276c]">
+              <a key={guide.level} href={levelGuidePath(guide)} className="group block bg-white rounded-2xl border border-slate-100 p-6 hover:border-[#ad024c]">
                 <div className="flex items-baseline gap-3 mb-2">
-                  <span className="text-2xl font-black text-[#9b276c]">{guide.level}</span>
+                  <span className="text-2xl font-black text-[#ad024c]">{guide.level}</span>
                   <span className="font-bold text-slate-900">{guide.nickname}</span>
                   <span className="text-xs uppercase tracking-wider text-slate-400">{guide.band}</span>
                 </div>
                 <p className="text-sm text-slate-600 leading-relaxed">{guide.answer}</p>
-                <span className="inline-flex items-center gap-1 text-sm font-bold text-[#9b276c] mt-3">{t.readGuide(guide.level)} <ArrowRight size={14} aria-hidden="true" /></span>
+                <span className="inline-flex items-center gap-1 text-sm font-bold text-[#ad024c] mt-3">{t.readGuide(guide.level)} <ArrowRight size={14} aria-hidden="true" /></span>
               </a>
             ))}
           </div>
@@ -264,7 +264,7 @@ const HubView: React.FC<{ lang: GuideLang }> = ({ lang }) => {
           <h2 className="text-2xl font-black text-slate-900">{t.groupsTitle}</h2>
           <p>{t.groups}</p>
           <p>{t.plus}</p>
-          <p>{t.scoreNote(<a href={sections.comparison} className="text-[#9b276c] underline">{t.comparisonLinkText}</a>)}</p>
+          <p>{t.scoreNote(<a href={sections.comparison} className="text-[#ad024c] underline">{t.comparisonLinkText}</a>)}</p>
         </section>
         <QuickCheckCta t={t} />
       </main>
@@ -294,7 +294,7 @@ const ComparisonView: React.FC<{ lang: GuideLang }> = ({ lang }) => {
             <tbody>
               {[...guidesFor(lang)].reverse().map((guide) => (
                 <tr key={guide.level} className="border-t border-slate-100">
-                  <th scope="row" className="p-4 text-left"><a href={levelGuidePath(guide)} className="font-black text-[#9b276c]">{guide.level}</a></th>
+                  <th scope="row" className="p-4 text-left"><a href={levelGuidePath(guide)} className="font-black text-[#ad024c]">{guide.level}</a></th>
                   {EXAM_ALIGNMENTS.map((exam) => <td key={exam.exam} className="p-4 text-slate-700">{alignmentFor(exam, guide.level)}</td>)}
                 </tr>
               ))}
@@ -308,7 +308,7 @@ const ComparisonView: React.FC<{ lang: GuideLang }> = ({ lang }) => {
               <li key={exam.exam} className="bg-white rounded-2xl border border-slate-100 p-5">
                 <p className="font-bold text-slate-900">{examLabel(exam, lang)} <span className="font-normal text-slate-500">({exam.owner})</span></p>
                 <p className="mt-1">{lang === "tr" ? exam.tr.note : exam.note}</p>
-                <p className="mt-2"><a href={exam.sourceUrl} lang="en" className="text-[#9b276c] underline" rel="noopener" target="_blank">{exam.sourceName}</a></p>
+                <p className="mt-2"><a href={exam.sourceUrl} lang="en" className="text-[#ad024c] underline" rel="noopener" target="_blank">{exam.sourceName}</a></p>
               </li>
             ))}
           </ul>
@@ -333,7 +333,7 @@ export const CefrGuidePage: React.FC<{ path: string }> = ({ path }) => {
     if (page) document.title = page.title;
   }, [path]);
   return (
-    <div lang={lang} className="min-h-screen bg-[#FAFAFA] font-sans text-slate-800">
+    <div lang={lang} className="min-h-screen bg-[#fcf8fa] font-sans text-slate-800">
       <SiteNav />
       {guide ? <LevelGuideView guide={guide} /> : path === GUIDE_SECTION_PATHS[lang].comparison ? <ComparisonView lang={lang} /> : <HubView lang={lang} />}
       <SiteFooter />

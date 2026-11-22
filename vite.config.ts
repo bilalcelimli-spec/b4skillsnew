@@ -25,7 +25,7 @@ export default defineConfig(({ isSsrBuild }) => {
           name: 'b4skills — Adaptive English Assessment',
           short_name: 'b4skills',
           description: 'CEFR-aligned adaptive English proficiency testing — take your exam anywhere.',
-          theme_color: '#1a56db',
+          theme_color: '#ad024c',
           background_color: '#ffffff',
           display: 'standalone',
           orientation: 'any',

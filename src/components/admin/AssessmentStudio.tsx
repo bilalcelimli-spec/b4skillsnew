@@ -234,7 +234,7 @@ const BlueprintBuilderView: React.FC<{ onNavigate: (tab: Tab) => void }> = ({ on
             </div>
           </div>
         </div>
-        <div className="flex-1 bg-[#f8fafc] p-8 overflow-y-auto relative border-[16px] border-transparent" style={{ backgroundImage: 'radial-gradient(#e2e8f0 1px, transparent 0)', backgroundSize: '24px 24px' }}>
+        <div className="flex-1 bg-[#fcf8fa] p-8 overflow-y-auto relative border-[16px] border-transparent" style={{ backgroundImage: 'radial-gradient(#f0dfe6 1px, transparent 0)', backgroundSize: '24px 24px' }}>
             {/* Visual Node Graph Mockup */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-8">
               <BlueprintNode title="Routing Stage (Vocab)" items="Top 'a' items (10)" diff="Mixed" />

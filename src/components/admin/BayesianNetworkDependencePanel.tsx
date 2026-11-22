@@ -47,11 +47,11 @@ interface BayesNetPayload {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const SKILL_COLORS: Record<string, string> = {
-  GRAMMAR: "#6366f1", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
+  GRAMMAR: "#c81e66", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
   LISTENING: "#06b6d4", WRITING: "#10b981", SPEAKING: "#f59e0b",
 };
 
-const CLUSTER_COLORS = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#ef4444", "#06b6d4"];
+const CLUSTER_COLORS = ["#c81e66", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#ef4444", "#06b6d4"];
 
 function ForceGraph({ nodes, edges }: { nodes: NetworkNode[]; edges: NetworkEdge[] }) {
   // Simple static SVG layout using cluster-based polar placement
@@ -159,7 +159,7 @@ export function BayesianNetworkDependencePanel() {
   useEffect(() => { load(); }, [load]);
 
   const kpis = data ? [
-    { label: "Items in Network", value: data.totalItems, icon: <Network size={16} />, color: "#6366f1", fmt: String },
+    { label: "Items in Network", value: data.totalItems, icon: <Network size={16} />, color: "#c81e66", fmt: String },
     { label: "Edges (MI pairs)", value: data.totalEdges, icon: <GitBranch size={16} />, color: "#8b5cf6", fmt: String },
     { label: "Flagged Edges", value: data.flaggedEdges, icon: <AlertTriangle size={16} />, color: data.flaggedEdges > 0 ? "#ef4444" : "#10b981", fmt: String },
     { label: "Clusters", value: data.clusters, icon: <CheckCircle2 size={16} />, color: "#06b6d4", fmt: String },
@@ -304,7 +304,7 @@ export function BayesianNetworkDependencePanel() {
                             <span className="font-mono w-10 text-right">{(e.strength * 100).toFixed(0)}%</span>
                           </div>
                         </td>
-                        <td className="px-3 py-2 text-right font-mono" style={{ color: e.flagged ? "#ef4444" : "#94a3b8" }}>
+                        <td className="px-3 py-2 text-right font-mono" style={{ color: e.flagged ? "#ef4444" : "#b89aa8" }}>
                           {e.condIndepP < 0.001 ? "<0.001" : e.condIndepP.toFixed(3)}
                         </td>
                         <td className="px-3 py-2 text-center">
@@ -383,7 +383,7 @@ export function BayesianNetworkDependencePanel() {
                         <div className="flex-1 bg-slate-800 rounded-full h-4 overflow-hidden">
                           <div
                             className="h-full rounded-full"
-                            style={{ width: `${(b.count / max) * 100}%`, background: flagged ? "#ef4444" : "#6366f1" }}
+                            style={{ width: `${(b.count / max) * 100}%`, background: flagged ? "#ef4444" : "#c81e66" }}
                           />
                         </div>
                         <span className="w-8 text-slate-300">{b.count}</span>

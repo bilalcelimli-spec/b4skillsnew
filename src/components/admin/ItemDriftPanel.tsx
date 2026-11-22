@@ -64,7 +64,7 @@ const SKILL_COLORS: Record<string, string> = {
   LISTENING: "#8b5cf6", WRITING: "#ef4444", SPEAKING: "#f97316",
 };
 const CEFR_COLORS: Record<string, string> = {
-  PRE_A1: "#475569", A1: "#3b82f6", A2: "#06b6d4",
+  PRE_A1: "#6b5560", A1: "#3b82f6", A2: "#06b6d4",
   B1: "#10b981", B2: "#f59e0b", C1: "#f97316", C2: "#ef4444",
 };
 
@@ -229,11 +229,11 @@ export const ItemDriftPanel: React.FC = () => {
                   {displayItems.map((item) => (
                     <tr key={item.id} className="border-t border-slate-700 hover:bg-slate-700/30 transition-colors">
                       <td className="px-2 py-2 text-slate-400 font-mono text-[10px]">{item.id.slice(-10)}</td>
-                      <td className="px-2 py-2 font-medium text-xs" style={{ color: SKILL_COLORS[item.skill] ?? "#94a3b8" }}>
+                      <td className="px-2 py-2 font-medium text-xs" style={{ color: SKILL_COLORS[item.skill] ?? "#b89aa8" }}>
                         {SKILL_LABELS[item.skill] ?? item.skill}
                       </td>
                       <td className="px-2 py-2">
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold text-white" style={{ backgroundColor: CEFR_COLORS[item.cefrLevel] ?? "#475569" }}>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold text-white" style={{ backgroundColor: CEFR_COLORS[item.cefrLevel] ?? "#6b5560" }}>
                           {item.cefrLevel.replace("_", "")}
                         </span>
                       </td>
@@ -272,7 +272,7 @@ export const ItemDriftPanel: React.FC = () => {
             <div className="space-y-3">
               {data.bySkill.map((s) => (
                 <div key={s.skill} className="flex items-center gap-3">
-                  <span className="text-xs w-24 font-medium" style={{ color: SKILL_COLORS[s.skill] ?? "#94a3b8" }}>
+                  <span className="text-xs w-24 font-medium" style={{ color: SKILL_COLORS[s.skill] ?? "#b89aa8" }}>
                     {SKILL_LABELS[s.skill] ?? s.skill}
                   </span>
                   <div className="flex-1 h-4 bg-slate-700 rounded-full overflow-hidden">

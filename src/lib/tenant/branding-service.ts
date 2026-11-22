@@ -33,7 +33,7 @@ export const BrandingService = {
       organizationId: org.id,
       name: org.name,
       logoUrl: branding?.logoUrl,
-      primaryColor: branding?.primaryColor || "#4f46e5",
+      primaryColor: branding?.primaryColor || "#ad024c",
       secondaryColor: branding?.secondaryColor || "#0f172a",
       welcomeMessage: settings?.welcomeMessage
     };

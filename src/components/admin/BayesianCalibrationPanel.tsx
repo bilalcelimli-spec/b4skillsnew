@@ -42,7 +42,7 @@ const SKILL_COLORS: Record<string, string> = {
   LISTENING: "#8b5cf6", WRITING: "#ef4444", SPEAKING: "#f97316",
 };
 const CEFR_BG: Record<string, string> = {
-  PRE_A1: "#475569", A1: "#3b82f6", A2: "#06b6d4",
+  PRE_A1: "#6b5560", A1: "#3b82f6", A2: "#06b6d4",
   B1: "#10b981", B2: "#f59e0b", C1: "#f97316", C2: "#ef4444",
 };
 
@@ -209,11 +209,11 @@ export const BayesianCalibrationPanel: React.FC = () => {
                   {displayItems.map((item) => (
                     <tr key={item.id} className="border-t border-slate-700 hover:bg-slate-700/30">
                       <td className="px-2 py-1.5 text-slate-400 font-mono text-[10px]">{item.id.slice(-10)}</td>
-                      <td className="px-2 py-1.5 font-medium text-xs" style={{ color: SKILL_COLORS[item.skill] ?? "#94a3b8" }}>
+                      <td className="px-2 py-1.5 font-medium text-xs" style={{ color: SKILL_COLORS[item.skill] ?? "#b89aa8" }}>
                         {item.skill}
                       </td>
                       <td className="px-2 py-1.5">
-                        <span className="px-1 py-0.5 rounded text-[10px] text-white font-semibold" style={{ backgroundColor: CEFR_BG[item.cefrLevel] ?? "#475569" }}>
+                        <span className="px-1 py-0.5 rounded text-[10px] text-white font-semibold" style={{ backgroundColor: CEFR_BG[item.cefrLevel] ?? "#6b5560" }}>
                           {item.cefrLevel.replace("_", "")}
                         </span>
                       </td>
@@ -249,7 +249,7 @@ export const BayesianCalibrationPanel: React.FC = () => {
             <div className="space-y-3">
               {data.convergenceBySkill.map((s) => (
                 <div key={s.skill} className="flex items-center gap-3">
-                  <span className="text-xs w-24 font-medium" style={{ color: SKILL_COLORS[s.skill] ?? "#94a3b8" }}>
+                  <span className="text-xs w-24 font-medium" style={{ color: SKILL_COLORS[s.skill] ?? "#b89aa8" }}>
                     {s.skill}
                   </span>
                   <div className="flex-1 h-4 bg-slate-700 rounded-full overflow-hidden">
@@ -273,7 +273,7 @@ export const BayesianCalibrationPanel: React.FC = () => {
             <div className="space-y-3">
               {data.priorPosteriorShift.map((s) => (
                 <div key={s.cefrLevel} className="flex items-center gap-3">
-                  <span className="px-1.5 py-0.5 rounded text-[10px] text-white font-semibold w-12 text-center" style={{ backgroundColor: CEFR_BG[s.cefrLevel] ?? "#475569" }}>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] text-white font-semibold w-12 text-center" style={{ backgroundColor: CEFR_BG[s.cefrLevel] ?? "#6b5560" }}>
                     {s.cefrLevel.replace("_", "")}
                   </span>
                   <div className="flex-1 h-3 bg-slate-700 rounded-full overflow-hidden relative">
@@ -300,7 +300,7 @@ export const BayesianCalibrationPanel: React.FC = () => {
         ) : data && tab === "histograms" ? (
           <motion.div key="histograms" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-2 gap-4">
             <MiniHistogram bins={data.deltaBHistogram} color="#14b8a6" label="Δb Distribution (posterior − prior)" xLabel="Δb value" />
-            <MiniHistogram bins={data.seHistogram} color="#6366f1" label="Posterior SE(b) Distribution" xLabel="SE value" />
+            <MiniHistogram bins={data.seHistogram} color="#c81e66" label="Posterior SE(b) Distribution" xLabel="SE value" />
           </motion.div>
         ) : null}
       </AnimatePresence>

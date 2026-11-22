@@ -19,7 +19,7 @@ export const BrandingSettings: React.FC<{ orgId: string; initialBranding?: Brand
   const { toast } = useToast();
   const [branding, setBranding] = useState<BrandingConfig>(initialBranding || {
     logoUrl: "",
-    primaryColor: "#4f46e5",
+    primaryColor: "#ad024c",
     portalName: "b4skills Portal",
     faviconUrl: "",
     customCss: ""

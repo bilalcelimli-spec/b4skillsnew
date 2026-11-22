@@ -159,12 +159,12 @@ interface AnalysisData {
 const CEFR_ORDER = ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"];
 
 const CEFR_COLORS: Record<string, string> = {
-  PRE_A1: "#94a3b8", A1: "#60a5fa", A2: "#34d399",
+  PRE_A1: "#b89aa8", A1: "#60a5fa", A2: "#34d399",
   B1: "#fbbf24", B2: "#f97316", C1: "#a78bfa", C2: "#f43f5e",
 };
 
 const SKILL_COLORS: Record<string, string> = {
-  READING: "#6366f1", LISTENING: "#22d3ee", WRITING: "#f59e0b",
+  READING: "#c81e66", LISTENING: "#22d3ee", WRITING: "#f59e0b",
   SPEAKING: "#ec4899", GRAMMAR: "#10b981", VOCABULARY: "#8b5cf6",
 };
 
@@ -729,7 +729,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
                   );
                 }}
               />
-              <Bar dataKey="latency" fill="#6366f1" radius={[2, 2, 0, 0]} opacity={0.7} />
+              <Bar dataKey="latency" fill="#c81e66" radius={[2, 2, 0, 0]} opacity={0.7} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
@@ -782,7 +782,7 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
             ) : (
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={cefrChartData} barSize={28} margin={{ bottom: 0 }}>
-                  <XAxis dataKey="cefr" tick={{ fontSize: 10, fontWeight: 700, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="cefr" tick={{ fontSize: 10, fontWeight: 700, fill: "#b89aa8" }} axisLine={false} tickLine={false} />
                   <YAxis hide />
                   <Tooltip
                     content={({ active, payload, label }) => {
@@ -800,10 +800,10 @@ export const ParticipantAnalysisPanel: React.FC<Props> = ({ sessionId, onBack })
                   />
                   <Bar dataKey="correct" stackId="a" radius={[0, 0, 0, 0]}>
                     {cefrChartData.map((entry) => (
-                      <Cell key={entry.cefr} fill={CEFR_COLORS[entry.cefr] ?? "#94a3b8"} />
+                      <Cell key={entry.cefr} fill={CEFR_COLORS[entry.cefr] ?? "#b89aa8"} />
                     ))}
                   </Bar>
-                  <Bar dataKey="incorrect" stackId="a" fill="#e2e8f0" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="incorrect" stackId="a" fill="#f0dfe6" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}

@@ -58,7 +58,7 @@ export interface ScoreReportData {
 const CEFR_ORDER = ["A1","A2","B1","B2","C1","C2"];
 
 const CEFR_COLOR: Record<string, string> = {
-  A1: "#64748b", A2: "#94a3b8", B1: "#3b82f6", B2: "#1a56db", C1: "#7c3aed", C2: "#059669",
+  A1: "#806571", A2: "#b89aa8", B1: "#3b82f6", B2: "#ad024c", C1: "#7c3aed", C2: "#059669",
 };
 
 const SKILL_LABELS: Record<string, string> = {
@@ -74,7 +74,7 @@ const SKILL_ICONS: Record<string, string> = {
 // ── CEFR band pill ────────────────────────────────────────────────────────────
 
 function CefrPill({ band, size = "md" }: { band: string; size?: "sm" | "md" | "lg" | "xl" }) {
-  const color = CEFR_COLOR[band] ?? "#64748b";
+  const color = CEFR_COLOR[band] ?? "#806571";
   const sizes = { sm: "0.6875rem / 20px / 8px 10px", md: "0.8125rem / 26px / 8px 14px", lg: "1rem / 32px / 10px 18px", xl: "1.5rem / 52px / 14px 24px" };
   const [fs, h, pad] = sizes[size].split(" / ");
   return (
@@ -98,7 +98,7 @@ function ScoreHero({ data }: { data: ScoreReportData }) {
   const thetaDisplay = useCountUp(Math.round((data.overallTheta + 4) * 100 / 8), 1200);
   const ciLo = data.overallTheta - 1.96 * data.overallSEM;
   const ciHi = data.overallTheta + 1.96 * data.overallSEM;
-  const bandColor = CEFR_COLOR[data.overallBand] ?? "#1a56db";
+  const bandColor = CEFR_COLOR[data.overallBand] ?? "#ad024c";
 
   return (
     <div style={{
@@ -161,7 +161,7 @@ function ScoreHero({ data }: { data: ScoreReportData }) {
 // ── Per-skill cards ───────────────────────────────────────────────────────────
 
 function SkillCard({ skill, index }: { skill: SkillResult; index: number }) {
-  const color = CEFR_COLOR[skill.cefrBand] ?? "#64748b";
+  const color = CEFR_COLOR[skill.cefrBand] ?? "#806571";
   return (
     <m.div
       initial={{ opacity: 0, y: 16 }}

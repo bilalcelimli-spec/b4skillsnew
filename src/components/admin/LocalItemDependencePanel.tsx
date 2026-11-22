@@ -36,7 +36,7 @@ const SKILL_COLORS: Record<string, string> = {
   LISTENING: "#8b5cf6", WRITING: "#ef4444", SPEAKING: "#f97316",
 };
 const CEFR_BG: Record<string, string> = {
-  PRE_A1: "#475569", A1: "#3b82f6", A2: "#06b6d4",
+  PRE_A1: "#6b5560", A1: "#3b82f6", A2: "#06b6d4",
   B1: "#10b981", B2: "#f59e0b", C1: "#f97316", C2: "#ef4444",
 };
 
@@ -45,7 +45,7 @@ function q3Color(q3: number): string {
   if (abs > 0.4) return "#ef4444";
   if (abs > 0.2) return "#f59e0b";
   if (abs > 0.1) return "#06b6d4";
-  return "#1e293b";
+  return "#40222f";
 }
 
 // ─── Heatmap ─────────────────────────────────────────────────────────────────
@@ -59,12 +59,12 @@ const Q3Heatmap: React.FC<{ items: string[]; matrix: number[][] }> = ({ items, m
     <div className="overflow-auto max-h-96">
       <svg width={W} height={H} style={{ fontFamily: "monospace" }}>
         {Array.from({ length: n }, (_, i) => (
-          <text key={`yl-${i}`} x={72} y={40 + i * CELL + CELL / 2 + 4} textAnchor="end" fill="#94a3b8" fontSize={8}>
+          <text key={`yl-${i}`} x={72} y={40 + i * CELL + CELL / 2 + 4} textAnchor="end" fill="#b89aa8" fontSize={8}>
             {items[i]?.slice(-6)}
           </text>
         ))}
         {Array.from({ length: n }, (_, j) => (
-          <text key={`xl-${j}`} x={80 + j * CELL + CELL / 2} y={28} textAnchor="middle" fill="#94a3b8" fontSize={8}
+          <text key={`xl-${j}`} x={80 + j * CELL + CELL / 2} y={28} textAnchor="middle" fill="#b89aa8" fontSize={8}
             transform={`rotate(-45, ${80 + j * CELL + CELL / 2}, 28)`}>
             {items[j]?.slice(-6)}
           </text>
@@ -73,7 +73,7 @@ const Q3Heatmap: React.FC<{ items: string[]; matrix: number[][] }> = ({ items, m
           Array.from({ length: n }, (_, j) => {
             const val = matrix[i]?.[j];
             if (val === undefined || isNaN(val)) return null;
-            const color = i === j ? "#334155" : q3Color(val);
+            const color = i === j ? "#4f3a45" : q3Color(val);
             return (
               <rect key={`${i}-${j}`}
                 x={80 + j * CELL} y={40 + i * CELL}
@@ -232,16 +232,16 @@ export const LocalItemDependencePanel: React.FC = () => {
                   {displayPairs.map((p, idx) => (
                     <tr key={idx} className="border-t border-slate-700 hover:bg-slate-700/30">
                       <td className="px-2 py-1.5 text-slate-400 font-mono text-[10px]">{p.itemA.slice(-10)}</td>
-                      <td className="px-2 py-1.5 font-medium text-xs" style={{ color: SKILL_COLORS[p.skillA] ?? "#94a3b8" }}>{p.skillA}</td>
+                      <td className="px-2 py-1.5 font-medium text-xs" style={{ color: SKILL_COLORS[p.skillA] ?? "#b89aa8" }}>{p.skillA}</td>
                       <td className="px-2 py-1.5">
-                        <span className="px-1 py-0.5 rounded text-[10px] text-white font-semibold" style={{ backgroundColor: CEFR_BG[p.cefrA] ?? "#475569" }}>
+                        <span className="px-1 py-0.5 rounded text-[10px] text-white font-semibold" style={{ backgroundColor: CEFR_BG[p.cefrA] ?? "#6b5560" }}>
                           {p.cefrA.replace("_", "")}
                         </span>
                       </td>
                       <td className="px-2 py-1.5 text-slate-400 font-mono text-[10px]">{p.itemB.slice(-10)}</td>
-                      <td className="px-2 py-1.5 font-medium text-xs" style={{ color: SKILL_COLORS[p.skillB] ?? "#94a3b8" }}>{p.skillB}</td>
+                      <td className="px-2 py-1.5 font-medium text-xs" style={{ color: SKILL_COLORS[p.skillB] ?? "#b89aa8" }}>{p.skillB}</td>
                       <td className="px-2 py-1.5">
-                        <span className="px-1 py-0.5 rounded text-[10px] text-white font-semibold" style={{ backgroundColor: CEFR_BG[p.cefrB] ?? "#475569" }}>
+                        <span className="px-1 py-0.5 rounded text-[10px] text-white font-semibold" style={{ backgroundColor: CEFR_BG[p.cefrB] ?? "#6b5560" }}>
                           {p.cefrB.replace("_", "")}
                         </span>
                       </td>

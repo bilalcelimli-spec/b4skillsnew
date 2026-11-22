@@ -12,7 +12,7 @@ interface Props {
 const SECTIONS = [
   {
     id: "cat",
-    icon: <BrainCircuit size={22} className="text-[#9b276c]" />,
+    icon: <BrainCircuit size={22} className="text-[#ad024c]" />,
     title: "Computerised Adaptive Testing (CAT)",
     body: `The adaptive engine selects questions using the current ability estimate (θ), item information, skill coverage and exposure constraints. Objective items use IRT parameters for discrimination, difficulty and guessing. EAP estimation updates ability as scored evidence becomes available.
 
@@ -21,7 +21,7 @@ Testing stops according to each product’s precision targets, section coverage 
   {
     id: "cefr",
     title: "CEFR Alignment",
-    icon: <BarChart3 size={22} className="text-[#9b276c]" />,
+    icon: <BarChart3 size={22} className="text-[#ad024c]" />,
     body: `b4skills reports levels aligned to the CEFR using configured θ thresholds and CEFR-based task descriptors. Alignment is an intended interpretation of the assessment, not certification or endorsement by the Council of Europe.
 
 Active item status does not by itself establish empirical calibration. Parameters and level thresholds may be provisional. Independent standard-setting and external validity evidence must be demonstrated separately; current evidence is shown on the Research page.`,
@@ -29,7 +29,7 @@ Active item status does not by itself establish empirical calibration. Parameter
   {
     id: "ai-scoring",
     title: "AI Scoring & Human Review",
-    icon: <ShieldCheck size={22} className="text-[#9b276c]" />,
+    icon: <ShieldCheck size={22} className="text-[#ad024c]" />,
     body: `Full assessments support AI-assisted scoring of writing and speaking against CEFR-based rubrics. Assessment scoring uses OpenAI. Speaking audio may be transcribed before evaluation.
 
 Responses requiring review are held for human assessment rather than treated as final scored evidence. We do not claim a published human–AI agreement coefficient. The free Quick Check does not evaluate open writing or speaking responses; its level is a provisional estimate from objectively scored responses.`,
@@ -37,7 +37,7 @@ Responses requiring review are held for human assessment rather than treated as 
   {
     id: "fairness",
     title: "Fairness & Bias Monitoring",
-    icon: <Users size={22} className="text-[#9b276c]" />,
+    icon: <Users size={22} className="text-[#ad024c]" />,
     body: `The platform includes tools for item analysis, exposure control, person-fit checks and Mantel-Haenszel DIF screening. These tools can support item review when sufficient response and demographic data are available.
 
 Their presence does not establish that a study has been completed or that an assessment is free of bias. Monitoring signals require contextual review and should not be treated as proof of misconduct.`,
@@ -45,7 +45,7 @@ Their presence does not establish that a study has been completed or that an ass
   {
     id: "item-types",
     title: "Question Types & Constructs",
-    icon: <BookOpen size={22} className="text-[#9b276c]" />,
+    icon: <BookOpen size={22} className="text-[#ad024c]" />,
     body: `Reading and listening tasks use selected-response or structured formats to assess comprehension. Grammar and vocabulary tasks assess language use. Writing and speaking tasks collect constructed responses where supported by the assessment configuration.
 
 Question counts, task formats and scored skill coverage vary by product. The free Quick Check includes six skill areas, but open writing and speaking responses are not evaluated or included in its provisional level.`,
@@ -53,7 +53,7 @@ Question counts, task formats and scored skill coverage vary by product. The fre
   {
     id: "rubrics",
     title: "AI Scoring Rubric Dimensions",
-    icon: <Sliders size={22} className="text-[#9b276c]" />,
+    icon: <Sliders size={22} className="text-[#ad024c]" />,
     body: `AI-assisted writing and speaking scoring uses CEFR-based rubric dimensions such as task achievement, grammatical range and accuracy, lexical resource, coherence, and speaking fluency where supported.
 
 Dimensions, weights, providers and review thresholds depend on the scoring configuration. Model agreement is not a substitute for independent validation against human ratings; no numerical agreement claim is made here.`,
@@ -61,7 +61,7 @@ Dimensions, weights, providers and review thresholds depend on the scoring confi
   {
     id: "concordance",
     title: "External Score Concordance",
-    icon: <BarChart3 size={22} className="text-[#9b276c]" />,
+    icon: <BarChart3 size={22} className="text-[#ad024c]" />,
     body: `No independently validated conversion between b4skills scores and IELTS, TOEFL, Cambridge or Pearson scores is claimed. Sharing a CEFR label does not make scores interchangeable or establish equivalent admission requirements.
 
 Any external score references are contextual only. The receiving institution decides which assessments and evidence it accepts. Current paired external-test observations, including an insufficient or empty sample, are disclosed on the Research page.`,
@@ -69,7 +69,7 @@ Any external score references are contextual only. The receiving institution dec
   {
     id: "validity",
     title: "Score Validity & Certificates",
-    icon: <CheckCircle2 size={22} className="text-[#9b276c]" />,
+    icon: <CheckCircle2 size={22} className="text-[#ad024c]" />,
     body: `b4skills issues its own assessment reports and certificates. Certificate status can be checked using the verification page; verification establishes the status of a b4skills record, not accreditation or acceptance by another institution.
 
 Reliability and validity are separate questions. The Research page distinguishes descriptive IRT marginal reliability from Cronbach alpha and does not infer reliability from item discrimination.
@@ -116,11 +116,11 @@ export const MethodologyPage: React.FC<Props> = ({ onBack, onStart }) => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] font-sans text-slate-800">
+    <div className="min-h-screen bg-[#fcf8fa] font-sans text-slate-800">
       <SiteNav />
 
       {/* Hero */}
-      <section className="bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white pt-32 pb-24 px-6 text-center">
+      <section className="bg-gradient-to-br from-[#24101a] via-[#1e1b4b] to-[#ad024c] text-white pt-32 pb-24 px-6 text-center">
         <div className="max-w-3xl mx-auto">
           <p className="text-xs font-black tracking-[0.25em] uppercase text-indigo-300 mb-4">Transparency</p>
           <h1 className="text-4xl md:text-5xl font-black leading-tight mb-6">Assessment Methodology</h1>

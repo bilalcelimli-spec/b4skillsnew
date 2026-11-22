@@ -38,13 +38,13 @@ interface NormingPayload {
 
 const CEFR_ORDER = ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"];
 const CEFR_COLORS: Record<string, string> = {
-  PRE_A1: "#94a3b8", A1: "#64748b", A2: "#6366f1", B1: "#3b82f6",
+  PRE_A1: "#b89aa8", A1: "#806571", A2: "#c81e66", B1: "#3b82f6",
   B2: "#06b6d4", C1: "#10b981", C2: "#f59e0b",
 };
 const STANINE_LABELS = ["", "Very Low", "Low", "Below Avg", "Below Avg", "Average", "Above Avg", "Above Avg", "High", "Very High"];
 
 function StanineBar({ row }: { row: { stanine: number; pct: number } }) {
-  const color = row.stanine <= 2 ? "#ef4444" : row.stanine <= 4 ? "#f59e0b" : row.stanine === 5 ? "#6366f1" : row.stanine <= 7 ? "#06b6d4" : "#10b981";
+  const color = row.stanine <= 2 ? "#ef4444" : row.stanine <= 4 ? "#f59e0b" : row.stanine === 5 ? "#c81e66" : row.stanine <= 7 ? "#06b6d4" : "#10b981";
   return (
     <div className="flex items-center gap-2 text-xs">
       <span className="w-5 text-center font-bold" style={{ color }}>{row.stanine}</span>
@@ -66,7 +66,7 @@ function TScoreChart({ data }: { data: { bin: string; count: number; pct: number
         {data.map((d) => {
           const h = (d.count / max) * 100;
           const t = parseFloat(d.bin);
-          const color = t >= 40 && t <= 60 ? "#6366f1" : t >= 30 && t < 40 ? "#f59e0b" : t > 60 && t <= 70 ? "#06b6d4" : "#ef4444";
+          const color = t >= 40 && t <= 60 ? "#c81e66" : t >= 30 && t < 40 ? "#f59e0b" : t > 60 && t <= 70 ? "#06b6d4" : "#ef4444";
           return (
             <div key={d.bin} className="flex-1 flex flex-col items-center">
               <div className="w-full rounded-t transition-all" style={{ height: `${h}%`, minHeight: d.count > 0 ? 2 : 0, background: color }} />
@@ -111,7 +111,7 @@ export function ScoreNormingPanel() {
 
   const kpiCards = data
     ? [
-        { label: "Sessions", value: data.totalSessions, icon: <Users size={16} />, color: "#6366f1", fmt: (v: number) => v.toLocaleString() },
+        { label: "Sessions", value: data.totalSessions, icon: <Users size={16} />, color: "#c81e66", fmt: (v: number) => v.toLocaleString() },
         { label: "Norm Points", value: data.normTable.length, icon: <Database size={16} />, color: "#8b5cf6", fmt: (v: number) => v.toString() },
         { label: "CEFR Groups", value: data.byCefr.length, icon: <BarChart3 size={16} />, color: "#06b6d4", fmt: (v: number) => v.toString() },
         { label: "Stanine Bands", value: data.stanineTable.length, icon: <CheckCircle2 size={16} />, color: "#10b981", fmt: (v: number) => v.toString() },
@@ -189,7 +189,7 @@ export function ScoreNormingPanel() {
                     <tr key={row.theta} className="border-b border-slate-800 hover:bg-slate-800/50">
                       <td className="py-1.5 pr-4 text-right font-mono">{row.theta.toFixed(1)}</td>
                       <td className="py-1.5 pr-4">
-                        <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: (CEFR_COLORS[row.cefrLevel] ?? "#64748b") + "22", color: CEFR_COLORS[row.cefrLevel] ?? "#94a3b8" }}>
+                        <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: (CEFR_COLORS[row.cefrLevel] ?? "#806571") + "22", color: CEFR_COLORS[row.cefrLevel] ?? "#b89aa8" }}>
                           {row.cefrLevel}
                         </span>
                       </td>
@@ -226,7 +226,7 @@ export function ScoreNormingPanel() {
                   {data.byCefr.slice().sort((a, b) => CEFR_ORDER.indexOf(a.cefrLabel) - CEFR_ORDER.indexOf(b.cefrLabel)).map((row) => (
                     <tr key={row.cefrLabel} className="border-b border-slate-800 hover:bg-slate-800/50">
                       <td className="py-2 pr-4">
-                        <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: (CEFR_COLORS[row.cefrLabel] ?? "#64748b") + "22", color: CEFR_COLORS[row.cefrLabel] ?? "#94a3b8" }}>
+                        <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: (CEFR_COLORS[row.cefrLabel] ?? "#806571") + "22", color: CEFR_COLORS[row.cefrLabel] ?? "#b89aa8" }}>
                           {row.cefrLabel}
                         </span>
                       </td>
@@ -289,7 +289,7 @@ export function ScoreNormingPanel() {
             <div className="mt-3 grid grid-cols-2 gap-3">
               {data.byCefr.slice().sort((a, b) => CEFR_ORDER.indexOf(a.cefrLabel) - CEFR_ORDER.indexOf(b.cefrLabel)).map((row) => (
                 <div key={row.cefrLabel} className="bg-slate-800 rounded-xl p-3 border border-slate-700 flex items-center gap-3">
-                  <span className="px-2 py-0.5 rounded text-xs font-medium shrink-0" style={{ background: (CEFR_COLORS[row.cefrLabel] ?? "#64748b") + "22", color: CEFR_COLORS[row.cefrLabel] ?? "#94a3b8" }}>
+                  <span className="px-2 py-0.5 rounded text-xs font-medium shrink-0" style={{ background: (CEFR_COLORS[row.cefrLabel] ?? "#806571") + "22", color: CEFR_COLORS[row.cefrLabel] ?? "#b89aa8" }}>
                     {row.cefrLabel}
                   </span>
                   <div className="text-xs text-slate-400">T = <span className="font-mono text-white">{row.meanTScore.toFixed(1)}</span> ± <span className="font-mono text-slate-300">{row.sdTScore.toFixed(1)}</span></div>

@@ -75,7 +75,7 @@ const SKILL_META: Record<DemoSkill, { label: string; icon: React.ReactNode; colo
 // Marker highlight component
 const Highlight = ({ children, className }: { children: React.ReactNode, className?: string }) => (
   <span className={cn("relative inline-block whitespace-nowrap mx-1", className)}>
-    <span className="absolute inset-y-1 -inset-x-2 bg-[#9b276c] -skew-x-[12deg] -z-10 rounded-sm" />
+    <span className="absolute inset-y-1 -inset-x-2 bg-[#ad024c] -skew-x-[12deg] -z-10 rounded-sm" />
     <span className="relative z-10 text-white">{children}</span>
   </span>
 );
@@ -110,7 +110,7 @@ const SampleQuestionDemo: React.FC<{ onStartFullTest: () => void }> = ({ onStart
       <div className="max-w-7xl mx-auto px-6">
         {/* Section header */}
         <div className="text-center mb-10">
-          <p className="text-xs font-black uppercase tracking-widest text-[#9b276c] mb-3">Interactive Preview</p>
+          <p className="text-xs font-black uppercase tracking-widest text-[#ad024c] mb-3">Interactive Preview</p>
           <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4 tracking-tight">
             Try a Real Adaptive Question
           </h2>
@@ -148,7 +148,7 @@ const SampleQuestionDemo: React.FC<{ onStartFullTest: () => void }> = ({ onStart
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#9b276c] text-white flex items-center justify-center text-sm font-black">Q</div>
+                <div className="w-8 h-8 rounded-lg bg-[#ad024c] text-white flex items-center justify-center text-sm font-black">Q</div>
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">
                     {activeSkill.charAt(0).toUpperCase() + activeSkill.slice(1)} · Level {q.cefrBand}
@@ -167,7 +167,7 @@ const SampleQuestionDemo: React.FC<{ onStartFullTest: () => void }> = ({ onStart
                         answered && l === q.nextBand
                           ? "bg-emerald-500 text-white scale-110"
                           : l === q.cefrBand && !answered
-                          ? "bg-[#9b276c] text-white"
+                          ? "bg-[#ad024c] text-white"
                           : "text-slate-400"
                       )}
                     >
@@ -201,7 +201,7 @@ const SampleQuestionDemo: React.FC<{ onStartFullTest: () => void }> = ({ onStart
                     else if (isSelected && !isRight) style = "border-red-400 bg-red-50 cursor-default";
                     else style = "border-slate-200 bg-white opacity-60 cursor-default";
                   } else if (isSelected) {
-                    style = "border-[#9b276c] bg-[#9b276c]/5 cursor-pointer";
+                    style = "border-[#ad024c] bg-[#ad024c]/5 cursor-pointer";
                   }
                   return (
                     <div
@@ -213,7 +213,7 @@ const SampleQuestionDemo: React.FC<{ onStartFullTest: () => void }> = ({ onStart
                         "w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shrink-0",
                         answered && isRight ? "bg-emerald-500 text-white" :
                         answered && isSelected && !isRight ? "bg-red-400 text-white" :
-                        isSelected ? "bg-[#9b276c] text-white" :
+                        isSelected ? "bg-[#ad024c] text-white" :
                         "bg-slate-100 text-slate-500"
                       )}>
                         {opt.letter}
@@ -257,7 +257,7 @@ const SampleQuestionDemo: React.FC<{ onStartFullTest: () => void }> = ({ onStart
           <div className="text-center mt-8">
             <button
               onClick={onStartFullTest}
-              className="inline-flex items-center gap-3 bg-[#9b276c] hover:bg-[#7d1f57] text-white px-8 py-4 rounded-full text-base font-bold shadow-lg shadow-[#9b276c]/30 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#9b276c]/40"
+              className="button-depth rounded-2xl px-8 py-4 text-base"
             >
               <Zap size={18} />
               Take the Full Adaptive Test — Free
@@ -275,7 +275,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
   const [showFreemiumTest, setShowFreemiumTest] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] font-sans text-slate-800 overflow-x-hidden">
+    <div className="min-h-screen bg-[#fcf8fa] font-sans text-slate-800 overflow-x-hidden">
       {/* Freemium Test Widget Overlay */}
       <AnimatePresence>
         {showFreemiumTest && (
@@ -289,6 +289,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
       <SiteNav />
 
       {/* ─── HERO ─── */}
+      <div className="hero-surface">
       <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 px-6 max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-12">
         <div className="lg:w-1/2 z-10 relative">
           <motion.h1 
@@ -311,13 +312,13 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
           >
             <p className="text-sm font-bold tracking-wide text-slate-400 mb-6">We specialize in English assessments.</p>
             <div className="flex flex-wrap gap-4">
-              <a href="/schools" className="flex items-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm px-5 py-3 rounded-full text-sm font-bold text-slate-700 transition-transform hover:-translate-y-0.5">
+              <a href="/schools" className="flex items-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 shadow-soft px-5 py-3 rounded-full text-sm font-bold text-slate-700 transition-transform hover:-translate-y-0.5">
                 For Schools <div className="bg-purple-600 text-white rounded-full p-1"><ChevronRight size={14}/></div>
               </a>
-              <a href="/academia" className="flex items-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm px-5 py-3 rounded-full text-sm font-bold text-slate-700 transition-transform hover:-translate-y-0.5">
+              <a href="/academia" className="flex items-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 shadow-soft px-5 py-3 rounded-full text-sm font-bold text-slate-700 transition-transform hover:-translate-y-0.5">
                 Academic <div className="bg-blue-600 text-white rounded-full p-1"><ChevronRight size={14}/></div>
               </a>
-              <a href="/corporate" className="flex items-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm px-5 py-3 rounded-full text-sm font-bold text-slate-700 transition-transform hover:-translate-y-0.5">
+              <a href="/corporate" className="flex items-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 shadow-soft px-5 py-3 rounded-full text-sm font-bold text-slate-700 transition-transform hover:-translate-y-0.5">
                 Corporate Solutions <div className="bg-slate-900 text-white rounded-full p-1"><ChevronRight size={14}/></div>
               </a>
             </div>
@@ -329,7 +330,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
             >
               <button
                 onClick={() => setShowFreemiumTest(true)}
-                className="flex items-center gap-3 bg-[#9b276c] hover:bg-[#7d1f57] text-white px-6 py-3.5 rounded-full text-sm font-bold shadow-lg shadow-[#9b276c]/30 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#9b276c]/40"
+                className="button-depth rounded-2xl px-6 py-3.5 text-base"
               >
                 <Zap size={16} />
                 Test Your Level — Free
@@ -344,7 +345,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
           initial={{ opacity: 1, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }}
           className="lg:w-1/2 w-full relative pl-0 lg:pl-10"
         >
-          <div className="aspect-[4/3] w-full rounded-[2.5rem] overflow-hidden relative shadow-2xl">
+          <div className="aspect-[4/3] w-full rounded-[2.5rem] overflow-hidden relative shadow-float">
             <div className="absolute inset-0 bg-gradient-to-tr from-slate-900/20 to-transparent z-10" />
             <img 
               src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" 
@@ -353,8 +354,8 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
             />
           </div>
           {/* Floating badge */}
-          <div className="absolute -bottom-6 -left-2 bg-white p-5 rounded-2xl shadow-xl border border-slate-100 flex items-center gap-4 z-20">
-            <div className="w-12 h-12 bg-[#ae397d] rounded-full flex items-center justify-center text-white">
+          <div className="absolute -bottom-6 -left-2 bg-white p-5 rounded-3xl shadow-float border border-slate-100 flex items-center gap-4 z-20">
+            <div className="w-12 h-12 bg-[#c81e66] rounded-full flex items-center justify-center text-white">
               <Check size={24} strokeWidth={3} />
             </div>
             <div>
@@ -364,9 +365,10 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
           </div>
         </motion.div>
       </section>
+      </div>
 
       {/* ─── FREE PLACEMENT TEST SECTION ─── */}
-      <section className="py-16 bg-gradient-to-br from-[#9b276c] to-[#7d1f57] relative overflow-hidden">
+      <section className="py-16 card-feature relative overflow-hidden">
         <div className="absolute inset-0 opacity-10 pointer-events-none">
           <div className="absolute top-0 left-1/4 w-96 h-96 bg-white rounded-full blur-3xl" />
           <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-white rounded-full blur-2xl" />
@@ -392,7 +394,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
           <div className="flex-shrink-0">
             <button
               onClick={() => setShowFreemiumTest(true)}
-              className="flex items-center gap-3 bg-white text-[#9b276c] font-black text-base px-8 py-4 rounded-2xl shadow-2xl hover:shadow-white/30 transition-all hover:-translate-y-1 hover:scale-105"
+              className="button-depth rounded-2xl px-8 py-4 text-base"
             >
               <Zap size={20} />
               Start Free Test
@@ -406,7 +408,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
       {/* ─── BENTO BOX FEATURES (Redesigned) ─── */}
       <section className="py-28 bg-slate-50 relative overflow-hidden" id="solutions">
         {/* Background glow effects */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-[#9b276c]/10 blur-[120px] rounded-full pointer-events-none" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-[#ad024c]/10 blur-[120px] rounded-full pointer-events-none" />
         
         <div className="max-w-7xl mx-auto px-6 relative z-10">
           <div className="text-center mb-16 md:mb-20">
@@ -425,22 +427,22 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
               <div className="absolute -right-6 -bottom-6 opacity-[0.03] group-hover:opacity-10 group-hover:scale-110 transition-all duration-700 pointer-events-none">
                 <BrainCircuit size={280} />
               </div>
-              <div className="w-14 h-14 bg-slate-900 text-[#9b276c] rounded-2xl flex items-center justify-center mb-8 shadow-md">
+              <div className="w-14 h-14 bg-slate-900 text-[#ad024c] rounded-2xl flex items-center justify-center mb-8 shadow-md">
                 <BrainCircuit size={28} />
               </div>
               <h3 className="text-2xl md:text-3xl font-bold mb-4 text-slate-900 pr-10">Dynamic IRT Calibration</h3>
               <p className="text-slate-600 leading-relaxed text-[17px] max-w-lg mb-8">
                 Our engine recalculates candidate ability (θ) after every single interaction using the 3-Parameter Logistic model. The result? A highly precise CEFR level in a fraction of the time of traditional exams.
               </p>
-              <div className="inline-flex items-center gap-2 text-sm font-bold text-slate-900 tracking-wide uppercase border-b-2 border-[#9b276c] pb-0.5 group-hover:text-[#9b276c] transition-colors">
+              <div className="inline-flex items-center gap-2 text-sm font-bold text-slate-900 tracking-wide uppercase border-b-2 border-[#ad024c] pb-0.5 group-hover:text-[#ad024c] transition-colors">
                 Explore The Algorithm <ChevronRight size={16} />
               </div>
             </div>
 
             {/* Bento Card 2: Proctoring (Tall/Square) */}
             <div className="md:col-span-1 bg-slate-900 text-white rounded-3xl p-8 md:p-12 shadow-xl shadow-slate-900/20 relative overflow-hidden group hover:-translate-y-1 transition-transform duration-500">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-[#9b276c]/20 rounded-bl-full blur-2xl" />
-              <div className="w-14 h-14 bg-white/10 backdrop-blur-md text-[#9b276c] border border-white/10 rounded-2xl flex items-center justify-center mb-8">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-[#ad024c]/20 rounded-bl-full blur-2xl" />
+              <div className="w-14 h-14 bg-white/10 backdrop-blur-md text-[#ad024c] border border-white/10 rounded-2xl flex items-center justify-center mb-8">
                 <Target size={28} />
               </div>
               <h3 className="text-2xl font-bold mb-4 leading-tight">Zero-Trust<br/>Proctoring</h3>
@@ -457,8 +459,8 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
             </div>
 
             {/* Bento Card 3: Enterprise (Square) */}
-            <div className="md:col-span-1 bg-[#9b276c] rounded-3xl p-8 md:p-12 shadow-xl relative overflow-hidden group hover:bg-[#ae397d] transition-colors duration-500 flex flex-col justify-between">
-              <div className="w-14 h-14 bg-slate-900 text-[#9b276c] rounded-2xl flex items-center justify-center mb-8 shadow-lg">
+            <div className="md:col-span-1 bg-[#ad024c] rounded-3xl p-8 md:p-12 shadow-xl relative overflow-hidden group hover:bg-[#c81e66] transition-colors duration-500 flex flex-col justify-between">
+              <div className="w-14 h-14 bg-slate-900 text-[#ad024c] rounded-2xl flex items-center justify-center mb-8 shadow-lg">
                 <FileCheck2 size={28} />
               </div>
               <div>
@@ -536,7 +538,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
                   {
                     title: "Engaging Experience",
                     text: "Interactive navigation and user-friendly flows keep learners motivated and focused.",
-                    icon: <Zap size={20} className="text-[#9b276c]" />,
+                    icon: <Zap size={20} className="text-[#ad024c]" />,
                     bg: "bg-[#fdf2f8]"
                   }
                 ].map((feature, i) => (
@@ -696,7 +698,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
           <div className="md:w-1/2 w-full">
             <div className="relative">
               {/* Graphic background shape */}
-              <div className="absolute -inset-4 bg-[#9b276c] -z-10 rounded-br-[6rem] rounded-tl-[6rem] opacity-20 transform rotate-3" />
+              <div className="absolute -inset-4 bg-[#ad024c] -z-10 rounded-br-[6rem] rounded-tl-[6rem] opacity-20 transform rotate-3" />
               <img 
                 src="https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80" 
                 alt="Modular testing" 
@@ -744,12 +746,12 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
         <div className="absolute inset-0 opacity-40">
           <img src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" alt="Tech" className="w-full h-full object-cover mix-blend-overlay filter grayscale" />
         </div>
-        <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-[#9b276c] to-transparent opacity-80" style={{ clipPath: 'polygon(100% 0, 100% 100%, 20% 100%, 80% 0)' }} />
+        <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-[#ad024c] to-transparent opacity-80" style={{ clipPath: 'polygon(100% 0, 100% 100%, 20% 100%, 80% 0)' }} />
         
         <div className="relative z-10 max-w-7xl mx-auto px-6 text-white pt-10 pb-16">
           <h2 className="text-4xl md:text-6xl font-black mb-6 tracking-tight leading-[1.15] max-w-3xl">
             Next-Gen Architecture, <br />
-            Unbounded <Highlight className="text-white before:bg-[#9b276c]">Potential</Highlight>
+            Unbounded <Highlight className="text-white before:bg-[#ad024c]">Potential</Highlight>
           </h2>
           <p className="text-xl text-slate-100 mt-6 max-w-2xl font-medium leading-relaxed opacity-90">
             Fusing cognitive science with advanced machine learning, we deliver a paradigm shift in precise language assessment for modern institutions and ambitious learners.
@@ -763,7 +765,7 @@ export const LandingPage: React.FC<{ onStart: () => void, onCodeEntry?: () => vo
       <section id="contact" className="py-20 px-6 bg-slate-50 text-center">
         <h2 className="text-3xl font-bold text-slate-900 mb-4">Contact b4skills</h2>
         <p className="text-slate-600 mb-6">Discuss institutional assessments, integrations, or a custom platform.</p>
-        <a href="mailto:hello@b4skills.com" className="font-semibold text-[#9b276c] underline">hello@b4skills.com</a>
+        <a href="mailto:hello@b4skills.com" className="font-semibold text-[#ad024c] underline">hello@b4skills.com</a>
         <p className="mt-6"><a href="/verify" className="text-sm text-slate-600 underline">Verify a b4skills certificate</a></p>
       </section>
 

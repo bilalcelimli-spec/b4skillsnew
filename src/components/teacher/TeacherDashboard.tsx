@@ -55,7 +55,7 @@ const TREND_ICON: Record<string, string> = {
 
 const TREND_COLOR: Record<string, string> = {
   improving: "#22c55e",
-  stable: "#64748b",
+  stable: "#806571",
   declining: "#ef4444",
 };
 
@@ -342,7 +342,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
   if (loading) return (
     <div role="status" aria-live="polite" style={{ display: "flex", justifyContent: "center", padding: "48px" }}>
-      <div style={{ color: "#64748b" }}>Loading dashboard…</div>
+      <div style={{ color: "#806571" }}>Loading dashboard…</div>
     </div>
   );
 
@@ -357,10 +357,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   return (
     <div style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto", fontFamily: "system-ui, sans-serif" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
-        <h1 style={{ fontSize: "24px", fontWeight: 700, color: "#0f172a", margin: 0 }}>
+        <h1 style={{ fontSize: "24px", fontWeight: 700, color: "#24101a", margin: 0 }}>
           Teacher Dashboard
         </h1>
-        <div role="tablist" style={{ display: "flex", gap: "4px", background: "#f1f5f9", borderRadius: "8px", padding: "4px" }}>
+        <div role="tablist" style={{ display: "flex", gap: "4px", background: "#f8f0f4", borderRadius: "8px", padding: "4px" }}>
           {(["students", "classes", "assignments"] as const).map((tab) => (
             <button
               key={tab}
@@ -370,7 +370,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               style={{
                 padding: "6px 16px", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "14px", fontWeight: 500,
                 background: activeTab === tab ? "#fff" : "transparent",
-                color: activeTab === tab ? "#0f172a" : "#64748b",
+                color: activeTab === tab ? "#24101a" : "#806571",
                 boxShadow: activeTab === tab ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
               }}
             >
@@ -384,7 +384,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       {activeTab === "classes" && (
         <div>
           {/* Create class */}
-          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "20px", marginBottom: "20px" }}>
+          <div style={{ background: "#fff", border: "1px solid #f0dfe6", borderRadius: "12px", padding: "20px", marginBottom: "20px" }}>
             <h2 style={{ fontSize: "16px", fontWeight: 600, margin: "0 0 12px" }}>Create New Class</h2>
             <div style={{ display: "flex", gap: "8px" }}>
               <input
@@ -394,7 +394,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 value={newClassName}
                 onChange={(e) => setNewClassName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleCreateClass()}
-                style={{ flex: 1, padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: "6px", fontSize: "14px" }}
+                style={{ flex: 1, padding: "8px 12px", border: "1px solid #f0dfe6", borderRadius: "6px", fontSize: "14px" }}
               />
               <button
                 onClick={handleCreateClass}
@@ -407,16 +407,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           </div>
 
           {/* Class list */}
-          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "20px" }}>
+          <div style={{ background: "#fff", border: "1px solid #f0dfe6", borderRadius: "12px", padding: "20px" }}>
             <h2 style={{ fontSize: "16px", fontWeight: 600, margin: "0 0 16px" }}>Your Classes ({classes.length})</h2>
             {classLoading ? (
-              <div style={{ color: "#64748b", padding: "24px", textAlign: "center" }}>Loading classes…</div>
+              <div style={{ color: "#806571", padding: "24px", textAlign: "center" }}>Loading classes…</div>
             ) : classes.length === 0 ? (
-              <div style={{ color: "#94a3b8", padding: "24px", textAlign: "center" }}>No classes yet. Create one above.</div>
+              <div style={{ color: "#b89aa8", padding: "24px", textAlign: "center" }}>No classes yet. Create one above.</div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "12px" }}>
                 {classes.map((cls) => (
-                  <div key={cls.id} style={{ border: "1px solid #e2e8f0", borderRadius: "10px", padding: "16px" }}>
+                  <div key={cls.id} style={{ border: "1px solid #f0dfe6", borderRadius: "10px", padding: "16px" }}>
                     <div
                       style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", cursor: "pointer" }}
                       onClick={async () => {
@@ -434,16 +434,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                         }
                       }}
                     >
-                      <div style={{ fontWeight: 600, color: "#0f172a", fontSize: "15px" }}>{cls.name}</div>
+                      <div style={{ fontWeight: 600, color: "#24101a", fontSize: "15px" }}>{cls.name}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "999px", background: cls.status === "ACTIVE" ? "#dcfce7" : "#f1f5f9", color: cls.status === "ACTIVE" ? "#16a34a" : "#64748b" }}>
+                        <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "999px", background: cls.status === "ACTIVE" ? "#dcfce7" : "#f8f0f4", color: cls.status === "ACTIVE" ? "#16a34a" : "#806571" }}>
                           {cls.status}
                         </span>
-                        <span style={{ fontSize: "12px", color: "#94a3b8" }}>{expandedClassId === cls.id ? "▲" : "▼"}</span>
+                        <span style={{ fontSize: "12px", color: "#b89aa8" }}>{expandedClassId === cls.id ? "▲" : "▼"}</span>
                       </div>
                     </div>
-                    {cls.description && <div style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>{cls.description}</div>}
-                    <div style={{ display: "flex", gap: "16px", marginTop: "12px", fontSize: "13px", color: "#64748b" }}>
+                    {cls.description && <div style={{ fontSize: "13px", color: "#806571", marginTop: "4px" }}>{cls.description}</div>}
+                    <div style={{ display: "flex", gap: "16px", marginTop: "12px", fontSize: "13px", color: "#806571" }}>
                       <span>{cls._count?.members ?? 0} students</span>
                       <span>{cls._count?.assignments ?? 0} assignments</span>
                     </div>
@@ -453,8 +453,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       const levels = ["A1","A2","B1","B2","C1","C2"];
                       const maxCount = Math.max(...Object.values(dist), 1);
                       return (
-                        <div style={{ marginTop: "12px", borderTop: "1px solid #f1f5f9", paddingTop: "12px" }}>
-                          <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "8px" }}>
+                        <div style={{ marginTop: "12px", borderTop: "1px solid #f8f0f4", paddingTop: "12px" }}>
+                          <div style={{ fontSize: "12px", color: "#806571", marginBottom: "8px" }}>
                             Assessed: {s.assessedCount}/{s.memberCount} · Avg θ: {s.averageTheta?.toFixed(2) ?? "—"}
                           </div>
                           <div style={{ display: "flex", gap: "4px", alignItems: "flex-end", height: "60px" }}>
@@ -462,9 +462,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                               const n = dist[lvl] ?? 0;
                               return (
                                 <div key={lvl} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
-                                  <div style={{ fontSize: "10px", color: "#64748b" }}>{n > 0 ? n : ""}</div>
-                                  <div style={{ width: "100%", height: `${Math.round((n / maxCount) * 44) + 4}px`, background: CEFR_COLOR[lvl] ?? "#e2e8f0", borderRadius: "3px 3px 0 0", minHeight: "4px" }} />
-                                  <div style={{ fontSize: "10px", color: "#64748b" }}>{lvl}</div>
+                                  <div style={{ fontSize: "10px", color: "#806571" }}>{n > 0 ? n : ""}</div>
+                                  <div style={{ width: "100%", height: `${Math.round((n / maxCount) * 44) + 4}px`, background: CEFR_COLOR[lvl] ?? "#f0dfe6", borderRadius: "3px 3px 0 0", minHeight: "4px" }} />
+                                  <div style={{ fontSize: "10px", color: "#806571" }}>{lvl}</div>
                                 </div>
                               );
                             })}
@@ -475,22 +475,22 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     {expandedClassId === cls.id && (() => {
                       const trend = classTrends[cls.id];
                       if (loadingTrends === cls.id) return (
-                        <div style={{ marginTop: "12px", borderTop: "1px solid #f1f5f9", paddingTop: "10px", fontSize: "12px", color: "#94a3b8" }}>Loading trends…</div>
+                        <div style={{ marginTop: "12px", borderTop: "1px solid #f8f0f4", paddingTop: "10px", fontSize: "12px", color: "#b89aa8" }}>Loading trends…</div>
                       );
                       if (!trend || trend.length === 0) return null;
                       const maxCount = Math.max(...trend.map(t => t.count), 1);
                       return (
-                        <div style={{ marginTop: "12px", borderTop: "1px solid #f1f5f9", paddingTop: "12px" }}>
-                          <div style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Progress Over Time</div>
+                        <div style={{ marginTop: "12px", borderTop: "1px solid #f8f0f4", paddingTop: "12px" }}>
+                          <div style={{ fontSize: "11px", fontWeight: 600, color: "#806571", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Progress Over Time</div>
                           <div style={{ display: "flex", gap: "4px", alignItems: "flex-end", height: "56px" }}>
                             {trend.map((t, i) => {
                               const h = Math.round((t.count / maxCount) * 44) + 4;
-                              const cefrColor = CEFR_COLOR[t.avgCefr ?? "B1"] ?? "#e2e8f0";
+                              const cefrColor = CEFR_COLOR[t.avgCefr ?? "B1"] ?? "#f0dfe6";
                               return (
                                 <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }} title={`${t.period}: ${t.count} sessions, avg ${t.avgCefr ?? "—"}`}>
-                                  <div style={{ fontSize: "9px", color: "#64748b" }}>{t.avgCefr ?? "—"}</div>
+                                  <div style={{ fontSize: "9px", color: "#806571" }}>{t.avgCefr ?? "—"}</div>
                                   <div style={{ width: "100%", height: `${h}px`, background: cefrColor, borderRadius: "2px 2px 0 0", opacity: 0.8 }} />
-                                  <div style={{ fontSize: "9px", color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%", textOverflow: "ellipsis" }}>{t.period.split(" ")[0]}</div>
+                                  <div style={{ fontSize: "9px", color: "#b89aa8", whiteSpace: "nowrap", overflow: "hidden", maxWidth: "100%", textOverflow: "ellipsis" }}>{t.period.split(" ")[0]}</div>
                                 </div>
                               );
                             })}
@@ -498,33 +498,33 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                         </div>
                       );
                     })()}
-                    <div style={{ marginTop: "12px", borderTop: "1px solid #f1f5f9", paddingTop: "12px" }}>
+                    <div style={{ marginTop: "12px", borderTop: "1px solid #f8f0f4", paddingTop: "12px" }}>
                       {/* Target CEFR */}
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                        <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 600 }}>Target:</span>
+                        <span style={{ fontSize: "11px", color: "#806571", fontWeight: 600 }}>Target:</span>
                         <select
                           value={cls.targetCefr ?? ""}
                           onChange={(e) => { e.stopPropagation(); handleSetTargetCefr(cls.id, e.target.value); }}
                           disabled={settingTarget === cls.id}
                           onClick={(e) => e.stopPropagation()}
-                          style={{ fontSize: "11px", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "2px 6px", background: "#fff", color: "#0f172a" }}
+                          style={{ fontSize: "11px", border: "1px solid #f0dfe6", borderRadius: "4px", padding: "2px 6px", background: "#fff", color: "#24101a" }}
                         >
                           <option value="">No target</option>
                           {["A1","A2","B1","B2","C1","C2"].map(l => <option key={l} value={l}>{l}</option>)}
                         </select>
-                        {settingTarget === cls.id && <span style={{ fontSize: "10px", color: "#94a3b8" }}>Saving…</span>}
+                        {settingTarget === cls.id && <span style={{ fontSize: "10px", color: "#b89aa8" }}>Saving…</span>}
                       </div>
                       {/* Actions */}
                       <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleLoadClassReport(cls.id); }}
-                          style={{ fontSize: "12px", color: "#0f172a", border: "1px solid #e2e8f0", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}
+                          style={{ fontSize: "12px", color: "#24101a", border: "1px solid #f0dfe6", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}
                         >
                           {loadingReport === cls.id ? "Loading…" : "📊 Class Report"}
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); downloadClassCsv(cls.id, cls.name, (msg) => toast({ title: "Export failed", description: msg, variant: "error" })); }}
-                          style={{ fontSize: "12px", color: "#4f46e5", border: "1px solid #e0e7ff", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}
+                          style={{ fontSize: "12px", color: "#ad024c", border: "1px solid #e0e7ff", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}
                         >
                           ↓ Export CSV
                         </button>
@@ -542,13 +542,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       {activeTab === "assignments" && (
         <div>
           {/* Create assignment */}
-          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "20px", marginBottom: "20px" }}>
+          <div style={{ background: "#fff", border: "1px solid #f0dfe6", borderRadius: "12px", padding: "20px", marginBottom: "20px" }}>
             <h2 style={{ fontSize: "14px", fontWeight: 600, margin: "0 0 12px" }}>New Assignment</h2>
             <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
               <select
                 value={newAssign.classId}
                 onChange={e => setNewAssign(a => ({ ...a, classId: e.target.value }))}
-                style={{ flex: "1 1 160px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
+                style={{ flex: "1 1 160px", border: "1px solid #f0dfe6", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
               >
                 <option value="">All classes (org-wide)</option>
                 {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -557,7 +557,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 aria-label="Assessment product"
                   value={newAssign.productLine}
                 onChange={e => setNewAssign(a => ({ ...a, productLine: e.target.value }))}
-                style={{ flex: "1 1 180px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
+                style={{ flex: "1 1 180px", border: "1px solid #f0dfe6", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
               >
                 <AssessmentProductOptions includeFixed={false}/>
               </select>
@@ -565,53 +565,53 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 type="datetime-local"
                 value={newAssign.openAt}
                 onChange={e => setNewAssign(a => ({ ...a, openAt: e.target.value }))}
-                style={{ flex: "1 1 160px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
+                style={{ flex: "1 1 160px", border: "1px solid #f0dfe6", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
                 title="Opens at (optional)"
               />
               <input
                 type="datetime-local"
                 value={newAssign.dueAt}
                 onChange={e => setNewAssign(a => ({ ...a, dueAt: e.target.value }))}
-                style={{ flex: "1 1 160px", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
+                style={{ flex: "1 1 160px", border: "1px solid #f0dfe6", borderRadius: "8px", padding: "8px 12px", fontSize: "14px" }}
                 title="Due date (optional)"
               />
               <button
                 onClick={handleCreateAssignment}
                 disabled={creatingAssign}
-                style={{ background: "#4f46e5", color: "#fff", border: "none", borderRadius: "8px", padding: "8px 20px", fontWeight: 600, fontSize: "14px", cursor: "pointer", opacity: creatingAssign ? 0.6 : 1 }}
+                style={{ background: "#ad024c", color: "#fff", border: "none", borderRadius: "8px", padding: "8px 20px", fontWeight: 600, fontSize: "14px", cursor: "pointer", opacity: creatingAssign ? 0.6 : 1 }}
               >
                 {creatingAssign ? "Creating…" : "Create"}
               </button>
             </div>
           </div>
           {/* Assignment list */}
-          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "20px" }}>
+          <div style={{ background: "#fff", border: "1px solid #f0dfe6", borderRadius: "12px", padding: "20px" }}>
             <h2 style={{ fontSize: "16px", fontWeight: 600, margin: "0 0 16px" }}>Assignments ({assignments.length})</h2>
             {assignLoading ? (
-              <div style={{ color: "#64748b", padding: "24px", textAlign: "center" }}>Loading…</div>
+              <div style={{ color: "#806571", padding: "24px", textAlign: "center" }}>Loading…</div>
             ) : assignments.length === 0 ? (
-              <div style={{ color: "#94a3b8", padding: "24px", textAlign: "center" }}>No assignments yet.</div>
+              <div style={{ color: "#b89aa8", padding: "24px", textAlign: "center" }}>No assignments yet.</div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "12px" }}>
                 {assignments.map(a => (
-                  <div key={a.id} style={{ border: "1px solid #e2e8f0", borderRadius: "10px", padding: "14px" }}>
+                  <div key={a.id} style={{ border: "1px solid #f0dfe6", borderRadius: "10px", padding: "14px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <div style={{ fontWeight: 600, fontSize: "14px", color: "#0f172a", marginBottom: "4px" }}>{assessmentDisplayName(a.productLine)}</div>
+                      <div style={{ fontWeight: 600, fontSize: "14px", color: "#24101a", marginBottom: "4px" }}>{assessmentDisplayName(a.productLine)}</div>
                       <span style={{
                         fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "999px",
-                        background: a.windowStatus === "OPEN" ? "#dcfce7" : a.windowStatus === "PENDING" ? "#fef9c3" : "#f1f5f9",
-                        color: a.windowStatus === "OPEN" ? "#16a34a" : a.windowStatus === "PENDING" ? "#a16207" : "#64748b",
+                        background: a.windowStatus === "OPEN" ? "#dcfce7" : a.windowStatus === "PENDING" ? "#fef9c3" : "#f8f0f4",
+                        color: a.windowStatus === "OPEN" ? "#16a34a" : a.windowStatus === "PENDING" ? "#a16207" : "#806571",
                       }}>
                         {a.windowStatus ?? "OPEN"}
                       </span>
                     </div>
-                    {a.class && <div style={{ fontSize: "12px", color: "#4f46e5" }}>{a.class.name}</div>}
-                    <div style={{ fontSize: "12px", color: "#64748b", marginTop: "6px" }}>
+                    {a.class && <div style={{ fontSize: "12px", color: "#ad024c" }}>{a.class.name}</div>}
+                    <div style={{ fontSize: "12px", color: "#806571", marginTop: "6px" }}>
                       {a.openAt ? `Opens: ${new Date(a.openAt).toLocaleString()}` : ""}
                       {a.openAt && a.dueAt ? " · " : ""}
                       {a.dueAt ? `Due: ${new Date(a.dueAt).toLocaleString()}` : "No due date"}
                     </div>
-                    <div style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
+                    <div style={{ fontSize: "12px", color: "#806571", marginTop: "4px" }}>
                       {a._count?.sessions ?? 0} started
                       {a.notStarted > 0 && <span style={{ color: "#f97316", marginLeft: "6px" }}>{a.notStarted} not started</span>}
                     </div>
@@ -636,9 +636,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             { label: "Avg CEFR Level", value: summary.averageCefrLevel, unit: "" },
             { label: "Learning Velocity", value: `+${summary.learningVelocity.toFixed(2)}`, unit: " θ/wk" },
           ].map((kpi) => (
-            <div key={kpi.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "20px" }}>
-              <div style={{ fontSize: "12px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>{kpi.label}</div>
-              <div style={{ fontSize: "28px", fontWeight: 700, color: "#0f172a", marginTop: "4px" }}>
+            <div key={kpi.label} style={{ background: "#fff", border: "1px solid #f0dfe6", borderRadius: "12px", padding: "20px" }}>
+              <div style={{ fontSize: "12px", color: "#806571", textTransform: "uppercase", letterSpacing: "0.05em" }}>{kpi.label}</div>
+              <div style={{ fontSize: "28px", fontWeight: 700, color: "#24101a", marginTop: "4px" }}>
                 {kpi.value}{kpi.unit}
               </div>
             </div>
@@ -648,7 +648,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
       {/* CEFR Distribution */}
       {summary && Object.keys(summary.cefrDistribution).length > 0 && (
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "20px", marginBottom: "24px" }}>
+        <div style={{ background: "#fff", border: "1px solid #f0dfe6", borderRadius: "12px", padding: "20px", marginBottom: "24px" }}>
           <h2 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "16px" }}>CEFR Distribution</h2>
           <div style={{ display: "flex", gap: "8px", alignItems: "flex-end", height: "80px" }}>
             {cefrLevels.map((level) => {
@@ -657,7 +657,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               const height = Math.round((count / max) * 70);
               return (
                 <div key={level} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
-                  <div style={{ fontSize: "11px", color: "#64748b" }}>{count}</div>
+                  <div style={{ fontSize: "11px", color: "#806571" }}>{count}</div>
                   <div
                     title={`${level}: ${count} students`}
                     style={{ width: "100%", height: `${height}px`, background: CEFR_COLOR[level], borderRadius: "4px 4px 0 0", minHeight: "4px" }}
@@ -671,7 +671,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       )}
 
       {/* Student Roster */}
-      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "20px" }}>
+      <div style={{ background: "#fff", border: "1px solid #f0dfe6", borderRadius: "12px", padding: "20px" }}>
         <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
           <h2 style={{ fontSize: "16px", fontWeight: 600, margin: 0, alignSelf: "center" }}>Students ({filtered.length})</h2>
           <input
@@ -680,13 +680,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             aria-label="Search students"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ flex: 1, minWidth: "200px", padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: "6px", fontSize: "14px" }}
+            style={{ flex: 1, minWidth: "200px", padding: "8px 12px", border: "1px solid #f0dfe6", borderRadius: "6px", fontSize: "14px" }}
           />
           <select
             aria-label="Filter by CEFR level"
             value={filterCefr}
             onChange={(e) => setFilterCefr(e.target.value)}
-            style={{ padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: "6px", fontSize: "14px" }}
+            style={{ padding: "8px 12px", border: "1px solid #f0dfe6", borderRadius: "6px", fontSize: "14px" }}
           >
             <option value="">All Levels</option>
             {cefrLevels.map((l) => <option key={l} value={l}>{l}</option>)}
@@ -696,7 +696,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }} role="table" aria-label="Student roster">
             <thead>
-              <tr style={{ borderBottom: "2px solid #e2e8f0" }}>
+              <tr style={{ borderBottom: "2px solid #f0dfe6" }}>
                 {[
                   { key: "name", label: "Name" },
                   { key: "cefrLevel", label: "CEFR" },
@@ -710,7 +710,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     key={key}
                     scope="col"
                     onClick={() => key !== "actions" && handleSort(key as keyof StudentRow)}
-                    style={{ textAlign: "left", padding: "10px 12px", cursor: key !== "actions" ? "pointer" : "default", userSelect: "none", color: "#64748b", fontWeight: 600, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}
+                    style={{ textAlign: "left", padding: "10px 12px", cursor: key !== "actions" ? "pointer" : "default", userSelect: "none", color: "#806571", fontWeight: 600, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}
                     aria-sort={sortBy === key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
                   >
                     {label} {key !== "actions" && sortBy === key ? (sortDir === "asc" ? "↑" : "↓") : ""}
@@ -721,18 +721,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>
+                  <td colSpan={7} style={{ padding: "24px", textAlign: "center", color: "#b89aa8" }}>
                     No students match your filters.
                   </td>
                 </tr>
               ) : filtered.map((s, i) => (
                 <tr
                   key={s.id}
-                  style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa" }}
+                  style={{ borderBottom: "1px solid #f8f0f4", background: i % 2 === 0 ? "#fff" : "#fafafa" }}
                 >
                   <td style={{ padding: "10px 12px" }}>
-                    <div style={{ fontWeight: 500, color: "#0f172a" }}>{s.name}</div>
-                    <div style={{ fontSize: "12px", color: "#94a3b8" }}>{s.email}</div>
+                    <div style={{ fontWeight: 500, color: "#24101a" }}>{s.name}</div>
+                    <div style={{ fontSize: "12px", color: "#b89aa8" }}>{s.email}</div>
                   </td>
                   <td style={{ padding: "10px 12px" }}>
                     <span style={{ background: CEFR_COLOR[s.cefrLevel] + "20", color: CEFR_COLOR[s.cefrLevel], padding: "2px 8px", borderRadius: "999px", fontWeight: 600, fontSize: "12px" }}>
@@ -741,7 +741,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   </td>
                   <td style={{ padding: "10px 12px", fontWeight: 600 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <div style={{ flex: 1, background: "#e2e8f0", borderRadius: "999px", height: "6px", maxWidth: "80px" }}>
+                      <div style={{ flex: 1, background: "#f0dfe6", borderRadius: "999px", height: "6px", maxWidth: "80px" }}>
                         <div style={{ width: `${s.overallScore}%`, background: "#3b82f6", height: "100%", borderRadius: "999px" }} />
                       </div>
                       {s.overallScore}
@@ -752,8 +752,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       {TREND_ICON[s.trend]}
                     </span>
                   </td>
-                  <td style={{ padding: "10px 12px", color: "#334155" }}>{s.sessionsCompleted}</td>
-                  <td style={{ padding: "10px 12px", color: "#64748b" }}>{s.lastActivity}</td>
+                  <td style={{ padding: "10px 12px", color: "#4f3a45" }}>{s.sessionsCompleted}</td>
+                  <td style={{ padding: "10px 12px", color: "#806571" }}>{s.lastActivity}</td>
                   <td style={{ padding: "10px 12px" }}>
                     {s.sessionsCompleted > 0 && (
                       <button
@@ -764,7 +764,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           fontSize: "12px", padding: "4px 10px", border: "1px solid",
                           borderColor: reportSent === s.id ? "#bbf7d0" : "#e0e7ff",
                           background: reportSent === s.id ? "#f0fdf4" : "#fff",
-                          color: reportSent === s.id ? "#16a34a" : "#4f46e5",
+                          color: reportSent === s.id ? "#16a34a" : "#ad024c",
                           borderRadius: "6px", cursor: "pointer", fontWeight: 600,
                           opacity: sendingReport === s.id ? 0.6 : 1,
                           whiteSpace: "nowrap",
@@ -802,13 +802,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               {/* Header */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px" }}>
                 <div>
-                  <h2 style={{ fontSize: "20px", fontWeight: 700, color: "#0f172a", margin: 0 }}>{rpt.className}</h2>
-                  <p style={{ fontSize: "13px", color: "#64748b", margin: "4px 0 0" }}>
+                  <h2 style={{ fontSize: "20px", fontWeight: 700, color: "#24101a", margin: 0 }}>{rpt.className}</h2>
+                  <p style={{ fontSize: "13px", color: "#806571", margin: "4px 0 0" }}>
                     {rpt.completedCount}/{rpt.totalCount} students completed
                     {rpt.targetCefr ? ` · Target: ${rpt.targetCefr}` : ""}
                   </p>
                 </div>
-                <button onClick={() => setViewingReport(null)} style={{ border: "none", background: "none", fontSize: "20px", cursor: "pointer", color: "#64748b" }}>✕</button>
+                <button onClick={() => setViewingReport(null)} style={{ border: "none", background: "none", fontSize: "20px", cursor: "pointer", color: "#806571" }}>✕</button>
               </div>
 
               {/* On-track summary */}
@@ -831,16 +831,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
               {/* CEFR distribution */}
               <div style={{ marginBottom: "24px" }}>
-                <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#0f172a", margin: "0 0 12px" }}>CEFR Distribution</h3>
+                <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#24101a", margin: "0 0 12px" }}>CEFR Distribution</h3>
                 <div style={{ display: "flex", gap: "8px", alignItems: "flex-end", height: "80px" }}>
                   {CEFR_LEVELS.map(lv => {
                     const n = rpt.cefrDistribution[lv] ?? 0;
                     const max = Math.max(...Object.values(rpt.cefrDistribution), 1);
                     return (
                       <div key={lv} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "3px" }}>
-                        <div style={{ fontSize: "11px", color: "#64748b" }}>{n || ""}</div>
-                        <div style={{ width: "100%", height: `${Math.round((n / max) * 60) + 4}px`, background: CEFR_COLOR[lv] ?? "#e2e8f0", borderRadius: "3px 3px 0 0", minHeight: "4px", opacity: lv === rpt.targetCefr ? 1 : 0.7, boxShadow: lv === rpt.targetCefr ? `0 0 0 2px ${CEFR_COLOR[lv]}` : "none" }} />
-                        <div style={{ fontSize: "11px", fontWeight: 600, color: CEFR_COLOR[lv] ?? "#64748b" }}>{lv}</div>
+                        <div style={{ fontSize: "11px", color: "#806571" }}>{n || ""}</div>
+                        <div style={{ width: "100%", height: `${Math.round((n / max) * 60) + 4}px`, background: CEFR_COLOR[lv] ?? "#f0dfe6", borderRadius: "3px 3px 0 0", minHeight: "4px", opacity: lv === rpt.targetCefr ? 1 : 0.7, boxShadow: lv === rpt.targetCefr ? `0 0 0 2px ${CEFR_COLOR[lv]}` : "none" }} />
+                        <div style={{ fontSize: "11px", fontWeight: 600, color: CEFR_COLOR[lv] ?? "#806571" }}>{lv}</div>
                       </div>
                     );
                   })}
@@ -849,11 +849,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
               {/* Skill × CEFR Heatmap */}
               <div style={{ marginBottom: "24px", overflowX: "auto" }}>
-                <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#0f172a", margin: "0 0 12px" }}>Skill × CEFR Heatmap</h3>
+                <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#24101a", margin: "0 0 12px" }}>Skill × CEFR Heatmap</h3>
                 <table style={{ borderCollapse: "collapse", fontSize: "12px", width: "100%" }}>
                   <thead>
                     <tr>
-                      <th style={{ padding: "6px 10px", textAlign: "left", color: "#64748b", fontWeight: 600 }}>Skill</th>
+                      <th style={{ padding: "6px 10px", textAlign: "left", color: "#806571", fontWeight: 600 }}>Skill</th>
                       {CEFR_LEVELS.map(lv => (
                         <th key={lv} style={{ padding: "6px 8px", textAlign: "center", color: CEFR_COLOR[lv], fontWeight: 700 }}>{lv}</th>
                       ))}
@@ -862,12 +862,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <tbody>
                     {SKILLS.map(sk => (
                       <tr key={sk}>
-                        <td style={{ padding: "6px 10px", fontWeight: 600, color: "#334155", textTransform: "capitalize" }}>{sk.charAt(0) + sk.slice(1).toLowerCase()}</td>
+                        <td style={{ padding: "6px 10px", fontWeight: 600, color: "#4f3a45", textTransform: "capitalize" }}>{sk.charAt(0) + sk.slice(1).toLowerCase()}</td>
                         {CEFR_LEVELS.map(lv => {
                           const n = rpt.skillHeatmap[sk]?.[lv] ?? 0;
                           const intensity = n / maxHeat;
                           return (
-                            <td key={lv} style={{ padding: "6px 8px", textAlign: "center", borderRadius: "4px", background: n > 0 ? `rgba(99,102,241,${0.1 + intensity * 0.7})` : "#f8fafc", color: n > 0 ? "#1e1b4b" : "#cbd5e1", fontWeight: n > 0 ? 700 : 400 }}>
+                            <td key={lv} style={{ padding: "6px 8px", textAlign: "center", borderRadius: "4px", background: n > 0 ? `rgba(99,102,241,${0.1 + intensity * 0.7})` : "#fcf8fa", color: n > 0 ? "#1e1b4b" : "#e0c8d3", fontWeight: n > 0 ? 700 : 400 }}>
                               {n > 0 ? n : "·"}
                             </td>
                           );
@@ -880,33 +880,33 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
               {/* Student list */}
               <div>
-                <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#0f172a", margin: "0 0 12px" }}>Students</h3>
+                <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#24101a", margin: "0 0 12px" }}>Students</h3>
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                     <thead>
-                      <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                      <tr style={{ borderBottom: "1px solid #f0dfe6" }}>
                         {["Name", "CEFR", "Status", "Report"].map(h => (
-                          <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "#64748b", fontWeight: 600, fontSize: "11px", textTransform: "uppercase" }}>{h}</th>
+                          <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "#806571", fontWeight: 600, fontSize: "11px", textTransform: "uppercase" }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {rpt.members.map(m => (
-                        <tr key={m.userId} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                        <tr key={m.userId} style={{ borderBottom: "1px solid #f8f0f4" }}>
                           <td style={{ padding: "8px 10px" }}>
-                            <div style={{ fontWeight: 500, color: "#0f172a" }}>{m.name}</div>
-                            <div style={{ fontSize: "11px", color: "#94a3b8" }}>{m.email}</div>
+                            <div style={{ fontWeight: 500, color: "#24101a" }}>{m.name}</div>
+                            <div style={{ fontSize: "11px", color: "#b89aa8" }}>{m.email}</div>
                           </td>
                           <td style={{ padding: "8px 10px" }}>
                             {m.cefrLevel ? (
-                              <span style={{ background: (CEFR_COLOR[m.cefrLevel.replace("_", "")] ?? "#e2e8f0") + "22", color: CEFR_COLOR[m.cefrLevel.replace("_", "")] ?? "#64748b", padding: "2px 8px", borderRadius: "999px", fontWeight: 700, fontSize: "12px" }}>
+                              <span style={{ background: (CEFR_COLOR[m.cefrLevel.replace("_", "")] ?? "#f0dfe6") + "22", color: CEFR_COLOR[m.cefrLevel.replace("_", "")] ?? "#806571", padding: "2px 8px", borderRadius: "999px", fontWeight: 700, fontSize: "12px" }}>
                                 {m.cefrLevel.replace("_", " ")}
                               </span>
-                            ) : <span style={{ color: "#94a3b8", fontSize: "12px" }}>—</span>}
+                            ) : <span style={{ color: "#b89aa8", fontSize: "12px" }}>—</span>}
                           </td>
                           <td style={{ padding: "8px 10px" }}>
                             {!m.completed ? (
-                              <span style={{ fontSize: "11px", color: "#94a3b8" }}>Not started</span>
+                              <span style={{ fontSize: "11px", color: "#b89aa8" }}>Not started</span>
                             ) : m.isOnTrack === true ? (
                               <span style={{ fontSize: "11px", fontWeight: 700, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: "999px" }}>✓ On Track</span>
                             ) : m.isOnTrack === false ? (
@@ -917,10 +917,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           </td>
                           <td style={{ padding: "8px 10px" }}>
                             {m.scoreReportId ? (
-                              <a href={`/results/${m.scoreReportId}`} target="_blank" rel="noreferrer" style={{ fontSize: "12px", color: "#4f46e5", fontWeight: 600, textDecoration: "none" }}>
+                              <a href={`/results/${m.scoreReportId}`} target="_blank" rel="noreferrer" style={{ fontSize: "12px", color: "#ad024c", fontWeight: 600, textDecoration: "none" }}>
                                 View →
                               </a>
-                            ) : <span style={{ fontSize: "12px", color: "#94a3b8" }}>—</span>}
+                            ) : <span style={{ fontSize: "12px", color: "#b89aa8" }}>—</span>}
                           </td>
                         </tr>
                       ))}

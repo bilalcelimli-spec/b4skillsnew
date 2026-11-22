@@ -44,11 +44,11 @@ interface InvariancePayload {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const SKILL_COLORS: Record<string, string> = {
-  GRAMMAR: "#6366f1", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
+  GRAMMAR: "#c81e66", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
   LISTENING: "#06b6d4", WRITING: "#10b981", SPEAKING: "#f59e0b",
 };
 
-const GROUP_COLORS = ["#6366f1", "#06b6d4", "#10b981", "#f59e0b", "#ec4899", "#ef4444"];
+const GROUP_COLORS = ["#c81e66", "#06b6d4", "#10b981", "#f59e0b", "#ec4899", "#ef4444"];
 
 function DeltaProfile({ item, groups }: { item: InvarianceItem; groups: GroupParam[] }) {
   const allB = item.groups.map((g) => g.estimatedB);
@@ -154,7 +154,7 @@ export function MultigroupInvariancePanel() {
   useEffect(() => { load(); }, [load]);
 
   const kpis = data ? [
-    { label: "Groups", value: data.groups.length, icon: <Share2 size={16} />, color: "#6366f1", fmt: String },
+    { label: "Groups", value: data.groups.length, icon: <Share2 size={16} />, color: "#c81e66", fmt: String },
     { label: "Items Tested", value: data.totalItems, icon: <BarChart3 size={16} />, color: "#8b5cf6", fmt: String },
     { label: "Non-Invariant", value: data.flaggedItems, icon: <AlertTriangle size={16} />, color: data.flaggedItems > 0 ? "#ef4444" : "#10b981", fmt: String },
     { label: "Grouping By", value: data.groupingDimension, icon: <CheckCircle2 size={16} />, color: "#06b6d4", fmt: (v: string) => v },
@@ -270,12 +270,12 @@ export function MultigroupInvariancePanel() {
                       className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-700/30 transition-colors"
                       onClick={() => setExpandedItem(expandedItem === d.itemId ? null : d.itemId)}
                     >
-                      <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white shrink-0" style={{ background: SKILL_COLORS[d.skill] ?? "#6366f1" }}>
+                      <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white shrink-0" style={{ background: SKILL_COLORS[d.skill] ?? "#c81e66" }}>
                         {d.skill.slice(0, 3)}
                       </span>
                       <span className="font-mono text-sm text-white flex-1">{d.itemLabel}</span>
                       <span className="text-xs text-slate-400">{d.cefrLevel}</span>
-                      <span className="text-xs font-mono" style={{ color: d.maxDeltaB > 0.5 ? "#ef4444" : d.maxDeltaB > 0.3 ? "#f59e0b" : "#94a3b8" }}>
+                      <span className="text-xs font-mono" style={{ color: d.maxDeltaB > 0.5 ? "#ef4444" : d.maxDeltaB > 0.3 ? "#f59e0b" : "#b89aa8" }}>
                         max|Δb|={d.maxDeltaB.toFixed(3)}
                       </span>
                       <span className="text-xs font-mono text-slate-500">χ²={d.chiSqB.toFixed(2)}</span>
@@ -320,7 +320,7 @@ export function MultigroupInvariancePanel() {
                         <div className="flex-1 bg-slate-800 rounded-full h-4 overflow-hidden">
                           <div
                             className="h-full rounded-full"
-                            style={{ width: `${(b.count / max) * 100}%`, background: flagged ? "#ef4444" : caution ? "#f59e0b" : "#6366f1" }}
+                            style={{ width: `${(b.count / max) * 100}%`, background: flagged ? "#ef4444" : caution ? "#f59e0b" : "#c81e66" }}
                           />
                         </div>
                         <span className="w-8 text-slate-300">{b.count}</span>

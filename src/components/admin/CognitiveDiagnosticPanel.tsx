@@ -53,7 +53,7 @@ const ATTR_COLORS: Record<string, string> = {
 };
 
 const CEFR_BG: Record<string, string> = {
-  PRE_A1: "#475569", A1: "#3b82f6", A2: "#06b6d4",
+  PRE_A1: "#6b5560", A1: "#3b82f6", A2: "#06b6d4",
   B1: "#10b981", B2: "#f59e0b", C1: "#f97316", C2: "#ef4444",
 };
 
@@ -75,7 +75,7 @@ const MasteryBar: React.FC<{ profile: AttributeProfile }> = ({ profile }) => {
   const nonPct = (profile.nonMasterCount / Math.max(1, profile.totalCandidates)) * 100;
   return (
     <div className="flex items-center gap-3">
-      <span className="text-xs w-24 font-medium" style={{ color: ATTR_COLORS[profile.attribute] ?? "#94a3b8" }}>
+      <span className="text-xs w-24 font-medium" style={{ color: ATTR_COLORS[profile.attribute] ?? "#b89aa8" }}>
         {profile.attribute}
       </span>
       <div className="flex-1 h-4 bg-slate-700 rounded-full overflow-hidden flex">
@@ -253,7 +253,7 @@ export const CognitiveDiagnosticPanel: React.FC = () => {
                     <tr key={c.sessionId} className="border-t border-slate-700 hover:bg-slate-700/30">
                       <td className="px-2 py-1.5 text-slate-400 font-mono text-[10px]">{c.candidateId.slice(-8)}</td>
                       <td className="px-2 py-1.5">
-                        <span className="px-1 py-0.5 rounded text-[10px] text-white font-semibold" style={{ backgroundColor: CEFR_BG[c.cefrLevel] ?? "#475569" }}>
+                        <span className="px-1 py-0.5 rounded text-[10px] text-white font-semibold" style={{ backgroundColor: CEFR_BG[c.cefrLevel] ?? "#6b5560" }}>
                           {c.cefrLevel.replace("_", "")}
                         </span>
                       </td>

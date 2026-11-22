@@ -42,7 +42,7 @@ const SKILL_COLORS: Record<string, string> = {
   LISTENING: "#8b5cf6", WRITING: "#ef4444", SPEAKING: "#f97316",
 };
 const CEFR_BG: Record<string, string> = {
-  PRE_A1: "#475569", A1: "#3b82f6", A2: "#06b6d4",
+  PRE_A1: "#6b5560", A1: "#3b82f6", A2: "#06b6d4",
   B1: "#10b981", B2: "#f59e0b", C1: "#f97316", C2: "#ef4444",
 };
 
@@ -68,7 +68,7 @@ const CorrMatrix: React.FC<{ skills: string[]; pairs: { skillA: string; skillB: 
             <th className="px-2 py-1 text-slate-400"></th>
             {skills.map((s) => (
               <th key={s} className="px-2 py-1 text-center">
-                <span className="text-[10px] font-semibold" style={{ color: SKILL_COLORS[s] ?? "#94a3b8" }}>{s.slice(0, 4)}</span>
+                <span className="text-[10px] font-semibold" style={{ color: SKILL_COLORS[s] ?? "#b89aa8" }}>{s.slice(0, 4)}</span>
               </th>
             ))}
           </tr>
@@ -76,7 +76,7 @@ const CorrMatrix: React.FC<{ skills: string[]; pairs: { skillA: string; skillB: 
         <tbody>
           {skills.map((rowSkill) => (
             <tr key={rowSkill}>
-              <td className="px-2 py-1 font-semibold text-[10px]" style={{ color: SKILL_COLORS[rowSkill] ?? "#94a3b8" }}>{rowSkill.slice(0, 4)}</td>
+              <td className="px-2 py-1 font-semibold text-[10px]" style={{ color: SKILL_COLORS[rowSkill] ?? "#b89aa8" }}>{rowSkill.slice(0, 4)}</td>
               {skills.map((colSkill) => {
                 const r = getR(rowSkill, colSkill);
                 const isDiag = rowSkill === colSkill;
@@ -176,7 +176,7 @@ export const SubscaleCompositeScoringPanel: React.FC = () => {
             {data.subscales.map((s) => (
               <div key={s.skill} className="bg-slate-800 border border-slate-700 rounded-xl p-5">
                 <div className="flex items-center gap-3 mb-4">
-                  <h3 className="text-sm font-bold" style={{ color: SKILL_COLORS[s.skill] ?? "#94a3b8" }}>{s.skill}</h3>
+                  <h3 className="text-sm font-bold" style={{ color: SKILL_COLORS[s.skill] ?? "#b89aa8" }}>{s.skill}</h3>
                   <span className="text-slate-500 text-xs">{s.nItems} items · {s.nSessions} sessions</span>
                   <span className={`ml-auto text-xs font-semibold ${s.reliability >= 0.8 ? "text-emerald-400" : s.reliability >= 0.7 ? "text-amber-400" : "text-red-400"}`}>
                     α ≈ {s.reliability.toFixed(3)}
@@ -201,7 +201,7 @@ export const SubscaleCompositeScoringPanel: React.FC = () => {
                   {s.cefrDistribution.map((c) => (
                     <div key={c.cefrLevel} className="flex items-center gap-1">
                       <span className="px-1.5 py-0.5 rounded text-[9px] text-white font-semibold"
-                        style={{ backgroundColor: CEFR_BG[c.cefrLevel] ?? "#475569" }}>
+                        style={{ backgroundColor: CEFR_BG[c.cefrLevel] ?? "#6b5560" }}>
                         {c.cefrLevel.replace("_", "")}
                       </span>
                       <span className="text-[10px] text-slate-400">{c.count} ({c.pct.toFixed(0)}%)</span>
@@ -226,7 +226,7 @@ export const SubscaleCompositeScoringPanel: React.FC = () => {
                     <th className="text-left text-slate-400 text-xs px-2 py-2">Composite CEFR</th>
                     {data.skillsPresent.map((sk) => (
                       <th key={sk} className="text-left text-slate-400 text-[10px] px-2 py-2"
-                        style={{ color: SKILL_COLORS[sk] ?? "#94a3b8" }}>{sk.slice(0, 4)}</th>
+                        style={{ color: SKILL_COLORS[sk] ?? "#b89aa8" }}>{sk.slice(0, 4)}</th>
                     ))}
                     <th className="text-left text-slate-400 text-xs px-2 py-2">Items</th>
                   </tr>
@@ -237,14 +237,14 @@ export const SubscaleCompositeScoringPanel: React.FC = () => {
                       <td className="px-2 py-1.5 text-slate-400 font-mono text-[10px]">{c.sessionId.slice(-10)}</td>
                       <td className="px-2 py-1.5">
                         <span className="px-1 py-0.5 rounded text-[10px] text-white font-semibold"
-                          style={{ backgroundColor: CEFR_BG[c.cefrLevel] ?? "#475569" }}>
+                          style={{ backgroundColor: CEFR_BG[c.cefrLevel] ?? "#6b5560" }}>
                           {c.cefrLevel.replace("_", "")}
                         </span>
                       </td>
                       <td className="px-2 py-1.5 text-slate-300 text-xs font-mono">{c.compositeTheta.toFixed(2)}</td>
                       <td className="px-2 py-1.5">
                         <span className="px-1 py-0.5 rounded text-[10px] text-white font-semibold"
-                          style={{ backgroundColor: CEFR_BG[c.compositeCefr] ?? "#475569" }}>
+                          style={{ backgroundColor: CEFR_BG[c.compositeCefr] ?? "#6b5560" }}>
                           {c.compositeCefr.replace("_", "")}
                         </span>
                       </td>

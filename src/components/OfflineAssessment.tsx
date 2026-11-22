@@ -338,7 +338,7 @@ export const OfflineAssessment: React.FC<OfflineAssessmentProps> = ({
     return (
       <div role="status" aria-live="polite" style={centeredStyle}>
         <Spinner />
-        <p style={{ color: "#64748b", marginTop: "12px" }}>Loading assessment…</p>
+        <p style={{ color: "#806571", marginTop: "12px" }}>Loading assessment…</p>
       </div>
     );
   }
@@ -434,7 +434,7 @@ export const OfflineAssessment: React.FC<OfflineAssessmentProps> = ({
 
       {/* ── Offline info ── */}
       {!isOnline && (
-        <details style={{ marginTop: "20px", fontSize: "13px", color: "#64748b" }}>
+        <details style={{ marginTop: "20px", fontSize: "13px", color: "#806571" }}>
           <summary style={{ cursor: "pointer" }}>About offline mode</summary>
           <div style={{ marginTop: "8px", lineHeight: "1.6" }}>
             <p>Your answers are saved automatically in your browser's local storage. When you reconnect to the internet, they will be uploaded automatically.</p>
@@ -461,9 +461,9 @@ const btnStyle: React.CSSProperties = {
   borderRadius: "8px",
   fontSize: "14px",
   fontWeight: 600,
-  border: "2px solid #e2e8f0",
-  background: "#f8fafc",
-  color: "#334155",
+  border: "2px solid #f0dfe6",
+  background: "#fcf8fa",
+  color: "#4f3a45",
   cursor: "pointer",
 };
 

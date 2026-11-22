@@ -116,7 +116,7 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
       {/* Logo / Header */}
       <div className="mb-10 text-center">
         <div className="inline-flex items-center gap-2 mb-3">
-          <div className="bg-[#9b276c] text-white font-black text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight">
+          <div className="bg-[#ad024c] text-white font-black text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight">
             b4skills
           </div>
         </div>
@@ -226,7 +226,7 @@ export const VerificationPage: React.FC<{ certId?: string | null }> = ({ certId 
         )}
       </div>
 
-      <a href="/" className="mt-6 text-sm font-semibold text-slate-600 hover:text-[#9b276c]">Back to home</a>
+      <a href="/" className="mt-6 text-sm font-semibold text-slate-600 hover:text-[#ad024c]">Back to home</a>
 
       <p className="mt-8 text-xs text-slate-400 text-center max-w-sm">
         This page verifies the authenticity of proficiency certificates issued by b4skills.

@@ -377,14 +377,14 @@ export function Tooltip({ content, side = "top", delayDuration = 400, children }
             sideOffset={6}
             style={{
               padding: "6px 10px", borderRadius: "var(--radius-md)",
-              background: "var(--neutral-9, #1e293b)", color: "white",
+              background: "var(--neutral-9, #40222f)", color: "white",
               fontSize: "0.75rem", fontWeight: 500, lineHeight: 1.4,
               boxShadow: "var(--shadow-lg)", zIndex: "var(--z-tooltip)",
               maxWidth: 260,
             }}
           >
             {content}
-            <RadixTooltip.Arrow style={{ fill: "var(--neutral-9, #1e293b)" }} />
+            <RadixTooltip.Arrow style={{ fill: "var(--neutral-9, #40222f)" }} />
           </RadixTooltip.Content>
         </RadixTooltip.Portal>
       </RadixTooltip.Root>

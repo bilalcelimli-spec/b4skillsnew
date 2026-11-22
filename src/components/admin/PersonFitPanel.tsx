@@ -58,7 +58,7 @@ function lzColor(lz: number): string {
 }
 
 const CEFR_COLORS: Record<string, string> = {
-  PRE_A1: "#475569", A1: "#3b82f6", A2: "#06b6d4",
+  PRE_A1: "#6b5560", A1: "#3b82f6", A2: "#06b6d4",
   B1: "#10b981", B2: "#f59e0b", C1: "#f97316", C2: "#ef4444",
 };
 
@@ -216,7 +216,7 @@ export const PersonFitPanel: React.FC = () => {
                       <td className="px-3 py-2">
                         <span
                           className="px-1.5 py-0.5 rounded text-xs font-semibold text-white"
-                          style={{ backgroundColor: CEFR_COLORS[s.cefrLevel] ?? "#475569" }}
+                          style={{ backgroundColor: CEFR_COLORS[s.cefrLevel] ?? "#6b5560" }}
                         >
                           {s.cefrLevel.replace("_", "")}
                         </span>

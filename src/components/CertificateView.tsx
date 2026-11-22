@@ -22,7 +22,7 @@ interface CertificateViewProps {
 
 export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, branding }) => {
   const { toast } = useToast();
-  const primaryColor = branding?.primaryColor || "#9b276c";
+  const primaryColor = branding?.primaryColor || "#ad024c";
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
 
   // Generate QR code client-side so it always uses the correct domain
@@ -31,7 +31,7 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
     QRCode.toDataURL(verifyUrl, {
       width: 200,
       margin: 1,
-      color: { dark: "#1e293b", light: "#ffffff" },
+      color: { dark: "#40222f", light: "#ffffff" },
     })
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(""));
@@ -51,7 +51,7 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
     }
   };
 
-  // Determine which logo to display: org logo → site favicon → nothing
+  // Institution logo, shown under the b4skills logo when the organisation set one.
   const logoUrl = branding?.logoUrl || null;
   const orgName = branding?.name || "b4skills";
 
@@ -66,7 +66,7 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Your Certificate</h1>
           <p className="text-slate-500 mt-1">Official English Proficiency Certification</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" className="gap-2 rounded-xl h-11 px-6 font-bold text-slate-600" onClick={handleShare}>
             <Share2 size={18} /> Share
           </Button>
@@ -90,28 +90,26 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
         <CardContent className="relative p-8 md:p-24 flex flex-col items-center text-center">
           {/* Header — Logo + Org name */}
           <div className="mb-12 flex flex-col items-center gap-3">
+            {/* The b4skills logo, whole and unaltered, heads every certificate. */}
+            <img
+              src="/brand/b4skills-logo-badge.png"
+              alt="b4skills"
+              width={860}
+              height={290}
+              className="h-14 md:h-20 w-auto max-w-full object-contain mb-2"
+            />
+            {/* An institution's own logo, when set, sits under it. */}
             {logoUrl ? (
               <img
                 src={logoUrl}
                 alt={orgName}
-                className="h-16 w-auto mb-2 object-contain"
+                className="h-12 w-auto max-w-full object-contain"
                 referrerPolicy="no-referrer"
               />
-            ) : (
-              /* Fallback: site favicon as inline SVG badge */
-              <div
-                className="w-20 h-20 rounded-2xl flex items-center justify-center mb-2 shadow-lg"
-                style={{ backgroundColor: primaryColor }}
-              >
-                <img
-                  src="/favicon.svg"
-                  alt={orgName}
-                  className="w-12 h-12 object-contain"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                />
-              </div>
-            )}
-            <div className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em]">{orgName}</div>
+            ) : null}
+            {branding?.name ? (
+              <div className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em]">{orgName}</div>
+            ) : null}
           </div>
 
           <h2 className="text-2xl md:text-5xl font-black text-slate-900 mb-8 tracking-tight">

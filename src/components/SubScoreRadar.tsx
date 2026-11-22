@@ -62,7 +62,7 @@ const AXIS_LABELS: Record<string, string> = {
 
 function scoreColor(score: number): string {
   if (score >= 8) return "#10b981";
-  if (score >= 6) return "#6366f1";
+  if (score >= 6) return "#c81e66";
   if (score >= 4) return "#f59e0b";
   return "#f43f5e";
 }
@@ -167,10 +167,10 @@ export const SubScoreRadar: React.FC<Props> = ({
           </div>
           <ResponsiveContainer width="100%" height={chartH}>
             <RadarChart data={rubricData} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
-              <PolarGrid stroke="#e2e8f0" />
+              <PolarGrid stroke="#f0dfe6" />
               <PolarAngleAxis
                 dataKey="label"
-                tick={{ fontSize: 9, fontWeight: 700, fill: "#94a3b8" }}
+                tick={{ fontSize: 9, fontWeight: 700, fill: "#b89aa8" }}
               />
               <Radar
                 dataKey="value"

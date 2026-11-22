@@ -77,7 +77,7 @@ function QwkBadge({ value }: { value: number | null }) {
 function MetricCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
     <div className="rounded-xl border border-slate-200 p-4 bg-white text-center">
-      <p className="text-2xl font-bold" style={{ color: color ?? "#4f46e5" }}>{value}</p>
+      <p className="text-2xl font-bold" style={{ color: color ?? "#ad024c" }}>{value}</p>
       <p className="text-xs text-slate-500 mt-0.5">{label}</p>
       {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
     </div>

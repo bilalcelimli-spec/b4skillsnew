@@ -41,7 +41,7 @@ interface PolyDIFPayload {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const SKILL_COLORS: Record<string, string> = {
-  GRAMMAR: "#6366f1",
+  GRAMMAR: "#c81e66",
   VOCABULARY: "#8b5cf6",
   READING: "#3b82f6",
   LISTENING: "#06b6d4",
@@ -106,7 +106,7 @@ export function PolytomousDIFPanel() {
 
   const kpiCards = data
     ? [
-        { label: "Items Tested", value: data.totalItems, icon: <Layers size={16} />, color: "#6366f1" },
+        { label: "Items Tested", value: data.totalItems, icon: <Layers size={16} />, color: "#c81e66" },
         { label: "Flagged", value: data.flaggedItems, icon: <ShieldAlert size={16} />, color: "#ef4444" },
         { label: "Category A", value: data.categoryA, icon: <AlertTriangle size={16} />, color: "#ef4444" },
         { label: "Category B", value: data.categoryB, icon: <AlertTriangle size={16} />, color: "#f59e0b" },
@@ -254,7 +254,7 @@ export function PolytomousDIFPanel() {
                       <tr key={it.itemId} className={`border-b border-slate-800 hover:bg-slate-800/50 ${it.flagged ? "bg-red-900/10" : ""}`}>
                         <td className="py-2 pr-4 font-mono text-slate-400">{it.itemLabel}</td>
                         <td className="py-2 pr-4">
-                          <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: (SKILL_COLORS[it.skill] ?? "#64748b") + "22", color: SKILL_COLORS[it.skill] ?? "#94a3b8" }}>
+                          <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: (SKILL_COLORS[it.skill] ?? "#806571") + "22", color: SKILL_COLORS[it.skill] ?? "#b89aa8" }}>
                             {it.skill}
                           </span>
                         </td>
@@ -285,7 +285,7 @@ export function PolytomousDIFPanel() {
               <div className="text-xs text-slate-400 mb-2">Flagged items per skill</div>
               {(data?.bySkill ?? []).map((row) => (
                 <div key={row.skill} className="space-y-1">
-                  <BarRow label={row.skill} value={row.flagged} max={maxSkill} color={SKILL_COLORS[row.skill] ?? "#64748b"} />
+                  <BarRow label={row.skill} value={row.flagged} max={maxSkill} color={SKILL_COLORS[row.skill] ?? "#806571"} />
                   <div className="ml-30 text-xs text-slate-500 pl-32">{row.flagged}/{row.total} items flagged</div>
                 </div>
               ))}
@@ -302,7 +302,7 @@ export function PolytomousDIFPanel() {
                 if (!row) return null;
                 return (
                   <div key={level} className="space-y-1">
-                    <BarRow label={level} value={row.flagged} max={maxCefr} color="#6366f1" />
+                    <BarRow label={level} value={row.flagged} max={maxCefr} color="#c81e66" />
                     <div className="text-xs text-slate-500 pl-32">{row.flagged}/{row.total} flagged</div>
                   </div>
                 );

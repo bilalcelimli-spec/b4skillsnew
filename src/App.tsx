@@ -45,9 +45,9 @@ const EmailVerifyPage: React.FC<{ token: string | null; onDone: () => void }> = 
       .catch(() => setStatus("error"));
   }, [token]);
   return (
-    <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#fcf8fa] flex items-center justify-center px-4">
       <div className="text-center max-w-sm">
-        {status === "loading" && <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[#9b276c] mx-auto mb-4" />}
+        {status === "loading" && <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[#ad024c] mx-auto mb-4" />}
         {status === "ok" && (
           <>
             <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-5">
@@ -514,7 +514,7 @@ export default function App() {
           {/* Drawer */}
           <aside
             className="relative w-72 max-w-[80vw] bg-slate-900 text-white p-6 flex flex-col h-full overflow-y-auto"
-            style={{ backgroundColor: branding?.secondaryColor || "#0f172a" }}
+            style={{ backgroundColor: branding?.secondaryColor || "#2a0a19" }}
             role="dialog"
             aria-modal="true"
             aria-label="Navigation menu"
@@ -523,7 +523,7 @@ export default function App() {
               {branding?.logoUrl ? (
                 <img src={branding.logoUrl} alt="Logo" className="w-8 h-8 rounded" referrerPolicy="no-referrer" />
               ) : (
-                <div className="bg-[#9b276c] text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight inline-flex items-center">
+                <div className="bg-[#ad024c] text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight inline-flex items-center">
                   <span style={{ textShadow: '0 0 8px rgba(253, 224, 71, 0.8), 0 0 15px rgba(253, 224, 71, 0.4)' }}>b4skills</span>
                 </div>
               )}
@@ -548,7 +548,7 @@ export default function App() {
             </nav>
             <div className="pt-6 border-t border-slate-800">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shrink-0" style={{ backgroundColor: branding?.primaryColor || "#6366f1" }}>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shrink-0" style={{ backgroundColor: branding?.primaryColor || "#c81e66" }}>
                   {user.displayName?.[0]}
                 </div>
                 <div className="overflow-hidden">
@@ -566,12 +566,12 @@ export default function App() {
       )}
 
       {/* Sidebar (desktop only) — hidden when admin console occupies full width */}
-      <aside className={cn("w-64 bg-slate-900 text-white p-6 flex-col", activeTab === "admin" && isAdmin ? "hidden" : "hidden md:flex")} style={{ backgroundColor: branding?.secondaryColor || "#0f172a" }}>
+      <aside className={cn("w-64 bg-slate-900 text-white p-6 flex-col", activeTab === "admin" && isAdmin ? "hidden" : "hidden md:flex")} style={{ backgroundColor: branding?.secondaryColor || "#2a0a19" }}>
         <div className="flex items-center gap-2 mb-12">
           {branding?.logoUrl ? (
             <img src={branding.logoUrl} alt="Logo" className="w-8 h-8 rounded" referrerPolicy="no-referrer" />
           ) : (
-            <div className="bg-[#9b276c] justify-center text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight flex items-center">
+            <div className="bg-[#ad024c] justify-center text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight flex items-center">
               <span style={{ textShadow: '0 0 8px rgba(253, 224, 71, 0.8), 0 0 15px rgba(253, 224, 71, 0.4)' }}>b4skills</span>
             </div>
           )}
@@ -591,7 +591,7 @@ export default function App() {
 
         <div className="pt-6 border-t border-slate-800">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-lg font-bold" style={{ backgroundColor: branding?.primaryColor || "#6366f1" }}>
+            <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-lg font-bold" style={{ backgroundColor: branding?.primaryColor || "#c81e66" }}>
               {user.displayName?.[0]}
             </div>
             <div className="overflow-hidden">
@@ -625,7 +625,7 @@ export default function App() {
           {branding?.logoUrl ? (
             <img src={branding.logoUrl} alt="Logo" className="h-7 rounded" referrerPolicy="no-referrer" />
           ) : (
-            <div className="bg-[#9b276c] text-white font-bold text-base px-2.5 py-0.5 -skew-x-6 rounded-sm tracking-tight inline-flex items-center">
+            <div className="bg-[#ad024c] text-white font-bold text-base px-2.5 py-0.5 -skew-x-6 rounded-sm tracking-tight inline-flex items-center">
               <span style={{ textShadow: '0 0 8px rgba(253, 224, 71, 0.8)' }}>b4skills</span>
             </div>
           )}
@@ -710,7 +710,7 @@ export default function App() {
                     {branding?.logoUrl ? (
                       <img src={branding.logoUrl} alt="Logo" className="h-6 rounded" referrerPolicy="no-referrer" />
                     ) : (
-                      <div className="bg-[#9b276c] justify-center text-white font-bold text-sm px-2 py-0.5 -skew-x-6 rounded-sm tracking-tight flex items-center">
+                      <div className="bg-[#ad024c] justify-center text-white font-bold text-sm px-2 py-0.5 -skew-x-6 rounded-sm tracking-tight flex items-center">
                         <span style={{ textShadow: '0 0 8px rgba(253, 224, 71, 0.8), 0 0 15px rgba(253, 224, 71, 0.4)' }}>b4skills</span>
                       </div>
                     )}

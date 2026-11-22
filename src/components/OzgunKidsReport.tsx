@@ -36,7 +36,7 @@ export function OzgunKidsReport({report,candidateName,completedAt,onClose}:{repo
       .ozgun-kids-report > header { display: flex !important; }
       .ozgun-kids-report h2, .ozgun-kids-report h3 { break-after: avoid; }
       .ozgun-kids-report .cluster-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
-      .ozgun-kids-report .report-hero { background: white; color: #0f172a; border: 1px solid #cbd5e1; }
+      .ozgun-kids-report .report-hero { background: white; color: #24101a; border: 1px solid #e0c8d3; }
       .ozgun-kids-report .report-hero p { color: inherit; }
       .ozgun-kids-report * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }`}</style>

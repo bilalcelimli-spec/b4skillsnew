@@ -68,10 +68,10 @@ function alphaLabel(a: number) {
 
 function correlationColor(r: number): string {
   const abs = Math.abs(r);
-  if (abs >= 0.7) return "#4f46e5";   // strong — indigo
+  if (abs >= 0.7) return "#ad024c";   // strong — indigo
   if (abs >= 0.5) return "#7c3aed";   // moderate — violet
   if (abs >= 0.3) return "#a78bfa";   // weak
-  return "#e2e8f0";                   // negligible
+  return "#f0dfe6";                   // negligible
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────

@@ -36,7 +36,7 @@ interface SimulationPayload {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const CEFR_COLORS: Record<string, string> = {
-  PRE_A1: "#94a3b8", A1: "#64748b", A2: "#6366f1", B1: "#3b82f6",
+  PRE_A1: "#b89aa8", A1: "#806571", A2: "#c81e66", B1: "#3b82f6",
   B2: "#06b6d4", C1: "#10b981", C2: "#f59e0b",
 };
 
@@ -90,8 +90,8 @@ function ItemsSEMCurve({ data }: { data: { nItems: number; meanSEM: number }[] }
         if (y < PAD.t || y > H - PAD.b) return null;
         return (
           <g key={sem}>
-            <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="#334155" strokeWidth="1" strokeDasharray="4 3" />
-            <text x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize="9" fill="#64748b">{sem.toFixed(1)}</text>
+            <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="#4f3a45" strokeWidth="1" strokeDasharray="4 3" />
+            <text x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize="9" fill="#806571">{sem.toFixed(1)}</text>
           </g>
         );
       })}
@@ -99,20 +99,20 @@ function ItemsSEMCurve({ data }: { data: { nItems: number; meanSEM: number }[] }
       {targetY >= PAD.t && targetY <= H - PAD.b && (
         <line x1={PAD.l} y1={targetY} x2={W - PAD.r} y2={targetY} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="5 3" />
       )}
-      <path d={path} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinejoin="round" />
+      <path d={path} fill="none" stroke="#c81e66" strokeWidth="2" strokeLinejoin="round" />
       {data.map((d) => (
-        <circle key={d.nItems} cx={xScale(d.nItems)} cy={yScale(d.meanSEM)} r="3" fill="#6366f1" />
+        <circle key={d.nItems} cx={xScale(d.nItems)} cy={yScale(d.meanSEM)} r="3" fill="#c81e66" />
       ))}
       {/* Axes */}
-      <line x1={PAD.l} y1={PAD.t} x2={PAD.l} y2={H - PAD.b} stroke="#475569" strokeWidth="1" />
-      <line x1={PAD.l} y1={H - PAD.b} x2={W - PAD.r} y2={H - PAD.b} stroke="#475569" strokeWidth="1" />
+      <line x1={PAD.l} y1={PAD.t} x2={PAD.l} y2={H - PAD.b} stroke="#6b5560" strokeWidth="1" />
+      <line x1={PAD.l} y1={H - PAD.b} x2={W - PAD.r} y2={H - PAD.b} stroke="#6b5560" strokeWidth="1" />
       {/* X labels */}
       {data.filter((_, i) => i % Math.ceil(data.length / 8) === 0).map((d) => (
-        <text key={d.nItems} x={xScale(d.nItems)} y={H - PAD.b + 14} textAnchor="middle" fontSize="9" fill="#64748b">{d.nItems}</text>
+        <text key={d.nItems} x={xScale(d.nItems)} y={H - PAD.b + 14} textAnchor="middle" fontSize="9" fill="#806571">{d.nItems}</text>
       ))}
       {/* Axis labels */}
-      <text x={W / 2} y={H - 2} textAnchor="middle" fontSize="9" fill="#64748b">Items Administered</text>
-      <text x={12} y={H / 2} textAnchor="middle" fontSize="9" fill="#64748b" transform={`rotate(-90,12,${H / 2})`}>Mean SEM</text>
+      <text x={W / 2} y={H - 2} textAnchor="middle" fontSize="9" fill="#806571">Items Administered</text>
+      <text x={12} y={H / 2} textAnchor="middle" fontSize="9" fill="#806571" transform={`rotate(-90,12,${H / 2})`}>Mean SEM</text>
       {/* Target label */}
       <text x={W - PAD.r + 2} y={Math.max(PAD.t + 8, targetY - 3)} fontSize="8" fill="#f59e0b">0.35</text>
     </svg>
@@ -150,7 +150,7 @@ export function AdaptiveStoppingRulePanel() {
 
   const kpiCards = data
     ? [
-        { label: "Sessions", value: data.totalSessions, icon: <Activity size={16} />, color: "#6366f1", fmt: (v: number) => v.toLocaleString() },
+        { label: "Sessions", value: data.totalSessions, icon: <Activity size={16} />, color: "#c81e66", fmt: (v: number) => v.toLocaleString() },
         { label: "Rules Compared", value: data.rules.length, icon: <Zap size={16} />, color: "#8b5cf6", fmt: (v: number) => v.toString() },
         {
           label: "Best Rule",
@@ -262,7 +262,7 @@ export function AdaptiveStoppingRulePanel() {
                     <tr key={s.sessionId} className="border-b border-slate-800 hover:bg-slate-800/50">
                       <td className="py-2 pr-4 font-mono text-slate-400 text-xs">{s.sessionId.slice(-8)}</td>
                       <td className="py-2 pr-4">
-                        <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: (CEFR_COLORS[s.cefrLevel] ?? "#64748b") + "22", color: CEFR_COLORS[s.cefrLevel] ?? "#94a3b8" }}>
+                        <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: (CEFR_COLORS[s.cefrLevel] ?? "#806571") + "22", color: CEFR_COLORS[s.cefrLevel] ?? "#b89aa8" }}>
                           {s.cefrLevel}
                         </span>
                       </td>

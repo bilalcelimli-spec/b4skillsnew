@@ -15,7 +15,7 @@ export const SECTION_COLORS: Record<string, string> = {
 export function AssessmentHeader({ children }: { children: React.ReactNode }) {
   return <header lang="en" className="bg-white border-b border-slate-200 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 flex-wrap sticky top-0 z-10">
     <div className="flex min-w-0 items-center gap-2 sm:gap-6">
-      <div className="bg-[#9b276c] justify-center text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight flex items-center">
+      <div className="bg-[#ad024c] justify-center text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight flex items-center">
         <span style={{ textShadow: '0 0 8px rgba(253, 224, 71, 0.8), 0 0 15px rgba(253, 224, 71, 0.4)' }}>b4skills</span>
       </div>
       <div className="h-8 w-px bg-slate-100 hidden md:block" />

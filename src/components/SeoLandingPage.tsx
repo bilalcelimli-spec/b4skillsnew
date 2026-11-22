@@ -26,7 +26,7 @@ const META: Record<SeoVariant, { title: string; description: string; h1: string;
     h1: "Free English Level Test",
     sub: "Find your CEFR level — A1 to C2 — in about 20–30 minutes with our adaptive assessment engine.",
     keywords: "english level test, free english test, cefr test, english proficiency test",
-    icon: <Zap size={28} className="text-[#9b276c]" />,
+    icon: <Zap size={28} className="text-[#ad024c]" />,
     audience: "Individuals",
     bullets: [
       "Adaptive CAT engine — no two tests are identical",
@@ -42,7 +42,7 @@ const META: Record<SeoVariant, { title: string; description: string; h1: string;
     h1: "İngilizce Seviye Testi",
     sub: "CEFR A1'den C2'ye adaptif sınav motoruyla yaklaşık 20–30 dakikada İngilizce seviyenizi keşfedin.",
     keywords: "ingilizce seviye testi, cefr testi, ingilizce sınav, b4skills",
-    icon: <Star size={28} className="text-[#9b276c]" />,
+    icon: <Star size={28} className="text-[#ad024c]" />,
     audience: "Bireyler",
     bullets: [
       "Adaptif CAT motoru — her sınav benzersiz",
@@ -58,7 +58,7 @@ const META: Record<SeoVariant, { title: string; description: string; h1: string;
     h1: "CEFR English Test",
     sub: "A fully adaptive, psychometrically rigorous assessment aligned to the Common European Framework of Reference.",
     keywords: "cefr english test, cefr assessment, cefr certificate, cefr level test online",
-    icon: <CheckCircle2 size={28} className="text-[#9b276c]" />,
+    icon: <CheckCircle2 size={28} className="text-[#ad024c]" />,
     audience: "Learners & Institutions",
     bullets: [
       "Aligned to CEFR & Council of Europe Companion Volume",
@@ -74,7 +74,7 @@ const META: Record<SeoVariant, { title: string; description: string; h1: string;
     h1: "English Assessment for Universities",
     sub: "Adaptive CEFR placement testing built for language centres, EAP departments, and admissions teams.",
     keywords: "english assessment universities, english placement test university, cefr university, english proficiency test higher education",
-    icon: <GraduationCap size={28} className="text-[#9b276c]" />,
+    icon: <GraduationCap size={28} className="text-[#ad024c]" />,
     audience: "Universities & Language Centres",
     bullets: [
       "Adaptive placement in 15–60 minutes per student",
@@ -92,7 +92,7 @@ const META: Record<SeoVariant, { title: string; description: string; h1: string;
     h1: "English Assessment for Companies",
     sub: "Screen, place, and develop English skills across your workforce with adaptive CEFR-aligned assessments.",
     keywords: "english assessment companies, corporate english test, workforce english proficiency, english screening hr",
-    icon: <Building2 size={28} className="text-[#9b276c]" />,
+    icon: <Building2 size={28} className="text-[#ad024c]" />,
     audience: "HR & L&D Teams",
     bullets: [
       "Pre-hire English screening in under 60 minutes",
@@ -129,10 +129,10 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
   }, [variant]);
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] font-sans">
+    <div className="min-h-screen bg-[#fcf8fa] font-sans">
       <SiteNav />
       {/* Hero */}
-      <section className="bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white pt-36 pb-20 px-6">
+      <section className="bg-gradient-to-br from-[#24101a] via-[#1e1b4b] to-[#ad024c] text-white pt-36 pb-20 px-6">
         <div className="max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest text-white/80 mb-6">
             {m.icon}
@@ -143,7 +143,7 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
               onClick={onStart}
-              className="inline-flex items-center gap-2 px-8 py-4 bg-[#9b276c] hover:bg-[#7d1f56] text-white font-black rounded-2xl transition-colors text-sm"
+              className="inline-flex items-center gap-2 px-8 py-4 bg-[#ad024c] hover:bg-[#8a003b] text-white font-black rounded-2xl transition-colors text-sm"
             >
               Start Free <ArrowRight size={16} />
             </button>
@@ -180,7 +180,7 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
               <ol className="space-y-4">
                 {section.steps.map((step, i) => (
                   <li key={step.title} className="flex gap-4 bg-white rounded-2xl border border-slate-100 p-5">
-                    <span className="shrink-0 w-8 h-8 rounded-full bg-[#9b276c] text-white font-black flex items-center justify-center" aria-hidden="true">{i + 1}</span>
+                    <span className="shrink-0 w-8 h-8 rounded-full bg-[#ad024c] text-white font-black flex items-center justify-center" aria-hidden="true">{i + 1}</span>
                     <div><h3 className="font-bold text-slate-900 mb-1">{step.title}</h3><p className="text-sm text-slate-600 leading-relaxed">{step.text}</p></div>
                   </li>
                 ))}
@@ -215,15 +215,15 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
           <p className="text-slate-600 mb-5">{c.levelsText}</p>
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
             {guidesFor(c.lang).map((guide) => (
-              <a key={guide.level} href={levelGuidePath(guide)} className="bg-white rounded-xl border border-slate-100 hover:border-[#9b276c] p-4 text-center">
-                <span className="block text-xl font-black text-[#9b276c]">{guide.level}</span>
+              <a key={guide.level} href={levelGuidePath(guide)} className="bg-white rounded-xl border border-slate-100 hover:border-[#ad024c] p-4 text-center">
+                <span className="block text-xl font-black text-[#ad024c]">{guide.level}</span>
                 <span className="block text-xs text-slate-500 mt-1">{guide.nickname}</span>
               </a>
             ))}
           </div>
           <p className="text-sm mt-4 space-x-4">
-            <a href={GUIDE_SECTION_PATHS[c.lang].hub} className="text-[#9b276c] underline">{c.lang === "tr" ? "CEFR seviyeleri rehberi" : "CEFR levels explained"}</a>
-            <a href={GUIDE_SECTION_PATHS[c.lang].comparison} className="text-[#9b276c] underline">{c.lang === "tr" ? "Sınav puanları ve CEFR" : "Exam scores vs CEFR"}</a>
+            <a href={GUIDE_SECTION_PATHS[c.lang].hub} className="text-[#ad024c] underline">{c.lang === "tr" ? "CEFR seviyeleri rehberi" : "CEFR levels explained"}</a>
+            <a href={GUIDE_SECTION_PATHS[c.lang].comparison} className="text-[#ad024c] underline">{c.lang === "tr" ? "Sınav puanları ve CEFR" : "Exam scores vs CEFR"}</a>
           </p>
         </section>
       </div>
@@ -255,12 +255,12 @@ export const SeoLandingPage: React.FC<Props> = ({ variant, onStart, onPricing })
       </section>
 
       {/* CTA bottom */}
-      <section className="bg-gradient-to-br from-[#0f172a] to-[#1e1b4b] text-white py-16 px-6 text-center">
+      <section className="bg-gradient-to-br from-[#24101a] to-[#1e1b4b] text-white py-16 px-6 text-center">
         <h2 lang={contentLanguage} className="text-3xl font-black mb-4">{m.h1}</h2>
         <p lang={contentLanguage} className="text-white/60 mb-8 max-w-md mx-auto text-sm">{m.sub}</p>
         <button
           onClick={onStart}
-          className="inline-flex items-center gap-2 px-8 py-4 bg-[#9b276c] hover:bg-[#7d1f56] text-white font-black rounded-2xl transition-colors text-sm"
+          className="inline-flex items-center gap-2 px-8 py-4 bg-[#ad024c] hover:bg-[#8a003b] text-white font-black rounded-2xl transition-colors text-sm"
         >
           Get Started Free <ArrowRight size={16} />
         </button>
