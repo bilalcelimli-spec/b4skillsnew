@@ -59,3 +59,39 @@ Onaylanan 43 dilbilgisi sorusunun büyük kısmı aynı hedefi ölçüyor: "This
 ## Kapsam dışı: 2 C2 sorusu
 
 `SPK-C2-0009` (konuşma) ve `WRT-C2-0010` (yazma) yetişkin içerikli. `language-schools` etiketliler, ancak Language Schools profilinin CEFR aralığı C2'yi kapsamıyor. C2'yi kapsayan Academia ve Specialized ise bu etiketi kabul etmiyor. Bu ikisi için ürün ve seviye kararı gerekiyor; bu incelemede değiştirilmediler.
+
+## Revizyonlar (22 Kasım 2026, ikinci adım)
+
+REVIEW'a giden 13 soru `scripts/jobs/apply-pre-a1-revisions.ts` ile işlendi. Script varsayılan olarak kuru çalışır; `--apply` tek transaction ile yazar.
+
+- **1 dilbilgisi tekrarı:** `RETIRED` yapıldı.
+- **11 konuşma sorusu:** Resim gerektirmeyecek şekilde yeniden yazıldı. Resim alanı kaldırıldı; puanlama ölçütü ve kabul edilen cevaplar yeni soruya göre güncellendi. Yeni sorular:
+  - kalem kutusunda ne var;
+  - odada ne görüyorsun;
+  - sevdiğin yiyecek ve içecek;
+  - pazarda sevdiğin meyveler;
+  - şehirde mi köyde mi yaşıyorsun;
+  - kedi mi köpek mi;
+  - parkta üç soru;
+  - "I like football. What do you like?";
+  - en iyi arkadaşın;
+  - ailende kimler var;
+  - resim çizmeyi sever misin.
+- **1 okuma sorusu:** "What is green?" yerine "What is big?" soruluyor. Tek doğru cevap "Trees"; seçenek açıklamaları da düzeltildi.
+
+Yeniden yazılan sorular, inceleme öncesindeki durumlarına (PRETEST) Primary sorusu olarak döner: `primary` etiketi ve `YOUNG_LEARNER` yaş alanı. Eski içerik `metadata.revision.previousContent` altında saklanır.
+
+Her revizyon şu kontrollerden geçti:
+- yapı doğrulaması;
+- "cevaplanacak bir şey var mı" kontrolü;
+- içerik kurallarındaki engelleyici bulgular;
+- yaş bağlamı kontrolü;
+- konuşma metninde resme gönderme kalmadığı.
+
+## Önemli: PRETEST'teki konuşma ve yazma soruları hiç sunulmuyor
+
+Ön deneme yuvaları yazma ve konuşmayı kapsamaz (`section-flow.ts`, `PRETEST_EXCLUDED_SKILLS`). Canlı havuz ise yalnızca ACTIVE soruları kullanır. Bu yüzden PRETEST durumundaki bir konuşma ya da yazma sorusu hiçbir sınavda görünmez, yanıt toplamaz ve kalibrasyon yoluyla ACTIVE'e geçemez.
+
+22 Kasım 2026 itibarıyla bu durumda 217 soru var: 192 konuşma, 25 yazma. Yeniden yazılan 11 konuşma sorusu da bu gruba katılır.
+
+Bu sorular IRT ile değil, ölçütle (rubric) puanlanıyor. Bu yüzden ACTIVE'e geçişleri için ayrı bir yol tanımlanmalı; örneğin insan incelemesi ve ölçüt uyumu kontrolünden sonra etkinleştirme. `npm run report:pretest-progress` bu soruları artık "No pretest slot" olarak ayrı gösteriyor.
