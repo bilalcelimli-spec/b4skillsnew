@@ -42,7 +42,7 @@ interface ExposureData {
 const STRATUM_LABELS = ["θ<−1.5","−1.5…−0.5","−0.5…0.5","0.5…1.5","θ>1.5"];
 const STRATUM_CEFR  = ["A1","A2","B1","B2","C1+"];
 const SKILL_COLOR: Record<string, string> = {
-  READING: "#4f46e5", LISTENING: "#0891b2", WRITING: "#059669",
+  READING: "#ad024c", LISTENING: "#0891b2", WRITING: "#059669",
   SPEAKING: "#d97706", GRAMMAR: "#7c3aed", VOCABULARY: "#db2777",
 };
 
@@ -54,7 +54,7 @@ function RateBar({ rate, kMax }: { rate: number; kMax: number }) {
       <div className="flex-1 bg-slate-100 rounded h-2 overflow-hidden">
         <motion.div
           className="h-full rounded"
-          style={{ backgroundColor: over ? "#ef4444" : "#4f46e5" }}
+          style={{ backgroundColor: over ? "#ef4444" : "#ad024c" }}
           initial={{ width: 0 }}
           animate={{ width: `${pct}%` }}
           transition={{ duration: 0.5 }}
@@ -232,7 +232,7 @@ export function ItemExposurePanel() {
                   {items.map((it) => (
                     <tr key={it.id} className={`hover:bg-slate-50 ${it.overExposed ? "bg-red-50" : ""}`}>
                       <td className="px-3 py-2">
-                        <span className="font-medium" style={{ color: SKILL_COLOR[it.skill] ?? "#64748b" }}>{it.skill}</span>
+                        <span className="font-medium" style={{ color: SKILL_COLOR[it.skill] ?? "#806571" }}>{it.skill}</span>
                         <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-medium text-slate-600 bg-slate-100">
                           {it.cefrLevel}
                         </span>

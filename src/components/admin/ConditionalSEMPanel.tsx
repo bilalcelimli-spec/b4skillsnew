@@ -46,7 +46,7 @@ const SKILL_COLORS: Record<string, string> = {
   LISTENING: "#8b5cf6", WRITING: "#ef4444", SPEAKING: "#f97316",
 };
 const CEFR_BG: Record<string, string> = {
-  PRE_A1: "#475569", A1: "#3b82f6", A2: "#06b6d4",
+  PRE_A1: "#6b5560", A1: "#3b82f6", A2: "#06b6d4",
   B1: "#10b981", B2: "#f59e0b", C1: "#f97316", C2: "#ef4444",
 };
 
@@ -86,7 +86,7 @@ const SEMCurveSVG: React.FC<{
       {/* Grid */}
       {[0.2, 0.4, 0.6, 0.8].filter((v) => v <= sMax).map((v) => (
         <line key={v} x1={PAD.left} x2={PAD.left + W} y1={ty(v)} y2={ty(v)}
-          stroke="#334155" strokeWidth={1} strokeDasharray="3,3" />
+          stroke="#4f3a45" strokeWidth={1} strokeDasharray="3,3" />
       ))}
       {/* Target SEM line */}
       {targetVisible && (
@@ -99,15 +99,15 @@ const SEMCurveSVG: React.FC<{
       {/* SEM curve */}
       <path d={pathD} fill="none" stroke={color} strokeWidth={2} />
       {/* Axes */}
-      <line x1={PAD.left} x2={PAD.left + W} y1={PAD.top + H} y2={PAD.top + H} stroke="#475569" />
-      <line x1={PAD.left} x2={PAD.left} y1={PAD.top} y2={PAD.top + H} stroke="#475569" />
+      <line x1={PAD.left} x2={PAD.left + W} y1={PAD.top + H} y2={PAD.top + H} stroke="#6b5560" />
+      <line x1={PAD.left} x2={PAD.left} y1={PAD.top} y2={PAD.top + H} stroke="#6b5560" />
       {/* θ labels */}
       {[-3, -2, -1, 0, 1, 2, 3].filter((v) => v >= tMin && v <= tMax).map((v) => (
-        <text key={v} x={tx(v)} y={PAD.top + H + 12} fill="#64748b" fontSize={8} textAnchor="middle">{v}</text>
+        <text key={v} x={tx(v)} y={PAD.top + H + 12} fill="#806571" fontSize={8} textAnchor="middle">{v}</text>
       ))}
       {/* SEM axis labels */}
       {[0, 0.2, 0.4, 0.6].filter((v) => v <= sMax).map((v) => (
-        <text key={v} x={PAD.left - 4} y={ty(v) + 3} fill="#64748b" fontSize={7} textAnchor="end">{v.toFixed(1)}</text>
+        <text key={v} x={PAD.left - 4} y={ty(v) + 3} fill="#806571" fontSize={7} textAnchor="end">{v.toFixed(1)}</text>
       ))}
       {/* Label */}
       <text x={PAD.left + 4} y={PAD.top + 10} fill={color} fontSize={9} fontWeight="bold">{label}</text>
@@ -200,10 +200,10 @@ export const ConditionalSEMPanel: React.FC = () => {
             {data.byCurve.map((sk) => (
               <div key={sk.skill} className="bg-slate-800 border border-slate-700 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm font-bold" style={{ color: SKILL_COLORS[sk.skill] ?? "#94a3b8" }}>{sk.skill}</span>
+                  <span className="text-sm font-bold" style={{ color: SKILL_COLORS[sk.skill] ?? "#b89aa8" }}>{sk.skill}</span>
                   <span className="text-slate-500 text-xs ml-auto">peak θ≈{sk.peakInfoTheta.toFixed(1)}, min SEM={sk.minSEM.toFixed(3)}</span>
                 </div>
-                <SEMCurveSVG points={sk.points} color={SKILL_COLORS[sk.skill] ?? "#94a3b8"} label={sk.skill} width={340} height={130} />
+                <SEMCurveSVG points={sk.points} color={SKILL_COLORS[sk.skill] ?? "#b89aa8"} label={sk.skill} width={340} height={130} />
               </div>
             ))}
             {data.byCurve.length === 0 && (
@@ -227,7 +227,7 @@ export const ConditionalSEMPanel: React.FC = () => {
                       <td className="px-2 py-1.5 text-slate-400 font-mono text-[10px]">{s.sessionId.slice(-10)}</td>
                       <td className="px-2 py-1.5">
                         <span className="px-1 py-0.5 rounded text-[10px] text-white font-semibold"
-                          style={{ backgroundColor: CEFR_BG[s.cefrLevel] ?? "#475569" }}>
+                          style={{ backgroundColor: CEFR_BG[s.cefrLevel] ?? "#6b5560" }}>
                           {s.cefrLevel.replace("_", "")}
                         </span>
                       </td>

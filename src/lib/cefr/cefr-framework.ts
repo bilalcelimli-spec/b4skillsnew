@@ -127,7 +127,7 @@ export const CEFR_LEVELS: CefrLevelMeta[] = [
     color: "text-indigo-600",
     bg: "bg-indigo-50",
     border: "border-indigo-400",
-    hex: "#6366f1",
+    hex: "#c81e66",
     gse: { min: 59, max: 75 },
     ielts: { min: 6.0, max: 7.5 },
     toefl: { min: 95, max: 109 },

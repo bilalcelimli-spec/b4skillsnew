@@ -22,7 +22,7 @@ interface CertificateViewProps {
 
 export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, branding }) => {
   const { toast } = useToast();
-  const primaryColor = branding?.primaryColor || "#9b276c";
+  const primaryColor = branding?.primaryColor || "#ad024c";
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
 
   // Generate QR code client-side so it always uses the correct domain
@@ -31,7 +31,7 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
     QRCode.toDataURL(verifyUrl, {
       width: 200,
       margin: 1,
-      color: { dark: "#1e293b", light: "#ffffff" },
+      color: { dark: "#40222f", light: "#ffffff" },
     })
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(""));

@@ -19,10 +19,10 @@ interface SharedReport {
 }
 
 const CEFR_COLORS: Record<string, string> = {
-  A1: "#94a3b8", A2: "#64748b",
-  B1: "#3b82f6", B2: "#6366f1",
+  A1: "#b89aa8", A2: "#806571",
+  B1: "#3b82f6", B2: "#c81e66",
   C1: "#8b5cf6", C2: "#7c3aed",
-  PRE_A1: "#cbd5e1",
+  PRE_A1: "#e0c8d3",
 };
 
 const SKILL_LABELS: Record<string, string> = {
@@ -70,7 +70,7 @@ export function SharedReportPage({ token }: Props) {
     );
   }
 
-  const cefrColor = CEFR_COLORS[report.cefr] ?? "#6366f1";
+  const cefrColor = CEFR_COLORS[report.cefr] ?? "#c81e66";
   const completedDate = new Date(report.completedAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 
   return (

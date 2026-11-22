@@ -23,7 +23,7 @@ interface Props {
 const CEFR_THRESHOLDS = ['PRE_A1', 'A1', 'A2', 'B1', 'B2', 'C1'].map((level, index, levels) => ({
   theta: CEFR_THETA_THRESHOLDS[level],
   label: `${level === 'PRE_A1' ? 'Pre-A1' : level}→${levels[index + 1] ?? 'C2'}`,
-  color: ['#9ca3af', '#94a3b8', '#60a5fa', '#34d399', '#f59e0b', '#a78bfa'][index],
+  color: ['#9ca3af', '#b89aa8', '#60a5fa', '#34d399', '#f59e0b', '#a78bfa'][index],
 }));
 
 const fmt = (iso: string) => {
@@ -129,16 +129,16 @@ export const ProgressTrendChart: React.FC<Props> = ({ candidateId }) => {
 
       <ResponsiveContainer width="100%" height={240}>
         <LineChart data={chartData} margin={{ top: 8, right: 16, left: -20, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#f8f0f4" />
           <XAxis
             dataKey="displayDate"
-            tick={{ fontSize: 10, fill: "#94a3b8" }}
+            tick={{ fontSize: 10, fill: "#b89aa8" }}
             tickLine={false}
             axisLine={false}
           />
           <YAxis
             domain={["auto", "auto"]}
-            tick={{ fontSize: 10, fill: "#94a3b8" }}
+            tick={{ fontSize: 10, fill: "#b89aa8" }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) => v.toFixed(1)}
@@ -157,9 +157,9 @@ export const ProgressTrendChart: React.FC<Props> = ({ candidateId }) => {
           <Line
             type="monotone"
             dataKey="theta"
-            stroke="#6366f1"
+            stroke="#c81e66"
             strokeWidth={2.5}
-            dot={{ r: 4, fill: "#6366f1", strokeWidth: 0 }}
+            dot={{ r: 4, fill: "#c81e66", strokeWidth: 0 }}
             activeDot={{ r: 6 }}
           />
         </LineChart>

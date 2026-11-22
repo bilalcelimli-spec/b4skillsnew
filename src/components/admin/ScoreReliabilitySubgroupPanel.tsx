@@ -34,7 +34,7 @@ interface ReliabilityPayload {
 const CEFR_ORDER = ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"];
 
 const SKILL_COLORS: Record<string, string> = {
-  GRAMMAR: "#6366f1",
+  GRAMMAR: "#c81e66",
   VOCABULARY: "#8b5cf6",
   READING: "#3b82f6",
   LISTENING: "#06b6d4",
@@ -106,7 +106,7 @@ function SubgroupTable({ rows, groupLabel, colorMap }: { rows: SubgroupReliabili
             <tr key={row.groupLabel} className="border-b border-slate-800 hover:bg-slate-800/50">
               <td className="py-2 pr-4">
                 {colorMap ? (
-                  <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: (colorMap[row.groupLabel] ?? "#64748b") + "22", color: colorMap[row.groupLabel] ?? "#94a3b8" }}>
+                  <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ background: (colorMap[row.groupLabel] ?? "#806571") + "22", color: colorMap[row.groupLabel] ?? "#b89aa8" }}>
                     {row.groupLabel}
                   </span>
                 ) : row.groupLabel}
@@ -154,7 +154,7 @@ export function ScoreReliabilitySubgroupPanel() {
 
   const kpiCards = data
     ? [
-        { label: "Sessions", value: data.overallN, icon: <Users size={16} />, color: "#6366f1", fmt: (v: number) => v.toLocaleString() },
+        { label: "Sessions", value: data.overallN, icon: <Users size={16} />, color: "#c81e66", fmt: (v: number) => v.toLocaleString() },
         { label: "Overall Reliability", value: data.overallReliability, icon: <BarChart3 size={16} />, color: data.overallReliability >= 0.85 ? "#10b981" : "#f59e0b", fmt: (v: number) => v.toFixed(3) },
         { label: "Mean SEM", value: data.overallMeanSEM, icon: <CheckCircle2 size={16} />, color: data.overallMeanSEM <= 0.35 ? "#10b981" : "#ef4444", fmt: (v: number) => v.toFixed(3) },
         { label: "CEFR Groups", value: data.byCefr.length, icon: <AlertTriangle size={16} />, color: "#8b5cf6", fmt: (v: number) => v.toString() },

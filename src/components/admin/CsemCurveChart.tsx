@@ -84,8 +84,8 @@ function SvgChart({ data }: ChartProps) {
         const y = toY(v, maxSem);
         return (
           <g key={v}>
-            <line x1={PAD.left} y1={y} x2={CHART_W - PAD.right} y2={y} stroke="#e2e8f0" strokeWidth={0.5} />
-            <text x={PAD.left - 4} y={y + 4} textAnchor="end" fontSize={9} fill="#94a3b8">{v.toFixed(2)}</text>
+            <line x1={PAD.left} y1={y} x2={CHART_W - PAD.right} y2={y} stroke="#f0dfe6" strokeWidth={0.5} />
+            <text x={PAD.left - 4} y={y + 4} textAnchor="end" fontSize={9} fill="#b89aa8">{v.toFixed(2)}</text>
           </g>
         );
       })}
@@ -95,21 +95,21 @@ function SvgChart({ data }: ChartProps) {
         const x = toX(t, minT, maxT);
         return (
           <g key={t}>
-            <line x1={x} y1={PAD.top + INNER_H} x2={x} y2={PAD.top + INNER_H + 4} stroke="#94a3b8" strokeWidth={0.5} />
-            <text x={x} y={PAD.top + INNER_H + 14} textAnchor="middle" fontSize={9} fill="#94a3b8">{t}</text>
+            <line x1={x} y1={PAD.top + INNER_H} x2={x} y2={PAD.top + INNER_H + 4} stroke="#b89aa8" strokeWidth={0.5} />
+            <text x={x} y={PAD.top + INNER_H + 14} textAnchor="middle" fontSize={9} fill="#b89aa8">{t}</text>
           </g>
         );
       })}
 
       {/* Axes */}
-      <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + INNER_H} stroke="#cbd5e1" strokeWidth={1} />
-      <line x1={PAD.left} y1={PAD.top + INNER_H} x2={CHART_W - PAD.right} y2={PAD.top + INNER_H} stroke="#cbd5e1" strokeWidth={1} />
+      <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + INNER_H} stroke="#e0c8d3" strokeWidth={1} />
+      <line x1={PAD.left} y1={PAD.top + INNER_H} x2={CHART_W - PAD.right} y2={PAD.top + INNER_H} stroke="#e0c8d3" strokeWidth={1} />
 
       {/* CEFR cut-score verticals */}
       {Object.entries(cefrCuts).map(([level, cut]) => {
         if (cut < minT || cut > maxT) return null;
         const x = toX(cut, minT, maxT);
-        const color = CEFR_COLORS[level] ?? "#94a3b8";
+        const color = CEFR_COLORS[level] ?? "#b89aa8";
         return (
           <g key={level}>
             <line x1={x} y1={PAD.top} x2={x} y2={PAD.top + INNER_H} stroke={color} strokeWidth={1.2} strokeDasharray="4 2" />
@@ -130,7 +130,7 @@ function SvgChart({ data }: ChartProps) {
       />
 
       {/* CSEM line */}
-      <polyline points={polyline} fill="none" stroke="#6366f1" strokeWidth={2} strokeLinejoin="round" />
+      <polyline points={polyline} fill="none" stroke="#c81e66" strokeWidth={2} strokeLinejoin="round" />
 
       {/* Axis labels */}
       <text
@@ -138,7 +138,7 @@ function SvgChart({ data }: ChartProps) {
         y={CHART_H - 2}
         textAnchor="middle"
         fontSize={10}
-        fill="#64748b"
+        fill="#806571"
       >
         θ (Ability Estimate)
       </text>
@@ -147,7 +147,7 @@ function SvgChart({ data }: ChartProps) {
         y={PAD.top + INNER_H / 2}
         textAnchor="middle"
         fontSize={10}
-        fill="#64748b"
+        fill="#806571"
         transform={`rotate(-90 10 ${PAD.top + INNER_H / 2})`}
       >
         SEM
@@ -217,7 +217,7 @@ export function CsemCurveChart() {
                   <span key={level} className="flex items-center gap-1">
                     <span
                       className="inline-block w-3 h-0.5 rounded"
-                      style={{ background: CEFR_COLORS[level] ?? "#94a3b8" }}
+                      style={{ background: CEFR_COLORS[level] ?? "#b89aa8" }}
                     />
                     {level}
                   </span>

@@ -18,15 +18,15 @@ interface SchoolsPageProps {
 // ─── Atoms ────────────────────────────────────────────────────────────────────
 export const Highlight = ({ children }: { children: React.ReactNode }) => (
   <span className="relative inline-block">
-    <span className="absolute inset-y-1 -inset-x-2 bg-gradient-to-r from-[#9b276c] to-[#d63384] -skew-x-[12deg] -z-10 rounded-lg shadow-lg" />
+    <span className="absolute inset-y-1 -inset-x-2 bg-gradient-to-r from-[#ad024c] to-[#d63384] -skew-x-[12deg] -z-10 rounded-lg shadow-lg" />
     <span className="relative z-10 text-white px-1">{children}</span>
   </span>
 );
 
 export const Check = ({ children }: { children: React.ReactNode }) => (
   <li className="flex items-start gap-4 text-slate-700 text-[15px] font-medium leading-relaxed bg-white/60 p-3 rounded-2xl border border-slate-100 shadow-sm">
-    <div className="bg-[#9b276c]/10 p-1 rounded-full shrink-0">
-      <CheckCircle2 size={18} className="text-[#9b276c]" />
+    <div className="bg-[#ad024c]/10 p-1 rounded-full shrink-0">
+      <CheckCircle2 size={18} className="text-[#ad024c]" />
     </div>
     <span className="pt-0.5">{children}</span>
   </li>
@@ -39,13 +39,13 @@ export const Pillar = ({
     initial={{ opacity: 0, y: 16 }}
     whileInView={{ opacity: 1, y: 0 }}
     viewport={{ once: true }}
-    className="flex flex-col items-start gap-5 p-8 rounded-[32px] bg-white border border-slate-100 shadow-sm hover:shadow-xl hover:border-[#9b276c]/30 transition-all duration-300 group"
+    className="flex flex-col items-start gap-5 p-8 rounded-[32px] bg-white border border-slate-100 shadow-sm hover:shadow-xl hover:border-[#ad024c]/30 transition-all duration-300 group"
   >
-    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#9b276c]/10 to-[#9b276c]/5 flex items-center justify-center text-[#9b276c] group-hover:scale-110 group-hover:bg-[#9b276c] group-hover:text-white transition-all duration-300">
+    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#ad024c]/10 to-[#ad024c]/5 flex items-center justify-center text-[#ad024c] group-hover:scale-110 group-hover:bg-[#ad024c] group-hover:text-white transition-all duration-300">
       {icon}
     </div>
     <div>
-      <h3 className="font-black text-slate-900 text-xl tracking-tight mb-2 group-hover:text-[#9b276c] transition-colors">{title}</h3>
+      <h3 className="font-black text-slate-900 text-xl tracking-tight mb-2 group-hover:text-[#ad024c] transition-colors">{title}</h3>
       <p className="text-slate-500 text-sm leading-relaxed font-medium">{desc}</p>
     </div>
   </motion.div>
@@ -60,7 +60,7 @@ export const SmallFeature = ({
     viewport={{ once: true, margin: "-50px" }}
     className="flex flex-col gap-4 p-6 rounded-[28px] bg-slate-50 border border-slate-100/50 hover:bg-white hover:shadow-lg transition-all"
   >
-    <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center text-[#9b276c]">
+    <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center text-[#ad024c]">
       {icon}
     </div>
     <div>
@@ -78,13 +78,13 @@ export const ProductCard = ({
     whileInView={{ opacity: 1, y: 0 }}
     viewport={{ once: true }}
     onClick={onClick}
-    className="group text-left p-10 rounded-[40px] border border-slate-200 bg-white/80 backdrop-blur-xl hover:border-[#9b276c] hover:shadow-2xl hover:shadow-[#9b276c]/10 transition-all duration-300 hover:-translate-y-2 relative overflow-hidden"
+    className="group text-left p-10 rounded-[40px] border border-slate-200 bg-white/80 backdrop-blur-xl hover:border-[#ad024c] hover:shadow-2xl hover:shadow-[#ad024c]/10 transition-all duration-300 hover:-translate-y-2 relative overflow-hidden"
   >
-    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-[#9b276c]/5 to-transparent rounded-full -mr-10 -mt-10" />
-    <div className="text-[11px] font-black text-[#9b276c] uppercase tracking-[0.25em] mb-4 bg-[#9b276c]/10 inline-block px-3 py-1.5 rounded-full">{label}</div>
+    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-[#ad024c]/5 to-transparent rounded-full -mr-10 -mt-10" />
+    <div className="text-[11px] font-black text-[#ad024c] uppercase tracking-[0.25em] mb-4 bg-[#ad024c]/10 inline-block px-3 py-1.5 rounded-full">{label}</div>
     <h3 className="font-black text-3xl text-slate-900 tracking-tight mb-4">{title}</h3>
     <p className="text-slate-600 text-[15px] font-medium leading-relaxed mb-8">{desc}</p>
-    <div className="flex items-center gap-2 text-[#9b276c] font-black text-sm uppercase tracking-widest group-hover:gap-4 transition-all bg-white shadow-sm inline-flex px-5 py-3 rounded-2xl">
+    <div className="flex items-center gap-2 text-[#ad024c] font-black text-sm uppercase tracking-widest group-hover:gap-4 transition-all bg-white shadow-sm inline-flex px-5 py-3 rounded-2xl">
       Explore Module <ChevronRight size={16} />
     </div>
   </motion.button>
@@ -129,7 +129,7 @@ export const PersonaPanel = ({
         {points.map((p, i) => (
           <li key={i} className="flex items-start gap-3 text-[14px] text-slate-600 font-medium">
             <div className="bg-slate-50 p-1 rounded-full shrink-0 mt-0.5">
-              <CheckCircle2 size={16} className="text-[#9b276c]" />
+              <CheckCircle2 size={16} className="text-[#ad024c]" />
             </div>
             {p}
           </li>
@@ -142,7 +142,7 @@ export const PersonaPanel = ({
 // ─── Main Component ────────────────────────────────────────────────────────────
 export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => {
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 overflow-x-hidden selection:bg-[#9b276c]/20 flex flex-col">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 overflow-x-hidden selection:bg-[#ad024c]/20 flex flex-col">
       
       {/* Background base gradients */}
       <div className="fixed inset-0 pointer-events-none z-0">
@@ -160,7 +160,7 @@ export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => 
           <div className="col-span-1 lg:col-span-6 xl:col-span-5 flex flex-col justify-center text-center lg:text-left z-10 w-full">
             <motion.div
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              className="inline-flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-full text-xs font-black text-[#9b276c] uppercase tracking-[0.2em] mb-8 mx-auto lg:mx-0 shadow-sm"
+              className="inline-flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-full text-xs font-black text-[#ad024c] uppercase tracking-[0.2em] mb-8 mx-auto lg:mx-0 shadow-sm"
             >
               <Sparkles size={14} /> b4skills for Schools
             </motion.div>
@@ -184,7 +184,7 @@ export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => 
             >
               <button
                 onClick={onBack}
-                className="bg-slate-900 hover:bg-[#9b276c] text-white font-black text-sm uppercase tracking-widest px-8 py-4 rounded-2xl transition-all shadow-xl hover:-translate-y-0.5 flex items-center justify-center gap-2"
+                className="bg-slate-900 hover:bg-[#ad024c] text-white font-black text-sm uppercase tracking-widest px-8 py-4 rounded-2xl transition-all shadow-xl hover:-translate-y-0.5 flex items-center justify-center gap-2"
               >
                 Discover Modules <ChevronRight size={16} />
               </button>
@@ -192,7 +192,7 @@ export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => 
                 onClick={onBack}
                 className="bg-white hover:bg-slate-50 text-slate-900 font-black text-sm uppercase tracking-widest px-8 py-4 rounded-2xl border border-slate-200 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2"
               >
-                <PlayCircle size={18} className="text-[#9b276c]" /> Watch Demo
+                <PlayCircle size={18} className="text-[#ad024c]" /> Watch Demo
               </button>
             </motion.div>
           </div>
@@ -230,7 +230,7 @@ export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => 
               initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.8 }}
               className="absolute -top-6 -right-6 lg:-right-8 z-20 bg-slate-900 text-white p-4 rounded-[20px] shadow-2xl flex items-center gap-3"
             >
-              <div className="w-10 h-10 rounded-full bg-[#9b276c] flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-[#ad024c] flex items-center justify-center">
                 <TrendingUp size={20} className="text-white" />
               </div>
               <div>
@@ -295,7 +295,7 @@ export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => 
             >
               <h2 className="text-4xl lg:text-5xl font-black text-slate-900 tracking-tight mb-4">
                 Smart Testing.<br/>
-                <span className="text-[#9b276c]">Ultimate Flexibility.</span>
+                <span className="text-[#ad024c]">Ultimate Flexibility.</span>
               </h2>
               <p className="text-slate-500 font-medium text-lg">
                 Build the exact assessment framework your institution requires.
@@ -304,7 +304,7 @@ export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => 
             <motion.button
               initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
               onClick={onBack}
-              className="hidden lg:flex items-center gap-2 text-slate-900 font-black text-sm uppercase tracking-widest hover:text-[#9b276c] transition-colors whitespace-nowrap"
+              className="hidden lg:flex items-center gap-2 text-slate-900 font-black text-sm uppercase tracking-widest hover:text-[#ad024c] transition-colors whitespace-nowrap"
             >
               View Full Features <ChevronRight size={16} />
             </motion.button>
@@ -359,14 +359,14 @@ export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => 
               <motion.div
                 initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
               >
-                <div className="text-xs font-black text-[#9b276c] uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                <div className="text-xs font-black text-[#ad024c] uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
                   <ShieldCheck size={16} /> Pedagogy First
                 </div>
                 <h2 className="text-3xl xl:text-4xl font-black text-slate-900 tracking-tight leading-tight mb-6">
                   Built Around How Children<br />
-                  <span className="text-[#9b276c]">Actually Learn.</span>
+                  <span className="text-[#ad024c]">Actually Learn.</span>
                 </h2>
-                <div className="h-1 w-12 bg-[#9b276c] rounded-full mb-8" />
+                <div className="h-1 w-12 bg-[#ad024c] rounded-full mb-8" />
                 <ul className="space-y-4 mb-10">
                   <Check>Intuitive, age-appropriate interfaces keep students immersed—minimizing anxiety and yielding authentic results.</Check>
                   <Check>Our IRT (Item Response Theory) engine pinpoints CEFR levels quickly without subjecting learners to frustratingly hard items.</Check>
@@ -374,7 +374,7 @@ export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => 
                 </ul>
                 <button
                   onClick={onBack}
-                  className="bg-slate-900 hover:bg-[#9b276c] text-white font-black text-[13px] uppercase tracking-widest px-8 py-3.5 rounded-xl transition-all w-fit shadow-md whitespace-nowrap"
+                  className="bg-slate-900 hover:bg-[#ad024c] text-white font-black text-[13px] uppercase tracking-widest px-8 py-3.5 rounded-xl transition-all w-fit shadow-md whitespace-nowrap"
                 >
                   Explore Methodology
                 </button>
@@ -391,7 +391,7 @@ export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => 
             
             {/* Text Left */}
             <div className="lg:w-1/2 p-10 xl:p-16 flex flex-col justify-center relative w-full">
-              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#9b276c]/20 to-transparent pointer-events-none" />
+              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#ad024c]/20 to-transparent pointer-events-none" />
               <motion.div
                 initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
                 className="relative z-10"
@@ -415,7 +415,7 @@ export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => 
                       className="flex items-center justify-between w-full bg-white/10 hover:bg-white/20 border border-white/10 p-4 rounded-2xl transition-all group"
                     >
                       <div className="flex items-center gap-4 font-bold text-white">
-                        <div className="bg-white/10 p-2 rounded-xl text-white group-hover:bg-[#9b276c] transition-colors">{item.icon}</div>
+                        <div className="bg-white/10 p-2 rounded-xl text-white group-hover:bg-[#ad024c] transition-colors">{item.icon}</div>
                         {item.label}
                       </div>
                       <ChevronRight size={20} className="text-white/50 group-hover:text-white transition-colors" />
@@ -520,7 +520,7 @@ export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => 
                 "Term-over-term cohort growth tracking",
                 "One-click inspection-ready exports"
               ]}
-              gradient="from-[#9b276c] to-purple-700"
+              gradient="from-[#ad024c] to-purple-700"
             />
           </div>
         </div>
@@ -528,11 +528,11 @@ export const SchoolsPage: React.FC<SchoolsPageProps> = ({ onBack, onStart }) => 
 
       {/* ── CTA BANNER ───────────────────────────────────────────────────────── */}
       <section className="py-24 relative overflow-hidden bg-slate-950 w-full mt-auto">
-        <div className="absolute top-0 right-[-10%] w-[800px] h-[800px] bg-[#9b276c] rounded-full blur-[150px] opacity-30 pointer-events-none" />
+        <div className="absolute top-0 right-[-10%] w-[800px] h-[800px] bg-[#ad024c] rounded-full blur-[150px] opacity-30 pointer-events-none" />
         <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-blue-600 rounded-full blur-[150px] opacity-20 pointer-events-none" />
         
         <div className="max-w-4xl mx-auto px-6 text-center relative z-10 w-full">
-          <div className="w-20 h-20 bg-gradient-to-br from-[#9b276c] to-[#d63384] rounded-3xl mx-auto mb-8 flex items-center justify-center shadow-2xl shadow-[#9b276c]/40">
+          <div className="w-20 h-20 bg-gradient-to-br from-[#ad024c] to-[#d63384] rounded-3xl mx-auto mb-8 flex items-center justify-center shadow-2xl shadow-[#ad024c]/40">
             <Sparkles size={36} className="text-white" />
           </div>
           <h2 className="text-5xl lg:text-6xl font-black text-white tracking-tight mb-8">

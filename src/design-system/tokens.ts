@@ -21,7 +21,7 @@ export const colorScales = {
   brand: {
     1: "#f8f9ff", 2: "#f0f3ff", 3: "#e0e7ff", 4: "#c7d4ff",
     5: "#a9beff", 6: "#8aa5ff", 7: "#6b8efc", 8: "#4d75f7",
-    9: "#1a56db", 10: "#1748c4", 11: "#1239a8", 12: "#0b2470",
+    9: "#ad024c", 10: "#1748c4", 11: "#1239a8", 12: "#0b2470",
   },
   // Accent: Violet
   accent: {

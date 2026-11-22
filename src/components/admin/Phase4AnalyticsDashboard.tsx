@@ -179,14 +179,14 @@ export const Phase4AnalyticsDashboard: React.FC<{ orgId: string }> = ({ orgId })
         <CardContent className="p-8 h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart data={mirtDimensions}>
-              <PolarGrid stroke="#f1f5f9" />
-              <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fontWeight: 900, fill: "#64748b" }} />
-              <PolarRadiusAxis angle={90} domain={[-3, 3]} tick={{ fontSize: 8, fill: "#cbd5e1" }} />
+              <PolarGrid stroke="#f8f0f4" />
+              <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fontWeight: 900, fill: "#806571" }} />
+              <PolarRadiusAxis angle={90} domain={[-3, 3]} tick={{ fontSize: 8, fill: "#e0c8d3" }} />
               <RadarComponent
                 name="Mean Ability (θ)"
                 dataKey="value"
-                stroke="#6366f1"
-                fill="#6366f1"
+                stroke="#c81e66"
+                fill="#c81e66"
                 fillOpacity={0.6}
               />
               <Tooltip
@@ -210,14 +210,14 @@ export const Phase4AnalyticsDashboard: React.FC<{ orgId: string }> = ({ orgId })
           <CardContent className="p-8 h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={difficultyByLevel}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" tick={{ fontSize: 10, fontWeight: 900, fill: "#94a3b8" }} />
-                <YAxis domain={[0, 1]} tick={{ fontSize: 10, fontWeight: 900, fill: "#94a3b8" }} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8f0f4" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fontWeight: 900, fill: "#b89aa8" }} />
+                <YAxis domain={[0, 1]} tick={{ fontSize: 10, fontWeight: 900, fill: "#b89aa8" }} />
                 <Tooltip
                   contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
                   formatter={(value) => parseFloat(value).toFixed(2)}
                 />
-                <Bar dataKey="difficulty" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="difficulty" fill="#c81e66" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -233,14 +233,14 @@ export const Phase4AnalyticsDashboard: React.FC<{ orgId: string }> = ({ orgId })
           <CardContent className="p-8 h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={skillMetrics}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" tick={{ fontSize: 10, fontWeight: 900, fill: "#94a3b8" }} />
-                <YAxis domain={[-3, 3]} tick={{ fontSize: 10, fontWeight: 900, fill: "#94a3b8" }} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8f0f4" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fontWeight: 900, fill: "#b89aa8" }} />
+                <YAxis domain={[-3, 3]} tick={{ fontSize: 10, fontWeight: 900, fill: "#b89aa8" }} />
                 <Tooltip
                   contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
                   formatter={(value) => parseFloat(value).toFixed(2)}
                 />
-                <Line type="monotone" dataKey="avgTheta" stroke="#6366f1" strokeWidth={3} dot={{ fill: "#6366f1", r: 6 }} />
+                <Line type="monotone" dataKey="avgTheta" stroke="#c81e66" strokeWidth={3} dot={{ fill: "#c81e66", r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>

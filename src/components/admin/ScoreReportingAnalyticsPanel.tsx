@@ -55,12 +55,12 @@ interface ScoreReportPayload {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const CEFR_COLORS: Record<string, string> = {
-  PRE_A1: "#64748b", A1: "#ef4444", A2: "#f97316",
+  PRE_A1: "#806571", A1: "#ef4444", A2: "#f97316",
   B1: "#eab308", B2: "#22c55e", C1: "#3b82f6", C2: "#8b5cf6",
 };
 
 const SKILL_COLORS: Record<string, string> = {
-  GRAMMAR: "#6366f1", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
+  GRAMMAR: "#c81e66", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
   LISTENING: "#06b6d4", WRITING: "#10b981", SPEAKING: "#f59e0b",
 };
 
@@ -73,11 +73,11 @@ function CefrDistChart({ bands }: { bands: CefrBand[] }) {
     <div className="space-y-2">
       {ordered.map((b) => (
         <div key={b.cefrLevel} className="flex items-center gap-3 text-xs">
-          <span className="w-14 font-medium text-right" style={{ color: CEFR_COLORS[b.cefrLevel] ?? "#94a3b8" }}>{b.cefrLevel}</span>
+          <span className="w-14 font-medium text-right" style={{ color: CEFR_COLORS[b.cefrLevel] ?? "#b89aa8" }}>{b.cefrLevel}</span>
           <div className="flex-1 bg-slate-800 rounded-full h-5 overflow-hidden">
             <div
               className="h-full rounded-full flex items-center px-2 text-white font-medium transition-all"
-              style={{ width: `${(b.pct / maxPct) * 100}%`, background: CEFR_COLORS[b.cefrLevel] ?? "#6366f1", minWidth: b.n > 0 ? "2rem" : 0 }}
+              style={{ width: `${(b.pct / maxPct) * 100}%`, background: CEFR_COLORS[b.cefrLevel] ?? "#c81e66", minWidth: b.n > 0 ? "2rem" : 0 }}
             >
               {b.pct >= 5 ? `${b.pct.toFixed(1)}%` : ""}
             </div>
@@ -100,8 +100,8 @@ function TrendChart({ data }: { data: MonthlyTrend[] }) {
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 130 }}>
       <defs>
         <linearGradient id="completedGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
-          <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+          <stop offset="0%" stopColor="#c81e66" stopOpacity="0.3" />
+          <stop offset="100%" stopColor="#c81e66" stopOpacity="0" />
         </linearGradient>
       </defs>
       {/* Area fill */}
@@ -112,25 +112,25 @@ function TrendChart({ data }: { data: MonthlyTrend[] }) {
       {/* Line */}
       <polyline
         fill="none"
-        stroke="#6366f1"
+        stroke="#c81e66"
         strokeWidth={2}
         points={data.map((d, i) => `${xs(i)},${ys(d.nCompleted)}`).join(" ")}
       />
       {/* Dots */}
       {data.map((d, i) => (
-        <circle key={i} cx={xs(i)} cy={ys(d.nCompleted)} r={3} fill="#6366f1">
+        <circle key={i} cx={xs(i)} cy={ys(d.nCompleted)} r={3} fill="#c81e66">
           <title>{`${d.month}: ${d.nCompleted} completed`}</title>
         </circle>
       ))}
       {/* X-axis labels */}
       {data.map((d, i) =>
         i % Math.max(1, Math.floor(data.length / 6)) === 0 ? (
-          <text key={`lbl-${i}`} x={xs(i)} y={H - 4} fontSize={8} fill="#64748b" textAnchor="middle">
+          <text key={`lbl-${i}`} x={xs(i)} y={H - 4} fontSize={8} fill="#806571" textAnchor="middle">
             {d.month}
           </text>
         ) : null
       )}
-      <text x={4} y={PAD} fontSize={8} fill="#6366f1">N</text>
+      <text x={4} y={PAD} fontSize={8} fill="#c81e66">N</text>
     </svg>
   );
 }
@@ -159,7 +159,7 @@ export function ScoreReportingAnalyticsPanel() {
   useEffect(() => { load(); }, [load]);
 
   const kpis = data ? [
-    { label: "Total Sessions", value: data.totalSessions, icon: <Users size={16} />, color: "#6366f1", fmt: String },
+    { label: "Total Sessions", value: data.totalSessions, icon: <Users size={16} />, color: "#c81e66", fmt: String },
     { label: "Completed", value: data.completedSessions, icon: <CheckCircle2 size={16} />, color: "#10b981", fmt: String },
     { label: "Completion Rate", value: data.completionRate, icon: <FileText size={16} />, color: data.completionRate >= 80 ? "#10b981" : data.completionRate >= 60 ? "#f59e0b" : "#ef4444", fmt: (v: number) => `${v.toFixed(1)}%` },
     { label: "Mean θ (CEFR)", value: data.meanTheta, icon: <TrendingUp size={16} />, color: "#8b5cf6", fmt: (v: number) => v.toFixed(3) },
@@ -318,12 +318,12 @@ export function ScoreReportingAnalyticsPanel() {
                     <div className="flex items-center gap-2 mb-3">
                       <span
                         className="px-2 py-0.5 rounded text-xs font-medium text-white"
-                        style={{ background: SKILL_COLORS[s.skill] ?? "#6366f1" }}
+                        style={{ background: SKILL_COLORS[s.skill] ?? "#c81e66" }}
                       >
                         {s.skill}
                       </span>
                       <span className="text-slate-400 text-xs">{s.nSessions} sessions</span>
-                      <span className="ml-auto font-medium text-xs" style={{ color: CEFR_COLORS[s.cefrMode] ?? "#94a3b8" }}>
+                      <span className="ml-auto font-medium text-xs" style={{ color: CEFR_COLORS[s.cefrMode] ?? "#b89aa8" }}>
                         Mode: {s.cefrMode}
                       </span>
                     </div>
@@ -382,11 +382,11 @@ export function ScoreReportingAnalyticsPanel() {
                       <tr key={it.itemId} className="border-t border-slate-700/30 hover:bg-slate-800/40">
                         <td className="px-3 py-2 font-mono text-white">{it.itemLabel}</td>
                         <td className="px-3 py-2">
-                          <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ background: SKILL_COLORS[it.skill] ?? "#6366f1" }}>
+                          <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ background: SKILL_COLORS[it.skill] ?? "#c81e66" }}>
                             {it.skill.slice(0, 3)}
                           </span>
                         </td>
-                        <td className="px-3 py-2" style={{ color: CEFR_COLORS[it.cefrLevel] ?? "#94a3b8" }}>{it.cefrLevel}</td>
+                        <td className="px-3 py-2" style={{ color: CEFR_COLORS[it.cefrLevel] ?? "#b89aa8" }}>{it.cefrLevel}</td>
                         <td className="px-3 py-2 text-right">{it.nResponses}</td>
                         <td className="px-3 py-2 text-right font-mono">{(it.pCorrect * 100).toFixed(1)}%</td>
                         <td className="px-3 py-2 text-right font-mono">{it.difficulty.toFixed(3)}</td>

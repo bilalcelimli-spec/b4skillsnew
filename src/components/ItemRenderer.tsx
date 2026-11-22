@@ -189,8 +189,8 @@ export const ItemRenderer: React.FC<ItemRendererProps> = ({
     "data:image/svg+xml;utf8," +
     encodeURIComponent(
       `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450">
-        <rect width="100%" height="100%" fill="#e2e8f0"/>
-        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#475569" font-family="Arial, sans-serif" font-size="24">
+        <rect width="100%" height="100%" fill="#f0dfe6"/>
+        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#6b5560" font-family="Arial, sans-serif" font-size="24">
           Image unavailable
         </text>
       </svg>`

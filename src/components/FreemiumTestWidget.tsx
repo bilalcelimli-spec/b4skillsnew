@@ -81,13 +81,13 @@ const CEFR_SCALE = ["PRE_A1", "A1", "A2", "B1", "B2", "C1", "C2"] as const;
 type CefrLevel = (typeof CEFR_SCALE)[number];
 
 const CEFR_COLORS: Record<string, { bg: string; text: string; border: string; accent: string }> = {
-  PRE_A1: { bg: "bg-slate-100",  text: "text-slate-700",  border: "border-slate-300",  accent: "#64748b" },
+  PRE_A1: { bg: "bg-slate-100",  text: "text-slate-700",  border: "border-slate-300",  accent: "#806571" },
   A1:     { bg: "bg-emerald-50", text: "text-emerald-700",border: "border-emerald-300",accent: "#059669" },
   A2:     { bg: "bg-green-50",   text: "text-green-700",  border: "border-green-300",  accent: "#16a34a" },
   B1:     { bg: "bg-blue-50",    text: "text-blue-700",   border: "border-blue-300",   accent: "#2563eb" },
-  B2:     { bg: "bg-indigo-50",  text: "text-indigo-700", border: "border-indigo-300", accent: "#4f46e5" },
+  B2:     { bg: "bg-indigo-50",  text: "text-indigo-700", border: "border-indigo-300", accent: "#ad024c" },
   C1:     { bg: "bg-purple-50",  text: "text-purple-700", border: "border-purple-300", accent: "#7c3aed" },
-  C2:     { bg: "bg-[#fdf2f8]",  text: "text-[#9b276c]", border: "border-[#9b276c]",  accent: "#9b276c" },
+  C2:     { bg: "bg-[#fdf2f8]",  text: "text-[#ad024c]", border: "border-[#ad024c]",  accent: "#ad024c" },
 };
 
 const CEFR_LABELS: Record<string, { label: string; desc: string; tagline: string }> = {
@@ -183,7 +183,7 @@ const StepDots: React.FC<{ step: Step }> = ({ step }) => {
       {steps.map((s, i) => (
         <div key={s} className={cn(
           "h-1.5 rounded-full transition-all duration-300",
-          i === idx ? "w-6 bg-[#9b276c]" : i < idx ? "w-3 bg-[#9b276c]/40" : "w-3 bg-slate-200"
+          i === idx ? "w-6 bg-[#ad024c]" : i < idx ? "w-3 bg-[#ad024c]/40" : "w-3 bg-slate-200"
         )} />
       ))}
     </div>
@@ -567,7 +567,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
           className="flex flex-col gap-8"
         >
           <div className="text-center">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-br from-[#9b276c] to-[#7d1f57] mb-6 shadow-xl shadow-[#9b276c]/30">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-br from-[#ad024c] to-[#8a003b] mb-6 shadow-xl shadow-[#ad024c]/30">
               <Brain size={36} className="text-white" />
             </div>
             <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight">
@@ -585,7 +585,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
               { icon: <Award size={20} />, val: "A1–C2", label: "CEFR Scale" },
             ].map((s, i) => (
               <div key={i} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col items-center gap-2 text-center">
-                <div className="text-[#9b276c]">{s.icon}</div>
+                <div className="text-[#ad024c]">{s.icon}</div>
                 <div className="font-black text-slate-900">{s.val}</div>
                 <div className="text-[11px] text-slate-400 uppercase tracking-wider font-bold">{s.label}</div>
               </div>
@@ -603,7 +603,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                   placeholder="e.g. Emma Johnson"
                   maxLength={100}
                   autoFocus
-                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#9b276c]/30 focus:border-[#9b276c] transition-all"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#ad024c]/30 focus:border-[#ad024c] transition-all"
                   onKeyDown={(e) => e.key === "Enter" && handleRegister()}
                 />
               </div>
@@ -615,7 +615,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   maxLength={254}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#9b276c]/30 focus:border-[#9b276c] transition-all"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#ad024c]/30 focus:border-[#ad024c] transition-all"
                   onKeyDown={(e) => e.key === "Enter" && handleRegister()}
                 />
               </div>
@@ -628,7 +628,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                 onClick={() => setConsent((v) => !v)}
                 className={cn(
                   "mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all",
-                  consent ? "bg-[#9b276c] border-[#9b276c]" : "border-slate-300 hover:border-[#9b276c]/50"
+                  consent ? "bg-[#ad024c] border-[#ad024c]" : "border-slate-300 hover:border-[#ad024c]/50"
                 )}
                 aria-checked={consent}
                 role="checkbox"
@@ -650,7 +650,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
             <button
               onClick={() => handleRegister(false)}
               disabled={loading}
-              className="w-full bg-[#9b276c] hover:bg-[#7d1f57] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl h-14 font-black text-base flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#9b276c]/25 hover:shadow-xl"
+              className="w-full bg-[#ad024c] hover:bg-[#8a003b] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl h-14 font-black text-base flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#ad024c]/25 hover:shadow-xl"
             >
               {loading ? <Loader2 size={20} className="animate-spin" /> : (
                 <>Start with My Name &amp; Email <ArrowRight size={18} /></>
@@ -666,7 +666,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
             <button
               onClick={() => handleRegister(true)}
               disabled={loading}
-              className="w-full border-2 border-slate-200 hover:border-[#9b276c]/40 bg-white hover:bg-slate-50 text-slate-700 rounded-xl h-12 font-bold text-sm flex items-center justify-center gap-2 transition-all"
+              className="w-full border-2 border-slate-200 hover:border-[#ad024c]/40 bg-white hover:bg-slate-50 text-slate-700 rounded-xl h-12 font-bold text-sm flex items-center justify-center gap-2 transition-all"
             >
               {loading ? <Loader2 size={16} className="animate-spin" /> : (
                 <>Start as Guest — No Sign-up Required <ArrowRight size={15} /></>
@@ -698,8 +698,8 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
           <div className="space-y-3">
             {[
               {
-                icon: <Brain size={22} className="text-[#9b276c]" />,
-                bg: "bg-[#fdf2f8] border-[#9b276c]/20",
+                icon: <Brain size={22} className="text-[#ad024c]" />,
+                bg: "bg-[#fdf2f8] border-[#ad024c]/20",
                 title: "Adaptive Questions",
                 body: "Each question adjusts to your level in real time — harder when you answer correctly, easier when you don't.",
               },
@@ -760,7 +760,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
   const renderQuestion = () => {
     if (!currentItem) return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4">
-        <Loader2 size={36} className="animate-spin text-[#9b276c]" />
+        <Loader2 size={36} className="animate-spin text-[#ad024c]" />
         <p className="text-slate-500 font-medium">Loading your next question…</p>
       </div>
     );
@@ -783,7 +783,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
         {/* Progress bar */}
         <div className="h-1 bg-slate-100 flex-shrink-0">
           <motion.div
-            className="h-full bg-[#9b276c]"
+            className="h-full bg-[#ad024c]"
             animate={{ width: `${progressPct}%` }}
             transition={{ duration: 0.5, ease: "easeOut" }}
           />
@@ -915,7 +915,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                           {i < arr.length - 1 && (
                             <span className={cn(
                               "inline-block min-w-[80px] border-b-2 px-2 mx-1 text-center font-bold transition-colors",
-                              inputAnswer ? "border-[#9b276c] text-[#9b276c]" : "border-slate-400 text-slate-400"
+                              inputAnswer ? "border-[#ad024c] text-[#ad024c]" : "border-slate-400 text-slate-400"
                             )}>
                               {inputAnswer || "···"}
                             </span>
@@ -935,7 +935,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                     disabled={loading}
                     autoFocus
                     maxLength={200}
-                    className="w-full border-2 border-slate-200 focus:border-[#9b276c] rounded-xl px-4 py-3.5 text-lg font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#9b276c]/20 transition-all disabled:opacity-50"
+                    className="w-full border-2 border-slate-200 focus:border-[#ad024c] rounded-xl px-4 py-3.5 text-lg font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#ad024c]/20 transition-all disabled:opacity-50"
                   />
                 )}
 
@@ -1046,7 +1046,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                       rows={6}
                       maxLength={2000}
                       autoFocus
-                      className="w-full border-2 border-slate-200 focus:border-[#9b276c] rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#9b276c]/20 transition-all disabled:opacity-50 resize-none leading-relaxed"
+                      className="w-full border-2 border-slate-200 focus:border-[#ad024c] rounded-xl px-4 py-3.5 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#ad024c]/20 transition-all disabled:opacity-50 resize-none leading-relaxed"
                     />
                     <div className="flex items-center justify-between text-xs text-slate-400 px-1">
                       <span>{inputAnswer.trim().split(/\s+/).filter(Boolean).length} words</span>
@@ -1067,20 +1067,20 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                         className={cn(
                           "w-full text-left px-5 py-4 rounded-2xl border-2 text-sm font-medium transition-all duration-150 flex items-center gap-4",
                           selectedOption === idx
-                            ? "border-[#9b276c] bg-[#fdf2f8] text-[#9b276c] shadow-md shadow-[#9b276c]/10"
+                            ? "border-[#ad024c] bg-[#fdf2f8] text-[#ad024c] shadow-md shadow-[#ad024c]/10"
                             : "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 bg-white",
                           loading && "opacity-50 cursor-not-allowed"
                         )}
                       >
                         <span className={cn(
                           "flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-black transition-all",
-                          selectedOption === idx ? "bg-[#9b276c] text-white" : "bg-slate-100 text-slate-500"
+                          selectedOption === idx ? "bg-[#ad024c] text-white" : "bg-slate-100 text-slate-500"
                         )}>
                           {String.fromCharCode(65 + idx)}
                         </span>
                         <span className="flex-1 leading-snug">{opt}</span>
                         {selectedOption === idx && (
-                          <CheckCircle2 size={17} className="flex-shrink-0 text-[#9b276c]" />
+                          <CheckCircle2 size={17} className="flex-shrink-0 text-[#ad024c]" />
                         )}
                       </motion.button>
                     ))}
@@ -1122,7 +1122,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                   className={cn(
                     "w-full rounded-2xl h-14 font-black text-base flex items-center justify-center gap-2 transition-all relative overflow-hidden",
                     (isFIB ? !!inputAnswer.trim() : isSpeakingQ ? hasRecording : isWritingQ ? !!inputAnswer.trim() : selectedOption !== null) && !loading && !isRecording
-                      ? "bg-[#9b276c] hover:bg-[#7d1f57] text-white shadow-lg shadow-[#9b276c]/25"
+                      ? "bg-[#ad024c] hover:bg-[#8a003b] text-white shadow-lg shadow-[#ad024c]/25"
                       : "bg-slate-100 text-slate-400 cursor-not-allowed"
                   )}
                 >
@@ -1202,12 +1202,12 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
               className="flex items-center gap-5 text-sm text-slate-500"
             >
               <div className="flex items-center gap-1.5">
-                <BarChart3 size={15} className="text-[#9b276c]" />
+                <BarChart3 size={15} className="text-[#ad024c]" />
                 <span className="font-bold">{result.itemsAdministered} questions</span>
               </div>
               <span className="text-slate-200">·</span>
               <div className="flex items-center gap-1.5">
-                <Clock size={15} className="text-[#9b276c]" />
+                <Clock size={15} className="text-[#ad024c]" />
                 <span className="font-bold">~{minutes} min</span>
               </div>
             </motion.div>
@@ -1232,12 +1232,12 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                         transition={{ delay: i * 0.07, duration: 0.4, ease: "easeOut" }}
                         className={cn(
                           "w-full rounded-t-md",
-                          isResult ? "bg-[#9b276c]" : isPast ? "bg-[#9b276c]/30" : "bg-slate-200"
+                          isResult ? "bg-[#ad024c]" : isPast ? "bg-[#ad024c]/30" : "bg-slate-200"
                         )}
                       />
                       <span className={cn(
                         "text-[10px] font-bold",
-                        isResult ? "text-[#9b276c]" : "text-slate-400"
+                        isResult ? "text-[#ad024c]" : "text-slate-400"
                       )}>
                         {CEFR_LABELS[level]?.label ?? level}
                       </span>
@@ -1353,7 +1353,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                 { label: "Precision", val: `${Math.min(100, Math.max(0, Math.round((1 - Math.min(result.sem, 1)) * 100)))}%`, icon: <TrendingUp size={18} /> },
               ].map((s, i) => (
                 <div key={i} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col items-center gap-2 text-center">
-                  <div className="text-[#9b276c]">{s.icon}</div>
+                  <div className="text-[#ad024c]">{s.icon}</div>
                   <div className="font-black text-slate-900 text-xl">{s.val}</div>
                   <div className="text-[11px] text-slate-400 uppercase tracking-wider font-bold">{s.label}</div>
                 </div>
@@ -1406,7 +1406,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
             )}
 
             {/* Upgrade CTA */}
-            <div className="bg-gradient-to-br from-[#9b276c] to-[#7d1f57] rounded-3xl p-6 text-white">
+            <div className="bg-gradient-to-br from-[#ad024c] to-[#8a003b] rounded-3xl p-6 text-white">
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center flex-shrink-0 mt-0.5">
                   <Zap size={22} />
@@ -1421,7 +1421,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
                       onClose();
                       if (onSignup) { onSignup(); } else { window.location.href = result.upgradePrompt.callToActionUrl || "/"; }
                     }}
-                    className="inline-flex items-center gap-2 bg-white text-[#9b276c] font-black text-sm px-5 py-2.5 rounded-xl hover:bg-white/90 transition-colors shadow-lg"
+                    className="inline-flex items-center gap-2 bg-white text-[#ad024c] font-black text-sm px-5 py-2.5 rounded-xl hover:bg-white/90 transition-colors shadow-lg"
                   >
                     Start Full Assessment <ArrowRight size={15} />
                   </button>
@@ -1431,7 +1431,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
 
             <button
               onClick={handleShareResult}
-              className="w-full bg-white border-2 border-slate-200 hover:border-[#9b276c]/40 text-slate-700 hover:text-[#9b276c] rounded-xl h-12 font-bold text-sm transition-all flex items-center justify-center gap-2"
+              className="w-full bg-white border-2 border-slate-200 hover:border-[#ad024c]/40 text-slate-700 hover:text-[#ad024c] rounded-xl h-12 font-bold text-sm transition-all flex items-center justify-center gap-2"
             >
               {copied
                 ? <><CheckCircle2 size={16} className="text-green-500" /> Copied to clipboard!</>
@@ -1459,7 +1459,7 @@ export const FreemiumTestWidget: React.FC<FreemiumTestWidgetProps> = ({ onClose,
       {/* ── Top header ── */}
       <header className="flex-shrink-0 border-b border-slate-100 bg-white/98 px-4 md:px-6 h-14 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="bg-[#9b276c] text-white font-black text-sm px-2.5 py-1 -skew-x-6 rounded-sm tracking-tight select-none">
+          <div className="bg-[#ad024c] text-white font-black text-sm px-2.5 py-1 -skew-x-6 rounded-sm tracking-tight select-none">
             b4skills
           </div>
           <span className="text-xs font-bold text-slate-400 uppercase tracking-widest hidden sm:block">

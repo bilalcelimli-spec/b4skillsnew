@@ -113,13 +113,13 @@ function AlignmentScatter({ byLevel }: { byLevel: Record<string, { n: number; pr
   return (
     <svg width={W} height={H} className="overflow-visible">
       {/* Axis lines */}
-      <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="#e2e8f0" strokeWidth={1} />
-      <line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} stroke="#e2e8f0" strokeWidth={1} />
+      <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="#f0dfe6" strokeWidth={1} />
+      <line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} stroke="#f0dfe6" strokeWidth={1} />
       {/* Identity line */}
       <line
         x1={lineStart.x} y1={lineStart.y}
         x2={lineEnd.x} y2={lineEnd.y}
-        stroke="#94a3b8" strokeWidth={1} strokeDasharray="4 3"
+        stroke="#b89aa8" strokeWidth={1} strokeDasharray="4 3"
       />
       {/* Data points */}
       {points.map((p) => (
@@ -128,7 +128,7 @@ function AlignmentScatter({ byLevel }: { byLevel: Record<string, { n: number; pr
             cx={toSvgX(p.predictedBMean)}
             cy={toSvgY(p.empiricalBMean)}
             r={Math.max(5, Math.min(14, Math.sqrt(p.n) * 1.5))}
-            fill={CEFR_COLORS[p.cefrLevel] ?? "#94a3b8"}
+            fill={CEFR_COLORS[p.cefrLevel] ?? "#b89aa8"}
             fillOpacity={0.75}
             stroke="white"
             strokeWidth={1.5}
@@ -138,19 +138,19 @@ function AlignmentScatter({ byLevel }: { byLevel: Record<string, { n: number; pr
             y={toSvgY(p.empiricalBMean) - 9}
             textAnchor="middle"
             fontSize={9}
-            fill="#475569"
+            fill="#6b5560"
           >
             {p.cefrLevel}
           </text>
         </g>
       ))}
       {/* Axis labels */}
-      <text x={W / 2} y={H} textAnchor="middle" fontSize={9} fill="#94a3b8">Predicted b</text>
+      <text x={W / 2} y={H} textAnchor="middle" fontSize={9} fill="#b89aa8">Predicted b</text>
       <text
         x={10} y={H / 2}
         textAnchor="middle"
         fontSize={9}
-        fill="#94a3b8"
+        fill="#b89aa8"
         transform={`rotate(-90, 10, ${H / 2})`}
       >
         Empirical b

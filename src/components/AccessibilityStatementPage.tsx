@@ -113,7 +113,7 @@ export const AccessibilityStatementPage: React.FC<Props> = ({ onStart, onCodeEnt
           </ul>
           <p className="mt-3">
             To request an accommodation, contact{" "}
-            <a href={`mailto:${CONTACT_EMAIL}`} className="text-[#9b276c] font-semibold hover:underline">
+            <a href={`mailto:${CONTACT_EMAIL}`} className="text-[#ad024c] font-semibold hover:underline">
               {CONTACT_EMAIL}
             </a>{" "}
             at least 5 business days before your planned assessment date.
@@ -131,7 +131,7 @@ export const AccessibilityStatementPage: React.FC<Props> = ({ onStart, onCodeEnt
             <p><strong>b4skills Accessibility Team</strong></p>
             <p>
               Email:{" "}
-              <a href={`mailto:${CONTACT_EMAIL}`} className="text-[#9b276c] hover:underline">
+              <a href={`mailto:${CONTACT_EMAIL}`} className="text-[#ad024c] hover:underline">
                 {CONTACT_EMAIL}
               </a>
             </p>

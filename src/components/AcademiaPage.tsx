@@ -12,7 +12,7 @@ import { SiteFooter } from './SiteFooter';
 // ─── Main Component ────────────────────────────────────────────────────────────
 export const AcademiaPage: React.FC<{ onBack: () => void; onStart?: () => void }> = ({ onBack, onStart }) => {
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 overflow-x-hidden selection:bg-[#9b276c]/20 flex flex-col">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 overflow-x-hidden selection:bg-[#ad024c]/20 flex flex-col">
       
       {/* Background base gradients */}
       <div className="fixed inset-0 pointer-events-none z-0">
@@ -28,7 +28,7 @@ export const AcademiaPage: React.FC<{ onBack: () => void; onStart?: () => void }
           <div className="col-span-1 lg:col-span-6 xl:col-span-5 flex flex-col justify-center text-center lg:text-left z-10 w-full">
             <motion.div
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              className="inline-flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-full text-xs font-black text-[#9b276c] uppercase tracking-[0.2em] mb-8 mx-auto lg:mx-0 shadow-sm"
+              className="inline-flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-full text-xs font-black text-[#ad024c] uppercase tracking-[0.2em] mb-8 mx-auto lg:mx-0 shadow-sm"
             >
               <Library size={14} /> b4skills for Universities
             </motion.div>
@@ -53,7 +53,7 @@ export const AcademiaPage: React.FC<{ onBack: () => void; onStart?: () => void }
             >
               <button
                 onClick={onBack}
-                className="bg-slate-900 hover:bg-[#9b276c] text-white font-black text-sm uppercase tracking-widest px-8 py-4 rounded-2xl transition-all shadow-xl hover:-translate-y-0.5 flex items-center justify-center gap-2"
+                className="bg-slate-900 hover:bg-[#ad024c] text-white font-black text-sm uppercase tracking-widest px-8 py-4 rounded-2xl transition-all shadow-xl hover:-translate-y-0.5 flex items-center justify-center gap-2"
               >
                 Request Pilot <ChevronRight size={16} />
               </button>
@@ -132,14 +132,14 @@ export const AcademiaPage: React.FC<{ onBack: () => void; onStart?: () => void }
             </motion.div>
             <div className="lg:w-1/2 p-10 xl:p-16 flex flex-col justify-center w-full">
               <motion.div initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}>
-                <div className="text-xs font-black text-[#9b276c] uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                <div className="text-xs font-black text-[#ad024c] uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
                   <ShieldCheck size={16} /> Research Backed
                 </div>
                 <h2 className="text-3xl xl:text-4xl font-black text-slate-900 tracking-tight leading-tight mb-6">
                   Validity Meets<br />
-                  <span className="text-[#9b276c]">Modern Assessment.</span>
+                  <span className="text-[#ad024c]">Modern Assessment.</span>
                 </h2>
-                <div className="h-1 w-12 bg-[#9b276c] rounded-full mb-8" />
+                <div className="h-1 w-12 bg-[#ad024c] rounded-full mb-8" />
                 <ul className="space-y-4 mb-10">
                   <Check>Cut operational bottlenecks associated with manual placements. Full cohorts assessed in under an hour.</Check>
                   <Check>Align with international admissions standards. Ensure your applicants possess the requisite skills to thrive.</Check>
@@ -156,7 +156,7 @@ export const AcademiaPage: React.FC<{ onBack: () => void; onStart?: () => void }
         <div className="max-w-7xl mx-auto px-6 w-full">
           <div className="bg-slate-900 text-white rounded-[48px] overflow-hidden shadow-2xl flex flex-col-reverse lg:flex-row w-full min-h-[500px]">
             <div className="lg:w-1/2 p-10 xl:p-16 flex flex-col justify-center relative w-full">
-              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#9b276c]/20 to-transparent pointer-events-none" />
+              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#ad024c]/20 to-transparent pointer-events-none" />
               <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="relative z-10">
                 <div className="text-xs font-black text-white/50 uppercase tracking-[0.25em] mb-4">Academia Portfolio</div>
                 <h2 className="text-3xl lg:text-[40px] font-black tracking-tight leading-tight mb-6">
@@ -210,7 +210,7 @@ export const AcademiaPage: React.FC<{ onBack: () => void; onStart?: () => void }
         <div className="max-w-4xl mx-auto px-6 text-center relative z-10 w-full">
           <h2 className="text-5xl lg:text-6xl font-black text-white tracking-tight mb-8">Modernize Your Faculty<br/>Assessments</h2>
           <div className="flex justify-center w-full max-w-sm mx-auto whitespace-nowrap">
-            <button onClick={onBack} className="bg-[#9b276c] hover:bg-[#7e1f58] text-white font-black text-sm uppercase tracking-widest px-10 py-5 rounded-2xl transition-all shadow-xl hover:-translate-y-1">Request Institutional Pilot</button>
+            <button onClick={onBack} className="bg-[#ad024c] hover:bg-[#8a003b] text-white font-black text-sm uppercase tracking-widest px-10 py-5 rounded-2xl transition-all shadow-xl hover:-translate-y-1">Request Institutional Pilot</button>
           </div>
         </div>
       </section>

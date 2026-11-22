@@ -44,7 +44,7 @@ const SKILL_COLORS: Record<string, string> = {
 };
 
 const CEFR_BAND_COLORS: Record<string, string> = {
-  PRE_A1: "#334155", A1: "#1d4ed8", A2: "#0e7490", B1: "#065f46", B2: "#92400e", C1: "#9a3412", C2: "#7f1d1d",
+  PRE_A1: "#4f3a45", A1: "#1d4ed8", A2: "#0e7490", B1: "#065f46", B2: "#92400e", C1: "#9a3412", C2: "#7f1d1d",
 };
 
 function semGrade(sem: number): string {
@@ -90,7 +90,7 @@ const TifChart: React.FC<{
             y={padT}
             width={x2 - x1}
             height={H - padT - padB}
-            fill={CEFR_BAND_COLORS[cut.level] ?? "#1e293b"}
+            fill={CEFR_BAND_COLORS[cut.level] ?? "#40222f"}
             opacity={0.25}
           />
         );
@@ -98,15 +98,15 @@ const TifChart: React.FC<{
       {/* CEFR cut lines */}
       {cefrCuts.map((cut) => (
         <g key={cut.level}>
-          <line x1={xS(cut.theta)} y1={padT} x2={xS(cut.theta)} y2={H - padB} stroke="#475569" strokeWidth={1} strokeDasharray="4,2" />
-          <text x={xS(cut.theta) + 2} y={padT + 9} fill="#94a3b8" fontSize={8}>{cut.level.replace("_", "")}</text>
+          <line x1={xS(cut.theta)} y1={padT} x2={xS(cut.theta)} y2={H - padB} stroke="#6b5560" strokeWidth={1} strokeDasharray="4,2" />
+          <text x={xS(cut.theta) + 2} y={padT + 9} fill="#b89aa8" fontSize={8}>{cut.level.replace("_", "")}</text>
         </g>
       ))}
       {/* Grid lines */}
       {yTicks.map((v) => (
         <g key={v}>
-          <line x1={padL} y1={yS(v)} x2={W - padR} y2={yS(v)} stroke="#1e293b" strokeWidth={1} />
-          <text x={padL - 4} y={yS(v) + 3} fill="#64748b" fontSize={8} textAnchor="end">{v}</text>
+          <line x1={padL} y1={yS(v)} x2={W - padR} y2={yS(v)} stroke="#40222f" strokeWidth={1} />
+          <text x={padL - 4} y={yS(v) + 3} fill="#806571" fontSize={8} textAnchor="end">{v}</text>
         </g>
       ))}
       {/* Skill TIF lines */}
@@ -117,7 +117,7 @@ const TifChart: React.FC<{
             key={s.skill}
             d={makePath(s.points)}
             fill="none"
-            stroke={SKILL_COLORS[s.skill] ?? "#94a3b8"}
+            stroke={SKILL_COLORS[s.skill] ?? "#b89aa8"}
             strokeWidth={fade ? 0.8 : 1.8}
             opacity={fade ? 0.25 : 0.75}
             strokeDasharray="4,2"
@@ -125,16 +125,16 @@ const TifChart: React.FC<{
         );
       })}
       {/* Overall TIF */}
-      <path d={makePath(points)} fill="none" stroke="#e2e8f0" strokeWidth={2.5} />
+      <path d={makePath(points)} fill="none" stroke="#f0dfe6" strokeWidth={2.5} />
       {/* Axes */}
-      <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="#475569" strokeWidth={1} />
-      <line x1={padL} y1={padT} x2={padL} y2={H - padB} stroke="#475569" strokeWidth={1} />
+      <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="#6b5560" strokeWidth={1} />
+      <line x1={padL} y1={padT} x2={padL} y2={H - padB} stroke="#6b5560" strokeWidth={1} />
       {/* X-axis labels */}
       {[-3, -2, -1, 0, 1, 2, 3].map((t) => (
-        <text key={t} x={xS(t)} y={H - 5} fill="#94a3b8" fontSize={8} textAnchor="middle">{t}</text>
+        <text key={t} x={xS(t)} y={H - 5} fill="#b89aa8" fontSize={8} textAnchor="middle">{t}</text>
       ))}
-      <text x={(W + padL) / 2} y={H} fill="#64748b" fontSize={9} textAnchor="middle">θ (Ability)</text>
-      <text x={8} y={H / 2} fill="#64748b" fontSize={9} textAnchor="middle" transform={`rotate(-90, 8, ${H / 2})`}>I(θ)</text>
+      <text x={(W + padL) / 2} y={H} fill="#806571" fontSize={9} textAnchor="middle">θ (Ability)</text>
+      <text x={8} y={H / 2} fill="#806571" fontSize={9} textAnchor="middle" transform={`rotate(-90, 8, ${H / 2})`}>I(θ)</text>
     </svg>
   );
 };
@@ -267,7 +267,7 @@ export const TestInformationPanel: React.FC = () => {
                   onMouseEnter={() => { setShowSkills(true); setHighlightSkill(s.skill); }}
                   onMouseLeave={() => setHighlightSkill(null)}
                 >
-                  <td className="px-3 py-2 font-semibold" style={{ color: SKILL_COLORS[s.skill] ?? "#94a3b8" }}>
+                  <td className="px-3 py-2 font-semibold" style={{ color: SKILL_COLORS[s.skill] ?? "#b89aa8" }}>
                     {SKILL_LABELS[s.skill] ?? s.skill}
                   </td>
                   <td className="px-3 py-2 text-slate-300">{s.itemCount}</td>

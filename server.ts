@@ -735,7 +735,7 @@ async function startServer() {
       <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
         <!-- Header -->
         <tr><td style="background:#0f172a;padding:28px 40px">
-          <span style="background:#9b276c;color:#fff;font-weight:800;font-size:18px;padding:6px 14px;border-radius:4px;letter-spacing:-0.5px;display:inline-block;transform:skewX(-6deg)">b4skills</span>
+          <span style="background:#ad024c;color:#fff;font-weight:800;font-size:18px;padding:6px 14px;border-radius:4px;letter-spacing:-0.5px;display:inline-block;transform:skewX(-6deg)">b4skills</span>
         </td></tr>
         <!-- Body -->
         <tr><td style="padding:40px">
@@ -743,14 +743,14 @@ async function startServer() {
           <div style="font-size:15px;color:#475569;line-height:1.7">${opts.body}</div>
           ${opts.ctaLabel && opts.ctaUrl ? `
           <div style="margin:32px 0">
-            <a href="${opts.ctaUrl}" style="display:inline-block;background:#9b276c;color:#fff;font-weight:700;font-size:15px;padding:14px 28px;border-radius:10px;text-decoration:none">${opts.ctaLabel}</a>
+            <a href="${opts.ctaUrl}" style="display:inline-block;background:#ad024c;color:#fff;font-weight:700;font-size:15px;padding:14px 28px;border-radius:10px;text-decoration:none">${opts.ctaLabel}</a>
           </div>
-          <p style="font-size:13px;color:#94a3b8;margin:0">Or copy this link: <a href="${opts.ctaUrl}" style="color:#9b276c;word-break:break-all">${opts.ctaUrl}</a></p>
+          <p style="font-size:13px;color:#94a3b8;margin:0">Or copy this link: <a href="${opts.ctaUrl}" style="color:#ad024c;word-break:break-all">${opts.ctaUrl}</a></p>
           ` : ""}
         </td></tr>
         <!-- Footer -->
         <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:20px 40px">
-          <p style="margin:0;font-size:12px;color:#94a3b8">${opts.footer ?? "© " + new Date().getFullYear() + " b4skills Inc. · <a href='https://b4skills.com' style='color:#9b276c;text-decoration:none'>b4skills.com</a>"}</p>
+          <p style="margin:0;font-size:12px;color:#94a3b8">${opts.footer ?? "© " + new Date().getFullYear() + " b4skills Inc. · <a href='https://b4skills.com' style='color:#ad024c;text-decoration:none'>b4skills.com</a>"}</p>
         </td></tr>
       </table>
     </td></tr>
@@ -1125,13 +1125,13 @@ async function startServer() {
 
       // ── Branding ─────────────────────────────────────────────────────────────
       if (url.includes("/branding")) {
-        if (method === "GET") return res.json({ primaryColor: "#9b276c", secondaryColor: "#0f172a", name: "b4skills", logoUrl: "", welcomeMessage: "Welcome to b4skills Assessment Platform" });
+        if (method === "GET") return res.json({ primaryColor: "#ad024c", secondaryColor: "#2a0a19", name: "b4skills", logoUrl: "", welcomeMessage: "Welcome to b4skills Assessment Platform" });
         if (method === "PUT" || method === "POST") return res.json({ ...req.body, id: "branding-1" });
       }
 
       // ── Branding (general /api/branding/:orgId) ───────────────────────────────
       if (url.startsWith("/api/branding/") || url.startsWith("/branding/")) {
-        return res.json({ primaryColor: "#9b276c", secondaryColor: "#0f172a", name: "b4skills", logoUrl: "", welcomeMessage: "Welcome to b4skills Assessment Platform" });
+        return res.json({ primaryColor: "#ad024c", secondaryColor: "#2a0a19", name: "b4skills", logoUrl: "", welcomeMessage: "Welcome to b4skills Assessment Platform" });
       }
 
       // ── Rating tasks ──────────────────────────────────────────────────────────
@@ -1209,7 +1209,7 @@ async function startServer() {
 
       // ── Delete webhook ─────────────────────────────────────────────────────────
       if (url.match(/\/organizations\/[^/]+\/settings$/) && method === "GET") return res.json({ allowRetakes: true, maxRetakes: 3, retakeCooldownDays: 7, sessionTimeoutMinutes: 120, adaptiveAlgorithm: "IRT-3PL", notifyOnCompletion: true });
-      if (url.match(/\/organizations\/[^/]+\/branding$/) && method === "GET") return res.json({ primaryColor: "#1a56db", secondaryColor: "#7e3af2", logoUrl: "", customDomain: "", welcomeMessage: "Welcome to your English assessment", organizationName: "Demo Organization" });
+      if (url.match(/\/organizations\/[^/]+\/branding$/) && method === "GET") return res.json({ primaryColor: "#ad024c", secondaryColor: "#2a0a19", logoUrl: "", customDomain: "", welcomeMessage: "Welcome to your English assessment", organizationName: "Demo Organization" });
       if (url.includes("/items/exposure-report") && method === "GET") return res.json({ totalActive: 120, neverUsed: 34, overExposed: 8, overExposureThreshold: 0.3, strata: [{ stratumIndex: 1, label: "Stratum 1 (Low α)", totalItems: 40, usedItems: 28, usageRate: 0.7, minA: 0.4, maxA: 0.8 }, { stratumIndex: 2, label: "Stratum 2 (Mid α)", totalItems: 40, usedItems: 35, usageRate: 0.875, minA: 0.8, maxA: 1.4 }, { stratumIndex: 3, label: "Stratum 3 (High α)", totalItems: 40, usedItems: 31, usageRate: 0.775, minA: 1.4, maxA: 2.2 }], bySkill: { Reading: { total: 35, active: 30, pretest: 3, retired: 2 }, Listening: { total: 30, active: 26, pretest: 2, retired: 2 }, Writing: { total: 25, active: 22, pretest: 2, retired: 1 }, Speaking: { total: 20, active: 18, pretest: 1, retired: 1 }, Grammar: { total: 20, active: 16, pretest: 2, retired: 2 }, Vocabulary: { total: 15, active: 12, pretest: 1, retired: 2 } }, byCefrLevel: { A1: { total: 15, active: 12 }, A2: { total: 20, active: 18 }, B1: { total: 30, active: 26 }, B2: { total: 30, active: 28 }, C1: { total: 20, active: 18 }, C2: { total: 10, active: 8 } } });
       if (url.includes("/organizations/") && url.includes("/webhooks/") && method === "DELETE") return res.json({ success: true });
 
@@ -3849,7 +3849,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
               heading: "Your password has been reset",
               body: `<p style="font-size:15px;color:#334155;line-height:1.6">Your account password has been reset by your organisation administrator.</p>
                      <p style="font-size:15px;color:#334155;line-height:1.6">Your new temporary password is:</p>
-                     <p style="font-size:24px;font-weight:800;color:#4f46e5;text-align:center;letter-spacing:0.12em;margin:24px 0;font-family:monospace">${newPw}</p>
+                     <p style="font-size:24px;font-weight:800;color:#ad024c;text-align:center;letter-spacing:0.12em;margin:24px 0;font-family:monospace">${newPw}</p>
                      <p style="font-size:13px;color:#64748b">Please log in and change your password immediately.</p>`,
               ctaLabel: "Log In Now",
               ctaUrl: APP_BASE_URL,
@@ -4114,7 +4114,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
           heading: `You've been invited to take the b4skills ${assessmentDisplayName(productLine)} assessment`,
           body: `<p style="font-size:15px;color:#334155;line-height:1.6">Hello ${candidateName},</p>
                  <p style="font-size:15px;color:#334155;line-height:1.6">Your unique access code is:</p>
-                 <p style="font-size:28px;font-weight:800;color:#4f46e5;text-align:center;letter-spacing:0.12em;margin:24px 0;font-family:monospace">${code}</p>
+                 <p style="font-size:28px;font-weight:800;color:#ad024c;text-align:center;letter-spacing:0.12em;margin:24px 0;font-family:monospace">${code}</p>
                  <p style="font-size:13px;color:#64748b;line-height:1.6">
                    ${expiresAt ? `This code expires on <strong>${expiresAt.toLocaleDateString()}</strong>.` : "This code does not expire."}
                  </p>`,
@@ -5165,7 +5165,7 @@ function isDBError(err: any) { return err && (err.message || "").includes("DATAB
               ? `${APP_BASE_URL}/english-level-test?code=${examCode}`
               : `${APP_BASE_URL}/english-level-test`;
             const codeSection = examCode
-              ? `<p style="font-size:18px;font-weight:bold;text-align:center;letter-spacing:0.15em;padding:12px;background:#f0f4ff;border-radius:8px;color:#4f46e5;">Test Code: ${examCode}</p>`
+              ? `<p style="font-size:18px;font-weight:bold;text-align:center;letter-spacing:0.15em;padding:12px;background:#f0f4ff;border-radius:8px;color:#ad024c;">Test Code: ${examCode}</p>`
               : "";
             await sendEmail(
               user.email,
@@ -8090,12 +8090,12 @@ ${codeSection}
           body: `<p style="font-size:16px;color:#334155;line-height:1.6">Your teacher has shared your <strong>b4skills</strong> adaptive English assessment results.</p>
                  <div style="text-align:center;margin:28px 0">
                    <div style="display:inline-block;background:#f0f4ff;border:2px solid #c7d2fe;border-radius:16px;padding:20px 40px">
-                     <div style="font-size:40px;font-weight:900;color:#4f46e5;letter-spacing:-1px">${cefr}</div>
-                     ${score != null ? `<div style="font-size:14px;color:#6366f1;font-weight:700;margin-top:4px">Score: ${score}/100</div>` : ""}
+                     <div style="font-size:40px;font-weight:900;color:#ad024c;letter-spacing:-1px">${cefr}</div>
+                     ${score != null ? `<div style="font-size:14px;color:#c81e66;font-weight:700;margin-top:4px">Score: ${score}/100</div>` : ""}
                    </div>
                  </div>
                  <p style="font-size:14px;color:#64748b;line-height:1.6">Your report includes skill-by-skill CEFR levels, confidence intervals, and personalised learning recommendations.</p>
-                 ${certUrl ? `<p style="font-size:13px;color:#64748b;margin-top:8px">🎓 Your certificate is ready — <a href="${certUrl}" style="color:#4f46e5;font-weight:700">view & verify here</a>.</p>` : ""}`,
+                 ${certUrl ? `<p style="font-size:13px;color:#64748b;margin-top:8px">🎓 Your certificate is ready — <a href="${certUrl}" style="color:#ad024c;font-weight:700">view & verify here</a>.</p>` : ""}`,
           ctaLabel: "View Your Full Report",
           ctaUrl: reportUrl,
           footer: "This report link is shareable — you can send it to universities, employers, or language programmes.",

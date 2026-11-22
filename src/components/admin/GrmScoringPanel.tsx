@@ -49,7 +49,7 @@ interface GrmData {
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 const CEFR_COLORS: Record<string, string> = {
-  A1: "#64748b", A2: "#0284c7", B1: "#0891b2",
+  A1: "#806571", A2: "#0284c7", B1: "#0891b2",
   B2: "#059669", C1: "#7c3aed", C2: "#db2777",
 };
 
@@ -64,7 +64,7 @@ function ScorePip({ val, max }: { val: number; max: number }) {
     <div className="flex-1 bg-slate-100 rounded h-3 overflow-hidden">
       <div
         className="h-full rounded transition-all"
-        style={{ width: `${pct}%`, backgroundColor: "#6366f1" }}
+        style={{ width: `${pct}%`, backgroundColor: "#c81e66" }}
       />
     </div>
   );
@@ -82,7 +82,7 @@ function DistributionBars({ dist }: { dist: number[] }) {
           className="flex-1 rounded-t"
           style={{
             height: `${(v / max) * 100}%`,
-            backgroundColor: "#6366f1",
+            backgroundColor: "#c81e66",
             opacity: 0.5 + (v / max) * 0.5,
             minHeight: v > 0 ? 2 : 0,
           }}
@@ -118,13 +118,13 @@ function InfoCurve({
   const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x).toFixed(1)} ${sy(p.y).toFixed(1)}`).join(" ");
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-20 h-6">
-      <path d={d} fill="none" stroke="#6366f1" strokeWidth="1.5" strokeLinecap="round" />
+      <path d={d} fill="none" stroke="#c81e66" strokeWidth="1.5" strokeLinecap="round" />
       {/* Peak marker */}
       <circle
         cx={sx(peakTheta).toFixed(1)}
         cy={(2).toFixed(1)}
         r="2"
-        fill="#6366f1"
+        fill="#c81e66"
       />
     </svg>
   );
@@ -268,8 +268,8 @@ export function GrmScoringPanel() {
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {items.map((it) => {
-                          const skillColor = SKILL_COLORS[it.skill] ?? "#64748b";
-                          const cefrColor = CEFR_COLORS[it.cefrLevel] ?? "#94a3b8";
+                          const skillColor = SKILL_COLORS[it.skill] ?? "#806571";
+                          const cefrColor = CEFR_COLORS[it.cefrLevel] ?? "#b89aa8";
                           return (
                             <tr
                               key={it.id}
@@ -367,11 +367,11 @@ export function GrmScoringPanel() {
                     <div key={it.id} className="border border-slate-200 rounded-xl bg-white p-4">
                       <div className="flex items-center justify-between mb-3">
                         <div>
-                          <span className="text-sm font-medium" style={{ color: SKILL_COLORS[it.skill] ?? "#64748b" }}>
+                          <span className="text-sm font-medium" style={{ color: SKILL_COLORS[it.skill] ?? "#806571" }}>
                             {it.skill}
                           </span>
                           <span className="ml-2 text-xs px-1.5 py-0.5 rounded font-medium"
-                            style={{ backgroundColor: `${CEFR_COLORS[it.cefrLevel] ?? "#94a3b8"}20`, color: CEFR_COLORS[it.cefrLevel] }}>
+                            style={{ backgroundColor: `${CEFR_COLORS[it.cefrLevel] ?? "#b89aa8"}20`, color: CEFR_COLORS[it.cefrLevel] }}>
                             {it.cefrLevel}
                           </span>
                         </div>
@@ -428,8 +428,8 @@ export function GrmScoringPanel() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {items.map((it) => {
-                        const skillColor = SKILL_COLORS[it.skill] ?? "#64748b";
-                        const cefrColor = CEFR_COLORS[it.cefrLevel] ?? "#94a3b8";
+                        const skillColor = SKILL_COLORS[it.skill] ?? "#806571";
+                        const cefrColor = CEFR_COLORS[it.cefrLevel] ?? "#b89aa8";
                         const optTheta = it.peakTheta;
                         const optCefr = optTheta > 2.0 ? "C2" : optTheta > 1.0 ? "C1" : optTheta > 0.0 ? "B2" : optTheta > -1.0 ? "B1" : optTheta > -2.0 ? "A2" : "A1";
                         return (
@@ -454,7 +454,7 @@ export function GrmScoringPanel() {
                             </td>
                             <td className="px-3 py-2">
                               <span className="px-2 py-0.5 rounded font-medium text-xs"
-                                style={{ backgroundColor: `${CEFR_COLORS[optCefr] ?? "#94a3b8"}18`, color: CEFR_COLORS[optCefr] }}>
+                                style={{ backgroundColor: `${CEFR_COLORS[optCefr] ?? "#b89aa8"}18`, color: CEFR_COLORS[optCefr] }}>
                                 {optCefr} region
                               </span>
                             </td>

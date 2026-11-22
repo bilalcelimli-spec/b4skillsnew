@@ -89,7 +89,7 @@ function SeverityBarChart({ data }: { data: SeverityBin[] }) {
         <div key={d.bin} className="flex flex-col items-center gap-1 flex-1">
           <div
             className="w-full rounded-t"
-            style={{ height: `${(d.count / max) * 96}px`, background: "#6366f1" }}
+            style={{ height: `${(d.count / max) * 96}px`, background: "#c81e66" }}
           />
           <span className="text-[9px] text-gray-400 truncate w-full text-center">{d.bin}</span>
         </div>
@@ -124,7 +124,7 @@ export function RaterCalibrationPanel() {
 
   const kpis = data
     ? [
-        { label: "Raters", value: data.nRaters, icon: <UserCheck size={16} />, color: "#6366f1", fmt: String },
+        { label: "Raters", value: data.nRaters, icon: <UserCheck size={16} />, color: "#c81e66", fmt: String },
         { label: "Mean QWK", value: data.meanQWK, icon: <Award size={16} />, color: "#22c55e", fmt: (v: number) => v.toFixed(3) },
         { label: "Arbitration Rate", value: data.arbitrationRate * 100, icon: <AlertTriangle size={16} />, color: "#f59e0b", fmt: (v: number) => `${v.toFixed(1)}%` },
         { label: "Flagged Raters", value: data.flagged, icon: <BarChart3 size={16} />, color: "#ef4444", fmt: String },
@@ -354,7 +354,7 @@ export function RaterCalibrationPanel() {
                 {
                   title: "Severity Calibration (Linacre, 1994)",
                   body: `Rater severity is estimated as a logit parameter in the MFRM. Raters with severity logit > +1.0 or < -1.0 are flagged for score adjustment. Severity estimates are updated monthly using the last 100 double-rated responses per rater.`,
-                  color: "#6366f1",
+                  color: "#c81e66",
                   icon: <TrendingUp size={14} />,
                 },
                 {

@@ -29,7 +29,7 @@ const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
 const STATUS_ORDER = ["DRAFT", "REVIEW", "PILOT", "CALIBRATION", "ACTIVE", "WATCHLIST", "RETIRED"] as const;
 
 const STATUS_COLOR: Record<string, string> = {
-  DRAFT:       "#94a3b8",
+  DRAFT:       "#b89aa8",
   REVIEW:      "#f59e0b",
   PILOT:       "#3b82f6",
   CALIBRATION: "#8b5cf6",
@@ -108,7 +108,7 @@ function StatusFunnel({ counts }: { counts: Record<string, number> }) {
               <div style={{ flex: 1, height: 18, background: "var(--bg-subtle)", borderRadius: 4, overflow: "hidden" }}>
                 <div style={{
                   height: "100%", width: `${pct}%`,
-                  background: STATUS_COLOR[s] ?? "#94a3b8",
+                  background: STATUS_COLOR[s] ?? "#b89aa8",
                   borderRadius: 4, transition: "width 0.5s ease-out",
                   minWidth: n > 0 ? 4 : 0,
                 }} />
@@ -313,7 +313,7 @@ export function ItemBankHealthDashboard() {
         <KpiCard label="Gap Cells" value={gapCells} sub="Skill×CEFR with <3 active"
           icon={<AlertTriangle size={16} />} color={gapCells > 0 ? "#ef4444" : "#10b981"} />
         <KpiCard label="Retired" value={totalRetired} sub="Removed from bank"
-          icon={<Database size={16} />} color="#94a3b8" />
+          icon={<Database size={16} />} color="#b89aa8" />
       </div>
 
       {data && skills.length > 0 ? (

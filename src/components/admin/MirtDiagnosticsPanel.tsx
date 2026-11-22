@@ -46,7 +46,7 @@ interface MirtData {
 
 const SKILLS = ["Reading", "Listening", "Writing", "Speaking", "Grammar", "Vocabulary"];
 const SKILL_COLORS = [
-  "#4f46e5", // Reading — indigo
+  "#ad024c", // Reading — indigo
   "#0891b2", // Listening — cyan
   "#059669", // Writing — emerald
   "#d97706", // Speaking — amber
@@ -286,7 +286,7 @@ export function MirtDiagnosticsPanel() {
                                 className="w-14 h-7 rounded flex items-center justify-center text-xs font-mono font-semibold"
                                 style={{
                                   backgroundColor: i === j ? "#1e1b4b" : corrColor(r),
-                                  color: i === j || r > 0.6 ? "white" : "#1e293b",
+                                  color: i === j || r > 0.6 ? "white" : "#40222f",
                                 }}
                               >
                                 {r.toFixed(2)}

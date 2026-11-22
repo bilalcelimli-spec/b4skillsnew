@@ -1,9 +1,92 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Lora:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans:ital,wght@0,400;0,600;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@400..800&family=Nunito:ital,wght@0,400..900;1,400..900&family=Lora:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans:ital,wght@0,400;0,600;1,400&display=swap');
 @import "tailwindcss";
 @source not "../playwright-report";
 @source not "../test-results";
 @source not "../coverage";
 @import "./design-system/globals.css";
+
+/* ── babilspeak design language ────────────────────────────────────────────
+   b4skills shares babilspeak's visual language: magenta #AD024C + yellow #F7BF01
+   (both read off the logos), plum-tinted neutrals, Baloo 2 headings over a
+   Nunito body, soft magenta-tinted shadows and the raised yellow CTA.
+   Tailwind's stock scales are remapped here so every existing utility
+   (slate-*, indigo-*, amber-*…) picks the language up without per-file edits:
+     slate/gray/zinc/neutral/stone → plum neutrals   indigo/blue/violet/purple → magenta
+     yellow/amber → babil yellow                     emerald/green → ok green
+     red → brick danger                              (teal/cyan/sky/rose/orange keep stock, for charts)
+   Change shades here, not in components. */
+@theme {
+  --font-sans: "Nunito", system-ui, -apple-system, sans-serif;
+  --font-display: "Baloo 2", "Nunito", system-ui, sans-serif;
+
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-hover);
+  --color-brand-soft: var(--brand-subtle);
+  --color-accent: #f7bf01;
+  --color-accent-ink: #3a0a1e;
+  --color-ink-deep: #2a0a19;
+
+  /* plum neutrals (babilspeak foreground #24101a, muted #6b5560, line #f0dfe6) */
+  --color-slate-50: #fcf8fa; --color-slate-100: #f8f0f4; --color-slate-200: #f0dfe6; --color-slate-300: #e0c8d3; --color-slate-400: #b89aa8; --color-slate-500: #806571; --color-slate-600: #6b5560; --color-slate-700: #4f3a45; --color-slate-800: #40222f; --color-slate-900: #24101a; --color-slate-950: #1a0c13;
+  --color-gray-50: #fcf8fa; --color-gray-100: #f8f0f4; --color-gray-200: #f0dfe6; --color-gray-300: #e0c8d3; --color-gray-400: #b89aa8; --color-gray-500: #806571; --color-gray-600: #6b5560; --color-gray-700: #4f3a45; --color-gray-800: #40222f; --color-gray-900: #24101a; --color-gray-950: #1a0c13;
+  --color-zinc-50: #fcf8fa; --color-zinc-100: #f8f0f4; --color-zinc-200: #f0dfe6; --color-zinc-300: #e0c8d3; --color-zinc-400: #b89aa8; --color-zinc-500: #806571; --color-zinc-600: #6b5560; --color-zinc-700: #4f3a45; --color-zinc-800: #40222f; --color-zinc-900: #24101a; --color-zinc-950: #1a0c13;
+  --color-neutral-50: #fcf8fa; --color-neutral-100: #f8f0f4; --color-neutral-200: #f0dfe6; --color-neutral-300: #e0c8d3; --color-neutral-400: #b89aa8; --color-neutral-500: #806571; --color-neutral-600: #6b5560; --color-neutral-700: #4f3a45; --color-neutral-800: #40222f; --color-neutral-900: #24101a; --color-neutral-950: #1a0c13;
+  --color-stone-50: #fcf8fa; --color-stone-100: #f8f0f4; --color-stone-200: #f0dfe6; --color-stone-300: #e0c8d3; --color-stone-400: #b89aa8; --color-stone-500: #806571; --color-stone-600: #6b5560; --color-stone-700: #4f3a45; --color-stone-800: #40222f; --color-stone-900: #24101a; --color-stone-950: #1a0c13;
+  /* magenta brand */
+  --color-indigo-50: #fdf2f6; --color-indigo-100: #fdeaf1; --color-indigo-200: #f9cfdf; --color-indigo-300: #f3a3c1; --color-indigo-400: #e4669a; --color-indigo-500: #c81e66; --color-indigo-600: #ad024c; --color-indigo-700: #8a003b; --color-indigo-800: #6e0331; --color-indigo-900: #55062a; --color-indigo-950: #2a0a19;
+  --color-blue-50: #fdf2f6; --color-blue-100: #fdeaf1; --color-blue-200: #f9cfdf; --color-blue-300: #f3a3c1; --color-blue-400: #e4669a; --color-blue-500: #c81e66; --color-blue-600: #ad024c; --color-blue-700: #8a003b; --color-blue-800: #6e0331; --color-blue-900: #55062a; --color-blue-950: #2a0a19;
+  --color-violet-50: #fdf2f6; --color-violet-100: #fdeaf1; --color-violet-200: #f9cfdf; --color-violet-300: #f3a3c1; --color-violet-400: #e4669a; --color-violet-500: #c81e66; --color-violet-600: #ad024c; --color-violet-700: #8a003b; --color-violet-800: #6e0331; --color-violet-900: #55062a; --color-violet-950: #2a0a19;
+  --color-purple-50: #fdf2f6; --color-purple-100: #fdeaf1; --color-purple-200: #f9cfdf; --color-purple-300: #f3a3c1; --color-purple-400: #e4669a; --color-purple-500: #c81e66; --color-purple-600: #ad024c; --color-purple-700: #8a003b; --color-purple-800: #6e0331; --color-purple-900: #55062a; --color-purple-950: #2a0a19;
+  /* babil yellow; the dark end is deepened so amber-700/800 warning text stays ≥ 4.5:1 */
+  --color-yellow-50: #fffbea; --color-yellow-100: #fff3c4; --color-yellow-200: #ffe68a; --color-yellow-300: #ffd84d; --color-yellow-400: #ffcb1f; --color-yellow-500: #f7bf01; --color-yellow-600: #c99500; --color-yellow-700: #8f6400; --color-yellow-800: #6b4b00; --color-yellow-900: #4d3600; --color-yellow-950: #2e2000;
+  --color-amber-50: #fffbea; --color-amber-100: #fff3c4; --color-amber-200: #ffe68a; --color-amber-300: #ffd84d; --color-amber-400: #ffcb1f; --color-amber-500: #f7bf01; --color-amber-600: #c99500; --color-amber-700: #8f6400; --color-amber-800: #6b4b00; --color-amber-900: #4d3600; --color-amber-950: #2e2000;
+  /* ok green (#17694a) */
+  --color-emerald-50: #effaf5; --color-emerald-100: #e6f4ee; --color-emerald-200: #c5e8d8; --color-emerald-300: #94d4b8; --color-emerald-400: #5bb892; --color-emerald-500: #2f9a70; --color-emerald-600: #1f7f59; --color-emerald-700: #17694a; --color-emerald-800: #12523a; --color-emerald-900: #0d3d2b; --color-emerald-950: #07241a;
+  --color-green-50: #effaf5; --color-green-100: #e6f4ee; --color-green-200: #c5e8d8; --color-green-300: #94d4b8; --color-green-400: #5bb892; --color-green-500: #2f9a70; --color-green-600: #1f7f59; --color-green-700: #17694a; --color-green-800: #12523a; --color-green-900: #0d3d2b; --color-green-950: #07241a;
+  /* danger brick (#a3261f) */
+  --color-red-50: #fef5f4; --color-red-100: #fdecea; --color-red-200: #f9d1cd; --color-red-300: #f2aaa3;
+  --color-red-400: #e57a70; --color-red-500: #d14b40; --color-red-600: #b8342b; --color-red-700: #a3261f;
+  --color-red-800: #82201b; --color-red-900: #631a16; --color-red-950: #3a0d0b;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.005em;
+}
+
+/* Raised yellow button: glossy top, thick bottom edge, presses down — like the logo's embossed letters. */
+.button-depth {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.75rem;
+  text-align: center; font-weight: 800; color: var(--color-accent-ink);
+  background: linear-gradient(180deg, #ffdc4d 0%, #f7bf01 55%, #eaae00 100%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.65), 0 3px 0 #b78300, 0 7px 14px rgb(0 0 0 / 0.22);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.15s ease;
+}
+.button-depth:hover { filter: brightness(1.05); }
+.button-depth:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5), 0 1px 0 #b78300, 0 3px 6px rgb(0 0 0 / 0.2);
+}
+
+/* Soft layered shadows: cards lift slightly off the page. */
+.shadow-soft { box-shadow: 0 1px 2px rgb(36 16 26 / 0.05), 0 14px 34px -16px rgb(173 2 76 / 0.22); }
+.shadow-float { box-shadow: 0 2px 4px rgb(36 16 26 / 0.06), 0 30px 60px -24px rgb(173 2 76 / 0.35); }
+
+/* Page intros: pink light top-left, yellow glow bottom-right. */
+.hero-surface {
+  background:
+    radial-gradient(60% 70% at 100% 100%, rgb(247 191 1 / 0.16) 0%, transparent 60%),
+    radial-gradient(70% 60% at 0% 0%, var(--brand-subtle) 0%, transparent 70%),
+    var(--bg-app);
+}
+/* Featured magenta surface with the logo's light falloff. */
+.card-feature { background: radial-gradient(90% 120% at 0% 0%, #d81a6c 0%, transparent 55%), linear-gradient(160deg, #b8034f 0%, #8f013e 100%); color: #fff; }
+/* Deep section: dark plum with a magenta glow. */
+.section-deep { background: radial-gradient(60% 80% at 85% 0%, rgb(173 2 76 / 0.55) 0%, transparent 60%), #2a0a19; color: #fff; }
+
+@media print {
+  .card-feature, .section-deep { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
 
 /* ── Tablet layout ─────────────────────────────────────────────────────────── */
 

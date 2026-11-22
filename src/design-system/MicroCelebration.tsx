@@ -38,7 +38,7 @@ interface CelebrationConfig {
 const CONFIGS: Record<CelebrationEvent, CelebrationConfig> = {
   LEVEL_UP: {
     emoji: "🎯", headline: "Level Up!", subtext: "You've reached a new CEFR level.",
-    confettiColors: ["#1a56db","#6b8efc","#fbbf24","#34d399"],
+    confettiColors: ["#ad024c","#6b8efc","#fbbf24","#34d399"],
     confettiCount: 120, hapticPattern: [80, 40, 80, 40, 200],
   },
   PERFECT: {
@@ -48,7 +48,7 @@ const CONFIGS: Record<CelebrationEvent, CelebrationConfig> = {
   },
   COMPLETE: {
     emoji: "🏆", headline: "Assessment Complete!", subtext: "Your results are ready.",
-    confettiColors: ["#1a56db","#7c3aed","#ec4899","#34d399"],
+    confettiColors: ["#ad024c","#7c3aed","#ec4899","#34d399"],
     confettiCount: 150, hapticPattern: [100, 50, 200],
   },
   STREAK_5: {
@@ -63,12 +63,12 @@ const CONFIGS: Record<CelebrationEvent, CelebrationConfig> = {
   },
   FIRST_C1: {
     emoji: "🌟", headline: "C1 Territory!", subtext: "You answered a C1-level item correctly.",
-    confettiColors: ["#7c3aed","#a78bfa","#c4b5fd","#1a56db"],
+    confettiColors: ["#7c3aed","#a78bfa","#c4b5fd","#ad024c"],
     confettiCount: 80, hapticPattern: [80, 40, 160],
   },
   MILESTONE: {
     emoji: "🎉", headline: "Milestone!", subtext: "Great progress — keep it up!",
-    confettiColors: ["#1a56db","#34d399","#f59e0b"],
+    confettiColors: ["#ad024c","#34d399","#f59e0b"],
     confettiCount: 80, hapticPattern: [60, 40, 120],
   },
 };

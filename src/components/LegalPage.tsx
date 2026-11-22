@@ -63,7 +63,7 @@ export function LegalPage({ kind }: { kind: LegalPageKind }) {
       <div className="rounded-2xl bg-white border border-slate-200 p-6 mb-8 space-y-2">
         <p className="font-semibold">{COMPANY.brand}</p>
         <p>{COMPANY.address}</p><p>Telefon: <a href="tel:+905465411417" className="underline">{COMPANY.phone}</a></p><p>{COMPANY.taxOffice} · Vergi no: {COMPANY.taxNumber}</p>
-        <a className="underline text-[#9b276c]" href={`mailto:${COMPANY.contactEmail}`}>{COMPANY.contactEmail}</a>
+        <a className="underline text-[#ad024c]" href={`mailto:${COMPANY.contactEmail}`}>{COMPANY.contactEmail}</a>
       </div>
       {kind === 'refund' && <p className="mb-8 text-sm"><a href="https://support.apple.com/tr-tr/118223" className="underline" target="_blank" rel="noopener noreferrer">Apple üzerinden yapılan satın almalarda iade başvurusu</a></p>}
       <div className="space-y-8">{content.sections.map(([heading, body]) => <section key={heading}><h2 className="text-xl font-bold mb-3">{heading}</h2><p className="leading-7 whitespace-pre-line">{body}</p></section>)}</div>

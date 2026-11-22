@@ -122,25 +122,25 @@ export const CalibrationStudy: React.FC = () => {
                 <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8f0f4" />
                       <XAxis 
                         dataKey="level" 
                         axisLine={false} 
                         tickLine={false} 
-                        tick={{ fontSize: 10, fontWeight: 800, fill: '#64748b' }} 
+                        tick={{ fontSize: 10, fontWeight: 800, fill: '#806571' }} 
                       />
                       <YAxis 
                         axisLine={false} 
                         tickLine={false} 
-                        tick={{ fontSize: 10, fontWeight: 800, fill: '#64748b' }} 
+                        tick={{ fontSize: 10, fontWeight: 800, fill: '#806571' }} 
                       />
                       <Tooltip 
                         contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                        cursor={{ fill: '#f8fafc' }}
+                        cursor={{ fill: '#fcf8fa' }}
                       />
                       <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }} />
-                      <Bar dataKey="cutScore" name="Cut Score (Midpoint)" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={40} />
-                      <Bar dataKey="meanDifficulty" name="Mean Item Difficulty" fill="#94a3b8" radius={[4, 4, 0, 0]} barSize={40} />
+                      <Bar dataKey="cutScore" name="Cut Score (Midpoint)" fill="#c81e66" radius={[4, 4, 0, 0]} barSize={40} />
+                      <Bar dataKey="meanDifficulty" name="Mean Item Difficulty" fill="#b89aa8" radius={[4, 4, 0, 0]} barSize={40} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

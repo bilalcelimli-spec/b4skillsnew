@@ -48,7 +48,7 @@ interface IRTRTPayload {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const SKILL_COLORS: Record<string, string> = {
-  GRAMMAR: "#6366f1", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
+  GRAMMAR: "#c81e66", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
   LISTENING: "#06b6d4", WRITING: "#10b981", SPEAKING: "#f59e0b",
 };
 
@@ -80,8 +80,8 @@ function PersonSpeedScatter({ data }: { data: PersonSpeedStats[] }) {
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 160 }}>
       {/* Axes */}
-      <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="#334155" strokeWidth={1} />
-      <line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} stroke="#334155" strokeWidth={1} />
+      <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="#4f3a45" strokeWidth={1} />
+      <line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} stroke="#4f3a45" strokeWidth={1} />
       {/* Dots */}
       {data.map((d, i) => (
         <circle
@@ -89,14 +89,14 @@ function PersonSpeedScatter({ data }: { data: PersonSpeedStats[] }) {
           cx={xs(d.theta)}
           cy={ys(d.meanLogRT)}
           r={2}
-          fill="#6366f1"
+          fill="#c81e66"
           opacity={0.5}
         >
           <title>{`θ=${d.theta.toFixed(2)}, log-RT=${d.meanLogRT.toFixed(2)}`}</title>
         </circle>
       ))}
-      <text x={W / 2} y={H - 4} fontSize={8} fill="#64748b" textAnchor="middle">θ (ability)</text>
-      <text x={8} y={H / 2} fontSize={8} fill="#64748b" textAnchor="middle" transform={`rotate(-90, 8, ${H / 2})`}>log-RT</text>
+      <text x={W / 2} y={H - 4} fontSize={8} fill="#806571" textAnchor="middle">θ (ability)</text>
+      <text x={8} y={H / 2} fontSize={8} fill="#806571" textAnchor="middle" transform={`rotate(-90, 8, ${H / 2})`}>log-RT</text>
     </svg>
   );
 }
@@ -113,7 +113,7 @@ function RTDistChart({ bins }: { bins: RTDistBin[] }) {
             <div className="flex-1 bg-slate-800 rounded-full h-4 overflow-hidden">
               <div
                 className="h-full rounded-full flex items-center px-1"
-                style={{ width: `${(b.count / max) * 100}%`, background: slow ? "#f59e0b" : "#6366f1" }}
+                style={{ width: `${(b.count / max) * 100}%`, background: slow ? "#f59e0b" : "#c81e66" }}
               />
             </div>
             <span className="w-10 text-slate-300">{b.count}</span>
@@ -151,7 +151,7 @@ export function IRTResponseTimePanel() {
   useEffect(() => { load(); }, [load]);
 
   const kpis = data ? [
-    { label: "Items", value: data.totalItems, icon: <Activity size={16} />, color: "#6366f1", fmt: String },
+    { label: "Items", value: data.totalItems, icon: <Activity size={16} />, color: "#c81e66", fmt: String },
     { label: "Responses", value: data.totalResponses, icon: <Clock size={16} />, color: "#8b5cf6", fmt: (v: number) => v.toLocaleString() },
     { label: "Flagged Items", value: data.flaggedItems, icon: <AlertTriangle size={16} />, color: data.flaggedItems > 0 ? "#ef4444" : "#10b981", fmt: String },
     { label: "Mean RT", value: data.meanRTSeconds, icon: <CheckCircle2 size={16} />, color: data.meanRTSeconds > 60 ? "#f59e0b" : "#10b981", fmt: (v: number) => `${v.toFixed(1)}s` },
@@ -266,7 +266,7 @@ export function IRTResponseTimePanel() {
                       <tr key={d.itemId} className={`border-t border-slate-700/30 hover:bg-slate-800/40 ${d.flagged ? "bg-red-950/20" : ""}`}>
                         <td className="px-3 py-2 font-mono text-white">{d.itemLabel}</td>
                         <td className="px-3 py-2">
-                          <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ background: SKILL_COLORS[d.skill] ?? "#6366f1" }}>
+                          <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ background: SKILL_COLORS[d.skill] ?? "#c81e66" }}>
                             {d.skill.slice(0, 3)}
                           </span>
                         </td>
@@ -281,7 +281,7 @@ export function IRTResponseTimePanel() {
                         <td className="px-3 py-2 text-right font-mono" style={{ color: d.rtThetaCorr > 0.3 ? "#ef4444" : d.rtThetaCorr > 0 ? "#f59e0b" : "#10b981" }}>
                           {d.rtThetaCorr.toFixed(3)}
                         </td>
-                        <td className="px-3 py-2 text-right font-mono" style={{ color: d.rtAccCorr < -0.15 ? "#10b981" : "#94a3b8" }}>
+                        <td className="px-3 py-2 text-right font-mono" style={{ color: d.rtAccCorr < -0.15 ? "#10b981" : "#b89aa8" }}>
                           {d.rtAccCorr.toFixed(3)}
                         </td>
                         <td className="px-3 py-2 text-center">
@@ -339,7 +339,7 @@ export function IRTResponseTimePanel() {
                 {data.items.filter((d) => d.flagged).slice(0, 12).map((d) => (
                   <div key={d.itemId} className="bg-slate-800/60 rounded-xl p-4 border border-red-700/40">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ background: SKILL_COLORS[d.skill] ?? "#6366f1" }}>
+                      <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ background: SKILL_COLORS[d.skill] ?? "#c81e66" }}>
                         {d.skill.slice(0, 3)}
                       </span>
                       <span className="font-mono text-sm text-white">{d.itemLabel}</span>
@@ -347,7 +347,7 @@ export function IRTResponseTimePanel() {
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div><div className="text-slate-500">λ (mean log-RT)</div><div className="text-white font-mono">{d.meanLogRT.toFixed(3)}</div></div>
                       <div><div className="text-slate-500">σ (log-RT)</div><div className="text-white font-mono">{d.sdLogRT.toFixed(3)}</div></div>
-                      <div><div className="text-slate-500">r(RT, θ)</div><div className="font-mono" style={{ color: d.rtThetaCorr > 0.3 ? "#ef4444" : "#94a3b8" }}>{d.rtThetaCorr.toFixed(3)}</div></div>
+                      <div><div className="text-slate-500">r(RT, θ)</div><div className="font-mono" style={{ color: d.rtThetaCorr > 0.3 ? "#ef4444" : "#b89aa8" }}>{d.rtThetaCorr.toFixed(3)}</div></div>
                       <div><div className="text-slate-500">r(RT, acc)</div><div className="text-white font-mono">{d.rtAccCorr.toFixed(3)}</div></div>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1">

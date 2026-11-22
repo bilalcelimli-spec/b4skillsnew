@@ -88,11 +88,11 @@ interface AdaptiveReport {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const CEFR_COLORS: Record<string, string> = {
-  PRE_A1: "#94a3b8", A1: "#64748b", A2: "#0284c7",
+  PRE_A1: "#b89aa8", A1: "#806571", A2: "#0284c7",
   B1: "#0891b2", B2: "#059669", C1: "#7c3aed", C2: "#db2777",
 };
 
-const SKILL_COLORS = ["#4f46e5","#0891b2","#059669","#d97706","#7c3aed","#db2777"];
+const SKILL_COLORS = ["#ad024c","#0891b2","#059669","#d97706","#7c3aed","#db2777"];
 const SKILL_LABELS: Record<string, string> = {
   READING: "Reading", LISTENING: "Listening", WRITING: "Writing",
   SPEAKING: "Speaking", GRAMMAR: "Grammar", VOCABULARY: "Vocabulary",
@@ -286,7 +286,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
     );
   }
 
-  const cefrColor = CEFR_COLORS[report.cefrLevel] ?? "#64748b";
+  const cefrColor = CEFR_COLORS[report.cefrLevel] ?? "#806571";
   const isFinal = report.scoringComplete === true && report.reportStatus === 'Completed';
   const hasEvidence = report.hasScoredEvidence === true;
   const TABS = [
@@ -558,7 +558,7 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
                         <td className="px-3 py-2 text-slate-600">{SKILL_LABELS[r.skill] ?? r.skill}</td>
                         <td className="px-3 py-2">
                           <span className="px-1.5 py-0.5 rounded text-xs font-medium"
-                            style={{ backgroundColor: `${CEFR_COLORS[r.cefrLevel ?? ""] ?? "#94a3b8"}20`, color: CEFR_COLORS[r.cefrLevel ?? ""] ?? "#64748b" }}>
+                            style={{ backgroundColor: `${CEFR_COLORS[r.cefrLevel ?? ""] ?? "#b89aa8"}20`, color: CEFR_COLORS[r.cefrLevel ?? ""] ?? "#806571" }}>
                             {cefrLabel(r.cefrLevel)}
                           </span>
                         </td>
@@ -631,15 +631,15 @@ export function CandidateAdaptiveReport({ sessionId, onClose, onRetakeSkill }: P
             ) : (
               <ResponsiveContainer width="100%" height={260}>
                 <AreaChart data={trajectory} margin={{ top: 8, right: 24, bottom: 0, left: -10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f8f0f4" />
                   <XAxis
                     dataKey="item"
-                    tick={{ fontSize: 11, fill: "#94a3b8" }}
-                    label={{ value: "Item #", position: "insideBottom", offset: -2, fontSize: 11, fill: "#94a3b8" }}
+                    tick={{ fontSize: 11, fill: "#b89aa8" }}
+                    label={{ value: "Item #", position: "insideBottom", offset: -2, fontSize: 11, fill: "#b89aa8" }}
                   />
                   <YAxis
                     domain={[-3.5, 3.5]}
-                    tick={{ fontSize: 11, fill: "#94a3b8", fontFamily: "monospace" }}
+                    tick={{ fontSize: 11, fill: "#b89aa8", fontFamily: "monospace" }}
                     tickFormatter={(v: number) => v >= 0 ? `+${v.toFixed(1)}` : v.toFixed(1)}
                   />
                   <Tooltip

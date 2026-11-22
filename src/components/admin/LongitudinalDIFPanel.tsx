@@ -164,7 +164,7 @@ export function LongitudinalDIFPanel() {
 
   const kpis = data
     ? [
-        { label: "Items Monitored", value: data.nItemsMonitored, icon: <BarChart3 size={16} />, color: "#6366f1", fmt: String },
+        { label: "Items Monitored", value: data.nItemsMonitored, icon: <BarChart3 size={16} />, color: "#c81e66", fmt: String },
         { label: "Chronic DIF Items", value: data.nChronic, icon: <AlertTriangle size={16} />, color: "#ef4444", fmt: String },
         { label: "Resolved", value: data.nResolved, icon: <CheckCircle2 size={16} />, color: "#22c55e", fmt: String },
         { label: "New Flags", value: data.nNewFlags, icon: <Clock size={16} />, color: "#f59e0b", fmt: String },

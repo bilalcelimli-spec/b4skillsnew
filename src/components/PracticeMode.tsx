@@ -422,7 +422,7 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ onComplete, onSkip, 
       {/* Header */}
       <header className="bg-white border-b border-slate-200 px-3 sm:px-6 py-4 flex flex-wrap gap-3 items-center justify-between">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="bg-[#9b276c] text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight flex items-center">
+          <div className="bg-[#ad024c] text-white font-bold text-xl px-3 py-1 -skew-x-6 rounded-sm tracking-tight flex items-center">
             <span style={{ textShadow: '0 0 8px rgba(253, 224, 71, 0.8), 0 0 15px rgba(253, 224, 71, 0.4)' }}>b4skills</span>
           </div>
           <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">Tutorial & Practice</span>

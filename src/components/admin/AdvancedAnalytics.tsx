@@ -86,7 +86,7 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
     <Button onClick={fetchAnalytics}>Try again</Button>
   </div>;
 
-  const COLORS = ["#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899", "#f43f5e"];
+  const COLORS = ["#c81e66", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899", "#f43f5e"];
 
   return (
     <div className="space-y-8">
@@ -163,23 +163,23 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
           <CardContent className="p-8 h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data.cefrDistribution}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8f0f4" />
                 <XAxis 
                   dataKey="name" 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fontSize: 10, fontWeight: 900, fill: "#94a3b8" }} 
+                  tick={{ fontSize: 10, fontWeight: 900, fill: "#b89aa8" }} 
                 />
                 <YAxis 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fontSize: 10, fontWeight: 900, fill: "#94a3b8" }} 
+                  tick={{ fontSize: 10, fontWeight: 900, fill: "#b89aa8" }} 
                 />
                 <Tooltip 
                   contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }} 
-                  cursor={{ fill: "#f8fafc" }}
+                  cursor={{ fill: "#fcf8fa" }}
                 />
-                <Bar dataKey="value" name="Current" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="value" name="Current" fill="#c81e66" radius={[6, 6, 0, 0]} />
 
               </BarChart>
             </ResponsiveContainer>
@@ -196,21 +196,21 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
           <CardContent className="p-8 h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data.skillBreakdown}>
-                <PolarGrid stroke="#f1f5f9" />
+                <PolarGrid stroke="#f8f0f4" />
                 <PolarAngleAxis 
                   dataKey="subject" 
-                  tick={{ fontSize: 10, fontWeight: 900, fill: "#94a3b8" }} 
+                  tick={{ fontSize: 10, fontWeight: 900, fill: "#b89aa8" }} 
                 />
                 <PolarRadiusAxis 
                   angle={30} 
                   domain={[0, 100]}
-                  tick={{ fontSize: 8, fill: "#cbd5e1" }} 
+                  tick={{ fontSize: 8, fill: "#e0c8d3" }} 
                 />
                 <RadarComponent
                   name="Current Cohort"
                   dataKey="A"
-                  stroke="#6366f1"
-                  fill="#6366f1"
+                  stroke="#c81e66"
+                  fill="#c81e66"
                   fillOpacity={0.6}
                 />
 
@@ -270,24 +270,24 @@ export const AdvancedAnalytics: React.FC<{ orgId: string }> = ({ orgId }) => {
               ]}>
                 <defs>
                   <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#c81e66" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#c81e66" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8f0f4" />
                 <XAxis 
                   dataKey="name" 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fontSize: 10, fontWeight: 900, fill: "#94a3b8" }} 
+                  tick={{ fontSize: 10, fontWeight: 900, fill: "#b89aa8" }} 
                 />
                 <YAxis 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fontSize: 10, fontWeight: 900, fill: "#94a3b8" }} 
+                  tick={{ fontSize: 10, fontWeight: 900, fill: "#b89aa8" }} 
                 />
                 <Tooltip />
-                <Area type="monotone" dataKey="score" stroke="#6366f1" fillOpacity={1} fill="url(#colorScore)" strokeWidth={3} />
+                <Area type="monotone" dataKey="score" stroke="#c81e66" fillOpacity={1} fill="url(#colorScore)" strokeWidth={3} />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>

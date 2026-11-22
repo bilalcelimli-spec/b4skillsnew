@@ -21,7 +21,7 @@ interface AuthPageProps {
 // Marker highlight component
 const Highlight = ({ children, className }: { children: React.ReactNode, className?: string }) => (
   <span className={cn("relative inline-block whitespace-nowrap mx-1", className)}>
-    <span className="absolute inset-y-1 -inset-x-2 bg-[#9b276c] -skew-x-[12deg] -z-10 rounded-sm" />
+    <span className="absolute inset-y-1 -inset-x-2 bg-[#ad024c] -skew-x-[12deg] -z-10 rounded-sm" />
     <span className="relative z-10 text-white">{children}</span>
   </span>
 );
@@ -152,7 +152,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] flex font-sans text-slate-800">
+    <div className="min-h-screen bg-[#fcf8fa] flex font-sans text-slate-800">
       
       {/* ─── GRAPHIC SIDE (Hidden on mobile) ─── */}
       <div className="hidden lg:flex w-1/2 relative bg-slate-900 overflow-hidden items-center justify-center p-12">
@@ -160,15 +160,15 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
           <img src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" alt="Tech" className="w-full h-full object-cover mix-blend-overlay filter grayscale" />
         </div>
         {/* Yellow diagonal overlay */}
-        <div className="absolute top-0 left-0 w-[120%] h-full bg-gradient-to-r from-[#9b276c] to-transparent opacity-80" style={{ clipPath: 'polygon(0 0, 70% 0, 30% 100%, 0 100%)' }} />
+        <div className="absolute top-0 left-0 w-[120%] h-full bg-gradient-to-r from-[#ad024c] to-transparent opacity-80" style={{ clipPath: 'polygon(0 0, 70% 0, 30% 100%, 0 100%)' }} />
         
         <div className="relative z-10 max-w-lg text-white">
-          <div className="mb-6 inline-flex p-4 bg-white/10 backdrop-blur-sm text-[#ae397d] rounded-2xl border border-white/20">
+          <div className="mb-6 inline-flex p-4 bg-white/10 backdrop-blur-sm text-[#c81e66] rounded-2xl border border-white/20">
             <BrainCircuit size={48} strokeWidth={1.5} />
           </div>
           <h2 className="text-4xl lg:text-5xl font-bold leading-[1.1] text-white tracking-tight mb-6">
             Intelligent Assessment, <br />
-            <span className="text-white bg-[#9b276c] px-2 py-0.5 rounded-sm transform inline-block -skew-x-6 mt-2">Unlimited Potential.</span>
+            <span className="text-white bg-[#ad024c] px-2 py-0.5 rounded-sm transform inline-block -skew-x-6 mt-2">Unlimited Potential.</span>
           </h2>
           <p className="text-lg text-[#fff0f7]">
             Access your secure dashboard to manage tests, review granular analytics, and harness the power of AI psychometrics.
@@ -206,7 +206,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
         >
           {/* Brand Header */}
           <div className="mb-10 text-center lg:text-left">
-            <div className="bg-[#9b276c] justify-center lg:justify-start text-white font-bold text-xl px-3 py-1.5 -skew-x-6 rounded-sm tracking-tight inline-flex items-center mb-6">
+            <div className="bg-[#ad024c] justify-center lg:justify-start text-white font-bold text-xl px-3 py-1.5 -skew-x-6 rounded-sm tracking-tight inline-flex items-center mb-6">
               <span style={{ textShadow: '0 0 8px rgba(253, 224, 71, 0.8), 0 0 15px rgba(253, 224, 71, 0.4)' }}>b4skills</span>
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">
@@ -344,7 +344,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
                         <button
                           type="button"
                           onClick={() => switchMode("forgot")}
-                          className="text-xs text-[#9b276c] hover:text-[#661645] font-bold"
+                          className="text-xs text-[#ad024c] hover:text-[#661645] font-bold"
                         >
                           Forgot password?
                         </button>
@@ -432,8 +432,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
                 {/* ─── Submit button ─── */}
                 <Button
                   type="submit"
+                  variant="cta"
                   disabled={loading}
-                  className="w-full h-12 text-[15px] font-bold rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-md shadow-slate-200"
+                  className="w-full h-12 text-[15px] rounded-xl"
                 >
                   {loading ? (
                     <Loader2 size={18} className="animate-spin" />
@@ -454,9 +455,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode, initial
             {/* Footer Terms */}
             <p className="text-center text-xs text-slate-400 mt-8 font-medium">
               By continuing you agree to our{" "}
-              <a href="mailto:hello@b4skills.com?subject=Terms+of+Service" className="text-slate-600 hover:text-[#9b276c] transition-colors underline decoration-slate-300">Terms</a>{" "}
+              <a href="mailto:hello@b4skills.com?subject=Terms+of+Service" className="text-slate-600 hover:text-[#ad024c] transition-colors underline decoration-slate-300">Terms</a>{" "}
               and{" "}
-              <a href="mailto:privacy@b4skills.com" className="text-slate-600 hover:text-[#9b276c] transition-colors underline decoration-slate-300">Privacy Policy</a>.
+              <a href="mailto:privacy@b4skills.com" className="text-slate-600 hover:text-[#ad024c] transition-colors underline decoration-slate-300">Privacy Policy</a>.
             </p>
           </div>
         </motion.div>

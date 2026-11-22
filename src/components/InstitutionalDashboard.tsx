@@ -292,7 +292,7 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
   const cefrChartData = Object.entries(data.cefrDistribution ?? {}).map(([name, value]) => ({ name, value }));
   const skillChartData = Object.entries(data.skillPerformance ?? {}).map(([subject, A]) => ({ subject, A, fullMark: 100 }));
   
-  const COLORS = ["#4f46e5", "#6366f1", "#818cf8", "#a5b4fc", "#c7d2fe", "#e0e7ff"];
+  const COLORS = ["#ad024c", "#c81e66", "#818cf8", "#a5b4fc", "#c7d2fe", "#e0e7ff"];
 
   return (
     <div className="space-y-8">
@@ -386,14 +386,14 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
               <CardContent className="h-80 p-6">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={cefrChartData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10, fontWeight: "bold" }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10, fontWeight: "bold" }} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8f0f4" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#b89aa8", fontSize: 10, fontWeight: "bold" }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#b89aa8", fontSize: 10, fontWeight: "bold" }} />
                     <Tooltip 
-                      cursor={{ fill: "#f8fafc" }}
+                      cursor={{ fill: "#fcf8fa" }}
                       contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1)", padding: "12px" }}
                     />
-                    <Bar dataKey="value" fill="#6366f1" radius={[8, 8, 0, 0]} barSize={48} />
+                    <Bar dataKey="value" fill="#c81e66" radius={[8, 8, 0, 0]} barSize={48} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -405,14 +405,14 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
               <CardContent className="h-80 p-6">
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart cx="50%" cy="50%" outerRadius="80%" data={skillChartData}>
-                    <PolarGrid stroke="#f1f5f9" />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: "#94a3b8", fontSize: 10, fontWeight: "black" }} />
+                    <PolarGrid stroke="#f8f0f4" />
+                    <PolarAngleAxis dataKey="subject" tick={{ fill: "#b89aa8", fontSize: 10, fontWeight: "black" }} />
                     <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
                     <Radar
                       name="Cohort Average"
                       dataKey="A"
-                      stroke="#6366f1"
-                      fill="#6366f1"
+                      stroke="#c81e66"
+                      fill="#c81e66"
                       fillOpacity={0.2}
                       strokeWidth={3}
                     />
@@ -429,18 +429,18 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
               <CardContent className="h-80 p-6">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={data.timeSeriesData ?? []}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10, fontWeight: "bold" }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10, fontWeight: "bold" }} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8f0f4" />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "#b89aa8", fontSize: 10, fontWeight: "bold" }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#b89aa8", fontSize: 10, fontWeight: "bold" }} />
                     <Tooltip 
                       contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1)", padding: "12px" }}
                     />
                     <Line 
                       type="monotone" 
                       dataKey="avgScore" 
-                      stroke="#6366f1" 
+                      stroke="#c81e66" 
                       strokeWidth={4} 
-                      dot={{ r: 6, fill: "#6366f1", strokeWidth: 3, stroke: "#fff" }} 
+                      dot={{ r: 6, fill: "#c81e66", strokeWidth: 3, stroke: "#fff" }} 
                       activeDot={{ r: 8, strokeWidth: 0 }}
                     />
                   </LineChart>
@@ -520,12 +520,12 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
                       "Your Org": d.pct,
                       "Platform": benchmark.platformDistribution[i]?.pct ?? 0,
                     }))}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="level" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10, fontWeight: "bold" }} />
-                      <YAxis unit="%" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8f0f4" />
+                      <XAxis dataKey="level" axisLine={false} tickLine={false} tick={{ fill: "#b89aa8", fontSize: 10, fontWeight: "bold" }} />
+                      <YAxis unit="%" axisLine={false} tickLine={false} tick={{ fill: "#b89aa8", fontSize: 10 }} />
                       <Tooltip contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 20px 25px -5px rgba(0,0,0,.1)", padding: "12px" }} formatter={(v: any) => `${v}%`} />
-                      <Bar dataKey="Your Org" fill="#6366f1" radius={[6,6,0,0]} barSize={28} />
-                      <Bar dataKey="Platform"  fill="#cbd5e1" radius={[6,6,0,0]} barSize={28} />
+                      <Bar dataKey="Your Org" fill="#c81e66" radius={[6,6,0,0]} barSize={28} />
+                      <Bar dataKey="Platform"  fill="#e0c8d3" radius={[6,6,0,0]} barSize={28} />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -544,17 +544,17 @@ export const InstitutionalDashboard: React.FC<{ organizationId: string }> = ({ o
               {trends && trends.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={trends.map(t => ({ ...t, avgTheta: t.avgTheta ?? 0 }))}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10, fontWeight: "bold" }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10 }} domain={[-3, 3]}
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8f0f4" />
+                    <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{ fill: "#b89aa8", fontSize: 10, fontWeight: "bold" }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#b89aa8", fontSize: 10 }} domain={[-3, 3]}
                       tickFormatter={(v: number) => v.toFixed(1)} />
                     <Tooltip
                       contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 20px 25px -5px rgba(0,0,0,.1)", padding: "12px" }}
                       formatter={(v: any, name: string) => [name === "avgTheta" ? `θ ${Number(v).toFixed(2)}` : v, name === "avgTheta" ? "Avg θ" : "Sessions"]}
                     />
-                    <Line type="monotone" dataKey="avgTheta" stroke="#6366f1" strokeWidth={3}
-                      dot={(p: any) => <circle key={p.index} cx={p.cx} cy={p.cy} r={5} fill="#6366f1" stroke="#fff" strokeWidth={2} />}
-                      label={(p: any) => <text key={p.index} x={p.x} y={p.y - 12} textAnchor="middle" fontSize={9} fontWeight="bold" fill="#6366f1">{(trends ?? [])[p.index]?.avgCefr ?? ""}</text>}
+                    <Line type="monotone" dataKey="avgTheta" stroke="#c81e66" strokeWidth={3}
+                      dot={(p: any) => <circle key={p.index} cx={p.cx} cy={p.cy} r={5} fill="#c81e66" stroke="#fff" strokeWidth={2} />}
+                      label={(p: any) => <text key={p.index} x={p.x} y={p.y - 12} textAnchor="middle" fontSize={9} fontWeight="bold" fill="#c81e66">{(trends ?? [])[p.index]?.avgCefr ?? ""}</text>}
                     />
                   </LineChart>
                 </ResponsiveContainer>

@@ -558,7 +558,7 @@ export interface WhiteGloveOnboardingProps {
 
 const DEFAULT_DATA: OnboardingData = {
   org:          { name: "", domain: "", adminEmail: "", country: "", size: "50–249", industry: "Education" },
-  branding:     { primaryColor: "#1a56db", secondaryColor: "#7c3aed", font: "Inter" },
+  branding:     { primaryColor: "#ad024c", secondaryColor: "#7c3aed", font: "Inter" },
   candidates:   [],
   modules:      { general: true, academic: false, business: false, healthcare: false },
   integrations: { ssoEnabled: false, ssoProvider: "Okta", samlMetadata: "", apiKeyCreated: false },

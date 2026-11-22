@@ -38,7 +38,7 @@ interface CATSimPayload {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const STRATEGY_COLORS: Record<string, string> = {
-  MFI: "#6366f1",
+  MFI: "#c81e66",
   MEI: "#8b5cf6",
   Random: "#f59e0b",
   Actual: "#06b6d4",
@@ -64,8 +64,8 @@ function StrategyCurveSVG({ curves }: { curves: CATSimPayload["curves"] }) {
         if (y < PAD.t || y > H - PAD.b) return null;
         return (
           <g key={sem}>
-            <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="#334155" strokeWidth="1" strokeDasharray="4 3" />
-            <text x={PAD.l - 4} y={y + 4} textAnchor="end" fontSize="9" fill="#64748b">{sem.toFixed(1)}</text>
+            <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="#4f3a45" strokeWidth="1" strokeDasharray="4 3" />
+            <text x={PAD.l - 4} y={y + 4} textAnchor="end" fontSize="9" fill="#806571">{sem.toFixed(1)}</text>
           </g>
         );
       })}
@@ -79,7 +79,7 @@ function StrategyCurveSVG({ curves }: { curves: CATSimPayload["curves"] }) {
         const pts = curve.points;
         if (!pts.length) return null;
         const d = pts.map((p, i) => `${i === 0 ? "M" : "L"}${xS(p.n).toFixed(1)},${yS(p.meanSEM).toFixed(1)}`).join(" ");
-        const color = STRATEGY_COLORS[curve.strategy] ?? "#64748b";
+        const color = STRATEGY_COLORS[curve.strategy] ?? "#806571";
         return (
           <g key={curve.strategy}>
             <path d={d} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
@@ -87,19 +87,19 @@ function StrategyCurveSVG({ curves }: { curves: CATSimPayload["curves"] }) {
           </g>
         );
       })}
-      <line x1={PAD.l} y1={PAD.t} x2={PAD.l} y2={H - PAD.b} stroke="#475569" strokeWidth="1" />
-      <line x1={PAD.l} y1={H - PAD.b} x2={W - PAD.r} y2={H - PAD.b} stroke="#475569" strokeWidth="1" />
+      <line x1={PAD.l} y1={PAD.t} x2={PAD.l} y2={H - PAD.b} stroke="#6b5560" strokeWidth="1" />
+      <line x1={PAD.l} y1={H - PAD.b} x2={W - PAD.r} y2={H - PAD.b} stroke="#6b5560" strokeWidth="1" />
       {[minN, Math.round((minN + maxN) / 2), maxN].map((n) => (
-        <text key={n} x={xS(n)} y={H - PAD.b + 14} textAnchor="middle" fontSize="9" fill="#64748b">{n}</text>
+        <text key={n} x={xS(n)} y={H - PAD.b + 14} textAnchor="middle" fontSize="9" fill="#806571">{n}</text>
       ))}
-      <text x={W / 2} y={H - 2} textAnchor="middle" fontSize="9" fill="#64748b">Items Administered</text>
-      <text x={12} y={H / 2} textAnchor="middle" fontSize="9" fill="#64748b" transform={`rotate(-90,12,${H / 2})`}>Mean SEM</text>
+      <text x={W / 2} y={H - 2} textAnchor="middle" fontSize="9" fill="#806571">Items Administered</text>
+      <text x={12} y={H / 2} textAnchor="middle" fontSize="9" fill="#806571" transform={`rotate(-90,12,${H / 2})`}>Mean SEM</text>
     </svg>
   );
 }
 
 function StrategyCard({ row, isBest }: { row: StrategyResult; isBest: boolean }) {
-  const color = STRATEGY_COLORS[row.strategy] ?? "#64748b";
+  const color = STRATEGY_COLORS[row.strategy] ?? "#806571";
   return (
     <div className={`bg-slate-800 rounded-xl p-4 border ${isBest ? "border-indigo-500" : "border-slate-700"}`}>
       <div className="flex items-start justify-between mb-3">
@@ -157,7 +157,7 @@ export function CATItemSelectionPanel() {
 
   const kpiCards = data
     ? [
-        { label: "Sessions", value: data.totalSessions, icon: <Zap size={16} />, color: "#6366f1", fmt: (v: number) => v.toLocaleString() },
+        { label: "Sessions", value: data.totalSessions, icon: <Zap size={16} />, color: "#c81e66", fmt: (v: number) => v.toLocaleString() },
         { label: "Strategies", value: data.strategies.length, icon: <Calculator size={16} />, color: "#8b5cf6", fmt: (v: number) => v.toString() },
         { label: "Best Strategy", value: 0, label2: bestStrategy, icon: <CheckCircle2 size={16} />, color: "#10b981", fmt: () => bestStrategy },
         {

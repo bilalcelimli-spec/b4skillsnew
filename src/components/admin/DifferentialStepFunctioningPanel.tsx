@@ -42,11 +42,11 @@ interface DSFPayload {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const SKILL_COLORS: Record<string, string> = {
-  GRAMMAR: "#6366f1", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
+  GRAMMAR: "#c81e66", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
   LISTENING: "#06b6d4", WRITING: "#10b981", SPEAKING: "#f59e0b",
 };
 
-const STEP_COLORS = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#3b82f6"];
+const STEP_COLORS = ["#c81e66", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#3b82f6"];
 
 function StepProfile({ steps }: { steps: StepResult[] }) {
   const max = Math.max(3.84, ...steps.map((s) => s.dsfStat));
@@ -64,7 +64,7 @@ function StepProfile({ steps }: { steps: StepResult[] }) {
               }}
             />
           </div>
-          <span className="w-12 font-mono text-right" style={{ color: s.flagged ? "#ef4444" : "#94a3b8" }}>
+          <span className="w-12 font-mono text-right" style={{ color: s.flagged ? "#ef4444" : "#b89aa8" }}>
             χ²={s.dsfStat.toFixed(1)}
           </span>
           <span className="w-14 font-mono text-right text-slate-500">{s.flagged ? "⚠" : "✓"}</span>
@@ -110,7 +110,7 @@ function DeltaHeatmap({ items }: { items: DSFItem[] }) {
                   </td>
                 );
               })}
-              <td className="px-2 py-1.5 text-center font-mono" style={{ color: d.flagged ? "#ef4444" : "#94a3b8" }}>
+              <td className="px-2 py-1.5 text-center font-mono" style={{ color: d.flagged ? "#ef4444" : "#b89aa8" }}>
                 {d.maxDSFStat.toFixed(1)}
               </td>
             </tr>
@@ -148,7 +148,7 @@ export function DifferentialStepFunctioningPanel() {
   useEffect(() => { load(); }, [load]);
 
   const kpis = data ? [
-    { label: "Items Analysed", value: data.totalItems, icon: <Layers size={16} />, color: "#6366f1", fmt: String },
+    { label: "Items Analysed", value: data.totalItems, icon: <Layers size={16} />, color: "#c81e66", fmt: String },
     { label: "Flagged Items", value: data.flaggedItems, icon: <AlertTriangle size={16} />, color: data.flaggedItems > 0 ? "#ef4444" : "#10b981", fmt: String },
     { label: "Flagged Steps", value: data.totalFlaggedSteps, icon: <BarChart3 size={16} />, color: data.totalFlaggedSteps > 0 ? "#f59e0b" : "#10b981", fmt: String },
     { label: "Group Method", value: data.groupingMethod, icon: <CheckCircle2 size={16} />, color: "#8b5cf6", fmt: (v: string) => v },
@@ -286,14 +286,14 @@ export function DifferentialStepFunctioningPanel() {
                     >
                       <span
                         className="px-1.5 py-0.5 rounded text-xs font-medium text-white shrink-0"
-                        style={{ background: SKILL_COLORS[d.skill] ?? "#6366f1" }}
+                        style={{ background: SKILL_COLORS[d.skill] ?? "#c81e66" }}
                       >
                         {d.skill.slice(0, 3)}
                       </span>
                       <span className="font-mono text-sm text-white flex-1">{d.itemLabel}</span>
                       <span className="text-xs text-slate-400">{d.nCategories} cats</span>
                       <span className="text-xs text-slate-400">{d.nFlaggedSteps}/{d.steps.length} steps flagged</span>
-                      <span className="text-xs font-mono" style={{ color: d.flagged ? "#ef4444" : "#94a3b8" }}>
+                      <span className="text-xs font-mono" style={{ color: d.flagged ? "#ef4444" : "#b89aa8" }}>
                         max χ²={d.maxDSFStat.toFixed(1)}
                       </span>
                       {d.flagged
@@ -336,7 +336,7 @@ export function DifferentialStepFunctioningPanel() {
                         <div className="flex-1 bg-slate-800 rounded-full h-4 overflow-hidden">
                           <div
                             className="h-full rounded-full"
-                            style={{ width: `${(b.count / max) * 100}%`, background: flagged ? "#ef4444" : "#6366f1" }}
+                            style={{ width: `${(b.count / max) * 100}%`, background: flagged ? "#ef4444" : "#c81e66" }}
                           />
                         </div>
                         <span className="w-8 text-slate-300">{b.count}</span>

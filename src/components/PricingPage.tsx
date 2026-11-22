@@ -127,7 +127,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] font-sans text-slate-800">
+    <div className="min-h-screen bg-[#fcf8fa] font-sans text-slate-800">
 
       {showFreeTest && <FreemiumTestWidget onClose={() => setShowFreeTest(false)} onSignup={() => { setShowFreeTest(false); onStart?.(); }} />}
 
@@ -135,8 +135,8 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
       <SiteNav />
 
       {/* ── Hero ───────────────────────────────────────────────────────── */}
-      <section className="relative bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#9b276c] text-white pt-36 pb-24 px-6 text-center overflow-hidden">
-        <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: "radial-gradient(circle at 30% 50%, #6366f1 0%, transparent 60%), radial-gradient(circle at 70% 50%, #9b276c 0%, transparent 60%)" }} />
+      <section className="relative bg-gradient-to-br from-[#24101a] via-[#1e1b4b] to-[#ad024c] text-white pt-36 pb-24 px-6 text-center overflow-hidden">
+        <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: "radial-gradient(circle at 30% 50%, #c81e66 0%, transparent 60%), radial-gradient(circle at 70% 50%, #ad024c 0%, transparent 60%)" }} />
         <div className="relative max-w-3xl mx-auto">
           <h1 className="text-4xl md:text-5xl font-black leading-tight mb-6">
             Know your level.<br />Understand your skills.
@@ -190,7 +190,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
               )}
             >
               {plan.badge && (
-                <span className="absolute -top-3 left-6 bg-[#9b276c] text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
+                <span className="absolute -top-3 left-6 bg-[#ad024c] text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
                   {plan.badge}
                 </span>
               )}
@@ -211,7 +211,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onBack, onStart }) => 
                 className={cn(
                   "w-full py-3 rounded-xl font-bold text-sm transition-colors",
                   plan.highlighted
-                    ? "bg-[#9b276c] hover:bg-[#7d1f56] text-white"
+                    ? "bg-[#ad024c] hover:bg-[#8a003b] text-white"
                     : "bg-slate-900 hover:bg-slate-700 text-white"
                 )}
               >

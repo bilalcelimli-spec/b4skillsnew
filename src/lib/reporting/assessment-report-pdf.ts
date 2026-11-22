@@ -7,7 +7,7 @@ import { PRACTICE, practicePriorities, type AssessmentReport } from './assessmen
 import { CEFR_GUIDE_SOURCE, skillLevelGuide } from './skill-level-guide.js';
 
 // Existing App.tsx wordmark / favicon: magenta with a yellow accent.
-const C = { navy: '#9B276C', blue: '#9B276C', yellow: '#FDE047', ink: '#30202C', muted: '#675763', line: '#E9DCE4', light: '#FBF5F9', white: '#FFFFFF' };
+const C = { navy: '#ad024c', blue: '#ad024c', yellow: '#FDE047', ink: '#30202C', muted: '#675763', line: '#E9DCE4', light: '#FBF5F9', white: '#FFFFFF' };
 const W = 595.28, H = 841.89, M = 42, WIDTH = W - 2 * M;
 const label = (skill: string) => skill[0] + skill.slice(1).toLowerCase();
 const band = (cefr: string | null) => cefr === 'PRE_A1' ? 'Pre-A1' : cefr ?? 'Not available';

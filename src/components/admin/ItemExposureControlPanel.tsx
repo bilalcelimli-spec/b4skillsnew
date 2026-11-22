@@ -36,7 +36,7 @@ interface ExposureSummary {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const SKILL_COLORS: Record<string, string> = {
-  GRAMMAR: "#6366f1", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
+  GRAMMAR: "#c81e66", VOCABULARY: "#8b5cf6", READING: "#3b82f6",
   LISTENING: "#06b6d4", WRITING: "#10b981", SPEAKING: "#f59e0b",
 };
 
@@ -69,7 +69,7 @@ function RateDistChart({ bins }: { bins: { bin: string; count: number }[] }) {
             <div className="flex-1 bg-slate-800 rounded-full h-4 overflow-hidden">
               <div
                 className="h-full rounded-full"
-                style={{ width: `${(b.count / max) * 100}%`, background: over ? "#ef4444" : warn ? "#f59e0b" : "#6366f1" }}
+                style={{ width: `${(b.count / max) * 100}%`, background: over ? "#ef4444" : warn ? "#f59e0b" : "#c81e66" }}
               />
             </div>
             <span className="w-8 text-slate-300">{b.count}</span>
@@ -106,7 +106,7 @@ export function ItemExposureControlPanel() {
   useEffect(() => { load(); }, [load]);
 
   const kpis = data ? [
-    { label: "Items", value: data.totalItems, icon: <Shield size={16} />, color: "#6366f1", fmt: String },
+    { label: "Items", value: data.totalItems, icon: <Shield size={16} />, color: "#c81e66", fmt: String },
     { label: "Overexposed", value: data.overexposedItems, icon: <AlertTriangle size={16} />, color: data.overexposedItems > 0 ? "#ef4444" : "#10b981", fmt: String },
     { label: "Underexposed", value: data.underexposedItems, icon: <BarChart3 size={16} />, color: data.underexposedItems > 0 ? "#f59e0b" : "#10b981", fmt: String },
     { label: "Mean Rate", value: data.meanExposureRate, icon: <CheckCircle2 size={16} />, color: data.meanExposureRate > 0.3 ? "#ef4444" : "#10b981", fmt: (v: number) => v.toFixed(3) },
@@ -231,7 +231,7 @@ export function ItemExposureControlPanel() {
                       <tr key={d.itemId} className={`border-t border-slate-700/30 hover:bg-slate-800/40 ${d.overexposed ? "bg-red-950/20" : ""}`}>
                         <td className="px-3 py-2 font-mono text-white">{d.itemLabel}</td>
                         <td className="px-3 py-2">
-                          <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ background: SKILL_COLORS[d.skill] ?? "#6366f1" }}>
+                          <span className="px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ background: SKILL_COLORS[d.skill] ?? "#c81e66" }}>
                             {d.skill.slice(0, 3)}
                           </span>
                         </td>
@@ -275,7 +275,7 @@ export function ItemExposureControlPanel() {
                 {data.skillSummary.map((s, i) => (
                   <div key={s.skill} className="bg-slate-900/50 rounded-xl p-4 border border-slate-700/50">
                     <div className="flex items-center gap-2 mb-3">
-                      <span className="w-3 h-3 rounded-full" style={{ background: SKILL_COLORS[s.skill] ?? "#6366f1" }} />
+                      <span className="w-3 h-3 rounded-full" style={{ background: SKILL_COLORS[s.skill] ?? "#c81e66" }} />
                       <span className="text-sm font-medium text-white">{s.skill}</span>
                       {s.overexposed > 0 && (
                         <span className="ml-auto px-1.5 py-0.5 rounded bg-red-900/50 text-red-300 text-xs">
@@ -296,7 +296,7 @@ export function ItemExposureControlPanel() {
                         className="h-full rounded-full"
                         style={{
                           width: `${Math.min(100, (s.meanRate / 0.4) * 100)}%`,
-                          background: SKILL_COLORS[s.skill] ?? "#6366f1",
+                          background: SKILL_COLORS[s.skill] ?? "#c81e66",
                         }}
                       />
                       <div className="absolute top-0 h-full w-0.5 bg-white/30" style={{ left: `${(0.3 / 0.4) * 100}%` }} />

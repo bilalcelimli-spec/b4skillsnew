@@ -594,7 +594,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
               const radius = 10;
               const circ = 2 * Math.PI * radius;
               const dash = (pct / 100) * circ;
-              const color = pct >= 80 ? "#10b981" : pct >= 50 ? "#6366f1" : "#94a3b8";
+              const color = pct >= 80 ? "#10b981" : pct >= 50 ? "#c81e66" : "#b89aa8";
               return (
                 <div
                   className="hidden sm:flex flex-col items-center gap-0.5 cursor-default"
@@ -602,7 +602,7 @@ const AdaptiveTestPlayer: React.FC<TestPlayerProps> = ({ organizationId, candida
                   aria-label={`Measurement precision ${pct}%`}
                 >
                   <svg width="28" height="28" viewBox="0 0 28 28">
-                    <circle cx="14" cy="14" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="3" />
+                    <circle cx="14" cy="14" r={radius} fill="none" stroke="#f0dfe6" strokeWidth="3" />
                     <circle
                       cx="14" cy="14" r={radius}
                       fill="none"

@@ -45,7 +45,7 @@ const SKILL_COLORS: Record<string, string> = {
 };
 
 const CEFR_COLORS: Record<string, string> = {
-  PRE_A1: "#475569", A1: "#3b82f6", A2: "#06b6d4",
+  PRE_A1: "#6b5560", A1: "#3b82f6", A2: "#06b6d4",
   B1: "#10b981", B2: "#f59e0b", C1: "#f97316", C2: "#ef4444",
 };
 
@@ -59,7 +59,7 @@ const SatisfactionGauge: React.FC<{ pct: number; label: string }> = ({ pct, labe
   return (
     <div className="flex flex-col items-center gap-1">
       <svg width={88} height={88} viewBox="0 0 88 88">
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1e293b" strokeWidth={sw} />
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#40222f" strokeWidth={sw} />
         <circle
           cx={cx} cy={cy} r={r} fill="none"
           stroke={color} strokeWidth={sw}
@@ -190,7 +190,7 @@ export const ShadowTestPanel: React.FC = () => {
                 <tbody>
                   {data.blueprintConstraints.map((c) => (
                     <tr key={c.skill} className="border-t border-slate-700 hover:bg-slate-700/30 transition-colors">
-                      <td className="px-3 py-2 font-semibold" style={{ color: SKILL_COLORS[c.skill] ?? "#94a3b8" }}>
+                      <td className="px-3 py-2 font-semibold" style={{ color: SKILL_COLORS[c.skill] ?? "#b89aa8" }}>
                         {SKILL_LABELS[c.skill] ?? c.skill}
                       </td>
                       <td className="px-3 py-2 text-slate-300">{c.minCount}</td>
@@ -228,13 +228,13 @@ export const ShadowTestPanel: React.FC = () => {
                   const pct = Math.min(100, (s.meanItemsPerTest / 5) * 100);
                   return (
                     <div key={s.skill} className="flex items-center gap-3">
-                      <span className="text-xs w-24 font-medium" style={{ color: SKILL_COLORS[s.skill] ?? "#94a3b8" }}>
+                      <span className="text-xs w-24 font-medium" style={{ color: SKILL_COLORS[s.skill] ?? "#b89aa8" }}>
                         {SKILL_LABELS[s.skill] ?? s.skill}
                       </span>
                       <div className="flex-1 h-4 bg-slate-700 rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full"
-                          style={{ width: `${pct}%`, backgroundColor: SKILL_COLORS[s.skill] ?? "#94a3b8", opacity: 0.8 }}
+                          style={{ width: `${pct}%`, backgroundColor: SKILL_COLORS[s.skill] ?? "#b89aa8", opacity: 0.8 }}
                         />
                       </div>
                       <span className="text-slate-300 text-xs w-20">
@@ -254,7 +254,7 @@ export const ShadowTestPanel: React.FC = () => {
                   <div key={c.level} className="flex-1 flex flex-col items-center gap-1">
                     <div
                       className="w-full rounded-t-sm"
-                      style={{ height: `${Math.max(4, c.pct * 80)}px`, backgroundColor: CEFR_COLORS[c.level] ?? "#475569" }}
+                      style={{ height: `${Math.max(4, c.pct * 80)}px`, backgroundColor: CEFR_COLORS[c.level] ?? "#6b5560" }}
                       title={`${c.level}: ${c.meanCount.toFixed(1)} items/test`}
                     />
                     <span className="text-[9px] text-slate-400">{c.level.replace("_", "")}</span>
@@ -286,11 +286,11 @@ export const ShadowTestPanel: React.FC = () => {
                       <tr key={i} className="border-t border-slate-700 hover:bg-slate-700/30 transition-colors">
                         <td className="px-3 py-2 text-slate-400 font-mono text-xs">{v.sessionId.slice(-10)}</td>
                         <td className="px-3 py-2">
-                          <span className="px-1.5 py-0.5 rounded text-xs font-semibold text-white" style={{ backgroundColor: CEFR_COLORS[v.cefrLevel] ?? "#475569" }}>
+                          <span className="px-1.5 py-0.5 rounded text-xs font-semibold text-white" style={{ backgroundColor: CEFR_COLORS[v.cefrLevel] ?? "#6b5560" }}>
                             {v.cefrLevel.replace("_", "")}
                           </span>
                         </td>
-                        <td className="px-3 py-2 font-semibold" style={{ color: SKILL_COLORS[v.skill] ?? "#94a3b8" }}>
+                        <td className="px-3 py-2 font-semibold" style={{ color: SKILL_COLORS[v.skill] ?? "#b89aa8" }}>
                           {SKILL_LABELS[v.skill] ?? v.skill}
                         </td>
                         <td className="px-3 py-2 text-red-400 font-semibold">{v.actual}</td>

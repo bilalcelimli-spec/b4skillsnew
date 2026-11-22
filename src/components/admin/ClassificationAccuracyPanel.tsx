@@ -44,7 +44,7 @@ interface ClassificationData {
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 const CEFR_COLORS: Record<string, string> = {
-  PRE_A1: "#94a3b8", A1: "#64748b", A2: "#0284c7",
+  PRE_A1: "#b89aa8", A1: "#806571", A2: "#0284c7",
   B1: "#0891b2", B2: "#059669", C1: "#7c3aed", C2: "#db2777",
 };
 
@@ -217,7 +217,7 @@ export function ClassificationAccuracyPanel() {
                           <tr key={cut.level} className="hover:bg-slate-50">
                             <td className="px-3 py-2.5">
                               <span className="px-2 py-1 rounded font-semibold text-white text-xs"
-                                style={{ backgroundColor: CEFR_COLORS[cut.level] ?? "#64748b" }}>
+                                style={{ backgroundColor: CEFR_COLORS[cut.level] ?? "#806571" }}>
                                 {cut.level.replace("_", " ")}
                               </span>
                             </td>
@@ -286,7 +286,7 @@ export function ClassificationAccuracyPanel() {
                           {data.thetaHistogram.map((bin, i) => {
                             const maxCount = Math.max(...data.thetaHistogram.map((b) => b.count), 1);
                             const height = (bin.count / maxCount) * 100;
-                            const color = CEFR_COLORS[bin.cefrLevel] ?? "#94a3b8";
+                            const color = CEFR_COLORS[bin.cefrLevel] ?? "#b89aa8";
                             return (
                               <motion.div
                                 key={i}
