@@ -46,9 +46,9 @@ const rewriteFor = (code: string) => MONOLOGUE_REWRITES.find((r) => r.itemCode =
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
 describe("speaking monologue rewrite (2026-11-22)", () => {
-  it("covers 75 distinct items and leaves SPK-C2-0009 to the C2 rewrite", () => {
-    expect(MONOLOGUE_REWRITES).toHaveLength(75);
-    expect(new Set(MONOLOGUE_REWRITES.map((r) => r.id)).size).toBe(75);
+  it("covers 85 distinct items and leaves SPK-C2-0009 to the C2 rewrite", () => {
+    expect(MONOLOGUE_REWRITES).toHaveLength(85);
+    expect(new Set(MONOLOGUE_REWRITES.map((r) => r.id)).size).toBe(85);
     expect(MONOLOGUE_REWRITES.every((r) => /^c[a-z0-9]{24}$/.test(r.id))).toBe(true);
     expect(MONOLOGUE_REWRITES.some((r) => r.itemCode && HANDLED_ELSEWHERE.has(r.itemCode))).toBe(false);
   });

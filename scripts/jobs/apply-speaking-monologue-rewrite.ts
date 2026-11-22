@@ -8,8 +8,9 @@
  *
  * Speaking in b4skills is a recorded monologue, scored by the AI ensemble
  * and human raters with nobody present. On 2026-11-22, 76 of 491 speaking
- * prompts matched INTERLOCUTOR. SPK-C2-0009 is rewritten by
- * apply-c2-academia-rewrite.ts; the other 75 are in speaking-monologue-rewrites.ts.
+ * prompts matched INTERLOCUTOR and 10 more (all pretest) matched only
+ * REPLY_EXPECTED. SPK-C2-0009 is rewritten by apply-c2-academia-rewrite.ts;
+ * the other 85 are in speaking-monologue-rewrites.ts.
  *
  * Each rewrite keeps CEFR level, topic, prepTime and responseTime, and
  * changes prompt, taskType, sampleBullets and, where they described an
@@ -112,8 +113,10 @@ async function main() {
     // Re-scan the bank so a newly added interlocutor prompt is reported, not silently missed.
     const speaking = await db.item.findMany({ where: { skill: "SPEAKING" }, select: { id: true, itemCode: true, content: true } });
     const known = new Set(MONOLOGUE_REWRITES.map((r) => r.id));
-    const unlisted = speaking.filter((i) => INTERLOCUTOR.test(String((i.content as Record<string, unknown> | null)?.prompt ?? ""))
-      && !known.has(i.id) && !HANDLED_ELSEWHERE.has(i.itemCode ?? ""));
+    const unlisted = speaking.filter((i) => {
+      const prompt = String((i.content as Record<string, unknown> | null)?.prompt ?? "");
+      return (INTERLOCUTOR.test(prompt) || REPLY_EXPECTED.test(prompt)) && !known.has(i.id) && !HANDLED_ELSEWHERE.has(i.itemCode ?? "");
+    });
 
     const items = await db.item.findMany({
       where: { id: { in: [...known] } },

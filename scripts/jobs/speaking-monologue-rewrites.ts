@@ -868,4 +868,125 @@ export const MONOLOGUE_REWRITES: readonly MonologueRewrite[] = [
       cefrDescriptor: "Can defend a complex intellectual position against the strongest objections in an extended talk.",
     },
   },
+
+  // ── Pretest items found only by REPLY_EXPECTED (follow-up, 2026-11-22) ──
+  {
+    id: "cmp0bky4e0067nuc6ilgezmyf",
+    itemCode: null,
+    note: "friend will ask unseen questions → candidate answers the friend's printed questions",
+    content: {
+      taskType: "monologue",
+      prompt: "You meet a new friend. Your friend says: 'Hello! What is your name? Do you like to walk? Do you like to run?'\n\nAnswer your friend.\nSay your name.\nSay 'yes' or 'no' about walking.\nSay 'yes' or 'no' about running.",
+      rubric: "PRE_A1 guided response on physical activity, simplified to 'walk' and 'run' as the CEFR can-do statements allow at this level (isolated words and phrases, giving own name). The friend's three questions are printed in the prompt. Assess whether the candidate gives their name and answers both questions recognisably; grammatical accuracy is not expected.",
+      sampleBullets: ["Says their name (e.g. 'My name is Sam' or 'Sam')", "Answers about walking ('Yes' / 'No' / 'I like walk')", "Answers about running", "Words are recognisable"],
+      cefrDescriptor: "Can give their name and say simply what they like.",
+    },
+  },
+  {
+    id: "cmp0anep7004wnuc6vfoteop2",
+    itemCode: null,
+    note: "neighbour starts the conversation → candidate answers the neighbour's printed question",
+    content: {
+      taskType: "monologue",
+      prompt: "A new person lives near you. This person wants to know about a market. The market is near your home. It is small. It happens every week.\n\nThis person asks you: 'Hello! I'm new here. Is there a good market near us?'\n\nNow, tell this person about the market. In your answer, you should:\n*   say where the market is.\n*   say when the market happens.\n*   say what people can buy there.\n*   say if you like the market, and why.",
+      rubric: "A1 guided monologue: the candidate gives simple information about a familiar place in answer to a printed question. The bullet points guide the candidate to enough content for assessment without complex sentence structures. Assess coverage of the four points (where, when, what to buy, opinion with a simple reason) with A1 vocabulary (market, home, buy, like).",
+      sampleBullets: ["Says where the market is", "Says when it happens (e.g. 'every Saturday')", "Names things people can buy there", "Says if they like it, with a simple reason"],
+      cefrDescriptor: "Can describe a familiar place simply and say why they like it.",
+    },
+  },
+  {
+    id: "cmp0avnlk0059nuc64r4uoidd",
+    itemCode: null,
+    note: "candidate starts a conversation with Alex → voice message to Alex",
+    content: {
+      taskType: "monologue",
+      prompt: "There is too much rubbish in your street. Leave your friend Alex a voice message about the problem.\nSay where the rubbish is.\nSay how you feel about it.",
+      rubric: "A1 short monologue: the topic 'environmental challenges' is made concrete and observable ('too much rubbish in my street'), so candidates can describe a problem in their immediate environment and say how they feel with simple phrases. Assess whether both points are covered intelligibly.",
+      sampleBullets: ["Says where the rubbish is (e.g. 'in my street', 'near the park')", "Says how they feel ('I am sad', 'I don't like it')", "Uses simple sentences that are intelligible"],
+      cefrDescriptor: "Can describe a simple problem in their surroundings and say how they feel.",
+    },
+  },
+  {
+    id: "cmp081ht9000vnuc64lj46mmq",
+    itemCode: "SPE-A2-0059-MVX1NED7",
+    note: "conversation with Alex, asking Alex questions → voice message to Alex",
+    content: {
+      taskType: "monologue",
+      prompt: "Your friend Alex has told you they are thinking about going back to study something new. Leave Alex a voice message about learning.\n\nIn your message, you should:\n*   Talk about your own school experience. What did you like and dislike?\n*   Explain why you think learning new things is important for people's lives and future jobs.\n*   Wish Alex good luck with their plans.",
+      rubric: "A2 guided monologue: the candidate uses the simple past for school experiences, the present simple for opinions, and basic connectors such as 'because' and 'so' for reasons. Vocabulary within the NGSL top 1000 and Oxford 2000. Assess coverage of the three points and how clearly the ideas are linked.",
+      sampleBullets: ["Describes their own school experience with likes and dislikes (past simple)", "Gives at least one reason why learning matters for life or jobs", "Links ideas with because / so", "Closes the message appropriately (e.g. good luck)"],
+      distractorRationale: {
+        "Weak Performance Indicators": "A weaker performance at A2 might include:\n*   **Grammar:** Frequent use of present simple instead of past simple for past experiences (e.g., 'I like my teacher' instead of 'I liked my teacher'). Difficulty forming simple comparative sentences (e.g., 'more interesting').\n*   **Vocabulary:** Limited vocabulary, relying heavily on repetition or very general words. Difficulty finding words for concepts like 'important', 'future', or 'job'.\n*   **Fluency & Coherence:** Long pauses, frequent self-correction, or an inability to connect ideas beyond simple 'and'. Difficulty expanding on ideas beyond very short, simple sentences.\n*   **Task coverage:** Leaves out one of the points, or talks only about school without saying why learning matters.\n*   **Pronunciation:** Unintelligible words or phrases that make it difficult for the listener to understand the message, even with effort.",
+      },
+      cefrDescriptor: "Can describe past experiences simply and give reasons for an opinion.",
+    },
+  },
+  {
+    id: "cmp07v9vf000nnuc65e7bcinb",
+    itemCode: "SPE-A2-0059-MVX1NDV5",
+    note: "Alex starts the conversation and the candidate asks Alex back → answer to Alex's printed question",
+    content: {
+      taskType: "monologue",
+      prompt: "Your friend Alex is thinking about buying a new smartphone or tablet and wants to know how it could help in daily life. Alex asks you: 'Hi! I'm thinking about getting a new phone or tablet. How do you use technology every day? Do you think it's helpful?'\n\nAnswer Alex:\n*   Tell Alex how you use technology (e.g., your phone, computer, or tablet) every day, and two ways it helps you.\n*   Say what is good about technology and one bad thing.\n*   Give Alex one idea for using a new phone or tablet.",
+      rubric: "A2 guided monologue: simple description, explanation and opinion on a familiar topic. Assess whether the candidate describes daily use, gives two ways technology helps, names good points and one bad point, and offers an idea for Alex, with simple connectors.",
+      sampleBullets: ["Describes daily use of technology", "Gives two ways it helps", "Names a good point and one bad point", "Suggests one idea for Alex's new device"],
+      cefrDescriptor: "Can describe everyday habits and give simple reasons and advice.",
+    },
+  },
+  {
+    id: "cmp089oyk0018nuc64jno3jqi",
+    itemCode: "SPE-B1-0065",
+    note: "follow-up questions from Alex → answer covers the likely follow-up points",
+    content: {
+      taskType: "monologue",
+      prompt: "Your new colleague Alex is interested in staying active and healthy, and asks you what you do or would like to do.\n\n**Your task:**\n1.  Describe a typical exercise routine you have, or one you would like to have.\n2.  Explain:\n    *   What kind of activities you do (or would like to do).\n    *   When you usually do them.\n    *   Why you think regular activity is important for health.\n3.  Give Alex one piece of advice for starting a routine.",
+      rubric: "B1 sustained monologue: description of a routine, reasons and advice. Vocabulary within the NGSL top 2000 and Oxford 3000; present simple for routines, 'because' clauses for justification, basic modals for advice. Assess coverage of the points and use of B1 discourse markers such as 'I think… because', 'in my opinion' and 'for example'.",
+      sampleBullets: ["Describes the activities in a routine", "Says when they do them", "Explains why regular activity matters for health", "Gives Alex a piece of advice"],
+      cefrDescriptor: B1_REASONS,
+    },
+  },
+  {
+    id: "cmp09a26q002wnuc6lj3hl9xt",
+    itemCode: "SPE-B2-0071-MVX1NGMO",
+    note: "career advisor starts a discussion → answer to the advisor's printed question",
+    content: {
+      taskType: "monologue",
+      prompt: "Imagine you are meeting a career advisor, Alex, who wants to understand your preferences in detail to help you find the best opportunities.\n\nAlex asks you: 'First, tell me what your ideal workplace would be like. Please describe the kind of environment, culture, and team that would motivate you most. Then, could you explain why these elements are important for your professional development and job satisfaction?'\n\nAnswer Alex's question.",
+    },
+  },
+  {
+    id: "cmp09urtt003qnuc6nmxzbamy",
+    itemCode: "SPE-C1-0085-MVX1NHLZ",
+    note: "conversation with Dr Reed → recorded statement for the Fund",
+    content: {
+      taskType: "monologue",
+      prompt: "You are a dedicated community organiser. Dr. Evelyn Reed, a senior representative of the 'Global Community Initiatives Fund', wants to understand how grassroots events contribute to local development and social cohesion, and has asked you for a recorded statement.\n\nDescribe a significant community event that recently took place in your local area. Do not just recount the activities; you should:\n1.  **Delineate** the event's primary objectives and how far they were achieved.\n2.  **Elucidate** the broader impact on the community, perhaps touching upon aspects such as social capital, economic benefits, or cultural enrichment.\n3.  **Articulate** any unforeseen challenges or limitations encountered during its planning and execution, and how these were addressed or mitigated.\n4.  **Propose** how the insights garnered from this event could be leveraged for future community endeavours, potentially seeking the Fund's support for similar initiatives.",
+      rubric: "C1 formal monologue that moves beyond description to analysis, evaluation and future planning. The verbs (delineate, elucidate, articulate, propose) and abstract concepts (social capital, cultural enrichment, insights garnered) call for sophisticated oral production and precise meaning. The statement to a funding body calls for a formal register and a persuasive close.",
+      sampleBullets: ["Delineates objectives and how far they were met", "Elucidates the wider community impact", "Explains challenges and how they were mitigated", "Proposes future use of the insights and makes a case for the Fund's support"],
+      cefrDescriptor: C1_TALK,
+    },
+  },
+  {
+    id: "cmp09pbao003knuc6lvdfujnp",
+    itemCode: "SPE-C1-0093",
+    note: "mentor discussion with follow-up questions → reflective talk for the mentor",
+    content: {
+      taskType: "monologue",
+      prompt: "Your mentor, Dr. Anya Sharma, has asked you to record a short reflection on a challenging skill you aspire to acquire in the next few years, your motivations, and the broader implications of such an endeavour.\n\nIn your reflection, you should:\n1.  **Delineate** the specific, sophisticated skill you aim to master, explaining its inherent complexity and scope.\n2.  **Articulate** your intrinsic motivations for pursuing this particular skill, perhaps touching upon how it aligns with your long-term vision.\n3.  **Explain** the potential benefits this acquisition could **give rise to**, both for your personal growth and professional trajectory, acknowledging any **caveats** or limitations.\n4.  **Propose** a pragmatic approach or methodology for its acquisition, **despite** the anticipated difficulties, and **conjecture** about the time commitment involved.",
+      rubric: "C1 reflective monologue. Assess sophisticated discourse, hedging, nuanced argumentation and the integration of sub-themes; the articulation of abstract ideas, justification of positions and a pragmatic plan, reflecting the C1 can-do statements for sustained monologue.",
+      sampleBullets: ["Delineates the skill and its complexity", "Articulates intrinsic motivations", "Weighs benefits with caveats", "Proposes a pragmatic approach and conjectures about the time involved"],
+      cefrDescriptor: C1_TALK,
+    },
+  },
+  {
+    id: "cmp0b4qai005jnuc60izl0rxo",
+    itemCode: null,
+    note: "panel presentation with follow-up questions → presentation that anticipates the panel's questions",
+    content: {
+      taskType: "presentation",
+      prompt: "You are presenting at a panel session titled 'The Pursuit of Mastery: Beyond Utilitarian Acquisition'. Your role is to present a skill you aspire to learn, not merely for its pragmatic utility, but for its potential to fundamentally reshape your cognitive framework, intellectual disposition, or engagement with the world.\n\nIn your presentation, you should:\n1.  **Identify** a specific, complex skill (e.g., advanced theoretical physics, classical Latin rhetoric, abstract algorithmic composition, master craftsmanship, complex musical composition, intricate traditional storytelling, complex software architecture).\n2.  **Articulate** the profound intellectual or personal motivations underpinning this aspiration, going beyond superficial interest.\n3.  **Elucidate** the inherent difficulties and protracted commitment required, perhaps contrasting it with more readily attainable proficiencies.\n4.  **Conjecture** on the anticipated transformative effects of achieving mastery for your worldview, problem-solving approaches, or capacity for nuanced understanding.\n5.  **Engage** with the idea of 'mastery' itself: what does it truly entail in this domain, and how might progress towards it be measured?",
+      sampleBullets: ["Identifies a complex skill precisely", "Articulates motivations beyond utility", "Elucidates the difficulty and commitment involved", "Conjectures on transformative effects", "Interrogates what mastery means and how progress could be measured"],
+      cefrDescriptor: "Can present a complex topic with mastery, nuance and precision, reformulating ideas to convey finer shades of meaning.",
+    },
+  },
 ];
