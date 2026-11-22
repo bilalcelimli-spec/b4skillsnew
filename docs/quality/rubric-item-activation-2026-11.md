@@ -52,4 +52,6 @@ Fark editoryal güvencededir: bu sorular canlıya iki inceleyicinin dört onayı
 - **Önce Primary (7–10) konuşma soruları.** Yaş incelemesinden geçen ve yeniden yazılan PRE_A1 soruları burada.
 - **Sonra canlı havuzda eksik kalan hücreler.** Bunlar `npm run verify:coverage` ile görülebilir.
 - **En son C1 ve C2.** Konuşma C1 ve yazma C1'de birikmiş çok sayıda soru var.
-- **`SPK-C2-0009` ve `WRT-C2-0010`.** Bu ikisi `language-schools` etiketli, ancak o ürün C2'yi kapsamıyor. İncelemeden önce ürün etiketlerinin düzeltilmesi gerekir. Aksi hâlde ACTIVE olsalar bile hiçbir sınava girmezler.
+- **`SPK-C2-0009` ve `WRT-C2-0010`.** Bu ikisi `language-schools` etiketliydi, ancak o ürün C2'yi kapsamıyor. 22 Kasım kararıyla Academia'ya taşınıyorlar: `scripts/jobs/apply-c2-academia-retag.ts` (`--apply` ile yazar). Script yalnızca etiketi ve `content.productLine` alanını değiştirir; durum ve aşama aynı kalır, sorular yine dört onay bekler. İnceleyiciler için iki not `metadata.retag.reviewNote` alanına yazılır:
+  - `SPK-C2-0009` adaydan "sınav görevlisiyle tartışmasını" istiyor. Oysa konuşma, karşısında biri olmadan kaydedilen bir monolog. Onaydan önce monolog olarak yeniden yazılmalı.
+  - `WRT-C2-0010` yaratıcı mektup öyküsü istiyor (280–380 kelime). Bu, Academia'nın akademik yazma görevlerinin (uzun yanıt, 220–280 kelime) dışında. Onaydan önce yapının Academia'ya uyduğu doğrulanmalı ya da görev akademik hâle getirilmeli.
