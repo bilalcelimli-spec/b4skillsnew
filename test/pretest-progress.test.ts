@@ -47,9 +47,15 @@ describe("pretest progress", () => {
     const rows = buildPretestProgress([item({ id: "d", itemCode: "GRA-X", discrimination: 0 })], new Map(), T);
     const md = renderProgressMarkdown(rows, T, { "General English": 4 }, new Date("2026-11-22T00:00:00Z"));
     expect(md).toContain("# Pretest calibration progress");
-    expect(md).toContain("| 1 | 1 | 0 | 0 | 0 |");
+    expect(md).toContain("| 1 | 0 | 1 | 0 | 0 | 0 |");
     expect(md).toContain("- GRA-X (GRAMMAR B1)");
     expect(md).toContain("| seed parameters (needs a > 0 and 0 ≤ c < 1) | GRAMMAR B1 | 1 |");
     expect(md).toContain("| General English | 4 |");
+  });
+
+  it("marks writing and speaking as never pretested, whatever their route", () => {
+    const rows = buildPretestProgress([item({ id: "s", skill: "SPEAKING" }), item({ id: "w", skill: "WRITING" })], new Map([["s", { total: 0, recent: 0 }]]), T);
+    expect(rows.map((r) => r.stage)).toEqual(["NO_PRETEST_SLOT", "NO_PRETEST_SLOT"]);
+    expect(rows[0].daysToEstimate).toBeNull();
   });
 });

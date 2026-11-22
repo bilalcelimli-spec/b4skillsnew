@@ -8,6 +8,7 @@
 import { isPretestEligible, type AdaptiveEligibilityItem } from "../assessment-engine/adaptive-policy.js";
 import { PRODUCT_LINE_PROFILES, type ProductLineName, type ProductLineProfile } from "../product-lines/profiles.js";
 import type { SkillType } from "../assessment-engine/types.js";
+import { PRETEST_EXCLUDED_SKILLS } from "../assessment-engine/section-flow.js";
 
 export interface PretestItem extends AdaptiveEligibilityItem {
   id: string;
@@ -22,6 +23,8 @@ export interface ResponseCounts {
 }
 
 export type ProgressStage =
+  /** Writing and speaking never get pretest slots (section-flow PRETEST_EXCLUDED_SKILLS). */
+  | "NO_PRETEST_SLOT"
   /** No product line can serve the item: it will never collect responses. */
   | "NO_ROUTE"
   | "COLLECTING"
@@ -71,7 +74,8 @@ export interface Thresholds {
   windowDays: number;
 }
 
-const stageOf = (n: number, routes: number, t: Thresholds): ProgressStage =>
+const stageOf = (skill: string, n: number, routes: number, t: Thresholds): ProgressStage =>
+  PRETEST_EXCLUDED_SKILLS.has(skill as SkillType) ? "NO_PRETEST_SLOT" :
   routes === 0 ? "NO_ROUTE" : n >= t.publishMinN ? "PUBLISH_N_REACHED" : n >= t.estimateMinN ? "ESTIMABLE" : "COLLECTING";
 
 const daysTo = (target: number, n: number, recent: number, windowDays: number): number | null => {
@@ -105,9 +109,9 @@ export function buildPretestProgress(
       profiles: serving,
       n,
       recent,
-      stage: stageOf(n, serving.length, thresholds),
-      daysToEstimate: serving.length ? daysTo(thresholds.estimateMinN, n, recent, thresholds.windowDays) : null,
-      daysToPublish: serving.length ? daysTo(thresholds.publishMinN, n, recent, thresholds.windowDays) : null,
+      stage: stageOf(item.skill, n, serving.length, thresholds),
+      daysToEstimate: serving.length && !PRETEST_EXCLUDED_SKILLS.has(item.skill as SkillType) ? daysTo(thresholds.estimateMinN, n, recent, thresholds.windowDays) : null,
+      daysToPublish: serving.length && !PRETEST_EXCLUDED_SKILLS.has(item.skill as SkillType) ? daysTo(thresholds.publishMinN, n, recent, thresholds.windowDays) : null,
       ...(serving.length ? {} : { noRouteReason: noRouteReason(item, profiles) }),
     };
   });
@@ -116,6 +120,7 @@ export function buildPretestProgress(
 export interface ProgressGroup {
   key: string;
   items: number;
+  noSlot: number;
   noRoute: number;
   collecting: number;
   estimable: number;
@@ -150,6 +155,7 @@ export function groupProgress(rows: readonly ProgressRow[], keyOf: (row: Progres
     .map(([key, list]) => ({
       key,
       items: list.length,
+      noSlot: list.filter((r) => r.stage === "NO_PRETEST_SLOT").length,
       noRoute: list.filter((r) => r.stage === "NO_ROUTE").length,
       collecting: list.filter((r) => r.stage === "COLLECTING").length,
       estimable: list.filter((r) => r.stage === "ESTIMABLE").length,
@@ -173,15 +179,17 @@ export function renderProgressMarkdown(
     ``,
     `Generated ${generatedAt.toISOString()}. Thresholds: estimate n ≥ ${thresholds.estimateMinN}, publish n ≥ ${thresholds.publishMinN} (other publish gates still apply). Recent window: ${thresholds.windowDays} days.`,
     ``,
-    `| Items | No route | Collecting | Estimable | Publish n reached |`,
-    `|---:|---:|---:|---:|---:|`,
-    `| ${rows.length} | ${total("NO_ROUTE")} | ${total("COLLECTING")} | ${total("ESTIMABLE")} | ${total("PUBLISH_N_REACHED")} |`,
+    `| Items | No pretest slot (writing, speaking) | No route | Collecting | Estimable | Publish n reached |`,
+    `|---:|---:|---:|---:|---:|---:|`,
+    `| ${rows.length} | ${total("NO_PRETEST_SLOT")} | ${total("NO_ROUTE")} | ${total("COLLECTING")} | ${total("ESTIMABLE")} | ${total("PUBLISH_N_REACHED")} |`,
+    ``,
+    `Writing and speaking items never get pretest slots, so in PRETEST they are not served at all; they need another route to ACTIVE.`,
     ``,
     `## By skill and level`,
     ``,
-    `| Skill · level | Items | No route | Collecting | Estimable | Publish n | Median n | Responses (${thresholds.windowDays} d) |`,
-    `|---|---:|---:|---:|---:|---:|---:|---:|`,
-    ...groups.map((g) => `| ${g.key} | ${g.items} | ${g.noRoute} | ${g.collecting} | ${g.estimable} | ${g.publishN} | ${g.medianN} | ${g.recent} |`),
+    `| Skill · level | Items | No slot | No route | Collecting | Estimable | Publish n | Median n | Responses (${thresholds.windowDays} d) |`,
+    `|---|---:|---:|---:|---:|---:|---:|---:|---:|`,
+    ...groups.map((g) => `| ${g.key} | ${g.items} | ${g.noSlot} | ${g.noRoute} | ${g.collecting} | ${g.estimable} | ${g.publishN} | ${g.medianN} | ${g.recent} |`),
     ``,
     `## Completed sessions by product line (${thresholds.windowDays} d)`,
     ``,
