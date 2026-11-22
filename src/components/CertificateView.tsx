@@ -51,7 +51,7 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
     }
   };
 
-  // Determine which logo to display: org logo → site favicon → nothing
+  // Institution logo, shown under the b4skills logo when the organisation set one.
   const logoUrl = branding?.logoUrl || null;
   const orgName = branding?.name || "b4skills";
 
@@ -90,28 +90,26 @@ export const CertificateView: React.FC<CertificateViewProps> = ({ certificate, b
         <CardContent className="relative p-8 md:p-24 flex flex-col items-center text-center">
           {/* Header — Logo + Org name */}
           <div className="mb-12 flex flex-col items-center gap-3">
+            {/* The b4skills logo, whole and unaltered, heads every certificate. */}
+            <img
+              src="/brand/b4skills-logo-badge.png"
+              alt="b4skills"
+              width={860}
+              height={290}
+              className="h-14 md:h-20 w-auto max-w-full object-contain mb-2"
+            />
+            {/* An institution's own logo, when set, sits under it. */}
             {logoUrl ? (
               <img
                 src={logoUrl}
                 alt={orgName}
-                className="h-16 w-auto mb-2 object-contain"
+                className="h-12 w-auto max-w-full object-contain"
                 referrerPolicy="no-referrer"
               />
-            ) : (
-              /* Fallback: site favicon as inline SVG badge */
-              <div
-                className="w-20 h-20 rounded-2xl flex items-center justify-center mb-2 shadow-lg"
-                style={{ backgroundColor: primaryColor }}
-              >
-                <img
-                  src="/favicon.svg"
-                  alt={orgName}
-                  className="w-12 h-12 object-contain"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                />
-              </div>
-            )}
-            <div className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em]">{orgName}</div>
+            ) : null}
+            {branding?.name ? (
+              <div className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em]">{orgName}</div>
+            ) : null}
           </div>
 
           <h2 className="text-2xl md:text-5xl font-black text-slate-900 mb-8 tracking-tight">
