@@ -4,13 +4,30 @@ import { isAdaptiveEligible, type AdaptiveEligibilityItem } from '../assessment-
 import { PRODUCT_LINE_PROFILES, type ProductLineProfile } from '../product-lines/profiles.js';
 import { profileLevels } from './bank-capacity.js';
 import type { SkillType } from '../assessment-engine/types.js';
+import { PRETEST_EXCLUDED_SKILLS } from '../assessment-engine/section-flow.js';
 
 const requiredReviews = ['LANGUAGE_REVIEW', 'CEFR_REVIEW', 'FAIRNESS_REVIEW', 'MODERATION'];
+
+/** Writing and speaking: rubric-scored, and never given pretest slots (section-flow). */
+export function isRubricSkill(skill: string): boolean {
+  return PRETEST_EXCLUDED_SKILLS.has(skill as SkillType);
+}
+
+/**
+ * A writing or speaking item left in the pretest pool (PRETEST, or ACTIVE
+ * with isPretest). Pretest slots never include these skills and the live
+ * pool takes only non-pretest ACTIVE items, so such an item is never served
+ * and can never reach calibration.
+ */
+export function isParkedRubricItem(item: { skill: string; status: string; isPretest?: boolean | null }): boolean {
+  return isRubricSkill(item.skill) && (item.status === 'PRETEST' || (item.status === 'ACTIVE' && item.isPretest === true));
+}
+
 /** Pilot admission is an editorial gate, not empirical calibration or CEFR validation. */
-export function pilotAdmissionReasons(item: AuditItem & { pipelineStage: string; isSuspended?: boolean; isCompromised?: boolean }): string[] {
+export function pilotAdmissionReasons(item: AuditItem & { pipelineStage: string; isPretest?: boolean | null; isSuspended?: boolean; isCompromised?: boolean }): string[] {
   const reasons: string[] = [];
   if (item.pipelineStage !== 'APPROVED_FOR_PILOT') reasons.push('STAGE_CHANGED');
-  if (!['DRAFT', 'REVIEW'].includes(item.status)) reasons.push('STATUS_NOT_ELIGIBLE');
+  if (!['DRAFT', 'REVIEW'].includes(item.status) && !isParkedRubricItem(item)) reasons.push('STATUS_NOT_ELIGIBLE');
   if (item.isSuspended) reasons.push('ITEM_SUSPENDED');
   if (item.isCompromised) reasons.push('ITEM_COMPROMISED');
   const hash = itemReviewHash(item);
@@ -43,6 +60,19 @@ export function pilotAdmissionReasons(item: AuditItem & { pipelineStage: string;
  * marks them until then. Every other admitted item still goes to PRETEST.
  */
 export const GAP_CELL_ACTIVATION_POLICY = { policyVersion: '1.0', paramsSource: 'CEFR_PRIOR', calibrationPending: true } as const;
+
+/**
+ * Rubric-item activation (2026-11-22, docs/quality/rubric-item-activation-2026-11.md).
+ *
+ * PRETEST is a dead end for writing and speaking: they get no pretest slots,
+ * so a reviewed item sent there is never served. Admitted writing and
+ * speaking items therefore go to ACTIVE on their CEFR-derived prior
+ * parameters, like gap-cell fillers, whether or not a cell is short. The
+ * editorial gate is unchanged (four current approvals from at least two
+ * reviewers, no evidence blockers). `metadata.provisionalActivation` marks
+ * them until the calibration sweep publishes real estimates.
+ */
+export const RUBRIC_ACTIVATION_POLICY = { policyVersion: '1.0', paramsSource: 'CEFR_PRIOR', calibrationPending: true, reason: 'NO_PRETEST_SLOT' } as const;
 
 type GapCandidate = AdaptiveEligibilityItem & { id: string; iqScore?: number | null };
 
@@ -88,24 +118,28 @@ export async function promotePilotItems(db: any, actorId: string, dryRun: boolea
       if (reasons.length) blocked.push({ id: item.id, itemCode: item.itemCode, reasons });
       return reasons.length === 0;
     });
-    const gapPlan = options.gapCells && admitted.length
-      ? planGapCellActivation(admitted, await tx.item.findMany({
+    const objective = admitted.filter((item: any) => !isRubricSkill(item.skill));
+    const gapPlan = options.gapCells && objective.length
+      ? planGapCellActivation(objective, await tx.item.findMany({
         where: { status: 'ACTIVE', isPretest: false, isSuspended: false, isCompromised: false },
         select: { skill: true, status: true, isPretest: true, cefrLevel: true, discrimination: true, guessing: true, tags: true, content: true, ageSuitability: true },
       }))
       : new Map<string, string[]>();
     for (const item of admitted) {
       const cells = gapPlan.get(item.id);
+      const rubric = isRubricSkill(item.skill);
       candidates.push({ id: item.id, itemCode: item.itemCode, skill: item.skill, cefrLevel: item.cefrLevel, subskill: item.subskill, iqScore: item.iqScore, version: item.version,
-        target: cells ? 'ACTIVE' : 'PRETEST', ...(cells ? { gapCells: cells } : {}) });
+        target: cells || rubric ? 'ACTIVE' : 'PRETEST', ...(cells ? { gapCells: cells } : {}), ...(rubric ? { rubricActivation: true } : {}) });
       if (!dryRun) {
         const metadata = item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata) ? item.metadata : {};
         const now = new Date().toISOString();
         const admission = { policyVersion: '1.0', itemVersion: item.version, contentHash: itemReviewHash(item) };
-        await tx.item.update({ where: { id: item.id }, data: cells ? {
+        const provisional = rubric
+          ? { ...RUBRIC_ACTIVATION_POLICY, activatedAt: now, activatedBy: actorId, previousStatus: item.status }
+          : cells ? { ...GAP_CELL_ACTIVATION_POLICY, activatedAt: now, activatedBy: actorId, cells } : null;
+        await tx.item.update({ where: { id: item.id }, data: provisional ? {
           status: 'ACTIVE', isPretest: false, pipelineStage: 'LIVE',
-          metadata: { ...metadata, promotedBy: actorId, pilotAdmission: admission,
-            provisionalActivation: { ...GAP_CELL_ACTIVATION_POLICY, activatedAt: now, activatedBy: actorId, cells } },
+          metadata: { ...metadata, promotedBy: actorId, pilotAdmission: admission, provisionalActivation: provisional },
         } : {
           status: 'PRETEST', isPretest: true, pipelineStage: 'PILOT',
           metadata: { ...metadata, pilotStartedAt: now, promotedBy: actorId, pilotAdmission: admission },
@@ -116,7 +150,7 @@ export async function promotePilotItems(db: any, actorId: string, dryRun: boolea
     return dryRun ? { dryRun: true, candidates, count: candidates.length, activated, blocked } : {
       promoted: candidates.length, activated, ids: candidates.map(c => c.id), blocked,
       message: activated
-        ? `${activated} item(s) filled below-minimum cells and are ACTIVE on prior parameters (calibration pending); the rest are PRETEST.`
+        ? `${activated} item(s) are ACTIVE on prior parameters (calibration pending): writing and speaking, and items filling below-minimum cells. The rest are PRETEST.`
         : 'Eligible items are now PRETEST. Pilot admission does not establish empirical calibration.',
     };
   };

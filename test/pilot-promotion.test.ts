@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { itemReviewHash } from '../src/lib/content-factory/item-review-snapshot';
-import { GAP_CELL_ACTIVATION_POLICY, pilotAdmissionReasons, planGapCellActivation, promotePilotItems } from '../src/lib/content-factory/pilot-promotion';
+import { GAP_CELL_ACTIVATION_POLICY, RUBRIC_ACTIVATION_POLICY, isParkedRubricItem, pilotAdmissionReasons, planGapCellActivation, promotePilotItems } from '../src/lib/content-factory/pilot-promotion';
 import { PRODUCT_LINE_PROFILES } from '../src/lib/product-lines/profiles';
 let item: any;
 function approvals(snapshot: any) {
@@ -107,28 +107,84 @@ describe('gap-cell activation (decision b)', () => {
   it('activates nothing where the cell already meets its minimum', () => {
     expect(planGapCellActivation([writing('x')], live(need), [corporate]).size).toBe(0);
   });
-  it('writes ACTIVE + provisional marker for gap fillers and PRETEST for the rest', async () => {
+  it('writes ACTIVE + gap-cell marker for objective items filling short cells', async () => {
+    const grammarNeed = corporate.sectionConfig.GRAMMAR!.minItems;
+    const grammar = (id: string) => ({ id, skill: 'GRAMMAR', status: 'ACTIVE', isPretest: false, cefrLevel: 'A2',
+      discrimination: 1, guessing: 0.2, tags: ['corporate'], content: {} });
     const reviewed = (id: string, iqScore: number) => {
-      const it: any = { ...structuredClone(item), id, skill: 'WRITING', type: 'OPEN_RESPONSE', cefrLevel: 'A2', tags: ['corporate'],
-        discrimination: 1, guessing: 0, iqScore, content: { prompt: 'Write an email to your manager about a delayed delivery.' } };
+      const it: any = { ...structuredClone(item), id, cefrLevel: 'A2', tags: ['corporate'], discrimination: 1, guessing: 0.2, iqScore };
       it.itemReviews = approvals(it);
       return it;
     };
     const items = [reviewed('fill', 90), reviewed('spare', 60)];
     const db = database(items);
-    db.find.mockImplementationOnce(async () => structuredClone(items)).mockImplementationOnce(async () => live(need - 1));
+    db.find.mockImplementationOnce(async () => structuredClone(items))
+      .mockImplementationOnce(async () => Array.from({ length: grammarNeed - 1 }, (_, i) => grammar(`live-${i}`)));
     const result: any = await promotePilotItems(db, 'admin', false, { gapCells: true });
     if (result.blocked.length) throw new Error(JSON.stringify(result.blocked));
-    expect(result).toMatchObject({ promoted: 2, activated: 1 });
-    expect(items[0]).toMatchObject({ status: 'ACTIVE', isPretest: false, pipelineStage: 'LIVE',
-      metadata: { provisionalActivation: { ...GAP_CELL_ACTIVATION_POLICY, activatedBy: 'admin' } } });
-    expect(items[0].metadata.provisionalActivation.cells).toContain('Corporate WRITING/A2');
-    expect(items[1]).toMatchObject({ status: 'PRETEST', isPretest: true, pipelineStage: 'PILOT' });
+    // The mocked live bank is short in several A2 grammar cells, so both fill one.
+    expect(result).toMatchObject({ promoted: 2, activated: 2 });
+    for (const filled of items) {
+      expect(filled).toMatchObject({ status: 'ACTIVE', isPretest: false, pipelineStage: 'LIVE',
+        metadata: { provisionalActivation: { ...GAP_CELL_ACTIVATION_POLICY, activatedBy: 'admin' } } });
+      expect(filled.metadata.provisionalActivation.reason).toBeUndefined();
+    }
+    expect(items[0].metadata.provisionalActivation.cells).toContain('Corporate GRAMMAR/A2');
   });
   it('without the option every admitted item still goes to PRETEST', async () => {
     const db = database([item]);
     expect(await promotePilotItems(db, 'admin', false)).toMatchObject({ promoted: 1, activated: 0 });
     expect(item.status).toBe('PRETEST');
     expect(db.find).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('rubric-item activation (writing and speaking never get pretest slots)', () => {
+  const rubricItem = (id: string, skill: 'WRITING' | 'SPEAKING', status: string, isPretest: boolean) => {
+    const it: any = { ...structuredClone(item), id, skill, type: skill === 'WRITING' ? 'OPEN_RESPONSE' : 'SPEAKING_RESPONSE',
+      cefrLevel: 'A2', status, isPretest, tags: ['corporate'], discrimination: 1, guessing: 0,
+      content: { prompt: 'Write an email to your manager about a delayed delivery.' } };
+    it.itemReviews = approvals(it);
+    return it;
+  };
+
+  it('recognises writing and speaking items stuck in the pretest pool', () => {
+    expect(isParkedRubricItem({ skill: 'SPEAKING', status: 'PRETEST', isPretest: true })).toBe(true);
+    expect(isParkedRubricItem({ skill: 'WRITING', status: 'ACTIVE', isPretest: true })).toBe(true);
+    expect(isParkedRubricItem({ skill: 'WRITING', status: 'ACTIVE', isPretest: false })).toBe(false);
+    expect(isParkedRubricItem({ skill: 'GRAMMAR', status: 'PRETEST', isPretest: true })).toBe(false);
+  });
+
+  it('admits a parked writing item but still holds a parked grammar item', () => {
+    expect(pilotAdmissionReasons(rubricItem('w', 'WRITING', 'PRETEST', true))).toEqual([]);
+    expect(pilotAdmissionReasons({ ...item, status: 'PRETEST', isPretest: true })).toContain('STATUS_NOT_ELIGIBLE');
+  });
+
+  it('keeps the editorial gate: missing approvals still block a parked item', () => {
+    const parked = rubricItem('s', 'SPEAKING', 'ACTIVE', true);
+    parked.itemReviews = parked.itemReviews.filter((r: any) => r.reviewType !== 'FAIRNESS_REVIEW');
+    expect(pilotAdmissionReasons(parked)).toContain('FAIRNESS_REVIEW_APPROVAL_MISSING');
+  });
+
+  it('sends every admitted writing and speaking item to ACTIVE, never to PRETEST, without the gap-cell option', async () => {
+    const items = [rubricItem('draft', 'WRITING', 'DRAFT', false), rubricItem('parked', 'SPEAKING', 'PRETEST', true), structuredClone(item)];
+    items[2].itemReviews = approvals(items[2]);
+    const db = database(items);
+    const result: any = await promotePilotItems(db, 'admin', false);
+    if (result.blocked.length) throw new Error(JSON.stringify(result.blocked));
+    expect(result).toMatchObject({ promoted: 3, activated: 2 });
+    for (const rubric of items.slice(0, 2)) {
+      expect(rubric).toMatchObject({ status: 'ACTIVE', isPretest: false, pipelineStage: 'LIVE',
+        metadata: { provisionalActivation: { ...RUBRIC_ACTIVATION_POLICY, activatedBy: 'admin' } } });
+    }
+    expect(items[1].metadata.provisionalActivation.previousStatus).toBe('PRETEST');
+    expect(items[2]).toMatchObject({ status: 'PRETEST', isPretest: true, pipelineStage: 'PILOT' });
+    expect(db.find).toHaveBeenCalledTimes(1);
+  });
+
+  it('dry run marks rubric candidates as ACTIVE and writes nothing', async () => {
+    const db = database([rubricItem('w', 'WRITING', 'PRETEST', true)]);
+    expect(await promotePilotItems(db, 'admin', true)).toMatchObject({ count: 1, activated: 1, candidates: [{ id: 'w', target: 'ACTIVE', rubricActivation: true }] });
+    expect(db.update).not.toHaveBeenCalled();
   });
 });

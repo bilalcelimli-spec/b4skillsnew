@@ -80,6 +80,7 @@
     "report:skill-correlation": "tsx scripts/jobs/skill-correlation-report.ts",
     "report:exam-health": "tsx scripts/jobs/exam-health-report.ts",
     "report:pretest-progress": "tsx scripts/jobs/pretest-progress-report.ts",
+    "report:rubric-queue": "tsx scripts/jobs/rubric-review-queue.ts",
     "seo:og-images": "tsx scripts/generate-og-images.ts",
     "seo:indexnow": "tsx scripts/jobs/submit-indexnow.ts",
     "db:job:retire-items": "tsx scripts/jobs/item-retirement-job.ts",
